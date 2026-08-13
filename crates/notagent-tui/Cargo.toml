@@ -7,3 +7,4 @@ license.workspace = true
 description = "Differenzielle Terminal-Rendering-Engine und Komponenten."
 
 [dependencies]
+async-trait = { workspace = true }
