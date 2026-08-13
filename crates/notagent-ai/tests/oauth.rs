@@ -674,9 +674,15 @@ fn radius_normalizes_its_gateway_url() {
         radius::normalize_radius_gateway_url("gw.test"),
         "https://gw.test"
     );
+    // Only a leading `http(s)://` counts as a scheme, and the value is not trimmed:
+    // `/^https?:\/\//iu.test(value)` fails for a padded input.
     assert_eq!(
         radius::normalize_radius_gateway_url("  http://gw.test  "),
-        "http://gw.test"
+        "https://  http://gw.test  "
+    );
+    assert_eq!(
+        radius::normalize_radius_gateway_url("HTTP://gw.test//"),
+        "HTTP://gw.test"
     );
 }
 

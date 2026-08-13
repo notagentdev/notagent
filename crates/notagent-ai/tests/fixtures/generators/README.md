@@ -83,3 +83,13 @@ option and records the URL, the headers and the body next to the event sequence.
 
 `pi-messages.mts` injects a fake `fetch` and records the URL, the headers, the body and
 the status text next to the event sequence.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `providers.mts` | `providers.jsonl` | `node --experimental-strip-types providers.mts > ../providers.jsonl` |
+
+`providers.mts` records the observable shape of every built-in provider factory —
+identity, base url, the advertised auth methods and the catalog before any refresh — in
+`builtinProviders()` order. `createProvider` hides the api map behind a closure, so the
+fixture carries the distinct `model.api` values instead; `tests/providers.rs` asserts
+that each of them dispatches.

@@ -17,9 +17,10 @@ use crate::api::transform_messages::transform_messages;
 use crate::models::calculate_cost;
 use crate::types::{
     AssistantContent, AssistantMessage, AssistantMessageEvent, CacheRetention, Context, Message,
-    Model, ProviderEnv, StopReason, TextContent, TextOrImageContent, ThinkingBudgets,
-    ThinkingContent, ThinkingLevel, Tool, ToolCall, UserContent,
+    Model, ProviderEnv, SimpleStreamOptions, StopReason, TextContent, TextOrImageContent,
+    ThinkingBudgets, ThinkingContent, ThinkingLevel, Tool, ToolCall, UserContent,
 };
+use crate::utils::event_stream::AssistantMessageEventStream;
 use crate::utils::json_parse::parse_streaming_json;
 use crate::utils::provider_env::get_provider_env_value;
 use crate::utils::sanitize_unicode::sanitize_surrogates;
@@ -1697,4 +1698,580 @@ pub fn stream_item_to_json(event: &bedrock::types::ConverseStreamOutput) -> Valu
         }
         _ => Value::Object(Map::new()),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Transport and stream driver
+// ---------------------------------------------------------------------------
+
+/// TS swaps the SDK's default HTTP/2 handler for a `NodeHttpHandler` in exactly two
+/// cases: a resolved proxy (with http/https proxy agents) and
+/// `AWS_BEDROCK_FORCE_HTTP1=1`. Both branches speak HTTP/1.1, so this port installs a
+/// reqwest-backed client — the crate's HTTP client — for them (substitution class 3).
+#[derive(Debug, Clone)]
+struct ReqwestHttpClient {
+    client: reqwest::Client,
+}
+
+impl ReqwestHttpClient {
+    fn new(proxy_url: Option<&str>) -> Result<Self, BedrockError> {
+        // `no_proxy()` first: reqwest would otherwise add the ambient proxy env on top
+        // of the resolved one, which the Node agents never do.
+        let mut builder = reqwest::Client::builder().http1_only().no_proxy();
+        if let Some(proxy_url) = proxy_url {
+            builder = builder.proxy(
+                reqwest::Proxy::all(proxy_url).map_err(|error| BedrockError(error.to_string()))?,
+            );
+        }
+        Ok(ReqwestHttpClient {
+            client: builder
+                .build()
+                .map_err(|error| BedrockError(error.to_string()))?,
+        })
+    }
+}
+
+impl aws_smithy_runtime_api::client::http::HttpConnector for ReqwestHttpClient {
+    fn call(
+        &self,
+        request: aws_smithy_runtime_api::client::orchestrator::HttpRequest,
+    ) -> aws_smithy_runtime_api::client::http::HttpConnectorFuture {
+        use aws_smithy_runtime_api::client::result::ConnectorError;
+
+        let client = self.client.clone();
+        aws_smithy_runtime_api::client::http::HttpConnectorFuture::new(async move {
+            let request = request
+                .try_into_http1x()
+                .map_err(|error| ConnectorError::user(Box::new(error)))?;
+            let (parts, body) = request.into_parts();
+            // The Converse request body is a single serialized JSON document; only the
+            // response is an event stream.
+            let body = body.bytes().unwrap_or_default().to_vec();
+            let mut outgoing = client.request(parts.method, parts.uri.to_string());
+            for (name, value) in parts.headers.iter() {
+                outgoing = outgoing.header(name, value);
+            }
+            let response = outgoing
+                .body(body)
+                .send()
+                .await
+                .map_err(|error| ConnectorError::io(Box::new(error)))?;
+            let (parts, body) = http::Response::from(response).into_parts();
+            aws_smithy_runtime_api::client::orchestrator::HttpResponse::try_from(
+                http::Response::from_parts(
+                    parts,
+                    aws_smithy_types::body::SdkBody::from_body_1_x(body),
+                ),
+            )
+            .map_err(|error| ConnectorError::other(Box::new(error), None))
+        })
+    }
+}
+
+/// `addCustomHeadersMiddleware(client, headers)` — the TS middleware runs in the `build`
+/// step, after serialization and before signing; `modify_before_signing` is that point.
+#[derive(Debug)]
+struct CustomHeadersInterceptor {
+    headers: BTreeMap<String, String>,
+}
+
+impl aws_smithy_runtime_api::client::interceptors::Intercept for CustomHeadersInterceptor {
+    fn name(&self) -> &'static str {
+        "notagent-ai-custom-headers"
+    }
+
+    fn modify_before_signing(
+        &self,
+        context: &mut aws_smithy_runtime_api::client::interceptors::context::BeforeTransmitInterceptorContextMut<'_>,
+        _runtime_components: &aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
+        _cfg: &mut aws_smithy_types::config_bag::ConfigBag,
+    ) -> Result<(), aws_smithy_runtime_api::box_error::BoxError> {
+        let headers = context.request_mut().headers_mut();
+        for (key, value) in &self.headers {
+            if !is_reserved_header(key) {
+                headers.try_insert(key.clone(), value.clone())?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Records the HTTP status of the response so `onResponse` sees what
+/// `response.$metadata.httpStatusCode` carries in TS.
+#[derive(Debug, Default, Clone)]
+struct ResponseStatusInterceptor {
+    status: std::sync::Arc<std::sync::Mutex<Option<u16>>>,
+}
+
+impl aws_smithy_runtime_api::client::interceptors::Intercept for ResponseStatusInterceptor {
+    fn name(&self) -> &'static str {
+        "notagent-ai-response-status"
+    }
+
+    fn read_before_deserialization(
+        &self,
+        context: &aws_smithy_runtime_api::client::interceptors::context::BeforeDeserializationInterceptorContextRef<'_>,
+        _runtime_components: &aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
+        _cfg: &mut aws_smithy_types::config_bag::ConfigBag,
+    ) -> Result<(), aws_smithy_runtime_api::box_error::BoxError> {
+        *self
+            .status
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(context.response().status().as_u16());
+        Ok(())
+    }
+}
+
+impl aws_smithy_runtime_api::client::http::HttpClient for ReqwestHttpClient {
+    fn http_connector(
+        &self,
+        _settings: &aws_smithy_runtime_api::client::http::HttpConnectorSettings,
+        _components: &aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
+    ) -> aws_smithy_runtime_api::client::http::SharedHttpConnector {
+        aws_smithy_runtime_api::client::http::SharedHttpConnector::new(self.clone())
+    }
+}
+
+/// `new BedrockRuntimeClient(config)` — the resolved [`BedrockClientConfig`] mapped onto
+/// the Rust SDK. The default credential chain applies wherever TS leaves the field unset.
+async fn build_bedrock_client(
+    config: &BedrockClientConfig,
+    custom_headers: Option<BTreeMap<String, String>>,
+    status: &ResponseStatusInterceptor,
+) -> Result<bedrock::Client, BedrockError> {
+    let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
+    if let Some(profile) = config
+        .profile
+        .as_ref()
+        .filter(|profile| !profile.is_empty())
+    {
+        loader = loader.profile_name(profile);
+    }
+    if let Some(region) = config.region.as_ref().filter(|region| !region.is_empty()) {
+        loader = loader.region(bedrock::config::Region::new(region.clone()));
+    }
+    let shared = loader.load().await;
+
+    let mut builder = bedrock::config::Builder::from(&shared);
+    if let Some(endpoint) = config
+        .endpoint
+        .as_ref()
+        .filter(|endpoint| !endpoint.is_empty())
+    {
+        builder = builder.endpoint_url(endpoint);
+    }
+    if let Some(credentials) = &config.credentials {
+        builder = builder.credentials_provider(bedrock::config::Credentials::new(
+            credentials.access_key_id.clone(),
+            credentials.secret_access_key.clone(),
+            credentials.session_token.clone(),
+            None,
+            "notagent-ai",
+        ));
+    }
+    if let Some(token) = &config.bearer_token {
+        builder = builder
+            .bearer_token(bedrock::config::Token::new(token.clone(), None))
+            .auth_scheme_preference([aws_smithy_runtime_api::client::auth::AuthSchemeId::from(
+                "httpBearerAuth",
+            )]);
+    }
+    if config.proxy_url.is_some() || config.force_http1 {
+        builder = builder.http_client(ReqwestHttpClient::new(config.proxy_url.as_deref())?);
+    }
+    if let Some(headers) = custom_headers {
+        builder = builder.interceptor(CustomHeadersInterceptor { headers });
+    }
+    builder = builder.interceptor(status.clone());
+    Ok(bedrock::Client::from_conf(builder.build()))
+}
+
+/// The five modeled mid-stream exceptions plus the operation errors carry their shape
+/// name in TS's `error.name`; [`format_bedrock_error`] turns it into the legacy prefix.
+fn converse_stream_error_name(
+    error: &bedrock::operation::converse_stream::ConverseStreamError,
+) -> String {
+    use bedrock::operation::converse_stream::ConverseStreamError;
+    match error {
+        ConverseStreamError::AccessDeniedException(_) => "AccessDeniedException".to_string(),
+        ConverseStreamError::InternalServerException(_) => "InternalServerException".to_string(),
+        ConverseStreamError::ModelErrorException(_) => "ModelErrorException".to_string(),
+        ConverseStreamError::ModelNotReadyException(_) => "ModelNotReadyException".to_string(),
+        ConverseStreamError::ModelTimeoutException(_) => "ModelTimeoutException".to_string(),
+        ConverseStreamError::ResourceNotFoundException(_) => {
+            "ResourceNotFoundException".to_string()
+        }
+        ConverseStreamError::ServiceUnavailableException(_) => {
+            "ServiceUnavailableException".to_string()
+        }
+        ConverseStreamError::ThrottlingException(_) => "ThrottlingException".to_string(),
+        ConverseStreamError::ValidationException(_) => "ValidationException".to_string(),
+        ConverseStreamError::ModelStreamErrorException(_) => {
+            "ModelStreamErrorException".to_string()
+        }
+        other => aws_sdk_bedrockruntime::error::ProvideErrorMetadata::code(other)
+            .unwrap_or("Error")
+            .to_string(),
+    }
+}
+
+fn converse_stream_output_error_name(
+    error: &bedrock::types::error::ConverseStreamOutputError,
+) -> String {
+    use bedrock::types::error::ConverseStreamOutputError;
+    match error {
+        ConverseStreamOutputError::InternalServerException(_) => {
+            "InternalServerException".to_string()
+        }
+        ConverseStreamOutputError::ModelStreamErrorException(_) => {
+            "ModelStreamErrorException".to_string()
+        }
+        ConverseStreamOutputError::ServiceUnavailableException(_) => {
+            "ServiceUnavailableException".to_string()
+        }
+        ConverseStreamOutputError::ThrottlingException(_) => "ThrottlingException".to_string(),
+        ConverseStreamOutputError::ValidationException(_) => "ValidationException".to_string(),
+        other => aws_sdk_bedrockruntime::error::ProvideErrorMetadata::code(other)
+            .unwrap_or("Error")
+            .to_string(),
+    }
+}
+
+/// What `formatBedrockError`/`appendBedrockFailureDiagnostic` need from one failure.
+struct BedrockFailure {
+    /// `error.name` for modeled service exceptions, `None` for transport errors.
+    exception_name: Option<String>,
+    status: Option<u16>,
+    body: Option<String>,
+    request_id: Option<String>,
+    message: String,
+}
+
+impl BedrockFailure {
+    /// A failure that never reached the service (request build, client setup).
+    fn from_local(error: BedrockError) -> Self {
+        BedrockFailure {
+            exception_name: None,
+            status: None,
+            body: None,
+            request_id: None,
+            message: error.0,
+        }
+    }
+
+    /// A modeled service exception: TS reads `error.name`, `error.message` and the raw
+    /// `$response` (status, body) off the same object.
+    fn from_service_error(
+        name: String,
+        message: Option<String>,
+        raw: &aws_smithy_runtime_api::client::orchestrator::HttpResponse,
+    ) -> Self {
+        BedrockFailure {
+            message: message.unwrap_or_else(|| name.clone()),
+            exception_name: Some(name),
+            status: Some(raw.status().as_u16()),
+            body: raw
+                .body()
+                .bytes()
+                .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                .filter(|body| !body.is_empty()),
+            request_id: raw.headers().get("x-amzn-requestid").map(str::to_string),
+        }
+    }
+
+    /// `formatBedrockError(error)` for this failure.
+    fn format(&self) -> String {
+        format_bedrock_error(
+            self.exception_name.as_deref(),
+            self.status,
+            self.body.as_deref(),
+            &self.message,
+        )
+    }
+}
+
+/// `stream(model, context, options)`
+pub fn stream(
+    model: Model,
+    context: Context,
+    request: crate::types::ProviderRequestOptions,
+    options: BedrockOptions,
+) -> AssistantMessageEventStream {
+    let outer = crate::utils::event_stream::create_assistant_message_event_stream();
+    let stream = outer.clone();
+
+    tokio::spawn(async move {
+        let timestamp = crate::auth::resolve::now_ms();
+        let mut state = BedrockStreamState::new(&model, timestamp);
+        // Kept outside the request so a mid-stream failure can still be correlated:
+        // exceptions delivered as stream events carry no HTTP metadata of their own.
+        let mut response_request_id: Option<String> = None;
+        let result = run_bedrock_request(
+            &model,
+            &context,
+            &request,
+            &options,
+            &mut state,
+            &stream,
+            &mut response_request_id,
+        )
+        .await;
+
+        match result {
+            Ok(reason) => {
+                stream.push(AssistantMessageEvent::Done {
+                    reason,
+                    message: state.output.clone(),
+                });
+                stream.end(Some(state.output.clone()));
+            }
+            Err(failure) => {
+                let aborted = request
+                    .signal
+                    .as_ref()
+                    .is_some_and(tokio_util::sync::CancellationToken::is_cancelled);
+                state.output.stop_reason = if aborted {
+                    StopReason::Aborted
+                } else {
+                    StopReason::Error
+                };
+                state.output.error_message = Some(failure.format());
+                if state.output.stop_reason == StopReason::Error
+                    && let Some(details) = bedrock_failure_diagnostic_details(
+                        failure.status,
+                        failure.exception_name.as_deref(),
+                        failure.request_id.as_deref(),
+                        response_request_id.as_deref(),
+                    )
+                {
+                    crate::utils::diagnostics::append_assistant_message_diagnostic(
+                        &mut state.output.diagnostics,
+                        crate::utils::diagnostics::AssistantMessageDiagnostic {
+                            r#type: "bedrock_response_failure".to_string(),
+                            timestamp: crate::auth::resolve::now_ms(),
+                            error: None,
+                            details: Some(details),
+                        },
+                    );
+                }
+                stream.push(AssistantMessageEvent::Error {
+                    reason: if aborted {
+                        crate::types::ErrorReason::Aborted
+                    } else {
+                        crate::types::ErrorReason::Error
+                    },
+                    error: state.output.clone(),
+                });
+                stream.end(Some(state.output.clone()));
+            }
+        }
+    });
+
+    outer
+}
+
+/// The body of the TS `try` block: build the client, send the command and drain the
+/// event stream into `state`.
+async fn run_bedrock_request(
+    model: &Model,
+    context: &Context,
+    request: &crate::types::ProviderRequestOptions,
+    options: &BedrockOptions,
+    state: &mut BedrockStreamState,
+    stream: &AssistantMessageEventStream,
+    response_request_id: &mut Option<String>,
+) -> Result<crate::types::DoneReason, BedrockFailure> {
+    use aws_sdk_bedrockruntime::error::ProvideErrorMetadata;
+    use aws_smithy_runtime_api::client::result::SdkError;
+
+    let config = build_client_config(model, options);
+    let status = ResponseStatusInterceptor::default();
+    let client = build_bedrock_client(
+        &config,
+        crate::utils::headers::provider_headers_to_record(request.headers.as_ref()),
+        &status,
+    )
+    .await
+    .map_err(BedrockFailure::from_local)?;
+
+    let mut command_input = build_command_input(model, context, options, state.output.timestamp)
+        .map_err(BedrockFailure::from_local)?;
+    if let Some(on_payload) = &request.on_payload
+        && let Some(next) = on_payload(command_input.clone(), model).await
+    {
+        command_input = next;
+    }
+
+    let operation =
+        to_converse_stream_request(&client, &command_input).map_err(BedrockFailure::from_local)?;
+    let signal = request.signal.clone().unwrap_or_default();
+    let mut response = tokio::select! {
+        response = operation.send() => response.map_err(|error| match error {
+            SdkError::ServiceError(context) => BedrockFailure::from_service_error(
+                converse_stream_error_name(context.err()),
+                context.err().message().map(str::to_string),
+                context.raw(),
+            ),
+            other => BedrockFailure::from_local(BedrockError(other.to_string())),
+        })?,
+        _ = signal.cancelled() => return Err(BedrockFailure::from_local(BedrockError("Request was aborted".to_string()))),
+    };
+
+    *response_request_id = normalize_diagnostic_value(
+        aws_sdk_bedrockruntime::operation::RequestId::request_id(&response),
+    );
+    let response_status = *status
+        .status
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(on_response) = &request.on_response
+        && let Some(status) = response_status
+    {
+        let mut headers = BTreeMap::new();
+        if let Some(request_id) = response_request_id.clone() {
+            headers.insert("x-amzn-requestid".to_string(), request_id);
+        }
+        on_response(crate::types::ProviderResponse { status, headers }, model).await;
+    }
+
+    loop {
+        let item = tokio::select! {
+            item = response.stream.recv() => item,
+            _ = signal.cancelled() => return Err(BedrockFailure::from_local(BedrockError("Request was aborted".to_string()))),
+        };
+        let item = match item {
+            Ok(Some(item)) => item,
+            Ok(None) => break,
+            Err(error) => {
+                return Err(match error {
+                    // A modeled mid-stream exception carries no HTTP metadata of its
+                    // own, exactly as in TS, so only its name and message survive.
+                    SdkError::ServiceError(context) => {
+                        let name = converse_stream_output_error_name(context.err());
+                        BedrockFailure {
+                            message: context
+                                .err()
+                                .message()
+                                .map(str::to_string)
+                                .unwrap_or_else(|| name.clone()),
+                            exception_name: Some(name),
+                            status: None,
+                            body: None,
+                            request_id: None,
+                        }
+                    }
+                    other => BedrockFailure::from_local(BedrockError(other.to_string())),
+                });
+            }
+        };
+        for event in state
+            .process_item(&stream_item_to_json(&item))
+            .map_err(BedrockFailure::from_local)?
+        {
+            stream.push(event);
+        }
+    }
+
+    if signal.is_cancelled() {
+        return Err(BedrockFailure::from_local(BedrockError(
+            "Request was aborted".to_string(),
+        )));
+    }
+    state.finish().map_err(|error| {
+        // The scratch fields never leave the state machine, so only the message differs
+        // from the TS cleanup, which deletes `index`/`partialJson` off the blocks here.
+        BedrockFailure::from_local(error)
+    })
+}
+
+/// `streamSimple(model, context, options)`
+pub fn stream_simple(
+    model: Model,
+    context: Context,
+    options: Option<SimpleStreamOptions>,
+) -> AssistantMessageEventStream {
+    let base =
+        crate::api::simple_options::build_base_options(&model, &context, options.as_ref(), None);
+    let reasoning = options.as_ref().and_then(|options| options.reasoning);
+    let thinking_budgets = options
+        .as_ref()
+        .and_then(|options| options.thinking_budgets);
+    let bedrock_options =
+        |max_tokens: Option<u64>,
+         reasoning: Option<ThinkingLevel>,
+         thinking_budgets: Option<ThinkingBudgets>| BedrockOptions {
+            region: None,
+            profile: None,
+            // `toolChoice`, `region`, `profile`, `requestMetadata`, `interleavedThinking`
+            // and `thinkingDisplay` only exist on the typed `BedrockOptions`; a caller of
+            // the simple signature cannot set them, exactly as in TS.
+            tool_choice: None,
+            reasoning,
+            thinking_budgets,
+            interleaved_thinking: None,
+            thinking_display: None,
+            request_metadata: None,
+            bearer_token: None,
+            api_key: base.base.api_key.clone(),
+            max_tokens,
+            temperature: base.temperature,
+            cache_retention: base.cache_retention,
+            env: base.base.env.clone(),
+        };
+
+    let Some(reasoning) = reasoning else {
+        return stream(
+            model,
+            context,
+            base.base.clone(),
+            bedrock_options(base.max_tokens, None, None),
+        );
+    };
+
+    if is_anthropic_claude_model(&model.id, &model.name) {
+        if supports_adaptive_thinking(&model.id, &model.name) {
+            return stream(
+                model,
+                context,
+                base.base.clone(),
+                bedrock_options(base.max_tokens, Some(reasoning), thinking_budgets),
+            );
+        }
+
+        let adjusted = crate::api::simple_options::adjust_max_tokens_for_thinking(
+            base.max_tokens,
+            model.max_tokens,
+            reasoning,
+            thinking_budgets.as_ref(),
+        );
+        let max_tokens = crate::api::simple_options::clamp_max_tokens_to_context(
+            &model,
+            &context,
+            adjusted.max_tokens,
+        );
+        let mut budgets = thinking_budgets.unwrap_or_default();
+        let budget = adjusted
+            .thinking_budget
+            .min(max_tokens.saturating_sub(1024));
+        match crate::api::simple_options::clamp_reasoning(Some(reasoning)) {
+            Some(ThinkingLevel::Minimal) => budgets.minimal = Some(budget),
+            Some(ThinkingLevel::Low) => budgets.low = Some(budget),
+            Some(ThinkingLevel::Medium) => budgets.medium = Some(budget),
+            _ => budgets.high = Some(budget),
+        }
+        return stream(
+            model,
+            context,
+            base.base.clone(),
+            bedrock_options(Some(max_tokens), Some(reasoning), Some(budgets)),
+        );
+    }
+
+    stream(
+        model,
+        context,
+        base.base.clone(),
+        bedrock_options(base.max_tokens, Some(reasoning), thinking_budgets),
+    )
 }

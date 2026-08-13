@@ -34,15 +34,9 @@ fn redirect_uri() -> String {
     format!("http://{CALLBACK_HOST}:{CALLBACK_PORT}{CALLBACK_PATH}")
 }
 
-/// `normalizeRadiusGatewayUrl(gateway)` — of `providers/radius-config.ts`.
-pub fn normalize_radius_gateway_url(gateway: &str) -> String {
-    let trimmed = gateway.trim().trim_end_matches('/');
-    if trimmed.contains("://") {
-        trimmed.to_string()
-    } else {
-        format!("https://{trimmed}")
-    }
-}
+/// `normalizeRadiusGatewayUrl(gateway)` — lives in `providers/radius-config.ts`, which
+/// is where the port keeps it too.
+pub use crate::providers::radius_config::normalize_radius_gateway_url;
 
 /// `loadRadiusOAuthDiscovery(gateway, signal)` — only the authorization endpoint.
 pub async fn load_authorization_endpoint(
