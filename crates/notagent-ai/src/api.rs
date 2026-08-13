@@ -6,6 +6,8 @@ pub mod anthropic_messages;
 pub mod anthropic_params;
 pub mod azure_openai_responses;
 pub mod bedrock_converse_stream;
+pub mod cloudflare;
+pub mod cloudflare_gateway_binding;
 pub mod constrained_sampling;
 pub mod github_copilot_headers;
 pub mod google_generative_ai;

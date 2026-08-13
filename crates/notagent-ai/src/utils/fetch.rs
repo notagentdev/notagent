@@ -60,7 +60,8 @@ impl FetchError {
     }
 }
 
-type FetchFuture = Pin<Box<dyn Future<Output = Result<FetchResponse, FetchError>> + Send>>;
+/// Rückgabetyp von [`FetchFn::fetch`].
+pub type FetchFuture = Pin<Box<dyn Future<Output = Result<FetchResponse, FetchError>> + Send>>;
 
 /// Ersatz für `FetchFunction = typeof globalThis.fetch`.
 pub trait FetchFn: Send + Sync {
