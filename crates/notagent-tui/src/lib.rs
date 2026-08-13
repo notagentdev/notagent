@@ -7,6 +7,7 @@
 pub mod alt_screen_search;
 pub mod autocomplete;
 pub mod components;
+pub mod editor_component;
 pub mod fuzzy;
 pub mod keybindings;
 pub mod keys;
