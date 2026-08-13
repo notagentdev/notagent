@@ -2,6 +2,7 @@
 
 pub mod abort;
 pub mod ansi;
+pub mod frontmatter;
 pub mod html;
 pub mod image;
 pub mod lockfile;

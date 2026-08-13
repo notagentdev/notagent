@@ -6,6 +6,7 @@ pub mod experimental;
 pub mod keybindings;
 pub mod messages;
 pub mod mini_read;
+pub mod modes;
 pub mod resolve_config_value;
 pub mod session_manager;
 pub mod settings_manager;

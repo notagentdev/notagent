@@ -13,10 +13,11 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use notagent::core::modes::shells::{ApprovalLevel, ShellId};
+use notagent::core::modes::{Mode, ModeSkill};
 use notagent::core::todos::{Todo, TodoStatus, TodoStore};
 use notagent::core::tools::skill::{
-    SkillToolMode, SkillToolModeSkill, SkillToolSkill, SkillToolSources,
-    create_skill_tool_definition,
+    SkillToolSkill, SkillToolSources, create_skill_tool_definition,
 };
 use notagent::core::tools::todo_write::{TodoWriteToolSources, create_todo_write_tool_definition};
 use notagent::core::tools::tool_definition::ToolDefinition;
@@ -215,22 +216,27 @@ async fn rejects_an_invalid_item_and_leaves_the_list_untouched() {
 // skill
 // ---------------------------------------------------------------------------
 
-fn sources(modes: Vec<SkillToolMode>, skills: Vec<SkillToolSkill>) -> SkillToolSources {
+fn sources(modes: Vec<Mode>, skills: Vec<SkillToolSkill>) -> SkillToolSources {
     SkillToolSources {
         modes: Arc::new(move || modes.clone()),
         skills: Arc::new(move || skills.clone()),
     }
 }
 
-fn mode(directory: &TempDir, id: &str, body: &str) -> SkillToolMode {
+fn mode(directory: &TempDir, id: &str, body: &str) -> Mode {
     let file_path = directory.write(&format!("{id}/10-main.md"), body);
-    SkillToolMode {
+    Mode {
         id: id.to_owned(),
-        source_dir: directory.path.join(id).to_string_lossy().into_owned(),
-        skills: vec![SkillToolModeSkill {
-            file_path,
+        shell: ShellId::Worker,
+        approval: ApprovalLevel::Manual,
+        tools: Vec::new(),
+        subagents: None,
+        skills: vec![ModeSkill {
+            file_name: "10-main.md".to_owned(),
+            file_path: PathBuf::from(file_path),
             body: body.to_owned(),
         }],
+        source_dir: directory.path.join(id),
     }
 }
 
@@ -252,7 +258,7 @@ async fn loads_a_mode_body_by_name() {
 async fn carries_the_source_path_in_the_envelope() {
     let directory = TempDir::new();
     let mode = mode(&directory, "manual", "manual guidance");
-    let source_dir = mode.source_dir.clone();
+    let source_dir = mode.source_dir.to_string_lossy().into_owned();
     let tool = create_skill_tool_definition(Some(sources(vec![mode], Vec::new())));
 
     let text = text_output(

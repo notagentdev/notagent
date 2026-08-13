@@ -11,12 +11,12 @@
 //! Both produce the same envelope, so a mode's guidance reads identically
 //! regardless of who asked for it.
 //!
-//! Deviation (class 1): the tool resolves against the two views below rather
-//! than against `Mode` of `core/modes/modes.ts` and `Skill` of `core/skills.ts`,
-//! which land with plan tasks 9 and 11. The views carry exactly the fields the
-//! TS `resolve` reads, so wiring the real types onto them is a mapping; the
-//! resolution order, the case handling, the envelope and the resource listing
-//! are unchanged.
+//! Modes come from `core/modes.rs` as they do in TypeScript. Deviation
+//! (class 1): skills are still resolved against the small view below rather
+//! than against `Skill` of `core/skills.ts`, which lands with plan task 11. It
+//! carries exactly the fields the TS `resolve` reads, so wiring the real type
+//! onto it is a mapping; the resolution order, the case handling, the envelope
+//! and the resource listing are unchanged.
 //!
 //! `renderCall`/`renderResult` need the theme and are wired in task 13.
 
@@ -31,6 +31,8 @@ use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
+use crate::core::modes::indicator::estimate_injected_tokens;
+use crate::core::modes::{Mode, render_mode_injection};
 use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
 
 pub const SKILL_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
@@ -59,21 +61,6 @@ const DESCRIPTION: &str = concat!(
     "Sibling files are listed by name only — read one with the read tool when the instructions call for it."
 );
 
-/// One of a mode's skill files, as `Mode.skills[n]` carries it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SkillToolModeSkill {
-    pub file_path: String,
-    pub body: String,
-}
-
-/// A mode, as the tool reads it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SkillToolMode {
-    pub id: String,
-    pub source_dir: String,
-    pub skills: Vec<SkillToolModeSkill>,
-}
-
 /// A skill, as the tool reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillToolSkill {
@@ -85,7 +72,7 @@ pub struct SkillToolSkill {
 #[derive(Clone)]
 pub struct SkillToolSources {
     pub skills: Arc<dyn Fn() -> Vec<SkillToolSkill> + Send + Sync>,
-    pub modes: Arc<dyn Fn() -> Vec<SkillToolMode> + Send + Sync>,
+    pub modes: Arc<dyn Fn() -> Vec<Mode> + Send + Sync>,
 }
 
 impl Default for SkillToolSources {
@@ -104,28 +91,6 @@ struct ResolvedBody {
     path: String,
     body: String,
     resources: Vec<String>,
-}
-
-/// `renderModeInjection` of `core/modes/modes.ts`: the mode's non-empty skill
-/// bodies, joined. The full modes port follows with task 9.
-fn render_mode_injection(mode: &SkillToolMode) -> String {
-    mode.skills
-        .iter()
-        .map(|skill| skill.body.as_str())
-        .filter(|body| !body.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n")
-}
-
-/// `estimateInjectedTokens` of `core/modes/indicator.ts`. Deliberately cheap:
-/// this drives a visibility hint, not a budget decision.
-///
-/// Deviation (class 1): counts characters where JS counts UTF-16 code units.
-fn estimate_injected_tokens(text: &str) -> usize {
-    if text.is_empty() {
-        return 0;
-    }
-    text.chars().count().div_ceil(4)
 }
 
 /// Lists sibling files of a skill without reading them. Large assets stay out
@@ -176,11 +141,11 @@ fn resolve(name: &str, sources: &SkillToolSources) -> Option<ResolvedBody> {
         let resources = mode
             .skills
             .first()
-            .map(|skill| list_resources(&skill.file_path))
+            .map(|skill| list_resources(&skill.file_path.to_string_lossy()))
             .unwrap_or_default();
         return Some(ResolvedBody {
             name: mode.id.clone(),
-            path: mode.source_dir.clone(),
+            path: mode.source_dir.to_string_lossy().into_owned(),
             body: render_mode_injection(&mode),
             resources,
         });
