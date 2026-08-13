@@ -2,6 +2,7 @@
 //!
 //! 1:1-Port von `packages/agent` (siehe `crates/notagent-agent/PARITY.md`).
 
+pub mod agent;
 pub mod agent_loop;
 pub mod harness;
 pub mod stream_fn;
