@@ -868,6 +868,14 @@ impl ProviderStreams for FauxStreams {
         self.core.cancel_deferred(handle);
         Some(Box::pin(async {}))
     }
+
+    fn supports_fetch_deferred(&self) -> bool {
+        true
+    }
+
+    fn supports_cancel_deferred(&self) -> bool {
+        true
+    }
 }
 
 /// Keyless auth so the faux provider always counts as configured.

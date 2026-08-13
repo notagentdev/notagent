@@ -996,6 +996,89 @@ impl Models {
     ) -> crate::types::AssistantMessage {
         self.stream_simple(model, context, options).result().await
     }
+
+    /// `fetchDeferred(model, handle, options?)`
+    ///
+    /// Like TS, the whole setup runs inside `lazyStream`, so a missing provider or a
+    /// provider without deferred support surfaces as an error message rather than a
+    /// rejection.
+    pub async fn fetch_deferred(
+        self: &Arc<Self>,
+        model: Model,
+        handle: DeferredHandle,
+        options: Option<DeferredFetchOptions>,
+    ) -> crate::types::AssistantMessage {
+        let models = Arc::clone(self);
+        lazy_stream(model.clone(), move || async move {
+            let provider = models
+                .require_provider(&model)
+                .map_err(|error| error.to_string())?;
+            let options = options.unwrap_or_default();
+            let (request_model, auth, env) = models
+                .apply_auth(
+                    &model,
+                    options.base.api_key.clone(),
+                    options.base.env.clone(),
+                    options.base.headers.clone(),
+                    options.base.signal.clone(),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            let mut request_options = options;
+            request_options.base.api_key = auth.api_key;
+            request_options.base.headers = auth.headers;
+            request_options.base.env = env;
+            provider
+                .fetch_deferred(&request_model, &handle, Some(request_options))
+                .ok_or_else(|| {
+                    ModelsError::new(
+                        ModelsErrorCode::Provider,
+                        format!(
+                            "Provider {} does not support deferred responses",
+                            request_model.provider
+                        ),
+                    )
+                    .to_string()
+                })
+        })
+        .result()
+        .await
+    }
+
+    /// `cancelDeferred(model, handle, options?)` — unlike `fetchDeferred` this one does
+    /// reject, exactly as TS does.
+    pub async fn cancel_deferred(
+        self: &Arc<Self>,
+        model: Model,
+        handle: DeferredHandle,
+        options: Option<DeferredCancelOptions>,
+    ) -> Result<(), ModelsError> {
+        let provider = self.require_provider(&model)?;
+        let options = options.unwrap_or_default();
+        let (request_model, auth, env) = self
+            .apply_auth(
+                &model,
+                options.api_key.clone(),
+                options.env.clone(),
+                options.headers.clone(),
+                options.signal.clone(),
+            )
+            .await?;
+        let mut request_options = options;
+        request_options.api_key = auth.api_key;
+        request_options.headers = auth.headers;
+        request_options.env = env;
+        match provider.cancel_deferred(&request_model, &handle, Some(request_options)) {
+            Some(future) => future.await,
+            None => Err(ModelsError::new(
+                ModelsErrorCode::Provider,
+                format!(
+                    "Provider {} does not support deferred responses",
+                    request_model.provider
+                ),
+            )),
+        }
+    }
 }
 
 /// Combines several cancellation tokens like `AbortSignal.any([...])`.
@@ -1374,16 +1457,33 @@ impl Provider for BuiltProvider {
         handle: &DeferredHandle,
         options: Option<DeferredFetchOptions>,
     ) -> Option<AssistantMessageEventStream> {
+        // TS only defines `provider.fetchDeferred` when some api implements it; the
+        // per-api lookup then happens inside `lazyStream`, so a provider that supports
+        // deferred responses for a *different* api reports that in the stream.
         if !self
             .api
             .all()
             .iter()
-            .any(|streams| streams.fetch_deferred(model, handle, None).is_some())
+            .any(|streams| streams.supports_fetch_deferred())
         {
             return None;
         }
-        let implementation = self.api.for_model(model)?;
-        implementation.fetch_deferred(model, handle, options)
+        let implementation = self
+            .api
+            .for_model(model)
+            .filter(|streams| streams.supports_fetch_deferred());
+        let unsupported = format!(
+            "Provider {} does not support deferred responses for \"{}\"",
+            self.id, model.api
+        );
+        let model = model.clone();
+        let handle = handle.clone();
+        Some(lazy_stream(model.clone(), move || async move {
+            let implementation = implementation.ok_or_else(|| unsupported.clone())?;
+            implementation
+                .fetch_deferred(&model, &handle, options)
+                .ok_or(unsupported)
+        }))
     }
 
     fn cancel_deferred<'a>(
@@ -1392,11 +1492,41 @@ impl Provider for BuiltProvider {
         handle: &'a DeferredHandle,
         options: Option<DeferredCancelOptions>,
     ) -> Option<BoxFuture<'a, Result<(), ModelsError>>> {
-        let implementation = self.api.for_model(model)?;
-        let future = implementation.cancel_deferred(model, handle, options)?;
+        if !self
+            .api
+            .all()
+            .iter()
+            .any(|streams| streams.supports_cancel_deferred())
+        {
+            return None;
+        }
         Some(Box::pin(async move {
-            future.await;
-            Ok(())
+            let implementation = self
+                .api
+                .for_model(model)
+                .filter(|streams| streams.supports_cancel_deferred())
+                .ok_or_else(|| {
+                    ModelsError::new(
+                        ModelsErrorCode::Provider,
+                        format!(
+                            "Provider {} cannot cancel deferred responses for \"{}\"",
+                            self.id, model.api
+                        ),
+                    )
+                })?;
+            match implementation.cancel_deferred(model, handle, options) {
+                Some(future) => {
+                    future.await;
+                    Ok(())
+                }
+                None => Err(ModelsError::new(
+                    ModelsErrorCode::Provider,
+                    format!(
+                        "Provider {} cannot cancel deferred responses for \"{}\"",
+                        self.id, model.api
+                    ),
+                )),
+            }
         }))
     }
 }

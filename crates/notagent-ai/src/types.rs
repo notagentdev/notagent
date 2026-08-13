@@ -440,6 +440,19 @@ pub trait ProviderStreams: Send + Sync {
     ) -> Option<Pin<Box<dyn Future<Output = ()> + Send>>> {
         None
     }
+
+    /// Whether [`ProviderStreams::fetch_deferred`] is implemented. `createProvider`
+    /// probes `entry.fetchDeferred !== undefined` in TS; Rust cannot inspect a default
+    /// method, and calling it to find out would run its side effects, so the
+    /// implementation declares it.
+    fn supports_fetch_deferred(&self) -> bool {
+        false
+    }
+
+    /// The same for [`ProviderStreams::cancel_deferred`].
+    fn supports_cancel_deferred(&self) -> bool {
+        false
+    }
 }
 
 /// `ProviderImages` — Vertrag der Bild-API-Module.

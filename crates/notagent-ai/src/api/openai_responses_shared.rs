@@ -617,7 +617,9 @@ pub struct ResponsesStreamOptions<'a> {
 pub struct ResponsesStreamState {
     pub output: AssistantMessage,
     model: Model,
-    slots: BTreeMap<i64, OutputSlot>,
+    /// TS keys `outputSlots` with `event.output_index`; a payload that omits the
+    /// field keys on `undefined`, so the key is optional here too.
+    slots: BTreeMap<Option<i64>, OutputSlot>,
     /// Reasoning blocks by item id, for the Azure signature backfill.
     reasoning_blocks_by_id: BTreeMap<String, usize>,
     saw_terminal_response_event: bool,
@@ -638,7 +640,7 @@ impl ResponsesStreamState {
         self.saw_terminal_response_event
     }
 
-    fn slot(&self, output_index: i64, kind: &str) -> Option<&OutputSlot> {
+    fn slot(&self, output_index: Option<i64>, kind: &str) -> Option<&OutputSlot> {
         let slot = self.slots.get(&output_index)?;
         let matches = matches!(
             (&slot.kind, kind),
@@ -695,7 +697,7 @@ impl ResponsesStreamState {
     /// `appendCustomToolCallInput(block, nextInput, close)`
     fn append_custom_tool_call_input(
         &mut self,
-        output_index: i64,
+        output_index: Option<i64>,
         next_input: &str,
         close: bool,
     ) -> Result<Option<String>, ResponsesStreamError> {
@@ -727,7 +729,7 @@ impl ResponsesStreamState {
     /// `createSlot(outputIndex, item)`
     fn create_slot(
         &mut self,
-        output_index: i64,
+        output_index: Option<i64>,
         item: &Value,
         grammar_tool_input_properties: Option<&BTreeMap<String, String>>,
         emitted: &mut Vec<AssistantMessageEvent>,
@@ -1007,7 +1009,7 @@ impl ResponsesStreamState {
                 }
             }
             "response.output_item.added" => {
-                if let (Some(output_index), Some(item)) = (output_index, event.get("item")) {
+                if let Some(item) = event.get("item") {
                     self.create_slot(
                         output_index,
                         item,
@@ -1017,7 +1019,7 @@ impl ResponsesStreamState {
                 }
             }
             "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
-                let (Some(output_index), Some(delta)) = (output_index, delta) else {
+                let Some(delta) = delta else {
                     return Ok(emitted);
                 };
                 let Some(content_index) = self
@@ -1036,9 +1038,6 @@ impl ResponsesStreamState {
                 });
             }
             "response.reasoning_summary_part.done" => {
-                let Some(output_index) = output_index else {
-                    return Ok(emitted);
-                };
                 let Some(content_index) = self
                     .slot(output_index, "thinking")
                     .map(|slot| slot.content_index)
@@ -1055,7 +1054,7 @@ impl ResponsesStreamState {
                 });
             }
             "response.output_text.delta" | "response.refusal.delta" => {
-                let (Some(output_index), Some(delta)) = (output_index, delta) else {
+                let Some(delta) = delta else {
                     return Ok(emitted);
                 };
                 let Some(content_index) = self
@@ -1072,7 +1071,7 @@ impl ResponsesStreamState {
                 });
             }
             "response.function_call_arguments.delta" => {
-                let (Some(output_index), Some(delta)) = (output_index, delta) else {
+                let Some(delta) = delta else {
                     return Ok(emitted);
                 };
                 let Some(slot) = self.slots.get_mut(&output_index) else {
@@ -1097,9 +1096,6 @@ impl ResponsesStreamState {
                 });
             }
             "response.function_call_arguments.done" => {
-                let Some(output_index) = output_index else {
-                    return Ok(emitted);
-                };
                 let arguments = event
                     .get("arguments")
                     .and_then(Value::as_str)
@@ -1133,7 +1129,7 @@ impl ResponsesStreamState {
                 }
             }
             "response.custom_tool_call_input.delta" => {
-                let (Some(output_index), Some(delta)) = (output_index, delta) else {
+                let Some(delta) = delta else {
                     return Ok(emitted);
                 };
                 let Some((content_index, property)) = self.custom_slot(output_index) else {
@@ -1154,9 +1150,6 @@ impl ResponsesStreamState {
                 }
             }
             "response.custom_tool_call_input.done" => {
-                let Some(output_index) = output_index else {
-                    return Ok(emitted);
-                };
                 let input = event
                     .get("input")
                     .and_then(Value::as_str)
@@ -1176,7 +1169,7 @@ impl ResponsesStreamState {
                 }
             }
             "response.output_item.done" => {
-                let (Some(output_index), Some(item)) = (output_index, event.get("item")) else {
+                let Some(item) = event.get("item") else {
                     return Ok(emitted);
                 };
                 self.apply_message_phase_stop_reason(item);
@@ -1247,7 +1240,7 @@ impl ResponsesStreamState {
         Ok(emitted)
     }
 
-    fn custom_slot(&self, output_index: i64) -> Option<(usize, String)> {
+    fn custom_slot(&self, output_index: Option<i64>) -> Option<(usize, String)> {
         let slot = self.slots.get(&output_index)?;
         match &slot.kind {
             SlotKind::ToolCall {
@@ -1261,7 +1254,7 @@ impl ResponsesStreamState {
     /// The `response.output_item.done` branches.
     fn finish_item(
         &mut self,
-        output_index: i64,
+        output_index: Option<i64>,
         item: &Value,
         emitted: &mut Vec<AssistantMessageEvent>,
     ) -> Result<(), ResponsesStreamError> {
