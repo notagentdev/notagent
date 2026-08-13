@@ -216,3 +216,96 @@ pub fn is_image_line(line: &str) -> bool {
 pub fn delete_kitty_image(image_id: u32) -> String {
     format!("\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\")
 }
+
+/// Metadata of a transmitted Kitty image.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KittyImageMetadata {
+    /// Kitty image id.
+    pub image_id: u32,
+    /// Placement width in cells.
+    pub columns: usize,
+    /// Placement height in cells.
+    pub rows: usize,
+    /// Source width in pixels.
+    pub width_px: u32,
+    /// Source height in pixels.
+    pub height_px: u32,
+}
+
+fn kitty_image_registry() -> &'static Mutex<std::collections::HashMap<u32, KittyImageMetadata>> {
+    static CELL: OnceLock<Mutex<std::collections::HashMap<u32, KittyImageMetadata>>> =
+        OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Remember the metadata of an encoded image (called by the image encoders).
+pub fn register_kitty_image_metadata(metadata: KittyImageMetadata) {
+    kitty_image_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(metadata.image_id, metadata);
+}
+
+/// Image id of a Kitty placement line, if it carries one.
+fn kitty_image_id(line: &str) -> Option<u32> {
+    let start = line.find(KITTY_PREFIX)? + KITTY_PREFIX.len();
+    let end = line[start..].find(';')? + start;
+    line[start..end].split(',').find_map(|control| {
+        control
+            .strip_prefix("i=")
+            .and_then(|value| value.parse::<u32>().ok())
+    })
+}
+
+/// Metadata of the image a rendered line places, if it is registered.
+pub fn get_kitty_image_metadata(line: &str) -> Option<KittyImageMetadata> {
+    let image_id = kitty_image_id(line)?;
+    kitty_image_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&image_id)
+        .copied()
+}
+
+/// Crop a Kitty placement line to a vertical slice of its rows.
+pub fn crop_kitty_image_line(line: &str, hidden_rows: usize, visible_rows: usize) -> String {
+    let Some(metadata) = get_kitty_image_metadata(line) else {
+        return line.to_string();
+    };
+    let Some(sequence_start) = line.find(KITTY_PREFIX) else {
+        return line.to_string();
+    };
+    let controls_start = sequence_start + KITTY_PREFIX.len();
+    let Some(controls_end) = line[controls_start..].find(';').map(|i| i + controls_start) else {
+        return line.to_string();
+    };
+    if hidden_rows >= metadata.rows || visible_rows == 0 {
+        return line.to_string();
+    }
+    let cropped_rows = visible_rows.min(metadata.rows - hidden_rows);
+    if hidden_rows == 0 && cropped_rows == metadata.rows {
+        return line.to_string();
+    }
+    let source_y = (u64::from(metadata.height_px) * hidden_rows as u64) / metadata.rows as u64;
+    let source_end = (u64::from(metadata.height_px) * (hidden_rows + cropped_rows) as u64)
+        .div_ceil(metadata.rows as u64);
+    let source_height = (u64::from(metadata.height_px).min(source_end) - source_y).max(1);
+
+    let mut controls: Vec<String> = line[controls_start..controls_end]
+        .split(',')
+        .filter(|control| {
+            !control.starts_with("y=") && !control.starts_with("h=") && !control.starts_with("r=")
+        })
+        .map(str::to_string)
+        .collect();
+    controls.push(format!("y={source_y}"));
+    controls.push(format!("h={source_height}"));
+    controls.push(format!("r={cropped_rows}"));
+
+    format!(
+        "{}{KITTY_PREFIX}{};{}",
+        &line[..sequence_start],
+        controls.join(","),
+        &line[controls_end + 1..]
+    )
+}

@@ -3,7 +3,10 @@
 //! 1:1-Port von `packages/tui` (siehe crates/notagent-tui/PARITY.md).
 //! Das Export-Set spiegelt `packages/tui/src/index.ts`.
 
+pub mod components;
 pub mod keys;
+pub mod layout;
+pub mod layout_node;
 pub mod native_modifiers;
 pub mod stdin_buffer;
 pub mod terminal;

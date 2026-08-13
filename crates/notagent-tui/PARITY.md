@@ -19,6 +19,13 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/terminal.ts` | 559 | `src/terminal.rs` | verifiziert | Klasse 1: Node-Event-Loop → `pump()` mit tokio-`select!` (stdin-Leser als eigener Thread mit Kanal, Handler laufen auf dem TUI-Strang); `process.stdout.write`-Monkey-Patching der Tests → injizierbare Ausgabe-Senke; `setTimeout`-Timer → Deadlines in `pump()`. Klasse 3: `setRawMode` → termios via libc (Flags empirisch gegen Nodes/libuv Raw-Mode auf macOS verifiziert: `~(BRKINT|ICRNL|INPCK|ISTRIP|IXON)`, `OPOST|ONLCR` bleiben, CS8 ohne CSIZE/PARENB, `~(ECHO|ICANON|IEXTEN|ISIG)`, VMIN=1, VTIME=0); `process.stdout.on("resize")` → SIGWINCH via tokio-signal; Windows-VT-Input als direkter Console-API-Aufruf statt Node-Addon |
 | `src/tui.ts` | 1257 | `src/tui.rs` | verifiziert | Klasse 1: `TuiBase` (abstrakte Klasse) → `TuiCore` (geteilter Zustand) plus konkrete Renderer; Overlay-Handles halten einen `TuiCore`-Klon statt `this`-Closures; Timer rufen nicht zurück, sondern `render_deadline()` + `begin_frame()` treibt die Schleife des Renderers (Handlerausführung bleibt einsträngig wie im Node-Event-Loop); `addInputListener` gibt eine `ListenerId` statt einer Unsubscribe-Closure zurück; Promises → `async fn` mit tokio-Timeout; Fokus-Flags einer Komponente, die gerade `handle_input` ausführt (und damit `RefCell`-geliehen ist), werden bis zum Rücksprung nachgezogen — beobachtbar identisch, da niemand vorher lesen kann |
 | `src/tui-main-screen.ts` | 586 | `src/tui_main_screen.rs` | verifiziert (tui-render-Suite ohne die Kitty-Bild-Fälle) | Klasse 1: geworfener `Error` des Überbreiten-Guards → `panic!` mit identischem Text (Programmierfehler, kein Kontrollfluss); Debug-Dump ohne `Math.random()`-Suffix |
+| `src/layout.ts` | 410 | `src/layout.rs` | verifiziert | Klasse 1: `parent`-Zeiger der `LayoutBox` entfallen (nicht gelesen); `requestRender`-Callback → `render_requested`-Flag im Scroll-State |
+| `src/layout-node.ts` | 51 | `src/layout_node.rs` | verifiziert | Klasse 1: `LAYOUT_NODE`-Symbol → `Component::layout_node()` |
+| `src/components/stack.ts` | 154 | `src/components/stack.rs` | verifiziert | Klasse 1: abstrakte Basisklasse → Struct mit `layout_type` |
+| `src/components/scroll-view.ts` | 216 | `src/components/scroll_view.rs` | verifiziert | Klasse 1: Zustand als `Rc<RefCell<ScrollViewState>>` (in TS ist die Komponente selbst der Zustand); Scrollbar-Auto-Hide-Timer als Deadline für den Aufrufer |
+| `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
+| `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
+| `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
 | `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
 | `src/terminal-colors.ts` | 73 | `src/terminal_colors.rs` | verifiziert (Parser); die TUI-Query-Fälle folgen mit Task 6 | Klasse 1: `undefined` → `Option`; `TerminalColorScheme` als Enum statt String-Union |
 | `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) |
@@ -36,6 +43,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | Task 4 |
 | 2026-08-13 | `src/terminal.ts` (vollständig) | 559 | Task 4 |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
@@ -47,11 +55,19 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `src/tui.ts` (vollständig) | 1257 | Task 5 |
 | 2026-08-13 | `src/tui.ts` | 1257 | `src/tui.rs` | verifiziert | Klasse 1: `TuiBase` (abstrakte Klasse) → `TuiCore` (geteilter Zustand) plus konkrete Renderer; Overlay-Handles halten einen `TuiCore`-Klon statt `this`-Closures; Timer rufen nicht zurück, sondern `render_deadline()` + `begin_frame()` treibt die Schleife des Renderers (Handlerausführung bleibt einsträngig wie im Node-Event-Loop); `addInputListener` gibt eine `ListenerId` statt einer Unsubscribe-Closure zurück; Promises → `async fn` mit tokio-Timeout; Fokus-Flags einer Komponente, die gerade `handle_input` ausführt (und damit `RefCell`-geliehen ist), werden bis zum Rücksprung nachgezogen — beobachtbar identisch, da niemand vorher lesen kann |
 | `src/tui-main-screen.ts` | 586 | `src/tui_main_screen.rs` | verifiziert (tui-render-Suite ohne die Kitty-Bild-Fälle) | Klasse 1: geworfener `Error` des Überbreiten-Guards → `panic!` mit identischem Text (Programmierfehler, kein Kontrollfluss); Debug-Dump ohne `Math.random()`-Suffix |
+| `src/layout.ts` | 410 | `src/layout.rs` | verifiziert | Klasse 1: `parent`-Zeiger der `LayoutBox` entfallen (nicht gelesen); `requestRender`-Callback → `render_requested`-Flag im Scroll-State |
+| `src/layout-node.ts` | 51 | `src/layout_node.rs` | verifiziert | Klasse 1: `LAYOUT_NODE`-Symbol → `Component::layout_node()` |
+| `src/components/stack.ts` | 154 | `src/components/stack.rs` | verifiziert | Klasse 1: abstrakte Basisklasse → Struct mit `layout_type` |
+| `src/components/scroll-view.ts` | 216 | `src/components/scroll_view.rs` | verifiziert | Klasse 1: Zustand als `Rc<RefCell<ScrollViewState>>` (in TS ist die Komponente selbst der Zustand); Scrollbar-Auto-Hide-Timer als Deadline für den Aufrufer |
+| `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
+| `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
+| `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
 | `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
 | `src/terminal-colors.ts` | 73 | Task 5 (vorgezogen aus Task 12) |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | Task 5 |
 | 2026-08-13 | `src/tui-main-screen.ts` | 586 | Task 6 |
-| 2026-08-13 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
+| 2026-08-13 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
+| `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
 | `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
@@ -59,9 +75,16 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
 | `test/tui-render.test.ts` | 832 | Task 6 |
 | 2026-08-13 | `src/terminal-image.ts` (Capability-/Bildzeilen-Teil) | 657 | Task 5/6 |
+| 2026-08-13 | `src/layout.ts` | 410 | Task 7 |
+| 2026-08-13 | `src/layout-node.ts` | 51 | Task 7 |
+| 2026-08-13 | `src/components/stack.ts` | 154 | Task 7 |
+| 2026-08-13 | `src/components/scroll-view.ts` | 216 | Task 7 |
+| 2026-08-13 | `src/components/{text,v-stack,h-stack}.ts` | 183 | Task 7 (aus Task 9 vorgezogen) |
+| 2026-08-13 | `test/layout.test.ts` | 306 | Task 7 |
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
@@ -86,6 +109,13 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/terminal.ts` | 559 | `src/terminal.rs` | verifiziert | Klasse 1: Node-Event-Loop → `pump()` mit tokio-`select!` (stdin-Leser als eigener Thread mit Kanal, Handler laufen auf dem TUI-Strang); `process.stdout.write`-Monkey-Patching der Tests → injizierbare Ausgabe-Senke; `setTimeout`-Timer → Deadlines in `pump()`. Klasse 3: `setRawMode` → termios via libc (Flags empirisch gegen Nodes/libuv Raw-Mode auf macOS verifiziert: `~(BRKINT|ICRNL|INPCK|ISTRIP|IXON)`, `OPOST|ONLCR` bleiben, CS8 ohne CSIZE/PARENB, `~(ECHO|ICANON|IEXTEN|ISIG)`, VMIN=1, VTIME=0); `process.stdout.on("resize")` → SIGWINCH via tokio-signal; Windows-VT-Input als direkter Console-API-Aufruf statt Node-Addon |
 | `src/tui.ts` | 1257 | `src/tui.rs` | verifiziert | Klasse 1: `TuiBase` (abstrakte Klasse) → `TuiCore` (geteilter Zustand) plus konkrete Renderer; Overlay-Handles halten einen `TuiCore`-Klon statt `this`-Closures; Timer rufen nicht zurück, sondern `render_deadline()` + `begin_frame()` treibt die Schleife des Renderers (Handlerausführung bleibt einsträngig wie im Node-Event-Loop); `addInputListener` gibt eine `ListenerId` statt einer Unsubscribe-Closure zurück; Promises → `async fn` mit tokio-Timeout; Fokus-Flags einer Komponente, die gerade `handle_input` ausführt (und damit `RefCell`-geliehen ist), werden bis zum Rücksprung nachgezogen — beobachtbar identisch, da niemand vorher lesen kann |
 | `src/tui-main-screen.ts` | 586 | `src/tui_main_screen.rs` | verifiziert (tui-render-Suite ohne die Kitty-Bild-Fälle) | Klasse 1: geworfener `Error` des Überbreiten-Guards → `panic!` mit identischem Text (Programmierfehler, kein Kontrollfluss); Debug-Dump ohne `Math.random()`-Suffix |
+| `src/layout.ts` | 410 | `src/layout.rs` | verifiziert | Klasse 1: `parent`-Zeiger der `LayoutBox` entfallen (nicht gelesen); `requestRender`-Callback → `render_requested`-Flag im Scroll-State |
+| `src/layout-node.ts` | 51 | `src/layout_node.rs` | verifiziert | Klasse 1: `LAYOUT_NODE`-Symbol → `Component::layout_node()` |
+| `src/components/stack.ts` | 154 | `src/components/stack.rs` | verifiziert | Klasse 1: abstrakte Basisklasse → Struct mit `layout_type` |
+| `src/components/scroll-view.ts` | 216 | `src/components/scroll_view.rs` | verifiziert | Klasse 1: Zustand als `Rc<RefCell<ScrollViewState>>` (in TS ist die Komponente selbst der Zustand); Scrollbar-Auto-Hide-Timer als Deadline für den Aufrufer |
+| `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
+| `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
+| `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
 | `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
 | `src/terminal-colors.ts` | 73 | `src/terminal_colors.rs` | verifiziert (Parser); die TUI-Query-Fälle folgen mit Task 6 | Klasse 1: `undefined` → `Option`; `TerminalColorScheme` als Enum statt String-Union |
 | `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) |
@@ -106,6 +136,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |

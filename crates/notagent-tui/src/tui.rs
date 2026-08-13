@@ -80,6 +80,13 @@ pub trait Component {
     fn as_container(&self) -> Option<&Container> {
         None
     }
+
+    /// Layout node of this component, if it participates in the layout engine.
+    ///
+    /// Replaces the `[LAYOUT_NODE]()` symbol method of the TS version.
+    fn layout_node(&self) -> Option<crate::layout_node::LayoutNode> {
+        None
+    }
 }
 
 /// Components that can take focus and show a hardware cursor.
