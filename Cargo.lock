@@ -481,12 +481,14 @@ name = "notagent-tui"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "libc",
  "notagent-tui",
  "regex",
  "serde_json",
  "tokio",
  "unicode-segmentation",
  "vt100",
+ "windows-sys",
 ]
 
 [[package]]

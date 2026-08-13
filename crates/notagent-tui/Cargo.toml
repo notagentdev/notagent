@@ -10,14 +10,22 @@ description = "Differenzielle Terminal-Rendering-Engine und Komponenten."
 # Stellt `test_terminal::VirtualTerminal` bereit (Port von
 # packages/tui/test/virtual-terminal.ts). Workstream C aktiviert das Feature für
 # die Interactive-Mode-E2E-Szenarien aus Gate G3.
-test-terminal = ["dep:vt100", "dep:tokio"]
+test-terminal = ["dep:vt100"]
 
 [dependencies]
 async-trait = { workspace = true }
 regex = { workspace = true }
 unicode-segmentation = { workspace = true }
-tokio = { workspace = true, optional = true }
+libc = { workspace = true }
+tokio = { workspace = true }
 vt100 = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
 
 [dev-dependencies]
 # Selbstverweis, damit `cargo test` das Feature `test-terminal` aktiviert.
