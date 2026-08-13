@@ -6,7 +6,11 @@ Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
 **Stand: Task 5 läuft.** `config.ts`, der Kern von `settings-manager.ts` und `migrations.ts`
-sind portiert; `auth-storage.ts` und die typisierten Settings-Zugriffsmethoden stehen aus.
+sind portiert. **Offen:** `auth-storage.ts` — es hängt an `core/resolve-config-value.ts`
+(`!command`-Ausführung, `$VAR`-Interpolation, Shell-Auflösung), das laut WS-C-Plan zu Task 14
+gehört; diese Abhängigkeit wird zuerst portiert. Ebenfalls offen sind die ~45 typisierten
+Settings-Zugriffsmethoden (`getTheme`/`setTheme`/…), die derzeit über
+`set_global_field`/`set_project_field` mit den Wire-Namen abgedeckt sind.
 
 ## Lektüre-Protokoll
 
@@ -27,7 +31,8 @@ sind portiert; `auth-storage.ts` und die typisierten Settings-Zugriffsmethoden s
 | test/settings-manager.test.ts (Kernfälle) | 587 | tests/settings_manager.rs | Tests portiert | 9 Tests: externe Änderungen bleiben erhalten, In-Memory gewinnt bei Konflikten, Projekt-über-Global-Merge inkl. verschachtelter Objekte, Trust-Gate, Load-Fehler ohne Dateiverlust, verschachtelte Felder, Migrationen, In-Memory-Storage |
 | src/migrations.ts | 314 | src/migrations.rs | portiert | Klasse 2: `checkDeprecatedExtensionDirs`/`showDeprecationWarnings` entfallen — sie verwiesen ausschließlich auf das Extension-System (extension-boundary §6); `commands/` → `prompts/` bleibt. Die keybindings.json-Migration folgt mit `core/keybindings.rs` (Task 13). Klasse 1: verzeichnis-parametrisierte Varianten für Tests |
 | — (neu) | — | tests/migrations.rs | verifiziert | 5 Tests: auth.json-Migration inkl. apiKeys-Entfernung und 0600-Rechten, Überspringen bei vorhandener auth.json, Session-Umzug mit cwd-Kodierung, vorhandene Zieldatei bleibt |
-| src/core/auth-storage.ts | 507 | — | offen | Task 5 |
+| src/core/auth-storage.ts | 507 | — | gelesen | Task 5 — wartet auf `core/resolve-config-value.ts` |
+| src/core/resolve-config-value.ts | 261 | — | offen | Task 5/14 (Voraussetzung für auth-storage) |
 | test/config.test.ts | 446 | — | offen | Task 5 (Distributionsmechanik; die darstellbaren Fälle folgen mit den restlichen Settings-Zugriffen) |
 | test/auth-storage.test.ts | 535 | — | offen | Task 5 |
 
