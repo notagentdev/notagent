@@ -40,7 +40,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `Cell::has_contents()`); avt 0.18 kann das strukturell nicht (`Cell::blank` == ' '
   mit Default-Pen, `is_default()` nicht unterscheidbar), wezterm-term ist auf crates.io
   nur als Fork verfügbar.
-- **Status**: offen
+- **Status**: umgesetzt (Root-`Cargo.toml`, `[workspace.dependencies] vt100 = "0.16"`)
 
 ## Sektion B (Workstream B — AI + Agent)
 

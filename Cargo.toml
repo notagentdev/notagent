@@ -108,3 +108,6 @@ windows-sys = "0.61"
 
 # --- Test-Hilfen ---
 tempfile = "3"
+# VT-Emulator fuer das virtuelle Test-Terminal (Ersatz fuer @xterm/headless,
+# Auswahl durch WS-A begruendet in plans/interface-requests.md A-1).
+vt100 = "0.16"
