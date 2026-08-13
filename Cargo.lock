@@ -978,6 +978,7 @@ dependencies = [
  "regex",
  "serde_json",
  "tokio",
+ "tokio-util",
  "unicode-segmentation",
  "vt100",
  "windows-sys 0.61.2",
