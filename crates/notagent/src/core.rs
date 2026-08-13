@@ -5,3 +5,4 @@ pub mod messages;
 pub mod resolve_config_value;
 pub mod session_manager;
 pub mod settings_manager;
+pub mod tools;

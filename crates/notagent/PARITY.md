@@ -5,7 +5,7 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (68 856 LOC
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 6 läuft.** `config.ts`, `core/settings-manager.ts` (inkl. aller
+**Stand: Task 7 läuft.** `config.ts`, `core/settings-manager.ts` (inkl. aller
 typisierten Zugriffsmethoden), `migrations.ts`, `core/resolve-config-value.ts`,
 `core/auth-storage.ts` und die Utilities (`utils/paths.ts`, `utils/shell.ts`,
 `utils/abort.ts` + Lockfile-Ersatz) sind portiert und testbelegt. Offen bleibt nur, was
@@ -13,6 +13,8 @@ laut Plan zu späteren Tasks gehört: `utils/shell.ts` liefert erst mit Task 8 d
 Bash-Ausführung nach, die keybindings.json-Migration folgt mit Task 13. Task 6
 (`core/session-manager.ts`) ist portiert und mit den TS-Fixtures roundtrip-getestet;
 offen bleibt daraus `resolveSessionPath`, das in `src/main.ts` sitzt und zu Task 12 gehört.
+Task 7 hat mit `tools/truncate.ts`, `tools/path-utils.ts` und `tools/file-mutation-queue.ts`
+begonnen.
 
 ## Lektüre-Protokoll
 
@@ -60,6 +62,10 @@ offen bleibt daraus `resolveSessionPath`, das in `src/main.ts` sitzt und zu Task
 | src/core/session-manager.ts | 1 714 | src/core/session_manager.rs | portiert | Klasse 1: Einträge werden als `SessionEntry`-Enum mit Default-Feldern und `#[serde(flatten)] extra` gelesen, unbekannte `type`-Werte landen in `SessionEntry::Unknown` — das hält die TS-Eigenschaft „Sessions werden ohne Validierung gelesen"; die `message`-Nutzlast bleibt rohes JSON und wird erst beim Kontextaufbau in `AgentMessage` überführt (eine nicht lesbare Nachricht fällt aus dem Kontext, TS reicht sie ungeprüft weiter). Werfende Methoden geben `Result` zurück; `leafId` als `LeafSelector` unterscheidet TS' `undefined` (letzter Eintrag) von `null` (leerer Pfad). Klasse 3: `readline`/`createReadStream` → tokio-`BufReader`; die 10 parallelen Info-Ladevorgänge laufen über `futures::stream::buffered`. `resolveSessionPath` liegt in `main.ts` und folgt mit Task 12 |
 | src/core/messages.ts | 195 | src/core/messages.rs | portiert (Re-Export) | Die Datei ist inhaltsgleich mit `packages/agent/src/harness/messages.ts`, und TS führt beide Deklarationen über Declaration Merging zusammen. Rust kennt das nicht: die vier Custom-Rollen liegen einmal in `notagent-agent` und werden hier unter den Namen der Coding-Agent-Datei re-exportiert |
 | test/session-manager/*.ts | 1 791 | tests/session_manager.rs | Tests portiert | 73 Tests: Append-/Leaf-Verhalten, Baum mit Branches und Waisen, Labels inkl. Fork-Neuverkettung, Kontextaufbau mit Compaction und Branch-Summaries, Datei-Operationen (Header-Scan-Limit, Migration, leere/ungültige Dateien, findMostRecentSession, list/listAll), eigene Session-IDs, SessionInfo-Zeitstempel. Zusätzlich zwei Roundtrip-Tests gegen die TS-Fixtures `before-compaction.jsonl` und `large-session.jsonl` (2 022 Zeilen): v1→v3-Migration ohne Feldverlust und byte-genauer v3-Roundtrip |
+| src/core/tools/truncate.ts | 276 | src/core/tools/truncate.rs | portiert | Klasse 1: `truncateLine` schneidet auf einer Zeichengrenze — JS zählt UTF-16-Einheiten und kann ein Surrogatpaar zerteilen, Rust behält dann ein Zeichen weniger |
+| src/core/tools/path-utils.ts | 118 | src/core/tools/path_utils.rs | portiert | Klasse 1: die sync- und async-Variante von `resolveReadPath` fallen zu einer Funktion zusammen (die Prüfungen sind reine `stat`-Aufrufe) |
+| src/core/tools/file-mutation-queue.ts | 61 | src/core/tools/file_mutation_queue.rs | portiert | Klasse 1: der Schlüssel wird synchron aufgelöst, dadurch entfällt die `registrationQueue`, die in TS nur die Reihenfolge des asynchronen `realpath` sichert; die Serialisierung selbst ist eine faire `tokio::sync::Mutex` pro Datei |
+| test/path-utils.test.ts + test/file-mutation-queue.test.ts (Kernfälle) | 448 | (Testmodule) | Tests portiert | 20 Tests. Der NFC/NFD-Fallback ist auf APFS nicht über das Dateisystem beobachtbar (normalisierungsunempfindlicher Vergleich) und wird deshalb auf der Varianten-Funktion geprüft; die vier Abbruch-Fälle aus dem TS-Test hängen an write/edit und folgen mit diesen |
 | test/session-file-invalid.test.ts | 65 | — | offen | CLI-E2E (spawnt die Binary) — folgt mit Task 12 |
 | test/session-cwd.test.ts | 91 | — | offen | braucht `core/session-cwd.ts` und die Runtime — folgt mit Task 11 |
 | test/session-id-readonly.test.ts | 190 | — | offen | CLI-E2E — folgt mit Task 12 |
