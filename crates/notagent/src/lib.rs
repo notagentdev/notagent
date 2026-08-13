@@ -3,3 +3,5 @@
 //! 1:1 port of `packages/coding-agent` (see crates/notagent/PARITY.md).
 
 pub mod config;
+
+pub mod core;
