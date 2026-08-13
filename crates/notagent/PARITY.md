@@ -249,17 +249,20 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | src/modes/interactive/components/user-message-selector.ts | 155 | src/modes/interactive/components/user_message_selector.rs | verifiziert | Klasse 1: Vererbung → Komposition; das `setTimeout(onCancel, 100)` für die leere Liste wird zu `is_empty()`, das der Aufrufer abfragt (Timer rufen nie zurück) |
 | src/modes/interactive/components/approval-selector.ts | 84 | — | offen | braucht `core/permissions/request.ts` (Workstream C, nativ nachzubauen) — A-9 |
 | src/modes/interactive/components/trust-selector.ts | 134 | — | offen | braucht `core/trust-manager.ts` (Workstream C) — A-9 |
-| src/modes/interactive/components/first-time-setup.ts | 145 | — | offen | portierbar, in dieser Sitzung nicht mehr erreicht — A-9 |
-| src/modes/interactive/components/session-selector-search.ts | 194 | — | offen | portierbar, in dieser Sitzung nicht mehr erreicht — A-9 |
+| src/modes/interactive/components/first-time-setup.ts | 145 | src/modes/interactive/components/first_time_setup.rs | verifiziert | Klasse 1: Vererbung von `Container` → Komposition; die beiden Optionslisten sind Konstanten-Arrays statt Objekt-Literale; `Math.max(0, findIndex(...))` wird zu `position(...).unwrap_or(0)` (gleiches Ergebnis für ein unbekanntes Theme) |
+| src/modes/interactive/components/session-selector-search.ts | 194 | src/modes/interactive/components/session_selector_search.rs | verifiziert | Klasse 3: `new RegExp(pattern, "i")` → `regex`-Crate mit `(?i)`; Muster, die die Crate nicht kennt (Lookaround, Rückwärtsreferenzen), nehmen denselben Weg wie ein JS-`SyntaxError` (leere Trefferliste). Klasse 1: die String-Unions werden Enums; `\s` und `String.prototype.trim` sind als JS-Zeichenklasse nachgebaut (`is_js_whitespace`/`js_trim`), weil Rusts `char::is_whitespace` U+FEFF ausschließt und U+0085 einschließt; die Scores zählen UTF-16-Einheiten wie die JS-Stringindizes; `Date` → Millisekunden-`i64` wie in `SessionInfo` |
 | src/modes/interactive/components/tree-selector.ts | 1 437 | — | offen | portierbar (`SessionTreeNode` liegt auf main), in dieser Sitzung nicht mehr erreicht — A-9 |
-| src/modes/interactive/components/oauth-selector.ts | 206 | — | offen | portierbar (`ApiKeyAuth`/`AuthCheck`/`OAuthAuth` liegen auf main), in dieser Sitzung nicht mehr erreicht — A-9 |
+| src/modes/interactive/components/oauth-selector.ts | 206 | src/modes/interactive/components/oauth_selector.rs | verifiziert | Klasse 1: Vererbung von `Container` → Komposition; `ApiKeyAuth \| OAuthAuth` → Enum `AuthSelectorMethod` (nur `name()` wird gelesen); `authType` ist `notagent_ai::auth::types::AuthType` statt einer eigenen String-Union, die Interpolation im Filtertext bleibt über `auth_type_text` erhalten; `searchInput.onSubmit` schließt in TS über `this` — der Port setzt ein Flag, das `handleInput` an derselben Stelle der Reihenfolge auswertet (vor `filterProviders`) |
 | src/modes/interactive/components/session-selector.ts | 1 031 | — | offen | braucht `core/keybindings.ts` — A-7 |
 | src/modes/interactive/components/model-selector.ts | 364 | — | offen | braucht `core/model-runtime.ts` und `modes/interactive/model-search.ts` — A-9 |
 | src/modes/interactive/components/scoped-models-selector.ts | 403 | — | offen | braucht `modes/interactive/model-search.ts` — A-9 |
 | src/modes/interactive/components/settings-selector.ts | 881 | — | offen | braucht `core/http-dispatcher.ts` — A-9 |
 | src/modes/interactive/components/config-selector.ts | 942 | — | offen | braucht `core/package-manager.ts` (Workstream C, Task 14) — A-9 |
 | src/modes/interactive/components/login-dialog.ts | 233 | — | offen | braucht `utils/open-browser.ts` — A-9 |
-| — (neu) | — | tests/selectors.rs | verifiziert | 8 Tests für die fünf portierten Selektoren (Cursor, Wrap-Around, Timeout-Countdown, Vorauswahl, Preview-Callback, leere Liste), die die TS-Suite nicht abdeckt |
+| test/oauth-selector.test.ts | 147 | tests/selectors.rs | verifiziert | 5 der 6 Fälle (Status-Anzeige: unkonfiguriert, fremder Auth-Typ, Env-Variable, models.json-Key, models.json-Kommando). Der erste Fall prüft `InteractiveMode.getLoginProviderOptions` — Workstream C |
+| test/session-selector-search.test.ts | 195 | tests/session_selector_search.rs | verifiziert | 9 Tests (TS: 9 `it`-Blöcke), unverändert |
+| test/first-time-setup.test.ts, test/first-time-setup-fork.test.ts | 134 | — | Workstream C | beide Suiten prüfen `cli/startup-ui.ts` (`shouldRunFirstTimeSetup`) und den Settings-Manager, nicht die Dialog-Komponente |
+| — (neu) | — | tests/selectors.rs | verifiziert | 19 Tests für die portierten Selektoren: 8 für die fünf Batch-3-Selektoren der ersten Runde, 5 portierte OAuth-Fälle plus 3 eigene (Auth-Typ-Label bei gemischten Providern, Suchfilter über die Eingabe, leere Listen je Modus, Abbruch), 3 für den First-Time-Setup-Dialog (Vorauswahl und Preview, Schrittwechsel und Ergebnis, Abbruch) |
 
 ## Ausschlüsse
 
