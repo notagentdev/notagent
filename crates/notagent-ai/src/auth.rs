@@ -1,0 +1,14 @@
+//! Provider authentication: credentials, stores and resolution.
+//!
+//! 1:1 port of `packages/ai/src/auth/`.
+
+pub mod context;
+pub mod credential_store;
+pub mod helpers;
+pub mod resolve;
+pub mod types;
+
+pub use context::default_provider_auth_context;
+pub use credential_store::InMemoryCredentialStore;
+pub use resolve::{AuthResolutionOverrides, ModelsError, ModelsErrorCode, resolve_provider_auth};
+pub use types::*;

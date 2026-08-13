@@ -2,6 +2,8 @@
 //!
 //! 1:1-Port von `packages/ai` (siehe `crates/notagent-ai/PARITY.md`).
 
+pub mod auth;
+pub mod env_api_keys;
 pub mod types;
 pub mod utils;
 

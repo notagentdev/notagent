@@ -17,6 +17,7 @@ rand = { workspace = true }
 regex = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }
