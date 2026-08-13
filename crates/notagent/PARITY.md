@@ -99,6 +99,17 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/test/tools.test.ts (Abschnitt „bash tool") | 1 213 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/test/bash-background.test.ts | 133 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/test/bash-close-hang-windows.test.ts | 126 | C-Task 8 |
+| 2026-08-13 | notagent-main-rust/crates/notagent_services/src/tool_services/minify.rs (Referenz) | 897 | C-Task 8 |
+| 2026-08-13 | notagent-main-rust/crates/notagent_services/src/tool_services/minify_edit.rs (Referenz) | 913 | C-Task 8 |
+| 2026-08-13 | notagent-main-rust/crates/notagent_services/src/tool_services/minify_multi_edit_tests.rs (Referenz) | 244 | C-Task 8 |
+| 2026-08-13 | notagent-main-rust/minified-edit-testbench/ (PROMPT.md, RESULTS.md, edge_cases.rs) | — | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/mini-read/index.ts | 137 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/mini-read/languages.ts | 100 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/mini-read/parser.ts | 121 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/mini-read/minify.ts | 582 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/mini-read/minify-edit.ts | 493 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/mini-read-minify.test.ts | 269 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/mini-read-minify-edit.test.ts | 413 | C-Task 8 |
 
 ## Ledger
 
@@ -151,6 +162,13 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | src/core/bash-executor.ts | 156 | src/core/bash_executor.rs | portiert | Klasse 1: der Rolling-Buffer (2 × 50 KiB) zählt Zeichen statt UTF-16-Einheiten; er ist eine Speichergrenze, kein beobachtbarer Wert |
 | test/tools.test.ts (Abschnitt „bash tool") + test/bash-background.test.ts (Gate-Fälle) | 1 213 + 133 | tests/bash_tool.rs | Tests portiert | 27 Tests. Statt `vi.spyOn(shellModule, "getShellConfig")` gibt es zwei Seams: `bash::testing::local_bash_operations_with_shell_config` für den stdin-Transport (geprüft gegen `cat`) und ein Skript mit fehlendem Interpreter für den ENOENT-Spawnfehler. Zusätzlich ein Abbruch-Test gegen einen echten Prozess (TS skriptet nur die Ablehnung). **Offen:** die manager-gestützten Fälle von bash-background (Foreground-Release, Auto-Backgrounding gegen den echten Manager, Task-Log) — Task 10 |
 | test/bash-close-hang-windows.test.ts | 126 | — | entfällt (dokumentiert) | `describe.skipIf(process.platform !== "win32")` — die Testumgebung ist macOS; die Eigenschaft, die er prüft (Auflösen trotz offener geerbter Handles), deckt die portierte Idle-Grace-Logik plattformunabhängig ab |
+| src/core/mini-read/minify.ts | 582 | src/core/mini_read/minify.rs | portiert (aus der Rust-Referenz) | Nutzer-Vorgabe (`plans/facts/rust-minify-reference.md`): der Port übernimmt die native Referenz `minify.rs` statt die WASM-basierte TS-Datei — die TS-Datei ist selbst ein 1:1-Port davon in UTF-16-Offsets, während die Referenz in Bytes rechnet, wo ein Rust-`str` indiziert. Inhaltlich identisch (Span-Sammlung, Zeilenklassifikation, monotone Re-Indentierung, `src_map`) |
+| src/core/mini-read/minify-edit.ts | 493 | src/core/mini_read/minify_edit.rs | portiert (aus der Rust-Referenz) | wie oben. Klasse 1: `anyhow::Result` → `Result<_, String>` — die Fehlertexte sind wörtlich dieselben und gehen unverändert an den Aufrufer |
+| src/core/mini-read/index.ts | 137 | src/core/mini_read.rs | portiert | die pfadbasierten Einstiegspunkte sind in der Referenz Teil von `minify.rs`/`minify_edit.rs`; das Modul re-exportiert sie. Klasse 3: kein `async`, weil nichts geladen werden muss |
+| src/core/mini-read/languages.ts | 100 | src/core/mini_read/minify.rs (`language_for_extension`) | portiert | identische Erweiterungstabelle (`h`→C, `jsx`→JavaScript); `LanguageKind`/`WASM_FILE_BY_KIND` entfallen mit dem WASM-Laden |
+| src/core/mini-read/parser.ts | 121 | — | entfällt (Tech-Substitution) | Klasse 3: natives tree-sitter statt web-tree-sitter — kein Runtime-Init, keine wasm-Assets, kein Grammatik-Cache. Damit entfällt auch die UTF-16-Rechnung: Offsets sind Bytes |
+| test/mini-read-minify.test.ts | 269 | src/core/mini_read/minify.rs (Testmodul) | Tests portiert | 26 Tests. Die TS-Datei ist ausweislich ihres Kopfes ein 1:1-Port des Referenz-Testmoduls; portiert ist deshalb das Referenzmodul selbst, mit denselben Fixtures und Erwartungswerten |
+| test/mini-read-minify-edit.test.ts | 413 | src/core/mini_read/minify_edit.rs (Testmodul) + tests/mini_read_multi_edit.rs | Tests portiert | 24 + 7 Tests. Die letzten sechs TS-Fälle stammen aus `minify_multi_edit_tests.rs` und liegen deshalb in der Integrationsdatei; dort steht zusätzlich ein deterministischer Durchlauf der Referenz-Testbench (`edge_cases.rs` als Fixture, die zehn Edits aus PROMPT.md, Bewertung nach den Grading-Regeln). Dokumentiert dort: eine `///`-Doc-Kommentarzeile steht im View verbatim (tree-sitter-rust zieht den Zeilenumbruch in den Knoten), weshalb Suchtext MIT View-Einrückung überindentiert — Referenzverhalten, bug-kompatibel übernommen |
 
 ## A: interactive components
 
