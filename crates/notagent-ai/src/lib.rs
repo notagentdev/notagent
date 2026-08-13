@@ -8,6 +8,7 @@ pub mod env_api_keys;
 pub mod model_catalog;
 pub mod models;
 pub mod models_store;
+pub mod providers;
 pub mod types;
 pub mod utils;
 
