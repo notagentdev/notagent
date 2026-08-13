@@ -16,6 +16,7 @@ pub mod latex;
 pub mod latex_tables;
 pub mod layout;
 pub mod layout_node;
+pub mod markdown_lexer;
 pub mod native_modifiers;
 pub mod node_path;
 pub mod stdin_buffer;
