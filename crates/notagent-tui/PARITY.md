@@ -170,6 +170,10 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/editor-component.ts` | 74 | `src/editor_component.rs` | Task 10 |
 | `test/editor.test.ts` | 4152 | `tests/editor.rs` | Task 10 |
 | `test/editor-history-keybindings.test.ts` | 43 | `tests/editor_history_keybindings.rs` | Task 10 |
+| `src/components/markdown.ts` | 1010 | `src/components/markdown.rs` | Task 11 |
+| `src/latex.ts` | 1380 | `src/latex.rs` + `src/latex_tables.rs` | Task 11 |
+| `test/markdown.test.ts` | 1667 | `tests/markdown.rs` | Task 11 |
+| `test/latex.test.ts` | 496 | `tests/latex.rs` + `tests/latex_cases.rs` | Task 11 |
 
 ## Ledger
 
@@ -220,6 +224,9 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | — (Hilfsmodul) | `src/node_path.rs` | Node-`path.posix`-Semantik (join/dirname/basename/normalize) und `os.homedir()`; Referenzwerte aus Node im Unit-Test hinterlegt | Klasse 3 |
 | `src/components/editor.ts` | `src/components/editor.rs` | vollständig portiert (wordWrapLine mit TextChunk-Mapping, Visual-Line-Navigation mit Sticky-Column-Tabelle, Paste-Marker als atomare Segmente inkl. Registry-Renumbering, History, Kill-Ring, Undo-Coalescing, Autocomplete-Integration, Zeichen-Jump, CURSOR_MARKER bei Fokus) | Klasse 1: `cursorCol` und alle String-Indizes sind Byte-Offsets statt UTF-16-Einheiten (jeder Slice liegt auf Graphem-Grenzen); Klasse 1: `onSubmit`/`onChange` → `take_submitted()`/`take_changes()`; Klasse 1: Autocomplete-Debounce (`setTimeout`) und die Promise-Kette der Anfrage → `autocomplete_deadline()` + `pump_autocomplete().await` (ein Callback bräuchte `&mut` auf den Editor); Klasse 3: `Intl.Segmenter` → `unicode-segmentation` (CJK-Wortgrenzen wie dokumentiert) |
 | `src/editor-component.ts` | `src/editor_component.rs` | vollständig portiert | Klasse 1: optionale Interface-Member → Trait-Methoden mit Default-Implementierung; Callback-Felder → gepollte Queues |
+| `src/latex.ts` | `src/latex.rs` | vollständig portiert (Symboltabellen, Skript-/Bruch-/Wurzel-Formatierung, Layout-Engine für gestapelte Brüche, Operatorgrenzen und Matrizen, Umgebungen, `renderLatex`) | Klasse 1: Tabellen liegen generiert in `src/latex_tables.rs` (`tools/gen-latex-tables.mjs` liest sie aus der TS-Quelle, damit kein Eintrag abweicht) |
+| `src/components/markdown.ts` | `src/components/markdown.rs` | vollständig portiert (Token-Rendering, Listen mit Fortsetzungs-Einrückung, Tabellen mit Spaltenberechnung, Blockquotes mit Stil-Reapply, LaTeX-Blöcke, Streaming-Fence-Trimmen) | Klasse 3: `marked` → eigener Lexer `src/markdown_lexer.rs` nach Master-Tabelle; Klasse 1: Theme-Funktionen als `Rc<dyn Fn>` |
+| `marked` (Fremdbibliothek) | `src/markdown_lexer.rs` | Tokenizer-Entscheidung aus Task 11: eigener Lexer nach marked-Tokenstrom statt pulldown-cmark-Adapter. Begründung mit Beleg: `tools/gen-markdown-oracle.mjs` erzeugt den echten marked-Tokenstrom für alle 73 Quellen der Testsuite, `tests/markdown_oracle.rs` prüft Gleichheit — der Lexer reproduziert ihn vollständig (Blocks, Listen inkl. loose/tight und Task-Items, Tabellen, Blockquotes, LaTeX-Extension, Inline-Regeln inkl. GFM-Autolinks und strikter Tilde-Regel) | Klasse 3 |
 
 ## Portierte Testdateien
 
@@ -257,6 +264,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/autocomplete.test.ts` | 542 | `tests/autocomplete.rs` (25 Fälle) | alle Fälle portiert; die 14 `fd`-Fälle überspringen sich wie in TS (`skip: !isFdInstalled`), wenn `fd` nicht installiert ist — auf dieser Maschine ist `fd` nicht vorhanden, sodass sie in beiden Suiten nicht laufen |
 | `test/editor.test.ts` | 4152 | `tests/editor.rs` (184 Fälle) | 184 der 185 TS-Fälle portiert; nicht portierbar: "ignores invalid slash command argument completion results" — der Fall erzwingt in TS per `as unknown as` einen Rückgabewert falschen Typs (String statt Array), was Rusts Typsystem statisch ausschließt (die `Array.isArray`-Prüfung hat kein Gegenstück). Zwei CJK-Wortnavigationsfälle halten das dokumentierte Restverhalten von `unicode-segmentation` fest; "aborts active @ autocomplete" erzeugt den In-Flight-Zustand durch Verwerfen des Pump-Futures |
 | `test/editor-history-keybindings.test.ts` | 43 | `tests/editor_history_keybindings.rs` (1 Fall) | eigenes Testbinary wegen des globalen Keybindings-Managers |
+| `test/latex.test.ts` | 496 | `tests/latex.rs` (23 Fälle über alle 110 TS-Fälle) | die fünf `defineCases`-Tabellen liegen generiert in `tests/latex_cases.rs` |
+| `test/markdown.test.ts` | 1667 | `tests/markdown.rs` (4 Fälle über 2920 Render-Vergleiche) + `tests/markdown_oracle.rs` (73 Token-Vergleiche) | Klasse 1 (Testinfrastruktur): statt der 79 Substring-Assertions vergleicht der Port die vollständige Ausgabe der TS-Komponente (`tools/gen-markdown-render-oracle.mjs`) über dieselben Quellen × Breiten × Paddings × Optionen × Hyperlink-Fähigkeit — strenger als die Vorlage; die nicht-render-basierten Fälle (Transform-Caching, OSC-8) sind direkt portiert |
 
 ## Werkzeuge
 
@@ -267,6 +276,11 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `tools/gen-stdin-buffer-oracle.mjs` | Erzeugt `tests/fixtures/stdin-buffer-oracle.json` aus `packages/tui/src/stdin-buffer.ts`. |
 | `tools/gen-keys-oracle.mjs` | Erzeugt `tests/fixtures/keys-oracle.json` aus `packages/tui/src/keys.ts`. |
 | `tools/gen-virtual-terminal-oracle.mjs` | Erzeugt `tests/fixtures/virtual-terminal-oracle.json` aus `@xterm/headless` 5.5.0 — 23 Szenarien mit genau den Sequenzen, die beide Renderer emittieren. |
+| `tools/gen-latex-tables.mjs` | erzeugt `src/latex_tables.rs` aus `src/latex.ts` |
+| `tools/gen-latex-tests.mjs` | erzeugt `tests/latex_cases.rs` aus `test/latex.test.ts` |
+| `tools/extract-markdown-inputs.mjs` | zieht alle Markdown-Quellen aus `test/markdown.test.ts` |
+| `tools/gen-markdown-oracle.mjs` | erzeugt den marked-Tokenstrom als Fixture |
+| `tools/gen-markdown-render-oracle.mjs` | erzeugt die Render-Ausgabe der TS-Komponente als Fixture |
 
 ## Stand der Plan-Tasks
 
@@ -282,7 +296,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 8 Alt-Screen-Renderer | fertig (`tui-alt-screen.ts` und `alt-screen-search.ts` vollständig portiert, Testsuite vollständig) |
 | 9 Basis-Komponenten | fertig portiert (spacer, truncated-text, box, alt-screen-flash, loader, cancellable-loader, select-list, settings-list, input, image); offene Testfälle: 14 der 35 input-Fälle |
 | 10 Editor | fertig (`editor.ts` + `editor-component.ts` portiert, Testsuite vollständig bis auf einen in Rust nicht ausdrückbaren Fall) |
-| 11 Markdown + LaTeX | offen |
+| 11 Markdown + LaTeX | fertig (eigener marked-Lexer, gegen den echten Tokenstrom verifiziert; Renderer gegen die TS-Ausgabe verifiziert) |
 | 12 Terminal-Bilder | Modul vollständig portiert; Testsuite (632 LOC) offen |
 | 13 Autocomplete/Fuzzy/Keybindings/native | fertig (autocomplete vorgezogen, weil Task 10 den Provider braucht) |
 | 14 Öffentliche API + Ledger-Abschluss | teilweise: `lib.rs` spiegelt das Export-Set der portierten Module; Abschluss nach Tasks 8/10/11/13 |
