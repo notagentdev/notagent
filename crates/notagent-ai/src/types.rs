@@ -1126,6 +1126,12 @@ pub struct OpenAICompletionsCompat {
     pub session_affinity_format: Option<SessionAffinityFormat>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_long_cache_retention: Option<bool>,
+    /// JS objects are open: the generated catalog carries compat keys that the TS
+    /// interface does not declare (for example `supportsReasoningEffort` on an
+    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
+    /// preserved here instead of being dropped.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// `OpenAIResponsesCompat` — für die drei Responses-APIs.
@@ -1152,6 +1158,12 @@ pub struct OpenAIResponsesCompat {
     pub supports_tool_search: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_explicit_prompt_cache_mode: Option<bool>,
+    /// JS objects are open: the generated catalog carries compat keys that the TS
+    /// interface does not declare (for example `supportsReasoningEffort` on an
+    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
+    /// preserved here instead of being dropped.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// `AnthropicMessagesCompat`
@@ -1176,6 +1188,12 @@ pub struct AnthropicMessagesCompat {
     pub supports_strict_tools: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_tool_references: Option<bool>,
+    /// JS objects are open: the generated catalog carries compat keys that the TS
+    /// interface does not declare (for example `supportsReasoningEffort` on an
+    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
+    /// preserved here instead of being dropped.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// `BedrockCompat`
@@ -1184,6 +1202,12 @@ pub struct AnthropicMessagesCompat {
 pub struct BedrockCompat {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_strict_mode: Option<bool>,
+    /// JS objects are open: the generated catalog carries compat keys that the TS
+    /// interface does not declare (for example `supportsReasoningEffort` on an
+    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
+    /// preserved here instead of being dropped.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// `number | string` in den OpenRouter-Preisgrenzen.

@@ -20,4 +20,5 @@ futures = { workspace = true }
 dirs = { workspace = true }
 
 [dev-dependencies]
+sha2 = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }

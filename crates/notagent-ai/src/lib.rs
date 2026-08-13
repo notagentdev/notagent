@@ -5,6 +5,7 @@
 pub mod api;
 pub mod auth;
 pub mod env_api_keys;
+pub mod model_catalog;
 pub mod models;
 pub mod models_store;
 pub mod types;
