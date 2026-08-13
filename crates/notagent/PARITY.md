@@ -40,6 +40,20 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/src/core/messages.ts | 195 | C-Task 6 |
 | 2026-08-13 | packages/coding-agent/test/session-manager/*.ts (7 Dateien) | 1 791 | C-Task 6 |
 | 2026-08-13 | packages/coding-agent/test/session-info-modified-timestamp.ts | 83 | C-Task 6 |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/theme/theme.ts | 1 335 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/theme/theme-controller.ts | 139 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/theme/dark.json | 90 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/theme/light.json | 89 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/theme/theme-schema.json | 352 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/test/theme-detection.test.ts | 174 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/test/theme-export.test.ts | 104 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/test/theme-picker.test.ts | 51 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/test/scrollbar-theme.test.ts | 70 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/test/test-theme-colors.ts | 249 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/utils/syntax-highlight.ts (Abhängigkeit von theme.ts) | 146 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/utils/fs-watch.ts (Abhängigkeit von theme.ts) | 30 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/core/source-info.ts (Abhängigkeit von theme.ts) | 40 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/core/tools/render-utils.ts (Konsument von Theme) | 85 | A-Task 15 (Batch 0) |
 
 ## Ledger
 
@@ -87,6 +101,27 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | test/session-file-invalid.test.ts | 65 | — | offen | CLI-E2E (spawnt die Binary) — folgt mit Task 12 |
 | test/session-cwd.test.ts | 91 | — | offen | braucht `core/session-cwd.ts` und die Runtime — folgt mit Task 11 |
 | test/session-id-readonly.test.ts | 190 | — | offen | CLI-E2E — folgt mit Task 12 |
+
+## A: interactive components
+
+Ownership-Übergabe durch `plans/interface-requests.md` O-1 und C-5: Workstream A
+besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
+`crates/notagent/src/modes/interactive/components/`.
+
+| TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
+|---|---|---|---|---|
+| src/modes/interactive/theme/theme.ts | 1 335 | src/modes/interactive/theme/theme.rs | verifiziert (bis auf den Syntax-Highlighter, s. u.) | Klasse 3: `chalk` → direkte ANSI-Sequenzen. Der Wrap-Algorithmus ist exakt nachgebaut (`stringReplaceAll` behält den Close-Code und hängt den Open-Code an, `stringEncaseCRLFWithFirstIndex` klammert jede Zeile einzeln, leerer String bleibt leer) — gegen chalk 5 verifiziert. NICHT nachgebaut ist chalks TTY-Farbstufen-Erkennung (`supports-color`): der Port gibt die Sequenzen unbedingt aus, so wie `fg`/`bg` es in TS ohnehin tun. Klasse 3: TypeBox `Compile` → handgeschriebener Validator; Fehlertexte, Fehlerreihenfolge (Schema-Deklarationsreihenfolge, nicht Dateireihenfolge) und die 8-Fehler-Obergrenze von `Errors()` sind empirisch gegen die TS-Implementierung abgeglichen und in `tests/theme_validation.rs` gepinnt. Klasse 4: die eingebauten Themes liegen per `include_str!` in der Binary statt in `dist/theme/` daneben; `getAvailableThemesWithPaths` meldet weiterhin `get_themes_dir()/<name>.json`. Klasse 1: das globale Theme liegt in Prozess-Globals statt in `globalThis` (dadurch auch aus den tokio-Worker-Threads der Tools lesbar); `on_theme_change` verlangt `Send + Sync`; `fg`/`bg` panicken bei unbekanntem Slot wie der uncaught `throw` in TS; werfende Funktionen geben `Result<_, ThemeError>` zurück; `ThemeColor`/`ThemeBg` sind Enums statt String-Literale, die Farbmaps sind einfügereihenfolge-erhaltend, damit `Object.entries` und die Spread-Semantik von `withThemeColorFallbacks` erhalten bleiben; `readdirSync` wird sortiert, damit die Auswahl bei doppelten Theme-Namen deterministisch ist. **Offen:** `highlightCode` und `getMarkdownTheme().highlightCode` nehmen bis auf Weiteres immer den TS-Pfad „keine gültige Sprache" — der Syntax-Highlighter (`src/utils/syntax-highlight.ts`) gehört C (Task 13) und liegt noch nicht auf main, siehe Interface-Request A-5. `Theme.sourceInfo` fehlt, bis C `core/source-info.ts` portiert hat (A-5) |
+| src/modes/interactive/theme/theme-controller.ts | 139 | src/modes/interactive/theme/theme_controller.rs | portiert | Klasse 1: der Controller ist ein `Rc<RefCell<…>>`-Handle (wie `TuiCore`), weil der Color-Scheme-Listener `this` einfängt; `unsubscribe`-Closure → `ListenerId` + `remove_terminal_color_scheme_listener`; `TUI` ist strukturell typisiert, deshalb implementiert der Port `TerminalBackgroundThemeDetector`/`TerminalAutoThemeDetector` explizit für `TuiCore`; `settingsManager.flush()` ist im Port synchron |
+| src/modes/interactive/theme/dark.json | 90 | src/modes/interactive/theme/dark.json | verifiziert | unverändert übernommen (Asset) |
+| src/modes/interactive/theme/light.json | 89 | src/modes/interactive/theme/light.json | verifiziert | unverändert übernommen (Asset) |
+| src/modes/interactive/theme/theme-schema.json | 352 | src/modes/interactive/theme/theme-schema.json | übernommen | unverändert übernommen (Asset). Reine Editor-Unterstützung: zur Laufzeit validiert `theme.ts` über sein TypeBox-Schema, das Datei-Schema wird nur über `$schema` in den Theme-Dateien referenziert |
+| test/theme-detection.test.ts | 174 | tests/theme_detection.rs | verifiziert | 11 Tests (TS: 9 `it`-Blöcke; die beiden `toMatchObject`-Blöcke mit je zwei Erwartungen bleiben zusammen). Klasse 1: Rust-Futures sind lazy — der Fall „starts both queries" pollt das Future einmal, was dem synchronen Start der TS-`async`-Funktion entspricht |
+| test/theme-export.test.ts | 104 | tests/theme_export.rs | verifiziert | 2 Tests, unverändert |
+| test/theme-picker.test.ts | 51 | tests/theme_picker.rs | verifiziert | 1 Test, unverändert |
+| test/scrollbar-theme.test.ts | 70 | tests/scrollbar_theme.rs | verifiziert | 4 Tests, unverändert |
+| — (neu) | — | tests/theme_validation.rs | verifiziert | 15 Tests, die die TS-Testsuite nicht abdeckt: alle Validierungs-Fehlertexte, Fehlerreihenfolge, 8-Fehler-Obergrenze, Var-Auflösungsfehler, unbekannte Farbschlüssel. Erwartungswerte stammen aus Läufen gegen `theme.ts` (`npx tsx`), nicht aus dem Schema-Text |
+| — (neu) | — | tests/theme_runtime.rs | verifiziert | 9 Tests: chalk-Ersatz (12 Fälle gegen chalk 5 abgeglichen), 256-Farb-Quantisierung (40 Hex-Werte gegen `rgbTo256` der TS-Implementierung), leere Farbwerte, Palettenindizes, Dark-Fallback bei ungültigem Theme, Change-Callback, Live-Reload inkl. Debounce und `stopThemeWatcher` |
+| test/test-theme-colors.ts | 249 | — | ausgeschlossen | manuelles CLI-Skript (Kontrastrechner/Theme-Vorschau, `npx tsx test-theme-colors.ts light|dark|contrast|test`), kein Test-Runner-Ziel — wie die manuellen Harnesses des tui-Pakets klassifiziert |
 
 ## Ausschlüsse
 

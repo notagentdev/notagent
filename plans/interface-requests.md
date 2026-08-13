@@ -110,6 +110,76 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   durchführbar, nicht automatisierbar.
 - **Status**: offen (wartet auf C: Gate G2 und die Komponenten-Zuteilung)
 
+### A-5 Batch 0 (Theme-System) ist geliefert — drei Abhängigkeiten bleiben offen
+- **Von / An**: A → C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/modes/interactive/theme/`, `crates/notagent/src/utils/`,
+  `crates/notagent/src/core/source_info.rs`
+- **Beleg**: `packages/coding-agent/src/modes/interactive/theme/theme.ts:18` importiert
+  `highlight`/`supportsLanguage` aus `src/utils/syntax-highlight.ts`;
+  `theme.ts:16` importiert `closeWatcher`/`watchWithErrorHandler` aus `src/utils/fs-watch.ts`;
+  `theme.ts:353` deklariert `sourceInfo?: SourceInfo` aus `src/core/source-info.ts`,
+  gesetzt von `core/resource-loader.ts:730` und gelesen von `interactive-mode.ts:1683,1758,1768`.
+- **Geliefert (nutzbar ab sofort)**: `notagent::modes::interactive::theme::theme` mit
+  `Theme` (`fg`/`bg`/`bold`/`italic`/`underline`/`inverse`/`strikethrough`/`get_fg_ansi`/
+  `get_bg_ansi`/`get_color_mode`/`get_thinking_border_color`/`get_bash_mode_border_color`),
+  `theme()` als globalem Zugriff, `ThemeColor`/`ThemeBg` als Enums, `init_theme`, `set_theme`,
+  `set_theme_instance`, `on_theme_change`, `set_registered_themes`, `stop_theme_watcher`,
+  `get_available_themes(_with_paths)`, `get_theme_by_name`, `load_theme_from_path`,
+  `parse_auto_theme_setting`, `resolve_theme_setting`, den Terminal-Erkennungen,
+  `get_resolved_theme_colors`, `is_light_theme`, `get_theme_export_colors`,
+  `get_language_from_path`, `highlight_code` und den vier TUI-Themes
+  (`get_markdown_theme`, `get_select_list_theme`, `get_editor_theme`,
+  `get_settings_list_theme`); dazu `theme_controller::InteractiveThemeController`.
+  Für `core/tools/render-utils.ts` (dein Task 7/8) reicht das: die Datei braucht nur
+  `Theme::fg`.
+- **Wunsch 1 — `src/utils/syntax-highlight.ts` (146 LOC)**: Der einzige Konsument dieser
+  Datei ist `theme.ts`. Entweder du portierst sie früh mit dieser Signatur, oder du gibst
+  sie an mich ab (Vorschlag: Abgabe, dann liegt der ganze Highlight-Pfad in einer Hand):
+  ```rust
+  pub type HighlightFormatter = Rc<dyn Fn(&str) -> String>;
+  pub type HighlightTheme = HashMap<String, HighlightFormatter>;
+  pub struct HighlightOptions { pub language: Option<String>, pub ignore_illegals: bool,
+                                pub language_subset: Option<Vec<String>>, pub theme: HighlightTheme }
+  pub fn highlight(code: &str, options: &HighlightOptions) -> String;
+  pub fn supports_language(name: &str) -> bool;
+  ```
+  Solange sie fehlt, meldet mein `supports_language` `false`; `highlight_code` und
+  `getMarkdownTheme().highlightCode` nehmen damit exakt den TS-Pfad „keine gültige Sprache"
+  (jede Zeile in `mdCodeBlock`). Sobald die Datei liegt, ist es bei mir ein Zweizeiler.
+  Betroffen sind deine Tools `core/tools/read.ts`, `write.ts` und `read-minified.ts`.
+- **Wunsch 2 — `src/core/source-info.ts` (40 LOC)**: Sobald `SourceInfo` existiert, trage ich
+  `pub source_info: Option<SourceInfo>` an `Theme` nach (Feld wird von deinem Resource-Loader
+  gesetzt). Bis dahin fehlt das Feld; niemand konsumiert es bisher.
+- **Wunsch 3 — `src/utils/fs-watch.ts` (30 LOC)**: siehe A-6 (braucht zuerst die Dependency).
+- **Angefasste Dateien außerhalb meiner Ownership** (minimal und additiv, damit du es weißt):
+  `crates/notagent/src/lib.rs` (+ `pub mod modes;`), neu `src/modes.rs` und
+  `src/modes/interactive.rs` (deklarieren vorerst nur meine Submodule — trag deine
+  `interactive_mode`-Module einfach daneben ein), sowie `crates/notagent/Cargo.toml`
+  `[dev-dependencies]` (+ `futures`, `notagent-tui`, `tokio` für die portierten Theme-Suiten).
+- **Status**: offen (wartet auf C: syntax-highlight und source-info)
+
+### A-6 `notify` als Workspace-Dependency (Datei-Watcher für den Theme-Live-Reload)
+- **Von / An**: A → C (Owner der Root-`Cargo.toml`)
+- **Datum**: 2026-08-13
+- **Betrifft**: Root-`Cargo.toml`, `[workspace.dependencies]`
+- **Beleg**: `packages/coding-agent/src/utils/fs-watch.ts:1-30` (`node:fs.watch` mit
+  Error-Handler); `theme.ts:939-978` (`startThemeWatcher` beobachtet das Custom-Themes-
+  Verzeichnis und lädt die aktive Theme-Datei mit 100-ms-Debounce neu). Dieselbe Datei wird
+  laut Faktenlage auch für andere Live-Reload-Pfade der App gebraucht.
+- **Wunsch**: `notify = "8"` (oder die aktuelle Version) in `[workspace.dependencies]`.
+  Die Master-Tabelle hat für `node:fs.watch` keine Substitution; `notify` ist die
+  Standardentsprechung (FSEvents/inotify/ReadDirectoryChangesW) und der einzige Weg, das
+  Verhalten ohne Polling zu treffen.
+- **Stand bei mir**: Debounce, Staleness-Prüfung („Timer nach Theme-Wechsel verwerfen"),
+  „Datei vorübergehend weg → letztes Theme aktiv lassen", Registry-Aktualisierung und der
+  Change-Callback sind portiert und getestet
+  (`crates/notagent/tests/theme_runtime.rs`, Einstieg `notify_theme_directory_event`).
+  Es fehlt ausschließlich die OS-Registrierung, die diesen Einstieg aufruft — die trage ich
+  nach, sobald die Dependency da ist.
+- **Status**: offen
+
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)

@@ -40,4 +40,8 @@ futures = { workspace = true }
 
 [dev-dependencies]
 dirs = { workspace = true }
+# Needed by the ported theme suites in tests/ (workstream A, plan task 15).
+futures = { workspace = true }
+notagent-tui = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true }
