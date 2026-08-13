@@ -84,15 +84,30 @@ impl VirtualTerminal {
     }
 
     /// Ändert die Terminalgröße und ruft den Resize-Handler.
+    ///
+    /// `@xterm/headless` verankert beim Resize unten: beim Verkleinern wandern
+    /// obere Zeilen in den Scrollback, beim Vergrößern kommen sie zurück (siehe
+    /// PARITY.md). `vt100` kennt das nicht, deshalb wird der Puffer hier mit dem
+    /// bisherigen Text neu aufgebaut. Attribute gehen dabei verloren; der
+    /// Harness liest ohnehin nur Text.
     pub fn resize(&self, columns: usize, rows: usize) {
+        let content = {
+            let mut lines = self.get_scroll_buffer();
+            while lines.last().is_some_and(|line| line.is_empty()) {
+                lines.pop();
+            }
+            lines
+        };
         let handler = {
             let mut state = self.0.borrow_mut();
             state.columns = columns;
             state.rows = rows;
-            state.parser.screen_mut().set_size(
+            state.parser = vt100::Parser::new(
                 u16::try_from(rows).expect("rows fit u16"),
                 u16::try_from(columns).expect("columns fit u16"),
+                SCROLLBACK_LEN,
             );
+            state.parser.process(content.join("\r\n").as_bytes());
             state.resize_handler.take()
         };
         if let Some(mut handler) = handler {

@@ -8,9 +8,11 @@ pub mod native_modifiers;
 pub mod stdin_buffer;
 pub mod terminal;
 pub mod terminal_colors;
+pub mod terminal_image;
 #[cfg(feature = "test-terminal")]
 pub mod test_terminal;
 pub mod tui;
+pub mod tui_main_screen;
 mod unicode_tables;
 pub mod utils;
 

@@ -1,0 +1,659 @@
+//! Port of `packages/tui/test/tui-render.test.ts` (832 LOC).
+//!
+//! The seven Kitty image cases need `encodeKitty` and the `Image` component and
+//! follow with tasks 9 and 12; everything else is ported here.
+//!
+//! `terminal.waitForRender()` of the TS suite becomes `tui.wait_for_render()`:
+//! the render loop is driven by the caller in Rust, not by a timer callback.
+
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+use notagent_tui::test_terminal::VirtualTerminal;
+use notagent_tui::tui::{Component, TuiStopOptions, component_ref};
+use notagent_tui::tui_main_screen::TuiMainScreen;
+
+fn guard() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// `class TestComponent` — the lines live behind a handle so the test can change
+/// them after the component was mounted (TS mutates the object directly).
+#[derive(Clone, Default)]
+struct TestHandle {
+    lines: Rc<RefCell<Vec<String>>>,
+    render_count: Rc<Cell<usize>>,
+    last_input: Rc<RefCell<Option<String>>>,
+}
+
+impl TestHandle {
+    fn set_lines<I: IntoIterator<Item = S>, S: Into<String>>(&self, lines: I) {
+        *self.lines.borrow_mut() = lines.into_iter().map(Into::into).collect();
+    }
+}
+
+struct TestComponent {
+    handle: TestHandle,
+    handles_input: bool,
+}
+
+impl Component for TestComponent {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.handle
+            .render_count
+            .set(self.handle.render_count.get() + 1);
+        self.handle.lines.borrow().clone()
+    }
+
+    fn handle_input(&mut self, data: &str) {
+        if self.handles_input {
+            *self.handle.last_input.borrow_mut() = Some(data.to_string());
+            *self.handle.lines.borrow_mut() = vec![data.to_string()];
+        }
+    }
+
+    fn invalidate(&mut self) {}
+}
+
+fn test_component() -> (TestHandle, notagent_tui::tui::ComponentRef) {
+    let handle = TestHandle::default();
+    let component = component_ref(TestComponent {
+        handle: handle.clone(),
+        handles_input: false,
+    });
+    (handle, component)
+}
+
+fn input_component() -> (TestHandle, notagent_tui::tui::ComponentRef) {
+    let handle = TestHandle::default();
+    let component = component_ref(TestComponent {
+        handle: handle.clone(),
+        handles_input: true,
+    });
+    (handle, component)
+}
+
+fn numbered_lines(prefix: &str, count: usize) -> Vec<String> {
+    (0..count)
+        .map(|index| format!("{prefix} {index}"))
+        .collect()
+}
+
+/// Set environment variables for the duration of `body`.
+fn with_env(vars: &[(&str, Option<&str>)], body: impl FnOnce()) {
+    let previous: Vec<(String, Option<String>)> = vars
+        .iter()
+        .map(|(name, _)| ((*name).to_string(), std::env::var(name).ok()))
+        .collect();
+    for (name, value) in vars {
+        // SAFETY: tests in this binary are serialized through `guard()`.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(name, value),
+                None => std::env::remove_var(name),
+            }
+        }
+    }
+    body();
+    for (name, value) in &previous {
+        // SAFETY: see above.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(name, value),
+                None => std::env::remove_var(name),
+            }
+        }
+    }
+}
+
+// describe("TUI render scheduling")
+
+#[tokio::test]
+async fn renders_keyboard_input_without_waiting_for_a_throttled_frame() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = input_component();
+    handle.set_lines(["initial"]);
+    tui.core().add_child(component.clone());
+    tui.core().set_focus(Some(component));
+    tui.start();
+    tui.render_now(false);
+    let render_count_before_input = handle.render_count.get();
+
+    // Queue a normal throttled render first; keyboard input must preempt it.
+    handle.set_lines(["pending"]);
+    tui.request_render(false);
+    terminal.send_input("first");
+    terminal.send_input("second");
+    terminal.send_input("typed");
+    tui.wait_for_render().await;
+
+    assert_eq!(handle.render_count.get(), render_count_before_input + 1);
+    assert_eq!(handle.lines.borrow().as_slice(), ["typed".to_string()]);
+    tui.stop(TuiStopOptions::default());
+}
+
+// describe("TUI debug logging")
+
+// The environment is process-global; these tests take the guard and hold it
+// across awaits on purpose — every test in this binary runs on its own
+// current-thread runtime, so no other task can be blocked by it.
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn writes_redraw_logs_to_the_provided_directory() {
+    let _guard = guard();
+    let log_dir = std::env::temp_dir().join(format!("notagent-tui-log-{}", std::process::id()));
+    std::fs::create_dir_all(&log_dir).expect("create log dir");
+
+    with_env(&[("NOTAGENT_DEBUG_REDRAW", Some("1"))], || {
+        let terminal = VirtualTerminal::new(40, 10);
+        let mut tui =
+            TuiMainScreen::with_options(Box::new(terminal.clone()), None, Some(log_dir.clone()));
+        let (handle, component) = test_component();
+        tui.core().add_child(component);
+        handle.set_lines(["test"]);
+        tui.start();
+        tui.render_now(false);
+
+        let log = std::fs::read_to_string(log_dir.join("notagent-debug.log")).expect("log written");
+        assert!(log.contains("fullRender: first render"), "log was: {log:?}");
+        tui.stop(TuiStopOptions::default());
+    });
+
+    let _ = std::fs::remove_dir_all(&log_dir);
+}
+
+// describe("TUI resize handling")
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn triggers_full_re_render_when_terminal_height_changes() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    let initial_redraws = tui.full_redraws();
+
+    terminal.resize(40, 15);
+    tui.wait_for_render().await;
+
+    assert!(
+        tui.full_redraws() > initial_redraws,
+        "Height change should trigger full redraw"
+    );
+    let viewport = terminal.get_viewport();
+    assert!(
+        viewport[0].contains("Line 0"),
+        "Content preserved after height change"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn skips_full_re_render_on_height_changes_in_termux() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(numbered_lines("Line", 20));
+
+    // TERMUX_VERSION is read inside do_render, so set it around the frames.
+    let previous = std::env::var("TERMUX_VERSION").ok();
+    // SAFETY: tests in this binary are serialized through `guard()`.
+    unsafe { std::env::set_var("TERMUX_VERSION", "1") };
+
+    tui.start();
+    tui.wait_for_render().await;
+    terminal.clear_writes();
+
+    let initial_redraws = tui.full_redraws();
+    for height in [15, 8, 14, 11] {
+        terminal.resize(40, height);
+        tui.request_render(false);
+        tui.wait_for_render().await;
+    }
+
+    assert_eq!(
+        tui.full_redraws(),
+        initial_redraws,
+        "Height change should not trigger full redraw"
+    );
+    assert!(
+        !terminal.get_writes().contains("\x1b[2J"),
+        "Height change should not clear the screen"
+    );
+    assert!(
+        !terminal.get_writes().contains("\x1b[3J"),
+        "Height change should not clear scrollback"
+    );
+    assert!(
+        terminal.get_viewport().join("\n").contains("Line 19"),
+        "Latest content remains visible after resize"
+    );
+
+    tui.stop(TuiStopOptions::default());
+    // SAFETY: see above.
+    unsafe {
+        match previous {
+            Some(value) => std::env::set_var("TERMUX_VERSION", value),
+            None => std::env::remove_var("TERMUX_VERSION"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn triggers_full_re_render_when_terminal_width_changes() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    let initial_redraws = tui.full_redraws();
+    terminal.resize(60, 10);
+    tui.wait_for_render().await;
+
+    assert!(
+        tui.full_redraws() > initial_redraws,
+        "Width change should trigger full redraw"
+    );
+    tui.stop(TuiStopOptions::default());
+}
+
+// describe("TUI content shrinkage")
+
+#[tokio::test]
+async fn clears_empty_rows_when_content_shrinks_significantly() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().set_clear_on_shrink(true);
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2", "Line 3", "Line 4", "Line 5"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    let initial_redraws = tui.full_redraws();
+
+    handle.set_lines(["Line 0", "Line 1"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    assert!(
+        tui.full_redraws() > initial_redraws,
+        "Content shrinkage should trigger full redraw"
+    );
+    let viewport = terminal.get_viewport();
+    assert!(viewport[0].contains("Line 0"), "First line preserved");
+    assert!(viewport[1].contains("Line 1"), "Second line preserved");
+    assert_eq!(viewport[2].trim(), "", "Line 2 should be cleared");
+    assert_eq!(viewport[3].trim(), "", "Line 3 should be cleared");
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn handles_shrink_to_single_line() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().set_clear_on_shrink(true);
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2", "Line 3"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    handle.set_lines(["Only line"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let viewport = terminal.get_viewport();
+    assert!(viewport[0].contains("Only line"), "Single line rendered");
+    assert_eq!(viewport[1].trim(), "", "Line 1 should be cleared");
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn handles_shrink_to_empty() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().set_clear_on_shrink(true);
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    handle.set_lines(Vec::<String>::new());
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let viewport = terminal.get_viewport();
+    assert_eq!(viewport[0].trim(), "", "Line 0 should be cleared");
+    assert_eq!(viewport[1].trim(), "", "Line 1 should be cleared");
+
+    tui.stop(TuiStopOptions::default());
+}
+
+// describe("TUI differential rendering")
+
+#[tokio::test]
+async fn tracks_cursor_correctly_when_content_shrinks_with_unchanged_remaining_lines() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2", "Line 3", "Line 4"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    handle.set_lines(["Line 0", "CHANGED", "Line 2"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let viewport = terminal.get_viewport();
+    assert!(
+        viewport[1].contains("CHANGED"),
+        "Expected \"CHANGED\" on line 1, got: {}",
+        viewport[1]
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn renders_correctly_when_only_a_middle_line_changes_spinner_case() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Header", "Working...", "Footer"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    for frame in ["|", "/", "-", "\\"] {
+        handle.set_lines([
+            "Header".to_string(),
+            format!("Working {frame}"),
+            "Footer".to_string(),
+        ]);
+        tui.request_render(false);
+        tui.wait_for_render().await;
+
+        let viewport = terminal.get_viewport();
+        assert!(
+            viewport[0].contains("Header"),
+            "Header preserved: {}",
+            viewport[0]
+        );
+        assert!(
+            viewport[1].contains(&format!("Working {frame}")),
+            "Spinner updated: {}",
+            viewport[1]
+        );
+        assert!(
+            viewport[2].contains("Footer"),
+            "Footer preserved: {}",
+            viewport[2]
+        );
+    }
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn renders_correctly_when_first_line_changes_but_rest_stays_same() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2", "Line 3"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    handle.set_lines(["CHANGED", "Line 1", "Line 2", "Line 3"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let viewport = terminal.get_viewport();
+    assert!(viewport[0].contains("CHANGED"));
+    assert!(viewport[1].contains("Line 1"));
+    assert!(viewport[2].contains("Line 2"));
+    assert!(viewport[3].contains("Line 3"));
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn renders_correctly_when_last_line_changes_but_rest_stays_same() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2", "Line 3"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2", "CHANGED"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let viewport = terminal.get_viewport();
+    assert!(viewport[0].contains("Line 0"));
+    assert!(viewport[1].contains("Line 1"));
+    assert!(viewport[2].contains("Line 2"));
+    assert!(viewport[3].contains("CHANGED"));
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn renders_correctly_when_multiple_non_adjacent_lines_change() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2", "Line 3", "Line 4"]);
+    tui.start();
+    tui.wait_for_render().await;
+
+    handle.set_lines(["Line 0", "CHANGED 1", "Line 2", "CHANGED 3", "Line 4"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let viewport = terminal.get_viewport();
+    assert!(viewport[0].contains("Line 0"));
+    assert!(viewport[1].contains("CHANGED 1"));
+    assert!(viewport[2].contains("Line 2"));
+    assert!(viewport[3].contains("CHANGED 3"));
+    assert!(viewport[4].contains("Line 4"));
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn handles_transition_from_content_to_empty_and_back_to_content() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2"]);
+    tui.start();
+    tui.wait_for_render().await;
+    assert!(terminal.get_viewport()[0].contains("Line 0"));
+
+    handle.set_lines(Vec::<String>::new());
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    handle.set_lines(["New Line 0", "New Line 1"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let viewport = terminal.get_viewport();
+    assert!(viewport[0].contains("New Line 0"), "got: {}", viewport[0]);
+    assert!(viewport[1].contains("New Line 1"), "got: {}", viewport[1]);
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn full_re_renders_when_deleted_lines_move_the_viewport_upward() {
+    let terminal = VirtualTerminal::new(20, 5);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(numbered_lines("Line", 12));
+    tui.start();
+    tui.wait_for_render().await;
+
+    let initial_redraws = tui.full_redraws();
+
+    handle.set_lines(numbered_lines("Line", 7));
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    assert!(
+        tui.full_redraws() > initial_redraws,
+        "Shrink should trigger a full redraw"
+    );
+    assert_eq!(
+        terminal.get_viewport(),
+        ["Line 2", "Line 3", "Line 4", "Line 5", "Line 6"]
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn appends_after_a_shrink_without_another_full_redraw_once_the_viewport_is_reset() {
+    let terminal = VirtualTerminal::new(20, 5);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(numbered_lines("Line", 8));
+    tui.start();
+    tui.wait_for_render().await;
+
+    let initial_redraws = tui.full_redraws();
+
+    handle.set_lines(["Line 0", "Line 1"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    assert!(
+        tui.full_redraws() > initial_redraws,
+        "Shrink should reset the viewport with a full redraw"
+    );
+    let redraws_after_shrink = tui.full_redraws();
+
+    handle.set_lines(["Line 0", "Line 1", "Line 2"]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    assert_eq!(
+        tui.full_redraws(),
+        redraws_after_shrink,
+        "Append should stay on the differential path"
+    );
+    assert_eq!(
+        terminal.get_viewport(),
+        ["Line 0", "Line 1", "Line 2", "", ""]
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn clears_stale_content_when_max_lines_rendered_was_inflated_by_a_transient_component() {
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (chat, chat_component) = test_component();
+    let (editor, editor_component) = test_component();
+    tui.core().add_child(chat_component);
+    tui.core().add_child(editor_component);
+
+    let long_chat = numbered_lines("Chat", 15);
+    let short_chat = numbered_lines("Chat", 12);
+    let editor_lines = vec![
+        "Editor 0".to_string(),
+        "Editor 1".to_string(),
+        "Editor 2".to_string(),
+    ];
+    let selector_lines = numbered_lines("Selector", 8);
+
+    chat.set_lines(long_chat);
+    editor.set_lines(editor_lines.clone());
+    tui.start();
+    tui.wait_for_render().await;
+
+    editor.set_lines(selector_lines);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    editor.set_lines(editor_lines);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let redraws_before_switch = tui.full_redraws();
+    chat.set_lines(short_chat);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    assert!(
+        tui.full_redraws() > redraws_before_switch,
+        "Branch switch should trigger a full redraw"
+    );
+
+    let viewport = terminal.get_viewport();
+    for (index, line) in viewport.iter().enumerate() {
+        for stale in ["Chat 12", "Chat 13", "Chat 14"] {
+            assert!(
+                !line.contains(stale),
+                "Stale {stale:?} at viewport row {index}"
+            );
+        }
+    }
+    assert_eq!(
+        viewport,
+        [
+            "Chat 5", "Chat 6", "Chat 7", "Chat 8", "Chat 9", "Chat 10", "Chat 11", "Editor 0",
+            "Editor 1", "Editor 2",
+        ]
+    );
+
+    tui.stop(TuiStopOptions::default());
+}

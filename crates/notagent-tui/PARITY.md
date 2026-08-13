@@ -17,6 +17,9 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `src/keys.ts` | 1401 | `src/keys.rs` | verifiziert | Klasse 1: `_kittyProtocolActive` → prozessglobales `AtomicBool`; `_lastEventType` entfällt (in TS nur geschrieben, nie gelesen); `String.fromCharCode`-Semantik (16-Bit-Truncation) als `js_from_char_code` nachgebildet; Codepoints als `i64` wegen der negativen Sentinels; das TS-Hilfsobjekt `Key` (reine Template-Literal-Typen) entfällt, KeyIds sind `&str`; `parseInt`-Überlauf ⇒ „kein Treffer" statt Gleitkomma-Codepoint (in beiden Fällen unauffindbarer Key) |
 | `src/stdin-buffer.ts` | 444 | `src/stdin_buffer.rs` | verifiziert | Klasse 1: `EventEmitter` → geordnete `Vec<StdinEvent>` als Rückgabewert; `setTimeout` → `pending_timeout_ms()` + `flush_timeout()` (Timer treibt der Aufrufer, Semantik identisch); Einzelzeichen-Emission pro `char` statt pro UTF-16-Codeeinheit (lone Surrogates sind in Rust-Strings nicht darstellbar; für BMP-Eingaben identisch) |
 | `src/terminal.ts` | 559 | `src/terminal.rs` | verifiziert | Klasse 1: Node-Event-Loop → `pump()` mit tokio-`select!` (stdin-Leser als eigener Thread mit Kanal, Handler laufen auf dem TUI-Strang); `process.stdout.write`-Monkey-Patching der Tests → injizierbare Ausgabe-Senke; `setTimeout`-Timer → Deadlines in `pump()`. Klasse 3: `setRawMode` → termios via libc (Flags empirisch gegen Nodes/libuv Raw-Mode auf macOS verifiziert: `~(BRKINT|ICRNL|INPCK|ISTRIP|IXON)`, `OPOST|ONLCR` bleiben, CS8 ohne CSIZE/PARENB, `~(ECHO|ICANON|IEXTEN|ISIG)`, VMIN=1, VTIME=0); `process.stdout.on("resize")` → SIGWINCH via tokio-signal; Windows-VT-Input als direkter Console-API-Aufruf statt Node-Addon |
+| `src/tui.ts` | 1257 | `src/tui.rs` | portiert; Tests folgen mit den Overlay-Suiten | Klasse 1: `TuiBase` (abstrakte Klasse) → `TuiCore` (geteilter Zustand) plus konkrete Renderer; Overlay-Handles halten einen `TuiCore`-Klon statt `this`-Closures; Timer rufen nicht zurück, sondern `render_deadline()` + `begin_frame()` treibt die Schleife des Renderers (Handlerausführung bleibt einsträngig wie im Node-Event-Loop); `addInputListener` gibt eine `ListenerId` statt einer Unsubscribe-Closure zurück; Promises → `async fn` mit tokio-Timeout |
+| `src/tui-main-screen.ts` | 586 | `src/tui_main_screen.rs` | verifiziert (tui-render-Suite ohne die Kitty-Bild-Fälle) | Klasse 1: geworfener `Error` des Überbreiten-Guards → `panic!` mit identischem Text (Programmierfehler, kein Kontrollfluss); Debug-Dump ohne `Math.random()`-Suffix |
+| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
 | `src/terminal-colors.ts` | 73 | `src/terminal_colors.rs` | verifiziert (Parser); die TUI-Query-Fälle folgen mit Task 6 | Klasse 1: `undefined` → `Option`; `TerminalColorScheme` als Enum statt String-Union |
 | `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) |
 | `native/darwin/src/darwin-modifiers.c` | 76 | `src/native_modifiers.rs` (darwin) | portiert | Klasse 3 |
@@ -32,14 +35,22 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `src/stdin-buffer.ts` | 444 | Task 4 |
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | Task 4 |
 | 2026-08-13 | `src/terminal.ts` (vollständig) | 559 | Task 4 |
-| 2026-08-13 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (4 von 9 Fällen) | Die fünf `TUI.queryTerminalBackgroundColor`-Fälle brauchen `TuiMainScreen` → Task 6 |
+| 2026-08-13 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
 | `test/terminal.test.ts` | 300 | Task 4 |
 | 2026-08-13 | `src/tui.ts` (vollständig) | 1257 | Task 5 |
-| 2026-08-13 | `src/terminal-colors.ts` | 73 | Task 5 (vorgezogen aus Task 12) |
+| 2026-08-13 | `src/tui.ts` | 1257 | `src/tui.rs` | portiert; Tests folgen mit den Overlay-Suiten | Klasse 1: `TuiBase` (abstrakte Klasse) → `TuiCore` (geteilter Zustand) plus konkrete Renderer; Overlay-Handles halten einen `TuiCore`-Klon statt `this`-Closures; Timer rufen nicht zurück, sondern `render_deadline()` + `begin_frame()` treibt die Schleife des Renderers (Handlerausführung bleibt einsträngig wie im Node-Event-Loop); `addInputListener` gibt eine `ListenerId` statt einer Unsubscribe-Closure zurück; Promises → `async fn` mit tokio-Timeout |
+| `src/tui-main-screen.ts` | 586 | `src/tui_main_screen.rs` | verifiziert (tui-render-Suite ohne die Kitty-Bild-Fälle) | Klasse 1: geworfener `Error` des Überbreiten-Guards → `panic!` mit identischem Text (Programmierfehler, kein Kontrollfluss); Debug-Dump ohne `Math.random()`-Suffix |
+| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
+| `src/terminal-colors.ts` | 73 | Task 5 (vorgezogen aus Task 12) |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | Task 5 |
+| 2026-08-13 | `src/tui-main-screen.ts` | 586 | Task 6 |
+| 2026-08-13 | `test/tui-render.test.ts` | 832 | Task 6 |
+| 2026-08-13 | `src/terminal-image.ts` (Capability-/Bildzeilen-Teil) | 657 | Task 5/6 |
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
-| `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (4 von 9 Fällen) | Die fünf `TUI.queryTerminalBackgroundColor`-Fälle brauchen `TuiMainScreen` → Task 6 |
+| `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
 | `test/terminal.test.ts` | 300 | `tests/terminal.rs` (17 Fälle) | verifiziert |
 | `test/keys.test.ts` | 633 | Task 3 |
 | 2026-08-13 | `src/tui.ts:1-120` (Kontraktbereich) | 120 von 1257 | Master-Plan Task 2 (Kontrakt-Commit) |
@@ -55,6 +66,9 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/keys.ts` | 1401 | `src/keys.rs` | verifiziert | Klasse 1: `_kittyProtocolActive` → prozessglobales `AtomicBool`; `_lastEventType` entfällt (in TS nur geschrieben, nie gelesen); `String.fromCharCode`-Semantik (16-Bit-Truncation) als `js_from_char_code` nachgebildet; Codepoints als `i64` wegen der negativen Sentinels; das TS-Hilfsobjekt `Key` (reine Template-Literal-Typen) entfällt, KeyIds sind `&str`; `parseInt`-Überlauf ⇒ „kein Treffer" statt Gleitkomma-Codepoint (in beiden Fällen unauffindbarer Key) |
 | `src/stdin-buffer.ts` | 444 | `src/stdin_buffer.rs` | verifiziert | Klasse 1: `EventEmitter` → geordnete `Vec<StdinEvent>` als Rückgabewert; `setTimeout` → `pending_timeout_ms()` + `flush_timeout()` (Timer treibt der Aufrufer, Semantik identisch); Einzelzeichen-Emission pro `char` statt pro UTF-16-Codeeinheit (lone Surrogates sind in Rust-Strings nicht darstellbar; für BMP-Eingaben identisch) |
 | `src/terminal.ts` | 559 | `src/terminal.rs` | verifiziert | Klasse 1: Node-Event-Loop → `pump()` mit tokio-`select!` (stdin-Leser als eigener Thread mit Kanal, Handler laufen auf dem TUI-Strang); `process.stdout.write`-Monkey-Patching der Tests → injizierbare Ausgabe-Senke; `setTimeout`-Timer → Deadlines in `pump()`. Klasse 3: `setRawMode` → termios via libc (Flags empirisch gegen Nodes/libuv Raw-Mode auf macOS verifiziert: `~(BRKINT|ICRNL|INPCK|ISTRIP|IXON)`, `OPOST|ONLCR` bleiben, CS8 ohne CSIZE/PARENB, `~(ECHO|ICANON|IEXTEN|ISIG)`, VMIN=1, VTIME=0); `process.stdout.on("resize")` → SIGWINCH via tokio-signal; Windows-VT-Input als direkter Console-API-Aufruf statt Node-Addon |
+| `src/tui.ts` | 1257 | `src/tui.rs` | portiert; Tests folgen mit den Overlay-Suiten | Klasse 1: `TuiBase` (abstrakte Klasse) → `TuiCore` (geteilter Zustand) plus konkrete Renderer; Overlay-Handles halten einen `TuiCore`-Klon statt `this`-Closures; Timer rufen nicht zurück, sondern `render_deadline()` + `begin_frame()` treibt die Schleife des Renderers (Handlerausführung bleibt einsträngig wie im Node-Event-Loop); `addInputListener` gibt eine `ListenerId` statt einer Unsubscribe-Closure zurück; Promises → `async fn` mit tokio-Timeout |
+| `src/tui-main-screen.ts` | 586 | `src/tui_main_screen.rs` | verifiziert (tui-render-Suite ohne die Kitty-Bild-Fälle) | Klasse 1: geworfener `Error` des Überbreiten-Guards → `panic!` mit identischem Text (Programmierfehler, kein Kontrollfluss); Debug-Dump ohne `Math.random()`-Suffix |
+| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
 | `src/terminal-colors.ts` | 73 | `src/terminal_colors.rs` | verifiziert (Parser); die TUI-Query-Fälle folgen mit Task 6 | Klasse 1: `undefined` → `Option`; `TerminalColorScheme` als Enum statt String-Union |
 | `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) |
 | `native/darwin/src/darwin-modifiers.c` | 76 | `src/native_modifiers.rs` (darwin) | portiert | Klasse 3 |
@@ -69,11 +83,12 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/wrap-ansi.test.ts` | 266 | `tests/wrap_ansi.rs` (19 Fälle) | verifiziert |
 | `test/truncate-to-width.test.ts` | 127 | `tests/truncate_to_width.rs` (16 Fälle) | verifiziert |
 | `test/regression-regional-indicator-width.test.ts` | 52 | `tests/regression_regional_indicator_width.rs` (5 Fälle) | verifiziert |
-| `test/tab-width.test.ts` | 88 | `tests/tab_width.rs` (3 von 4 Fällen) | Fall 4 („keeps tab-containing overlays on one physical terminal row") rendert über `TuiMainScreen` + virtuelles Terminal → Task 6 |
-| `test/regression-overlay-cjk-boundary.test.ts` | 46 | `tests/regression_overlay_cjk_boundary.rs` (2 von 4 Fällen) | Die beiden `compositeTuiLine`-Fälle → Task 5 |
+| `test/tab-width.test.ts` | 88 | `tests/tab_width.rs` (4 Fälle) | verifiziert |
+| `test/regression-overlay-cjk-boundary.test.ts` | 46 | `tests/regression_overlay_cjk_boundary.rs` (4 Fälle) | verifiziert |
 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
-| `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (4 von 9 Fällen) | Die fünf `TUI.queryTerminalBackgroundColor`-Fälle brauchen `TuiMainScreen` → Task 6 |
+| `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
 | `test/terminal.test.ts` | 300 | `tests/terminal.rs` (17 Fälle) | verifiziert |
 | `test/keys.test.ts` | 633 | `tests/keys.rs` (57 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/keys_oracle.rs` + `tests/fixtures/keys-oracle.json` | Differenztest gegen die TS-Implementierung: 1611 Eingabesequenzen × 637 KeyIds × beide Kitty-Zustände (≈ 2 Mio. `matchesKey`-Vergleiche) plus `parseKey`, `isKeyRelease`, `isKeyRepeat`, `decodeKittyPrintable`, `decodePrintableKey` — alle identisch |
@@ -132,7 +147,12 @@ portierten Tests sie nicht beobachten):
 2. **DECAWM (CSI ?7l)** wird von vt100 ignoriert. Nicht beobachtbar: der
    Alt-Screen positioniert vor jeder Zeile absolut (CUP), der Main-Screen
    garantiert per Überbreiten-Guard Zeilen ≤ Terminalbreite.
-3. **Emoji-Zellbreite**: vt100 rechnet 2 (wie `graphemeWidth` der TUI),
+3. **Resize-Verankerung**: `@xterm/headless` verankert beim Resize unten
+   (Verkleinern schiebt obere Zeilen in den Scrollback, Vergrößern holt sie
+   zurück), `vt100` nicht. Der Harness baut den Puffer beim Resize aus dem
+   bisherigen Text neu auf und bildet das Verhalten damit nach; Attribute gehen
+   dabei verloren (der Harness liest nur Text).
+4. **Emoji-Zellbreite**: vt100 rechnet 2 (wie `graphemeWidth` der TUI),
    `@xterm/headless` mit Unicode-V6-Tabellen 1. vt100 stimmt damit mit dem
    Breitenmodell der App überein; `translateToString` liefert in beiden Fällen
    dieselbe Zeichenfolge.

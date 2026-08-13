@@ -1,10 +1,60 @@
 //! Port von `packages/tui/test/tab-width.test.ts` (88 LOC).
 //!
-//! Der vierte Fall der TS-Suite ("keeps tab-containing overlays on one physical
-//! terminal row") rendert über `TuiMainScreen` gegen das virtuelle Terminal und
-//! folgt mit Task 6.
-
+use notagent_tui::test_terminal::VirtualTerminal;
+use notagent_tui::tui::{Component, OverlayOptions, SizeValue, TuiStopOptions, component_ref};
+use notagent_tui::tui_main_screen::TuiMainScreen;
 use notagent_tui::{extract_segments, normalize_terminal_output, slice_with_width, visible_width};
+
+/// `class FullViewportContent` of the TS suite.
+struct FullViewportContent;
+
+impl Component for FullViewportContent {
+    fn render(&mut self, width: usize) -> Vec<String> {
+        ["base 0", "base 1", "base 2"]
+            .iter()
+            .map(|line| format!("{line:<width$}"))
+            .collect()
+    }
+
+    fn invalidate(&mut self) {}
+}
+
+/// `class TabStatusOverlay` of the TS suite.
+struct TabStatusOverlay;
+
+impl Component for TabStatusOverlay {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        vec!["\tX".to_string()]
+    }
+
+    fn invalidate(&mut self) {}
+}
+
+#[tokio::test]
+async fn keeps_tab_containing_overlays_on_one_physical_terminal_row() {
+    let terminal = VirtualTerminal::new(16, 3);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().add_child(component_ref(FullViewportContent));
+    tui.core().show_overlay(
+        component_ref(TabStatusOverlay),
+        Some(OverlayOptions {
+            width: Some(SizeValue::Cells(4)),
+            row: Some(SizeValue::Cells(1)),
+            col: Some(SizeValue::Cells(4)),
+            ..OverlayOptions::default()
+        }),
+    );
+    tui.start();
+    tui.wait_for_render().await;
+
+    assert_eq!(
+        terminal.get_viewport(),
+        ["base 0          ", "base   X        ", "base 2          "]
+    );
+    assert!(!terminal.get_writes().contains('\t'));
+
+    tui.stop(TuiStopOptions::default());
+}
 
 #[test]
 fn keeps_slice_helper_widths_consistent_with_visible_width() {
