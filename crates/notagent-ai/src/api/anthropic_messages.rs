@@ -19,6 +19,9 @@ use crate::types::{
     TextContent, ThinkingContent, ToolCall, Usage,
 };
 use crate::utils::json_parse::parse_streaming_json;
+use crate::utils::provider_retry::{
+    ProviderErrorInfo, ProviderRetryError, ProviderRetryOptions, retry_provider_request,
+};
 
 /// The six event names the TS implementation processes; everything else is ignored.
 pub const ANTHROPIC_MESSAGE_EVENTS: [&str; 6] = [
@@ -48,6 +51,30 @@ pub struct AnthropicStreamState {
     tool_names: Vec<String>,
     saw_message_start: bool,
     saw_message_stop: bool,
+}
+
+/// A failed HTTP attempt; the retry policy probes its status and headers.
+struct RetryableRequestError {
+    message: String,
+    status: Option<u16>,
+    headers: Vec<(String, String)>,
+}
+
+impl ProviderErrorInfo for RetryableRequestError {
+    fn status(&self) -> Option<u16> {
+        self.status
+    }
+
+    fn header(&self, name: &str) -> Option<String> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.clone())
+    }
+
+    fn message(&self) -> String {
+        self.message.clone()
+    }
 }
 
 /// Error of the stream state machine; the caller turns it into an `error` event.
@@ -682,18 +709,57 @@ async fn run_request(
         .fetch
         .clone()
         .unwrap_or_else(|| Arc::new(ReqwestFetch::default()));
-    let response = fetch
-        .fetch(FetchRequest {
-            method: "POST".to_string(),
-            url: format!("{}/v1/messages", model.base_url.trim_end_matches('/')),
-            headers: request_headers,
-            body: Some(
-                serde_json::to_vec(&params)
-                    .map_err(|error| AnthropicStreamError(error.to_string()))?,
-            ),
-        })
-        .await
-        .map_err(|error| AnthropicStreamError(error.to_string()))?;
+    let url = format!("{}/v1/messages", model.base_url.trim_end_matches('/'));
+    let body =
+        serde_json::to_vec(&params).map_err(|error| AnthropicStreamError(error.to_string()))?;
+
+    // The SDK is called with `maxRetries: 0` in TS and wrapped here, so the backoff can
+    // honour the abort signal.
+    let response = retry_provider_request(
+        || {
+            let fetch = fetch.clone();
+            let url = url.clone();
+            let request_headers = request_headers.clone();
+            let body = body.clone();
+            async move {
+                let response = fetch
+                    .fetch(FetchRequest {
+                        method: "POST".to_string(),
+                        url,
+                        headers: request_headers,
+                        body: Some(body),
+                    })
+                    .await
+                    .map_err(|error| RetryableRequestError {
+                        message: error.to_string(),
+                        status: None,
+                        headers: Vec::new(),
+                    })?;
+                if response.status < 200 || response.status >= 300 {
+                    let status = response.status;
+                    let headers = response.headers.clone();
+                    let body = read_body(response.body).await;
+                    return Err(RetryableRequestError {
+                        message: format!("{status}: {body}"),
+                        status: Some(status),
+                        headers,
+                    });
+                }
+                Ok(response)
+            }
+        },
+        ProviderRetryOptions {
+            max_retries: request.max_retries,
+            max_retry_delay_ms: request.max_retry_delay_ms,
+            signal: request.signal.clone(),
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        ProviderRetryError::Request(error) => AnthropicStreamError(error.message),
+        ProviderRetryError::RetryDelayTooLong(message) => AnthropicStreamError(message),
+        ProviderRetryError::Aborted => AnthropicStreamError("Request aborted".to_string()),
+    })?;
 
     if let Some(on_response) = &request.on_response {
         on_response(
@@ -704,11 +770,6 @@ async fn run_request(
             model,
         )
         .await;
-    }
-
-    if response.status < 200 || response.status >= 300 {
-        let body = read_body(response.body).await;
-        return Err(AnthropicStreamError(format!("{}: {body}", response.status)));
     }
 
     stream.push(AssistantMessageEvent::Start {

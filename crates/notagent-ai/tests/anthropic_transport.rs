@@ -432,3 +432,84 @@ async fn stream_simple_uses_effort_for_adaptive_thinking_models() {
     assert_eq!(body["output_config"]["effort"], serde_json::json!("high"));
     assert!(body.get("budget_tokens").is_none());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retryable_status_is_retried_and_the_response_hook_only_sees_the_final_one() {
+    // TS calls the SDK with `maxRetries: 0` and wraps it in `retryProviderRequest`, so
+    // `onResponse` runs after the retries, never for the failed attempts.
+    let attempts = Arc::new(Mutex::new(0usize));
+    let seen_statuses = Arc::new(Mutex::new(Vec::new()));
+    let counting = attempts.clone();
+    let fetch = Arc::new(SequenceFetch {
+        attempts: counting,
+        statuses: vec![429, 200],
+    });
+    let recorded = seen_statuses.clone();
+    let events = stream(
+        model(),
+        context(),
+        ProviderRequestOptions {
+            api_key: Some("sk-test".to_string()),
+            fetch: Some(fetch),
+            max_retries: Some(1),
+            max_retry_delay_ms: Some(60_000),
+            on_response: Some(Arc::new(move |response, _model| {
+                recorded.lock().expect("poisoned").push(response.status);
+                Box::pin(async {})
+            })),
+            ..ProviderRequestOptions::default()
+        },
+        AnthropicOptions::default(),
+    );
+    let mut last = None;
+    while let Some(event) = events.next().await {
+        last = Some(event);
+    }
+    assert!(matches!(last, Some(AssistantMessageEvent::Done { .. })));
+    assert_eq!(*attempts.lock().expect("poisoned"), 2);
+    assert_eq!(*seen_statuses.lock().expect("poisoned"), vec![200]);
+}
+
+/// Answers with one status per attempt; a 200 replies with a minimal complete stream.
+struct SequenceFetch {
+    attempts: Arc<Mutex<usize>>,
+    statuses: Vec<u16>,
+}
+
+impl FetchFn for SequenceFetch {
+    fn fetch(
+        &self,
+        _request: FetchRequest,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FetchResponse, FetchError>> + Send>,
+    > {
+        let attempt = {
+            let mut attempts = self.attempts.lock().expect("poisoned");
+            *attempts += 1;
+            *attempts - 1
+        };
+        let status = *self
+            .statuses
+            .get(attempt)
+            .or_else(|| self.statuses.last())
+            .expect("at least one status");
+        Box::pin(async move {
+            let body = if status == 200 {
+                concat!(
+                    "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"usage\":{}}}\n\n",
+                    "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
+                    "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+                )
+                .to_string()
+            } else {
+                "{\"error\":{\"message\":\"rate limited\"}}".to_string()
+            };
+            Ok(FetchResponse {
+                status,
+                status_text: String::new(),
+                headers: vec![("retry-after".to_string(), "0".to_string())],
+                body: FetchBody::Bytes(body.into_bytes()),
+            })
+        })
+    }
+}
