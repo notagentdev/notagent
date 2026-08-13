@@ -87,6 +87,16 @@ pub trait ScrollLayoutState {
     fn scrollbar_visible(&self) -> bool;
     /// Style applied to the scrollbar thumb.
     fn scrollbar_style_fn(&self) -> Rc<dyn Fn(&str) -> String>;
+    /// Scroll by a relative amount; returns the unconsumed delta.
+    fn scroll_by_lines(&mut self, lines: i64) -> i64;
+    /// Scroll to an absolute offset.
+    fn scroll_to_line(&mut self, scroll_top: i64, disable_follow: bool);
+    /// Scroll to the top.
+    fn scroll_to_start_line(&mut self);
+    /// Scroll to the bottom.
+    fn scroll_to_end_line(&mut self);
+    /// Whether the view sticks to the content end.
+    fn following_end(&self) -> bool;
 }
 
 /// Shared scroll state (the TS version passes the `ScrollView` itself).

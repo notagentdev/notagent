@@ -305,6 +305,26 @@ impl ScrollLayoutState for ScrollViewState {
         Rc::clone(&self.scrollbar_style)
     }
 
+    fn scroll_by_lines(&mut self, lines: i64) -> i64 {
+        ScrollViewState::scroll_by(self, lines)
+    }
+
+    fn scroll_to_line(&mut self, scroll_top: i64, disable_follow: bool) {
+        ScrollViewState::scroll_to(self, scroll_top, ScrollToOptions { disable_follow });
+    }
+
+    fn scroll_to_start_line(&mut self) {
+        ScrollViewState::scroll_to_start(self);
+    }
+
+    fn scroll_to_end_line(&mut self) {
+        ScrollViewState::scroll_to_end(self);
+    }
+
+    fn following_end(&self) -> bool {
+        self.following_end
+    }
+
     fn update_layout(&mut self, content_height: usize, viewport_height: usize) {
         self.content_height = content_height;
         self.current_viewport_height = viewport_height;

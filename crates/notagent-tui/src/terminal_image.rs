@@ -250,18 +250,58 @@ pub struct KittyImageMetadata {
     pub height_px: u32,
 }
 
-fn kitty_image_registry() -> &'static Mutex<std::collections::HashMap<u32, KittyImageMetadata>> {
-    static CELL: OnceLock<Mutex<std::collections::HashMap<u32, KittyImageMetadata>>> =
-        OnceLock::new();
-    CELL.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+#[derive(Debug, Clone, Copy)]
+struct RegisteredKittyImage {
+    metadata: KittyImageMetadata,
+    transmission_generation: u64,
+}
+
+type KittyRegistry = (
+    std::collections::HashMap<u32, RegisteredKittyImage>,
+    std::collections::VecDeque<u32>,
+    u64,
+);
+
+fn kitty_image_registry() -> &'static Mutex<KittyRegistry> {
+    static CELL: OnceLock<Mutex<KittyRegistry>> = OnceLock::new();
+    CELL.get_or_init(|| {
+        Mutex::new((
+            std::collections::HashMap::new(),
+            std::collections::VecDeque::new(),
+            0,
+        ))
+    })
 }
 
 /// Remember the metadata of an encoded image (called by the image encoders).
+///
+/// Each registration bumps the transmission generation, which the alternate
+/// screen uses to decide whether an image has to be re-transmitted.
 pub fn register_kitty_image_metadata(metadata: KittyImageMetadata) {
-    kitty_image_registry()
+    let mut registry = kitty_image_registry()
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(metadata.image_id, metadata);
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.2 += 1;
+    let generation = registry.2;
+    if registry.0.remove(&metadata.image_id).is_some() {
+        let position = registry.1.iter().position(|id| *id == metadata.image_id);
+        if let Some(position) = position {
+            registry.1.remove(position);
+        }
+    }
+    registry.0.insert(
+        metadata.image_id,
+        RegisteredKittyImage {
+            metadata,
+            transmission_generation: generation,
+        },
+    );
+    registry.1.push_back(metadata.image_id);
+    if registry.0.len() > 1000
+        && let Some(oldest) = registry.1.pop_front()
+    {
+        registry.0.remove(&oldest);
+    }
 }
 
 /// Image id of a Kitty placement line, if it carries one.
@@ -277,12 +317,94 @@ fn kitty_image_id(line: &str) -> Option<u32> {
 
 /// Metadata of the image a rendered line places, if it is registered.
 pub fn get_kitty_image_metadata(line: &str) -> Option<KittyImageMetadata> {
+    Some(get_registered_kitty_image(line)?.metadata)
+}
+
+fn get_registered_kitty_image(line: &str) -> Option<RegisteredKittyImage> {
     let image_id = kitty_image_id(line)?;
     kitty_image_registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .0
         .get(&image_id)
         .copied()
+}
+
+/// Control keys kept when a transmission is replaced by a pure placement.
+const KITTY_PLACEMENT_CONTROL_KEYS: [&str; 13] = [
+    "i", "p", "x", "y", "w", "h", "X", "Y", "c", "r", "C", "U", "z",
+];
+
+/// A Kitty placement extracted from a rendered line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KittyImagePlacement {
+    /// Image id.
+    pub image_id: u32,
+    /// Generation of the transmission this placement belongs to.
+    pub transmission_generation: u64,
+    /// Bytes the transmission occupies in the line.
+    pub transmission_bytes: usize,
+    /// Estimated decoded size in bytes.
+    pub estimated_decoded_bytes: u64,
+    /// Pure placement command without image data.
+    pub sequence: String,
+    /// The line with the transmission replaced by `sequence`.
+    pub replacement_line: String,
+}
+
+/// Placement information of a rendered image line.
+pub fn get_kitty_image_placement(line: &str) -> Option<KittyImagePlacement> {
+    let registered = get_registered_kitty_image(line)?;
+    let sequence_start = line.find(KITTY_PREFIX)?;
+    let controls_start = sequence_start + KITTY_PREFIX.len();
+    let controls_end = line[controls_start..].find(';')? + controls_start;
+    let first_controls = line[controls_start..controls_end].to_string();
+
+    // Chunked transmissions continue with further `m=1` commands.
+    let mut command_start = sequence_start;
+    let mut command_controls = first_controls.clone();
+    let transmission_end;
+    loop {
+        let terminator = line[command_start + KITTY_PREFIX.len()..].find("\x1b\\")?
+            + command_start
+            + KITTY_PREFIX.len();
+        let end = terminator + 2;
+        let continues = command_controls.split(',').any(|control| control == "m=1");
+        if !continues {
+            transmission_end = end;
+            break;
+        }
+        command_start = end;
+        if !line[command_start..].starts_with(KITTY_PREFIX) {
+            return None;
+        }
+        let next_controls_start = command_start + KITTY_PREFIX.len();
+        let next_controls_end = line[next_controls_start..].find(';')? + next_controls_start;
+        command_controls = line[next_controls_start..next_controls_end].to_string();
+    }
+
+    let controls: Vec<&str> = first_controls
+        .split(',')
+        .filter(|control| {
+            let key = control.split('=').next().unwrap_or("");
+            KITTY_PLACEMENT_CONTROL_KEYS.contains(&key)
+        })
+        .collect();
+    let sequence = format!("\x1b_Ga=p,q=2,{}\x1b\\", controls.join(","));
+    Some(KittyImagePlacement {
+        image_id: registered.metadata.image_id,
+        transmission_generation: registered.transmission_generation,
+        transmission_bytes: transmission_end - sequence_start,
+        estimated_decoded_bytes: u64::from(registered.metadata.width_px)
+            * u64::from(registered.metadata.height_px)
+            * 4,
+        sequence: sequence.clone(),
+        replacement_line: format!(
+            "{}{sequence}{}",
+            &line[..sequence_start],
+            &line[transmission_end..]
+        ),
+    })
 }
 
 /// Crop a Kitty placement line to a vertical slice of its rows.

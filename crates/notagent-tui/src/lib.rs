@@ -19,6 +19,7 @@ pub mod terminal_image;
 #[cfg(feature = "test-terminal")]
 pub mod test_terminal;
 pub mod tui;
+pub mod tui_alt_screen;
 pub mod tui_main_screen;
 pub mod undo_stack;
 mod unicode_tables;
@@ -82,6 +83,7 @@ pub use tui::{
     OverlayMargin, OverlayOptions, OverlayUnfocusOptions, SizeValue, TuiCore, TuiInputListener,
     TuiInputListenerResult, TuiMode, TuiStopOptions, component_ref, composite_tui_line,
 };
+pub use tui_alt_screen::{TuiAltScreen, TuiAltScreenOptions};
 pub use tui_main_screen::{TuiMainScreen, TuiMainScreenRenderState};
 // Utilities
 pub use utils::{
