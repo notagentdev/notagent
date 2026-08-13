@@ -24,6 +24,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `test/keys.test.ts` | 633 | Task 3 |
 | 2026-08-13 | `src/tui.ts:1-120` (Kontraktbereich) | 120 von 1257 | Master-Plan Task 2 (Kontrakt-Commit) |
 | 2026-08-13 | `src/terminal.ts:1-140` (Kontraktbereich) | 140 von 559 | Master-Plan Task 2 (Kontrakt-Commit) |
+| 2026-08-13 | `node_modules/get-east-asian-width/{index,lookup,lookup-data,utilities}.js` | 213 | Task 2 (Referenz für `eastAsianWidth`) |
 
 ## Ledger
 
@@ -31,6 +32,25 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 |---|---|---|---|---|
 | `src/tui.ts` | 1257 | `src/tui.rs` | Kontrakt portiert (Component/Focusable/CURSOR_MARKER); Rest offen (Task 5) | Klasse 1: `handleInput?` → Default-Methode; `isFocusable()`-Type-Guard → `Component::as_focusable()`; Referenzsemantik der TS-Objekte → `ComponentRef = Rc<RefCell<dyn Component>>` |
 | `src/terminal.ts` | 559 | `src/terminal.rs` | Kontrakt portiert (`Terminal`-Trait); `ProcessTerminal` offen (Task 4) | Klasse 1: Default-Parameter von `drainInput` → `Option<u64>`; `async` Methode via `async-trait` (dyn-Kompatibilität) |
+| `src/utils.ts` | 1326 | `src/utils.rs` (+ generiertes `src/unicode_tables.rs`) | verifiziert | Klasse 3: `Intl.Segmenter` → `unicode-segmentation`; `get-east-asian-width` und die `\p{…}`-Klassen (inkl. `\p{RGI_Emoji}`) als generierte Tabellen aus derselben Node-/Datenquelle (Rusts `regex` kennt weder `\p{RGI_Emoji}` noch `[A--[B]]`). Klasse 1: gepoolter `AnsiCodeTracker` in `extractSegments` → lokale Instanz (kein globaler Zustand, `clear()` beim Eintritt macht das verhaltensgleich); Width-Cache als `thread_local` mit identischer FIFO-Eviktion (512); Default-Parameter `truncateToWidth(text, w)` → zusätzliche Funktion `truncate_to_width_opts` |
+
+## Portierte Testdateien
+
+| TS-Testdatei | LOC | Rust-Test | Status |
+|---|---|---|---|
+| `test/wrap-ansi.test.ts` | 266 | `tests/wrap_ansi.rs` (19 Fälle) | verifiziert |
+| `test/truncate-to-width.test.ts` | 127 | `tests/truncate_to_width.rs` (16 Fälle) | verifiziert |
+| `test/regression-regional-indicator-width.test.ts` | 52 | `tests/regression_regional_indicator_width.rs` (5 Fälle) | verifiziert |
+| `test/tab-width.test.ts` | 88 | `tests/tab_width.rs` (3 von 4 Fällen) | Fall 4 („keeps tab-containing overlays on one physical terminal row") rendert über `TuiMainScreen` + virtuelles Terminal → Task 6 |
+| `test/regression-overlay-cjk-boundary.test.ts` | 46 | `tests/regression_overlay_cjk_boundary.rs` (2 von 4 Fällen) | Die beiden `compositeTuiLine`-Fälle → Task 5 |
+| — (zusätzlich) | — | `tests/utils_oracle.rs` + `tests/fixtures/utils-oracle.json` | Differenztest gegen die TS-Implementierung: 2695 Korpusfälle × {visibleWidth, wrapTextWithAnsi ×5 Breiten, truncateToWidth ×5 (auch mit `…`+Padding), sliceWithWidth ×5 Konfigurationen, extractSegments ×4} — alle identisch. Erzeugt von `tools/gen-utils-oracle.mjs` (Master-Plan, Risiko 1) |
+
+## Werkzeuge
+
+| Datei | Zweck |
+|---|---|
+| `tools/gen-unicode-tables.mjs` | Erzeugt `src/unicode_tables.rs` aus der Node-Runtime (Unicode 17.0) und `get-east-asian-width`. Die 1494 RGI-ZWJ-Sequenzen entstehen aus `emoji-zwj-sequences.txt` (Emoji 16.0, alle 1468 Einträge gegen V8 verifiziert) plus vollständiger Paarsuche über alle 1438 Emoji-Codepoints (26 Ergänzungen aus Unicode 17). |
+| `tools/gen-utils-oracle.mjs` | Erzeugt `tests/fixtures/utils-oracle.json` aus `packages/tui/src/utils.ts`. |
 
 ## Ausschlüsse
 

@@ -8,3 +8,7 @@ description = "Differenzielle Terminal-Rendering-Engine und Komponenten."
 
 [dependencies]
 async-trait = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

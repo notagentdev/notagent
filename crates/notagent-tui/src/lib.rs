@@ -5,6 +5,14 @@
 
 pub mod terminal;
 pub mod tui;
+mod unicode_tables;
+pub mod utils;
 
 pub use terminal::{InputHandler, ResizeHandler, Terminal};
 pub use tui::{CURSOR_MARKER, Component, ComponentRef, Focusable};
+pub use utils::{
+    apply_background_to_line, extract_ansi_code, extract_segments, get_grapheme_cell_range,
+    get_osc8_link_at_column, is_cjk_break, is_punctuation_char, is_whitespace_char,
+    normalize_terminal_output, slice_by_column, slice_with_width, strip_terminal_sequences,
+    truncate_to_width, truncate_to_width_opts, visible_width, wrap_text_with_ansi,
+};
