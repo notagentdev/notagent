@@ -62,6 +62,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
+| `test/truncated-text.test.ts` | 129 | `tests/truncated_text.rs` (9 Fälle) | verifiziert |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
@@ -106,6 +107,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
+| `test/truncated-text.test.ts` | 129 | `tests/truncated_text.rs` (9 Fälle) | verifiziert |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
@@ -126,6 +128,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
+| `test/truncated-text.test.ts` | 129 | `tests/truncated_text.rs` (9 Fälle) | verifiziert |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | Task 7 |
@@ -136,6 +139,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
+| `test/truncated-text.test.ts` | 129 | `tests/truncated_text.rs` (9 Fälle) | verifiziert |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
@@ -209,6 +213,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
+| `test/truncated-text.test.ts` | 129 | `tests/truncated_text.rs` (9 Fälle) | verifiziert |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
@@ -246,7 +251,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 6 Main-Screen-Renderer | fertig (3 Kitty-Vollredraw-Testfälle offen) |
 | 7 Layout-Engine + ScrollView | fertig (Text/VStack/HStack aus Task 9 vorgezogen; Testsuite vollständig) |
 | 8 Alt-Screen-Renderer | offen |
-| 9 Basis-Komponenten | fertig portiert (spacer, truncated-text, box, alt-screen-flash, loader, cancellable-loader, select-list, settings-list, input, image); offene Testfälle: input 14, truncated-text-Suite |
+| 9 Basis-Komponenten | fertig portiert (spacer, truncated-text, box, alt-screen-flash, loader, cancellable-loader, select-list, settings-list, input, image); offene Testfälle: 14 der 35 input-Fälle |
 | 10 Editor | teilweise: kill-ring, undo-stack, word-navigation portiert; editor.ts offen |
 | 11 Markdown + LaTeX | offen |
 | 12 Terminal-Bilder | Modul vollständig portiert; Testsuite (632 LOC) offen |
