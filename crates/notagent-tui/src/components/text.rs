@@ -5,6 +5,9 @@
 use std::rc::Rc;
 
 use crate::tui::Component;
+
+/// Background function applied to a rendered line.
+pub type BackgroundFn = Rc<dyn Fn(&str) -> String>;
 use crate::utils::{apply_background_to_line, visible_width, wrap_text_with_ansi};
 
 /// Displays multi-line text with word wrapping, padding and optional background.
@@ -12,7 +15,7 @@ pub struct Text {
     text: String,
     padding_x: usize,
     padding_y: usize,
-    custom_bg_fn: Option<Rc<dyn Fn(&str) -> String>>,
+    custom_bg_fn: Option<BackgroundFn>,
     cached_text: Option<String>,
     cached_width: Option<usize>,
     cached_lines: Option<Vec<String>>,
@@ -39,7 +42,7 @@ impl Text {
     }
 
     /// Set or clear the background function.
-    pub fn set_custom_bg_fn(&mut self, custom_bg_fn: Option<Rc<dyn Fn(&str) -> String>>) {
+    pub fn set_custom_bg_fn(&mut self, custom_bg_fn: Option<BackgroundFn>) {
         self.custom_bg_fn = custom_bg_fn;
         self.clear_cache();
     }
