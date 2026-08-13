@@ -4,6 +4,7 @@
 //! set mirrors `packages/tui/src/index.ts`; modules that are not ported yet
 //! (autocomplete, editor, markdown, latex, alt screen) are marked in the ledger.
 
+pub mod alt_screen_search;
 pub mod components;
 pub mod fuzzy;
 pub mod keybindings;
@@ -78,6 +79,10 @@ pub use terminal_image::{
     set_capabilities, set_cell_dimensions,
 };
 // Core TUI abstractions
+pub use alt_screen_search::{
+    AltScreenSearchComponent, AltScreenSearchMatch, AltScreenSearchSegment,
+    find_alt_screen_search_matches, get_alt_screen_search_match_key,
+};
 pub use tui::{
     CURSOR_MARKER, Component, ComponentRef, Container, Focusable, OverlayAnchor, OverlayHandle,
     OverlayMargin, OverlayOptions, OverlayUnfocusOptions, SizeValue, TuiCore, TuiInputListener,

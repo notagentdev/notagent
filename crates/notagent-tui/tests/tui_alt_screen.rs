@@ -132,3 +132,64 @@ async fn keeps_an_explicit_dock_fixed_while_the_transcript_scrolls() {
 
     tui.stop(TuiStopOptions::default());
 }
+
+// Transcript search corpus and match mapping.
+
+use notagent_tui::alt_screen_search::{
+    find_alt_screen_search_matches, get_alt_screen_search_match_key,
+};
+
+#[test]
+fn finds_matches_with_row_and_column_mapping() {
+    let lines = vec![
+        "hello world".to_string(),
+        "second line".to_string(),
+        "  spaced  text  ".to_string(),
+    ];
+
+    let matches = find_alt_screen_search_matches(&lines, "world");
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].segments.len(), 1);
+    assert_eq!(matches[0].segments[0].row, 0);
+    assert_eq!(matches[0].segments[0].start_col, 6);
+    assert_eq!(matches[0].segments[0].end_col, 11);
+}
+
+#[test]
+fn matches_are_case_insensitive_and_span_rows() {
+    let lines = vec!["hello".to_string(), "world".to_string()];
+    // Rows are joined with a separating space in the corpus.
+    let matches = find_alt_screen_search_matches(&lines, "HELLO WORLD");
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].segments.len(), 2);
+    assert_eq!(matches[0].segments[0].row, 0);
+    assert_eq!(matches[0].segments[1].row, 1);
+}
+
+#[test]
+fn whitespace_runs_in_the_query_are_normalized() {
+    let lines = vec!["spaced    text".to_string()];
+    let matches = find_alt_screen_search_matches(&lines, "  spaced   text  ");
+    assert_eq!(matches.len(), 1);
+}
+
+#[test]
+fn an_empty_query_matches_nothing() {
+    let lines = vec!["content".to_string()];
+    assert!(find_alt_screen_search_matches(&lines, "   ").is_empty());
+}
+
+#[test]
+fn match_keys_identify_position_and_extent() {
+    let lines = vec!["alpha beta".to_string()];
+    let matches = find_alt_screen_search_matches(&lines, "beta");
+    assert_eq!(get_alt_screen_search_match_key(&matches[0]), "0:6:0:10");
+}
+
+#[test]
+fn ansi_sequences_do_not_shift_match_columns() {
+    let lines = vec!["\x1b[31mred\x1b[0m target".to_string()];
+    let matches = find_alt_screen_search_matches(&lines, "target");
+    assert_eq!(matches[0].segments[0].start_col, 4);
+    assert_eq!(matches[0].segments[0].end_col, 10);
+}
