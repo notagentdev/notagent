@@ -1,7 +1,8 @@
-//! Differenzielle Terminal-Rendering-Engine und Komponenten.
+//! Differential terminal rendering engine and components.
 //!
-//! 1:1-Port von `packages/tui` (siehe crates/notagent-tui/PARITY.md).
-//! Das Export-Set spiegelt `packages/tui/src/index.ts`.
+//! 1:1 port of `packages/tui` (see crates/notagent-tui/PARITY.md). The export
+//! set mirrors `packages/tui/src/index.ts`; modules that are not ported yet
+//! (autocomplete, editor, markdown, latex, alt screen) are marked in the ledger.
 
 pub mod components;
 pub mod fuzzy;
@@ -24,20 +25,72 @@ mod unicode_tables;
 pub mod utils;
 pub mod word_navigation;
 
+// Components
+pub use components::box_component::BoxComponent;
+pub use components::cancellable_loader::CancellableLoader;
+pub use components::h_stack::HStack;
+pub use components::image::{Image, ImageOptions, ImageTheme};
+pub use components::input::Input;
+pub use components::loader::{Loader, LoaderIndicatorOptions};
+pub use components::scroll_view::{
+    Overscroll, ScrollToOptions, ScrollView, ScrollViewOptions, ScrollViewScrollbar,
+    ScrollViewState,
+};
+pub use components::select_list::{
+    SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
+    SelectListTruncatePrimaryContext,
+};
+pub use components::settings_list::{SettingItem, SettingsList, SettingsListTheme};
+pub use components::spacer::Spacer;
+pub use components::stack::{StackEntryOptions, StackOptions};
+pub use components::text::Text;
+pub use components::truncated_text::TruncatedText;
+pub use components::v_stack::VStack;
+// Fuzzy matching
+pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};
+// Keybindings
+pub use keybindings::{
+    KeybindingConflict, KeybindingDefinition, KeybindingsConfig, KeybindingsManager,
+    TUI_KEYBINDINGS, keybinding_keys, keybindings_match, set_keybindings,
+};
+// Keyboard input handling
 pub use keys::{
     KeyEventType, decode_kitty_printable, decode_printable_key, is_key_release, is_key_repeat,
     is_kitty_protocol_active, matches_key, parse_key, set_kitty_protocol_active,
 };
+// Input buffering for batch splitting
 pub use stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
-pub use terminal::{InputHandler, ResizeHandler, Terminal};
+// Terminal interface and implementations
+pub use terminal::{InputHandler, ProcessTerminal, ResizeHandler, Terminal};
+// Terminal colors
 pub use terminal_colors::{
     RgbColor, TerminalColorScheme, is_osc11_background_color_response,
     parse_osc11_background_color, parse_terminal_color_scheme_report,
 };
-pub use tui::{CURSOR_MARKER, Component, ComponentRef, Focusable};
+// Terminal image support
+pub use terminal_image::{
+    CellDimensions, ImageDimensions, ImageProtocol, ImageRenderOptions, TerminalCapabilities,
+    allocate_image_id, calculate_image_rows, delete_all_kitty_images, delete_kitty_image,
+    detect_capabilities, encode_iterm2, encode_kitty, get_capabilities, get_cell_dimensions,
+    get_gif_dimensions, get_image_dimensions, get_jpeg_dimensions, get_png_dimensions,
+    get_webp_dimensions, hyperlink, image_fallback, render_image, reset_capabilities_cache,
+    set_capabilities, set_cell_dimensions,
+};
+// Core TUI abstractions
+pub use tui::{
+    CURSOR_MARKER, Component, ComponentRef, Container, Focusable, OverlayAnchor, OverlayHandle,
+    OverlayMargin, OverlayOptions, OverlayUnfocusOptions, SizeValue, TuiCore, TuiInputListener,
+    TuiInputListenerResult, TuiMode, TuiStopOptions, component_ref, composite_tui_line,
+};
+pub use tui_main_screen::{TuiMainScreen, TuiMainScreenRenderState};
+// Utilities
 pub use utils::{
     apply_background_to_line, extract_ansi_code, extract_segments, get_grapheme_cell_range,
     get_osc8_link_at_column, is_cjk_break, is_punctuation_char, is_whitespace_char,
     normalize_terminal_output, slice_by_column, slice_with_width, strip_terminal_sequences,
     truncate_to_width, truncate_to_width_opts, visible_width, wrap_text_with_ansi,
 };
+// Word navigation and editor helpers
+pub use kill_ring::{KillRing, KillRingPushOptions};
+pub use undo_stack::UndoStack;
+pub use word_navigation::{WordNavigationOptions, find_word_backward, find_word_forward};
