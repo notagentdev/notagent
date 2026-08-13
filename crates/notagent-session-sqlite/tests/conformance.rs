@@ -211,7 +211,7 @@ async fn rejects_duplicate_ids_without_changing_state() {
             .get_log(&Default::default())
             .expect("log")
             .iter()
-            .map(|item| log_kinds(&[item.clone()])[0].1)
+            .map(|item| log_kinds(std::slice::from_ref(item))[0].1)
             .collect::<Vec<_>>(),
         vec![1, 2]
     );
