@@ -1,6 +1,6 @@
 # Parity-Ledger: notagent-agent
 
-TS-Quelle: `/Users/dev/projects/notagent-main/packages/agent` (~2 400 (funktionaler Kern) LOC in src/) — Workstream B.
+TS-Quelle: `/Users/dev/projects/notagent-main/packages/agent` (funktionaler Kern, ~2 400 LOC) — Workstream B.
 
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
@@ -9,16 +9,31 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
 | Datum | TS-/Referenz-Datei | LOC | gelesen von (Task) |
 |---|---|---|---|
-| | | | |
+| 2026-08-13 | `packages/agent/src/types.ts` | 443 | 1 |
+| 2026-08-13 | `packages/agent/src/index.ts` | 145 | 1 |
+| 2026-08-13 | `packages/agent/src/stream-fn.ts` | 20 | 1 |
+| 2026-08-13 | `packages/agent/src/harness/messages.ts` | 168 | 1 |
+| 2026-08-13 | `packages/coding-agent/src/core/messages.ts` (Konsumentenbeleg) | 120 (Auszug) | 1 |
 
 ## Ledger
 
 | TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
 |---|---|---|---|---|
-| | | | | |
+| `src/types.ts` | 443 | `types.rs` | verifiziert (Task 1) | Klasse 1: Kein Declaration Merging — die vier Custom-Rollen aus `harness/messages.ts:55-62` (identisch in `coding-agent/src/core/messages.ts:69-76`) sind feste `AgentMessage`-Varianten. Klasse 1: `AgentTool` ist ein Trait (TS-Interface mit `execute`), `AgentToolResult.details` ist `Option<Value>` (TS `T` kann `undefined` sein). Klasse 1: Callbacks als `Arc<dyn Fn(..) -> BoxFuture>`. Klasse 1: `pendingToolCalls` als `BTreeSet` (nur Mitgliedschaft wird ausgewertet). Klasse 3: `AbortSignal` → `CancellationToken`. |
+| `src/stream-fn.ts` | 20 | `stream_fn.rs` | portiert (Task 1, Tests in Task 12) | Klasse 1: `throw` → `Result<_, NoDefaultStreamFn>` mit wortgleicher Meldung |
+| `src/harness/messages.ts` | 168 | `harness/messages.rs` | portiert (Task 1, Tests in Task 12) | Klasse 1: `timestamp: string \| number` → `i64`; die String-Variante wandelt der Aufrufer (App) um |
+| `src/index.ts` | 145 | `lib.rs` | teilweise (Task 1) | vollständige Oberfläche in Task 13; Harness-Re-Exports entfallen laut Ausschlusstabelle |
 
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |
 |---|---|
-| | |
+| `src/harness/agent-harness.ts` | Master-Plan, Scope-Tabelle: Stub, dessen Methoden `HarnessNotImplemented` werfen |
+| `src/harness/**` außer `messages.ts` | Master-Plan: coding-agent importiert aus agent-core nur Agent, AgentMessage, AgentState, AgentTool, CustomMessage, setDefaultStreamFn, StreamFn, ThinkingLevel, uuidv7; Compaction/Tools/Sessions/Skills hat der coding-agent selbst (WS-C) |
+| `src/proxy.ts` (370) | WS-B-Plan Task 12: Entscheidung nach Konsumenten-Verifikation, dort dokumentiert |
+
+## Fixtures
+
+| Datei | Herkunft |
+|---|---|
+| `tests/fixtures/session-messages.jsonl` | 44 unveränderte `message`-Einträge aus `packages/coding-agent/test/fixtures/{before-compaction,large-session}.jsonl` (alle 17 vorkommenden Feld-/Content-Signaturen) |

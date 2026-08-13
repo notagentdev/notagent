@@ -44,7 +44,44 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 
 ## Sektion B (Workstream B — AI + Agent)
 
-_(noch leer)_
+### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)
+- **Von / An**: B → C (und A, soweit betroffen)
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-ai/src/types.rs`, `crates/notagent-agent/src/types.rs`
+- **Beleg**: `packages/ai/src/types.ts` (830), `packages/agent/src/types.ts` (443),
+  `packages/agent/src/harness/messages.ts:55-62`, `packages/coding-agent/src/core/messages.ts:69-76`,
+  Session-Fixtures `packages/coding-agent/test/fixtures/*.jsonl`
+- **Wunsch**: keiner — dies dokumentiert die Form der Typen, gegen die C programmiert:
+  1. `AgentMessage` ist eine feste Aufzählung mit sieben Rollen (`user`, `assistant`, `toolResult`,
+     `bashExecution`, `custom`, `branchSummary`, `compactionSummary`). Declaration Merging gibt es in
+     Rust nicht; die vier Custom-Rollen sind in agent-core und coding-agent identisch deklariert.
+  2. `AgentTool` ist ein Trait (`name`/`description`/`parameters`/`label`/`execute`/`execution_mode`,
+     `to_tool()` liefert die `Tool`-Sicht). Tools werden als `Arc<dyn AgentTool>` gehalten.
+  3. Optionshierarchie per Komposition: `SimpleStreamOptions { base: StreamOptions { base:
+     ProviderRequestOptions, .. }, .. }`; alle drei Ebenen haben `Default`.
+  4. `Usage.total_tokens` ist `Option<u64>`: historische Session-Dateien der TS-App enthalten
+     `totalTokens` nicht (18 von 32 Assistant-Nachrichten im Fixture). `estimate.ts` behandelt
+     `undefined` und `0` gleich, das Verhalten bleibt identisch.
+  5. Content-Blöcke (`TextContent`, `ThinkingContent`, `ToolCall`) haben ein `extra: Map<String, Value>`
+     (`#[serde(flatten)]`). Es hält Scratch-Felder abgebrochener Streams (`partialJson`), die die
+     TS-Implementierung in Session-Dateien schreibt — nötig für verlustfreie Session-Roundtrips.
+  6. Zahlen werden JS-kompatibel serialisiert (`utils/js_number`): `0` statt `0.0`, `0.000003`
+     statt `3e-6`.
+- **Status**: umgesetzt (Kontrakt-Commit `ai: …`/`agent: …`, Task 1)
+
+### B-2 serde_json-Feature `raw_value` für vollständige JS-Zahlparität
+- **Von / An**: B → C (Owner der Root-`Cargo.toml`)
+- **Datum**: 2026-08-13
+- **Betrifft**: `Cargo.toml`, `[workspace.dependencies] serde_json`
+- **Beleg**: `JSON.stringify(0.000003)` → `"0.000003"`, `serde_json` → `"3e-6"`;
+  `JSON.stringify(1e20)` → `"100000000000000000000"`, `serde_json` → `"1e+20"`.
+  Referenzwerte in `crates/notagent-ai/src/utils/js_number.rs` (Test gegen Node-Ausgabe).
+- **Wunsch**: `serde_json = { version = "1", features = ["preserve_order", "raw_value"] }`.
+  Damit kann `js_number::serialize` nicht-ganzzahlige Werte über `RawValue` exakt in
+  JS-Schreibweise ausgeben. Ohne das Feature bleibt die aktuelle Lösung (ganzzahlige Werte als
+  JSON-Integer), die den häufigsten Fall (`0`) abdeckt; Kosten-Nachkommawerte unterhalb 1e-6
+  bzw. ab 1e21 würden abweichend formatiert.
+- **Status**: offen
 
 ## Sektion C (Workstream C — App)
 

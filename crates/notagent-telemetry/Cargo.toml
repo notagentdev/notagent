@@ -7,3 +7,4 @@ license.workspace = true
 description = "Vendor-neutrale Telemetrie-Contracts (Spans, Events, Attribute)."
 
 [dependencies]
+serde = { workspace = true }
