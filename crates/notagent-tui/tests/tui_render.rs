@@ -887,3 +887,120 @@ async fn deletes_previously_rendered_image_ids_during_full_redraws() {
 
     tui.stop(TuiStopOptions::default());
 }
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn falls_back_to_full_redraw_when_a_kitty_pre_clear_would_scroll() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 2);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["before"]);
+    tui.start();
+    tui.wait_for_render().await;
+    let redraws_before_image = tui.full_redraws();
+    terminal.clear_writes();
+
+    let image_lines = with_kitty_image_lines(3, 30);
+    let mut lines = vec!["before".to_string()];
+    lines.extend(image_lines);
+    lines.push("after".to_string());
+    handle.set_lines(lines);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    assert!(
+        tui.full_redraws() > redraws_before_image,
+        "an unsafe image pre-clear forces a full redraw"
+    );
+    assert!(
+        terminal.get_writes().contains("\x1b[2J"),
+        "the fallback clears and redraws fully"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn reserves_kitty_image_rows_before_drawing_during_full_redraw_fallbacks() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 5);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["l0", "l1", "l2", "l3", "l4"]);
+    tui.start();
+    tui.wait_for_render().await;
+    let redraws_before_image = tui.full_redraws();
+    terminal.clear_writes();
+
+    let image_lines = with_kitty_image_lines(3, 30);
+    let image_sequence = image_lines[0].clone();
+    let mut lines: Vec<String> = ["l0", "l1", "l2", "l3", "l4"]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    lines.extend(image_lines);
+    lines.push("after".to_string());
+    handle.set_lines(lines);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let writes = terminal.get_writes();
+    assert!(
+        tui.full_redraws() > redraws_before_image,
+        "a scrolling image append forces a full redraw"
+    );
+    assert!(
+        writes.contains(&format!("\r\n\r\n\x1b[2A{image_sequence}\x1b[2B")),
+        "the full redraw reserves the visible image rows before drawing the placement"
+    );
+    assert!(
+        !writes.contains(&format!("{image_sequence}\r\n\x1b[0m")),
+        "the full redraw must not write reserved padding rows after the placement"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn does_not_use_cursor_up_placement_for_images_taller_than_the_viewport() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 5);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    handle.set_lines(["before"]);
+    tui.start();
+    tui.wait_for_render().await;
+    terminal.clear_writes();
+
+    let image_lines = with_kitty_image_lines(6, 60);
+    let image_sequence = image_lines[0].clone();
+    assert!(
+        image_lines.len() > 5,
+        "the test image must exceed the viewport height"
+    );
+
+    let mut lines = vec!["before".to_string()];
+    lines.extend(image_lines.clone());
+    lines.push("after".to_string());
+    handle.set_lines(lines);
+    tui.request_render(true);
+    tui.wait_for_render().await;
+
+    let writes = terminal.get_writes();
+    assert!(writes.contains(&image_sequence), "the placement is drawn");
+    assert!(
+        !writes.contains(&format!("\x1b[{}A{image_sequence}", image_lines.len() - 1)),
+        "taller-than-viewport images keep the first-row placement path"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}

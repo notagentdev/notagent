@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use notagent_tui::components::input::Input;
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Focusable};
 use notagent_tui::visible_width;
 
 /// Ctrl+A / Ctrl+E / Ctrl+W / Ctrl+Y / Ctrl+U / Ctrl+K as raw control bytes.
@@ -346,4 +346,220 @@ fn undo_does_nothing_when_undo_stack_is_empty() {
     let mut input = Input::new();
     input.handle_input("\x1b[45;5u"); // Ctrl+- (undo)
     assert_eq!(input.get_value(), "");
+}
+
+// === Undo ===
+
+const UNDO: &str = "\x1b[45;5u";
+
+/// Type the characters of `text` one by one.
+fn type_text(input: &mut Input, text: &str) {
+    for character in text.chars() {
+        input.handle_input(&character.to_string());
+    }
+}
+
+#[test]
+fn does_nothing_when_the_undo_stack_is_empty() {
+    let mut input = Input::new();
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "");
+}
+
+#[test]
+fn coalesces_consecutive_word_characters_into_one_undo_unit() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello world");
+    assert_eq!(input.get_value(), "hello world");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "");
+}
+
+#[test]
+fn undoes_spaces_one_at_a_time() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello  ");
+    assert_eq!(input.get_value(), "hello  ");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello ");
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello");
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "");
+}
+
+#[test]
+fn undoes_backspace() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello");
+    input.handle_input("\x7f");
+    assert_eq!(input.get_value(), "hell");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello");
+}
+
+#[test]
+fn undoes_forward_delete() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello");
+    input.handle_input(CTRL_A);
+    input.handle_input("\x1b[C");
+    input.handle_input("\x1b[3~");
+    assert_eq!(input.get_value(), "hllo");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello");
+}
+
+#[test]
+fn undoes_ctrl_w() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello world");
+    input.handle_input(CTRL_W);
+    assert_eq!(input.get_value(), "hello ");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello world");
+}
+
+#[test]
+fn undoes_ctrl_k() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello world");
+    input.handle_input(CTRL_A);
+    for _ in 0..6 {
+        input.handle_input("\x1b[C");
+    }
+
+    input.handle_input(CTRL_K);
+    assert_eq!(input.get_value(), "hello ");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello world");
+}
+
+#[test]
+fn undoes_ctrl_u() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello world");
+    input.handle_input(CTRL_A);
+    for _ in 0..6 {
+        input.handle_input("\x1b[C");
+    }
+
+    input.handle_input(CTRL_U);
+    assert_eq!(input.get_value(), "world");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello world");
+}
+
+#[test]
+fn undoes_yank() {
+    let mut input = Input::new();
+    type_text(&mut input, "hello ");
+    input.handle_input(CTRL_W);
+    input.handle_input(CTRL_Y);
+    assert_eq!(input.get_value(), "hello ");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "");
+}
+
+#[test]
+fn undoes_paste_atomically() {
+    let mut input = Input::new();
+    input.set_value("hello world");
+    input.handle_input(CTRL_A);
+    for _ in 0..5 {
+        input.handle_input("\x1b[C");
+    }
+
+    input.handle_input("\x1b[200~beep boop\x1b[201~");
+    assert_eq!(input.get_value(), "hellobeep boop world");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello world");
+}
+
+#[test]
+fn undoes_alt_d() {
+    let mut input = Input::new();
+    input.set_value("hello world");
+    input.handle_input(CTRL_A);
+
+    input.handle_input("\x1bd");
+    assert_eq!(input.get_value(), " world");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "hello world");
+}
+
+#[test]
+fn cursor_movement_starts_a_new_undo_unit() {
+    let mut input = Input::new();
+    type_text(&mut input, "abc");
+    input.handle_input(CTRL_A);
+    input.handle_input(CTRL_E);
+    type_text(&mut input, "de");
+    assert_eq!(input.get_value(), "abcde");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "abc");
+
+    input.handle_input(UNDO);
+    assert_eq!(input.get_value(), "");
+}
+
+#[test]
+fn keeps_the_cursor_visible_when_horizontally_scrolling_wide_text() {
+    let mut input = Input::new();
+    let width = 20;
+    input.set_value("가나다라마바사아자차카타파하");
+    input.set_focused(true);
+    input.handle_input(CTRL_A);
+    for _ in 0..5 {
+        input.handle_input("\x1b[C");
+    }
+
+    let lines = input.render(width);
+    let line = lines.first().expect("one rendered line");
+    assert!(visible_width(line) <= width);
+}
+
+/// The TS case expects ICU's dictionary segmentation (你好 and 世界 as single
+/// words). `unicode-segmentation` implements UAX #29 and breaks between Han
+/// characters — the documented residual difference of the sanctioned
+/// `Intl.Segmenter` substitution (see PARITY.md). The stops at the fullwidth
+/// punctuation, which the case is about, are identical.
+#[test]
+fn alt_d_handles_unicode_word_boundaries() {
+    let mut input = Input::new();
+    input.set_value("你好世界。你好，世界");
+    input.handle_input(CTRL_A);
+
+    let mut values = Vec::new();
+    for _ in 0..8 {
+        input.handle_input("\x1bd");
+        values.push(input.get_value().to_string());
+    }
+    assert_eq!(
+        values,
+        [
+            "好世界。你好，世界",
+            "世界。你好，世界",
+            "界。你好，世界",
+            "。你好，世界",
+            "你好，世界",
+            "好，世界",
+            "，世界",
+            "世界",
+        ]
+    );
 }

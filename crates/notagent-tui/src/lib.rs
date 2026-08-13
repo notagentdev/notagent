@@ -1,8 +1,8 @@
 //! Differential terminal rendering engine and components.
 //!
 //! 1:1 port of `packages/tui` (see crates/notagent-tui/PARITY.md). The export
-//! set mirrors `packages/tui/src/index.ts`; modules that are not ported yet
-//! (autocomplete, editor, markdown, latex, alt screen) are marked in the ledger.
+//! set mirrors `packages/tui/src/index.ts`; `marked` is replaced by the own
+//! lexer in [`markdown_lexer`] (see the ledger for the decision and its proof).
 
 pub mod alt_screen_search;
 pub mod autocomplete;
@@ -33,13 +33,21 @@ mod unicode_tables;
 pub mod utils;
 pub mod word_navigation;
 
+// Autocomplete support
+pub use autocomplete::{
+    AbortController, AbortSignal, AppliedCompletion, AutocompleteItem, AutocompleteProvider,
+    AutocompleteSuggestions, CombinedAutocompleteProvider, CommandEntry, SlashCommand,
+    SuggestionOptions,
+};
 // Components
 pub use components::box_component::BoxComponent;
 pub use components::cancellable_loader::CancellableLoader;
+pub use components::editor::{Editor, EditorOptions, EditorTheme, TextChunk, word_wrap_line};
 pub use components::h_stack::HStack;
 pub use components::image::{Image, ImageOptions, ImageTheme};
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
+pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme};
 pub use components::scroll_view::{
     Overscroll, ScrollToOptions, ScrollView, ScrollViewOptions, ScrollViewScrollbar,
     ScrollViewState,
@@ -54,6 +62,8 @@ pub use components::stack::{StackEntryOptions, StackOptions};
 pub use components::text::Text;
 pub use components::truncated_text::TruncatedText;
 pub use components::v_stack::VStack;
+// Editor component interface (for custom editors)
+pub use editor_component::EditorComponent;
 // Fuzzy matching
 pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};
 // Keybindings
@@ -66,6 +76,10 @@ pub use keys::{
     KeyEventType, decode_kitty_printable, decode_printable_key, is_key_release, is_key_repeat,
     is_kitty_protocol_active, matches_key, parse_key, set_kitty_protocol_active,
 };
+// LaTeX rendering
+pub use latex::{RenderLatexOptions, render_latex};
+// Markdown tokenizer (replaces `marked`)
+pub use markdown_lexer::{TableCell, Token, inline_tokens, lex};
 // Input buffering for batch splitting
 pub use stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
 // Terminal interface and implementations
