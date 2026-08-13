@@ -1,0 +1,477 @@
+{
+ "plain-crlf": {
+  "cols": 16,
+  "rows": 4,
+  "writes": [
+   "a\r\nbb\r\nccc"
+  ],
+  "viewport": [
+   "a",
+   "bb",
+   "ccc",
+   ""
+  ],
+  "scrollback": [
+   "a",
+   "bb",
+   "ccc",
+   ""
+  ],
+  "cursor": {
+   "x": 3,
+   "y": 2
+  }
+ },
+ "written-trailing-spaces": {
+  "cols": 16,
+  "rows": 3,
+  "writes": [
+   "base 0          \r\nbase 1          "
+  ],
+  "viewport": [
+   "base 0          ",
+   "base 1          ",
+   ""
+  ],
+  "scrollback": [
+   "base 0          ",
+   "base 1          ",
+   ""
+  ],
+  "cursor": {
+   "x": 16,
+   "y": 1
+  }
+ },
+ "erase-line-2K": {
+  "cols": 16,
+  "rows": 3,
+  "writes": [
+   "hello world\r\nsecond",
+   "\u001b[1;1H\u001b[2K"
+  ],
+  "viewport": [
+   "",
+   "second",
+   ""
+  ],
+  "scrollback": [
+   "",
+   "second",
+   ""
+  ],
+  "cursor": {
+   "x": 0,
+   "y": 0
+  }
+ },
+ "cursor-cuu-cud-cha": {
+  "cols": 16,
+  "rows": 4,
+  "writes": [
+   "l0\r\nl1\r\nl2",
+   "\u001b[2A\u001b[3GX"
+  ],
+  "viewport": [
+   "l0X",
+   "l1",
+   "l2",
+   ""
+  ],
+  "scrollback": [
+   "l0X",
+   "l1",
+   "l2",
+   ""
+  ],
+  "cursor": {
+   "x": 3,
+   "y": 0
+  }
+ },
+ "scroll-into-scrollback": {
+  "cols": 8,
+  "rows": 3,
+  "writes": [
+   "a\r\nb\r\nc\r\nd\r\ne"
+  ],
+  "viewport": [
+   "c",
+   "d",
+   "e"
+  ],
+  "scrollback": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e"
+  ],
+  "cursor": {
+   "x": 1,
+   "y": 2
+  }
+ },
+ "clear-screen-home-3J": {
+  "cols": 8,
+  "rows": 3,
+  "writes": [
+   "a\r\nb\r\nc\r\nd",
+   "\u001b[2J\u001b[H\u001b[3J",
+   "x"
+  ],
+  "viewport": [
+   "x",
+   "",
+   ""
+  ],
+  "scrollback": [
+   "x",
+   "",
+   ""
+  ],
+  "cursor": {
+   "x": 1,
+   "y": 0
+  }
+ },
+ "osc-title": {
+  "cols": 8,
+  "rows": 2,
+  "writes": [
+   "\u001b]0;my title\u0007ab"
+  ],
+  "viewport": [
+   "ab",
+   ""
+  ],
+  "scrollback": [
+   "ab",
+   ""
+  ],
+  "cursor": {
+   "x": 2,
+   "y": 0
+  }
+ },
+ "osc8-hyperlink": {
+  "cols": 20,
+  "rows": 2,
+  "writes": [
+   "\u001b]8;;https://e.com\u001b\\link\u001b]8;;\u001b\\ end"
+  ],
+  "viewport": [
+   "link end",
+   ""
+  ],
+  "scrollback": [
+   "link end",
+   ""
+  ],
+  "cursor": {
+   "x": 8,
+   "y": 0
+  }
+ },
+ "apc-cursor-marker": {
+  "cols": 12,
+  "rows": 2,
+  "writes": [
+   "ab\u001b_pi:c\u0007cd"
+  ],
+  "viewport": [
+   "ab",
+   ""
+  ],
+  "scrollback": [
+   "ab",
+   ""
+  ],
+  "cursor": {
+   "x": 2,
+   "y": 0
+  }
+ },
+ "apc-kitty-image": {
+  "cols": 12,
+  "rows": 2,
+  "writes": [
+   "\u001b_Ga=T,f=100,i=1;iVBORw0KGgo=\u001b\\X"
+  ],
+  "viewport": [
+   "X",
+   ""
+  ],
+  "scrollback": [
+   "X",
+   ""
+  ],
+  "cursor": {
+   "x": 1,
+   "y": 0
+  }
+ },
+ "sync-output": {
+  "cols": 12,
+  "rows": 2,
+  "writes": [
+   "\u001b[?2026hab\r\ncd\u001b[?2026l"
+  ],
+  "viewport": [
+   "ab",
+   "cd"
+  ],
+  "scrollback": [
+   "ab",
+   "cd"
+  ],
+  "cursor": {
+   "x": 2,
+   "y": 1
+  }
+ },
+ "sgr-colors": {
+  "cols": 12,
+  "rows": 2,
+  "writes": [
+   "\u001b[31mred\u001b[0m plain"
+  ],
+  "viewport": [
+   "red plain",
+   ""
+  ],
+  "scrollback": [
+   "red plain",
+   ""
+  ],
+  "cursor": {
+   "x": 9,
+   "y": 0
+  }
+ },
+ "wide-cjk": {
+  "cols": 10,
+  "rows": 2,
+  "writes": [
+   "中文ab"
+  ],
+  "viewport": [
+   "中文ab",
+   ""
+  ],
+  "scrollback": [
+   "中文ab",
+   ""
+  ],
+  "cursor": {
+   "x": 6,
+   "y": 0
+  }
+ },
+ "emoji": {
+  "cols": 10,
+  "rows": 2,
+  "writes": [
+   "👍x"
+  ],
+  "viewport": [
+   "👍x",
+   ""
+  ],
+  "scrollback": [
+   "👍x",
+   ""
+  ],
+  "cursor": {
+   "x": 2,
+   "y": 0
+  }
+ },
+ "cursor-hide-show": {
+  "cols": 8,
+  "rows": 2,
+  "writes": [
+   "\u001b[?25lab\u001b[?25h"
+  ],
+  "viewport": [
+   "ab",
+   ""
+  ],
+  "scrollback": [
+   "ab",
+   ""
+  ],
+  "cursor": {
+   "x": 2,
+   "y": 0
+  }
+ },
+ "erase-from-cursor-J": {
+  "cols": 10,
+  "rows": 3,
+  "writes": [
+   "aaa\r\nbbb\r\nccc",
+   "\u001b[1;2H\u001b[J"
+  ],
+  "viewport": [
+   "a",
+   "",
+   ""
+  ],
+  "scrollback": [
+   "a",
+   "",
+   ""
+  ],
+  "cursor": {
+   "x": 1,
+   "y": 0
+  }
+ },
+ "cup-absolute": {
+  "cols": 10,
+  "rows": 3,
+  "writes": [
+   "\u001b[3;1Hz"
+  ],
+  "viewport": [
+   "",
+   "",
+   "z"
+  ],
+  "scrollback": [
+   "",
+   "",
+   "z"
+  ],
+  "cursor": {
+   "x": 1,
+   "y": 2
+  }
+ },
+ "overwrite-shorter": {
+  "cols": 10,
+  "rows": 2,
+  "writes": [
+   "abcdef",
+   "\r\u001b[2Kxy"
+  ],
+  "viewport": [
+   "xy",
+   ""
+  ],
+  "scrollback": [
+   "xy",
+   ""
+  ],
+  "cursor": {
+   "x": 2,
+   "y": 0
+  }
+ },
+ "autowrap-off": {
+  "cols": 6,
+  "rows": 3,
+  "writes": [
+   "\u001b[?7labcdefghi"
+  ],
+  "viewport": [
+   "abcdei",
+   "",
+   ""
+  ],
+  "scrollback": [
+   "abcdei",
+   "",
+   ""
+  ],
+  "cursor": {
+   "x": 6,
+   "y": 0
+  }
+ },
+ "autowrap-on": {
+  "cols": 6,
+  "rows": 3,
+  "writes": [
+   "\u001b[?7habcdefghi"
+  ],
+  "viewport": [
+   "abcdef",
+   "ghi",
+   ""
+  ],
+  "scrollback": [
+   "abcdef",
+   "ghi",
+   ""
+  ],
+  "cursor": {
+   "x": 3,
+   "y": 1
+  }
+ },
+ "alt-screen": {
+  "cols": 8,
+  "rows": 3,
+  "writes": [
+   "main\r\n",
+   "\u001b[?1049h",
+   "alt",
+   "\u001b[?1049l"
+  ],
+  "viewport": [
+   "main",
+   "",
+   ""
+  ],
+  "scrollback": [
+   "main",
+   "",
+   ""
+  ],
+  "cursor": {
+   "x": 0,
+   "y": 1
+  }
+ },
+ "tab-char": {
+  "cols": 12,
+  "rows": 2,
+  "writes": [
+   "a\tb"
+  ],
+  "viewport": [
+   "a       b",
+   ""
+  ],
+  "scrollback": [
+   "a       b",
+   ""
+  ],
+  "cursor": {
+   "x": 9,
+   "y": 0
+  }
+ },
+ "resize": {
+  "cols": 6,
+  "rows": 4,
+  "viewport": [
+   "hello",
+   "world",
+   "",
+   ""
+  ],
+  "scrollback": [
+   "hello",
+   "world",
+   "",
+   ""
+  ],
+  "cursor": {
+   "x": 5,
+   "y": 1
+  }
+ }
+}

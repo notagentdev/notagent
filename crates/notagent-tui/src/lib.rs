@@ -4,6 +4,8 @@
 //! Das Export-Set spiegelt `packages/tui/src/index.ts`.
 
 pub mod terminal;
+#[cfg(feature = "test-terminal")]
+pub mod test_terminal;
 pub mod tui;
 mod unicode_tables;
 pub mod utils;

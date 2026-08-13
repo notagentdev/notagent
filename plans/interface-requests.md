@@ -42,6 +42,23 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   nur als Fork verfügbar.
 - **Status**: umgesetzt (Root-`Cargo.toml`, `[workspace.dependencies] vt100 = "0.16"`)
 
+### A-2 Hinweis: Terminal-Handler ohne `Send`, Test-Terminal hinter Feature
+- **Von / An**: A → C (nur Information, keine Aktion nötig)
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-tui/src/terminal.rs`, `crates/notagent-tui` Feature `test-terminal`
+- **Beleg**: `packages/tui/src/tui.ts` (Komponentenmodell mit geteilten Objektreferenzen,
+  Render-Kern einsträngig); `packages/tui/test/virtual-terminal.ts:1-218`
+- **Wunsch**: Zwei Kontrakt-Details, gegen die C bauen kann:
+  1. `InputHandler`/`ResizeHandler` sind `Box<dyn FnMut(...)>` **ohne** `Send` — der
+     TUI-Kern läuft wie in TS einsträngig; der stdin-Leser reicht Daten per Kanal
+     an den TUI-Strang.
+  2. Das virtuelle Testterminal liegt in `notagent_tui::test_terminal` hinter dem
+     Feature `test-terminal` (hält `vt100` aus Produktivbuilds). Für die
+     G3-E2E-Szenarien:
+     `notagent-tui = { workspace = true, features = ["test-terminal"] }` in
+     `[dev-dependencies]`.
+- **Status**: umgesetzt (A)
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)

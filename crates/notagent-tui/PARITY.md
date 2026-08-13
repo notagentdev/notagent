@@ -15,7 +15,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `CONVENTIONS.md` | 121 | Pflichtlektüre |
 | 2026-08-13 | `test/virtual-terminal.ts` | 218 | Task 1 |
 | 2026-08-13 | `src/utils.ts` | 1326 | Task 2 |
-| 2026-08-13 | `test/wrap-ansi.test.ts` | 266 | Task 2 |
+| 2026-08-13 | `test/virtual-terminal.ts` | 218 | `src/test_terminal.rs` (Feature `test-terminal`) | verifiziert — `tests/virtual_terminal.rs` prüft den Harness gegen 21 `@xterm/headless`-Fixtures (Viewport, Scrollback, Cursor, Resize, CSI/OSC/APC, Synchronized Output) plus Ereignisaufzeichnung, Handler-Weiterleitung und Sequenz-Helfer |
+| `test/wrap-ansi.test.ts` | 266 | Task 2 |
 | 2026-08-13 | `test/truncate-to-width.test.ts` | 127 | Task 2 |
 | 2026-08-13 | `test/tab-width.test.ts` | 88 | Task 2 |
 | 2026-08-13 | `test/regression-regional-indicator-width.test.ts` | 52 | Task 2 |
@@ -38,6 +39,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
 | TS-Testdatei | LOC | Rust-Test | Status |
 |---|---|---|---|
+| `test/virtual-terminal.ts` | 218 | `src/test_terminal.rs` (Feature `test-terminal`) | verifiziert — `tests/virtual_terminal.rs` prüft den Harness gegen 21 `@xterm/headless`-Fixtures (Viewport, Scrollback, Cursor, Resize, CSI/OSC/APC, Synchronized Output) plus Ereignisaufzeichnung, Handler-Weiterleitung und Sequenz-Helfer |
 | `test/wrap-ansi.test.ts` | 266 | `tests/wrap_ansi.rs` (19 Fälle) | verifiziert |
 | `test/truncate-to-width.test.ts` | 127 | `tests/truncate_to_width.rs` (16 Fälle) | verifiziert |
 | `test/regression-regional-indicator-width.test.ts` | 52 | `tests/regression_regional_indicator_width.rs` (5 Fälle) | verifiziert |
@@ -51,6 +53,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 |---|---|
 | `tools/gen-unicode-tables.mjs` | Erzeugt `src/unicode_tables.rs` aus der Node-Runtime (Unicode 17.0) und `get-east-asian-width`. Die 1494 RGI-ZWJ-Sequenzen entstehen aus `emoji-zwj-sequences.txt` (Emoji 16.0, alle 1468 Einträge gegen V8 verifiziert) plus vollständiger Paarsuche über alle 1438 Emoji-Codepoints (26 Ergänzungen aus Unicode 17). |
 | `tools/gen-utils-oracle.mjs` | Erzeugt `tests/fixtures/utils-oracle.json` aus `packages/tui/src/utils.ts`. |
+| `tools/gen-virtual-terminal-oracle.mjs` | Erzeugt `tests/fixtures/virtual-terminal-oracle.json` aus `@xterm/headless` 5.5.0 — 23 Szenarien mit genau den Sequenzen, die beide Renderer emittieren. |
 
 ## Ausschlüsse
 
@@ -99,6 +102,14 @@ portierten Tests sie nicht beobachten):
    `@xterm/headless` mit Unicode-V6-Tabellen 1. vt100 stimmt damit mit dem
    Breitenmodell der App überein; `translateToString` liefert in beiden Fällen
    dieselbe Zeichenfolge.
+
+Umsetzung: `src/test_terminal.rs` (Feature `test-terminal`, hält `vt100` aus
+Produktivbuilds). CSI 3J wird im Schreibstrom abgefangen; die Vorbedingung
+(leerer Schirm, weil `fullRender(clear)` immer `2J`+`H`+`3J` zusammen emittiert)
+prüft der Harness zur Laufzeit per Assertion, damit die Abweichung nicht
+stillschweigend greift. Die drei TS-Unterklassen (`RecordingTerminal`,
+`LoggingVirtualTerminal`, `CapturingVirtualTerminal`) fallen mangels Vererbung
+zu einer eingebauten Ereignisaufzeichnung zusammen (Abweichungsklasse 1).
 
 Kontingenz laut Plan (eigener schlanker Emulator für die benötigte
 Sequenz-Teilmenge), falls eine portierte Testerwartung eine dieser Abweichungen

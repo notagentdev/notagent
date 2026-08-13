@@ -8,9 +8,12 @@
 use async_trait::async_trait;
 
 /// Callback für eingehende Terminaldaten (`onInput`).
-pub type InputHandler = Box<dyn FnMut(&str) + Send>;
+///
+/// Kein `Send`: der TUI-Kern läuft wie in TS einsträngig (Komponenten sind
+/// `Rc<RefCell<…>>`); der stdin-Leser reicht Daten per Kanal an diesen Strang.
+pub type InputHandler = Box<dyn FnMut(&str)>;
 /// Callback für Größenänderungen (`onResize`).
-pub type ResizeHandler = Box<dyn FnMut() + Send>;
+pub type ResizeHandler = Box<dyn FnMut()>;
 
 /// Minimales Terminal-Interface für die TUI.
 ///

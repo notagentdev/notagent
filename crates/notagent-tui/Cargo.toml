@@ -6,9 +6,20 @@ rust-version.workspace = true
 license.workspace = true
 description = "Differenzielle Terminal-Rendering-Engine und Komponenten."
 
+[features]
+# Stellt `test_terminal::VirtualTerminal` bereit (Port von
+# packages/tui/test/virtual-terminal.ts). Workstream C aktiviert das Feature für
+# die Interactive-Mode-E2E-Szenarien aus Gate G3.
+test-terminal = ["dep:vt100", "dep:tokio"]
+
 [dependencies]
 async-trait = { workspace = true }
 unicode-segmentation = { workspace = true }
+tokio = { workspace = true, optional = true }
+vt100 = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Selbstverweis, damit `cargo test` das Feature `test-terminal` aktiviert.
+notagent-tui = { path = ".", features = ["test-terminal"] }
 serde_json = { workspace = true }
+tokio = { workspace = true }
