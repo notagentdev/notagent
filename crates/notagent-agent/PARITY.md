@@ -36,7 +36,9 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 |---|---|
 | `src/harness/agent-harness.ts` | Master-Plan, Scope-Tabelle: Stub, dessen Methoden `HarnessNotImplemented` werfen |
 | `src/harness/**` außer `messages.ts` | Master-Plan: coding-agent importiert aus agent-core nur Agent, AgentMessage, AgentState, AgentTool, CustomMessage, setDefaultStreamFn, StreamFn, ThinkingLevel, uuidv7; Compaction/Tools/Sessions/Skills hat der coding-agent selbst (WS-C) |
-| `src/proxy.ts` (370) | WS-B-Plan Task 12: Entscheidung nach Konsumenten-Verifikation, dort dokumentiert |
+| `src/proxy.ts` (370) | Konsumenten-Verifikation (Task 12): `streamProxy` wird von keinem Paket des Repos importiert — `grep -rn "streamProxy\|from \"../proxy"` über coding-agent, server, client und evals liefert nichts. Damit greift die Master-Regel „harness-/Zusatzmodule ohne App-Konsument" |
+| `src/search/` (`index.ts`, `scanning.ts`, 176 LOC) | Konsumenten-Verifikation (Task 12): kein Import in coding-agent, server, client oder evals. Die Module bauen zudem auf `harness/session/types.ts` auf, das laut Master-Plan ausgeschlossen ist (der coding-agent hat einen eigenen JSONL-SessionManager). Ein Port wäre toter Code über ausgeschlossenen Typen |
+| `src/harness/agent-harness.ts` (Re-Export in `index.ts`) | Master-Plan: Stub |
 
 ## Fixtures
 
