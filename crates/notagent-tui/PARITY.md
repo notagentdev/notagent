@@ -174,6 +174,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/latex.ts` | 1380 | `src/latex.rs` + `src/latex_tables.rs` | Task 11 |
 | `test/markdown.test.ts` | 1667 | `tests/markdown.rs` | Task 11 |
 | `test/latex.test.ts` | 496 | `tests/latex.rs` + `tests/latex_cases.rs` | Task 11 |
+| `test/terminal-image.test.ts` | 632 | `tests/terminal_image.rs` | Task 12 |
 
 ## Ledger
 
@@ -266,6 +267,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/editor-history-keybindings.test.ts` | 43 | `tests/editor_history_keybindings.rs` (1 Fall) | eigenes Testbinary wegen des globalen Keybindings-Managers |
 | `test/latex.test.ts` | 496 | `tests/latex.rs` (23 Fälle über alle 110 TS-Fälle) | die fünf `defineCases`-Tabellen liegen generiert in `tests/latex_cases.rs` |
 | `test/markdown.test.ts` | 1667 | `tests/markdown.rs` (4 Fälle über 2920 Render-Vergleiche) + `tests/markdown_oracle.rs` (73 Token-Vergleiche) | Klasse 1 (Testinfrastruktur): statt der 79 Substring-Assertions vergleicht der Port die vollständige Ausgabe der TS-Komponente (`tools/gen-markdown-render-oracle.mjs`) über dieselben Quellen × Breiten × Paddings × Optionen × Hyperlink-Fähigkeit — strenger als die Vorlage; die nicht-render-basierten Fälle (Transform-Caching, OSC-8) sind direkt portiert |
+| `test/terminal-image.test.ts` | 632 | `tests/terminal_image.rs` (26 Fälle) | alle TS-Fälle portiert; die `detectCapabilities`-Fälle sind zu einem Fall zusammengefasst, weil sie prozessglobale Umgebungsvariablen setzen und über einen Lock serialisiert laufen |
 
 ## Werkzeuge
 
@@ -297,7 +299,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 9 Basis-Komponenten | fertig portiert (spacer, truncated-text, box, alt-screen-flash, loader, cancellable-loader, select-list, settings-list, input, image); offene Testfälle: 14 der 35 input-Fälle |
 | 10 Editor | fertig (`editor.ts` + `editor-component.ts` portiert, Testsuite vollständig bis auf einen in Rust nicht ausdrückbaren Fall) |
 | 11 Markdown + LaTeX | fertig (eigener marked-Lexer, gegen den echten Tokenstrom verifiziert; Renderer gegen die TS-Ausgabe verifiziert) |
-| 12 Terminal-Bilder | Modul vollständig portiert; Testsuite (632 LOC) offen |
+| 12 Terminal-Bilder | fertig (Modul und Testsuite portiert) |
 | 13 Autocomplete/Fuzzy/Keybindings/native | fertig (autocomplete vorgezogen, weil Task 10 den Provider braucht) |
 | 14 Öffentliche API + Ledger-Abschluss | teilweise: `lib.rs` spiegelt das Export-Set der portierten Module; Abschluss nach Tasks 8/10/11/13 |
 | 15 App-TUI-Schicht (ab G2) | offen |
