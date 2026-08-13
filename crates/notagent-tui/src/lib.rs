@@ -7,6 +7,7 @@ pub mod keys;
 pub mod native_modifiers;
 pub mod stdin_buffer;
 pub mod terminal;
+pub mod terminal_colors;
 #[cfg(feature = "test-terminal")]
 pub mod test_terminal;
 pub mod tui;
@@ -19,6 +20,10 @@ pub use keys::{
 };
 pub use stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
 pub use terminal::{InputHandler, ResizeHandler, Terminal};
+pub use terminal_colors::{
+    RgbColor, TerminalColorScheme, is_osc11_background_color_response,
+    parse_osc11_background_color, parse_terminal_color_scheme_report,
+};
 pub use tui::{CURSOR_MARKER, Component, ComponentRef, Focusable};
 pub use utils::{
     apply_background_to_line, extract_ansi_code, extract_segments, get_grapheme_cell_range,
