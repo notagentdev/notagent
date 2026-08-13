@@ -32,3 +32,10 @@ second records the event sequence for scripted SSE bodies through a fake `fetch`
 |---|---|---|
 | `openai-responses-payloads.mts` | `openai-responses-payloads.jsonl` | `node --experimental-strip-types openai-responses-payloads.mts > ../openai-responses-payloads.jsonl` |
 | `openai-responses-stream.mts` | `openai-responses-stream.jsonl` | `node --experimental-strip-types openai-responses-stream.mts > ../openai-responses-stream.jsonl` |
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `azure-openai-responses.mts` | `azure-openai-responses.jsonl` | `node --experimental-strip-types azure-openai-responses.mts > ../azure-openai-responses.jsonl` |
+
+`azure-openai-responses.mts` also records the URL and the headers the `AzureOpenAI`
+client sends, because both are built inside the SDK rather than by the adapter.

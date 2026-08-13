@@ -23,6 +23,8 @@ reqwest = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
+# WHATWG URL parsing for the Azure base-URL normalization (TS uses `new URL()`).
+url = "2"
 
 [dev-dependencies]
 sha2 = { workspace = true }

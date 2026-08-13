@@ -4,6 +4,7 @@
 
 pub mod anthropic_messages;
 pub mod anthropic_params;
+pub mod azure_openai_responses;
 pub mod constrained_sampling;
 pub mod github_copilot_headers;
 pub mod lazy;

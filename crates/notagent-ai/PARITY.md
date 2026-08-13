@@ -89,6 +89,9 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/ai/test/openai-completions-raw-stop-reason.test.ts` | 79 | 9 |
 | 2026-08-13 | `packages/ai/src/api/openai-responses-shared.ts` | 792 | 9 |
 | 2026-08-13 | `packages/ai/src/api/openai-responses.ts` | 372 | 9 |
+| 2026-08-13 | `packages/ai/src/api/azure-openai-responses.ts` | 330 | 9 |
+| 2026-08-13 | `packages/ai/test/azure-openai-base-url.test.ts` | 216 | 9 |
+| 2026-08-13 | `packages/ai/test/azure-openai-responses-reasoning-replay.test.ts` | 141 | 9 |
 | 2026-08-13 | `packages/ai/src/models.generated.ts` | 124 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/all.ts` | 155 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/data/` (39 Dateien + Manifest) | ~592 KB | 5 |
@@ -146,6 +149,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/auth/context.ts` | 45 | `auth/context.rs` | portiert (Task 6) | Klasse 1: Die Browser-Guards (dynamischer `import`, fehlendes `process.env`) entfallen |
 | `src/api/openai-completions.ts` (Request) | 1577 | `api/openai_completions_params.rs` | verifiziert (Task 9) | `buildParams`, `convertMessages`, `convertTools`, `cache_control`-Platzierung und Chat-Template-Auflösung; 102 Payloads aus dem TS-Original werden byte-identisch reproduziert. Klasse 1: Die Feldreihenfolge von `openRouterRouting`/`vercelGatewayRouting` folgt der Interface-Deklaration statt der Schlüsselreihenfolge der Modelldatei (typisierte Structs statt offener Objekte) |
 | `src/api/openai-completions.ts` (Stream) | — | `api/openai_completions.rs` | verifiziert (Task 9) | Klasse 3: Der SDK-Iterator wird zum eigenen SSE-Modul; die SDK-`APIError`-Form (Status, `error`-Feld des Bodys, `makeMessage`) ist nachgebaut, damit `formatProviderError` denselben Text liefert. Klasse 1: Der Text eines nicht parsbaren Chunks stammt von serde statt von V8. Die Scratch-Puffer liegen im Streaming-State statt an den Blöcken (Master-Plan, Architektur) |
+| `src/api/azure-openai-responses.ts` | 330 | `api/azure_openai_responses.rs` | verifiziert (Task 9) | Deployment-Namen (Option, `AZURE_OPENAI_DEPLOYMENT_NAME_MAP`, Modell-ID), Base-URL-Normalisierung über die `url`-Crate (WHATWG, wie `new URL()`) und `api-key`-Auth. Bug-compat: Eine Base-URL mit Query verschluckt den Pfad in den Query-String, weil das SDK vor dem Parsen konkateniert. 33 Payloads und Request-URLs aus dem TS-Original stimmen exakt |
 | `src/api/openai-responses-shared.ts` | 792 | `api/openai_responses_shared.rs` | verifiziert (Task 9) | `convertResponsesMessages`, `convertResponsesTools` und die Slot-Zustandsmaschine (`output_index` → Content-Block). Klasse 1: `normalizeToolCallId` bekommt die Quell-Nachricht; dafür nimmt `NormalizeToolCallId` jetzt `(id, source)` statt nur `id` |
 | `src/api/openai-responses.ts` | 372 | `api/openai_responses.rs` | verifiziert (Task 9) | Compat-Auflösung, `buildParams`, Session-Affinity-Header, Service-Tier-Preisfaktor und der Transport. 51 Payloads und 33 Event-Sequenzen aus dem TS-Original werden exakt reproduziert |
 | `src/api/openai-prompt-cache.ts` | 8 | `api/openai_prompt_cache.rs` | verifiziert (Task 9) | 64 Code-Punkte, nicht Bytes (`Array.from`) |

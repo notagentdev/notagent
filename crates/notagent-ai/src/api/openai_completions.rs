@@ -994,7 +994,8 @@ async fn run_request(
         .filter_map(|(key, value)| value.map(|value| (key, value)))
         .collect();
     request_headers.push(("content-type".to_string(), "application/json".to_string()));
-    request_headers.push(("accept".to_string(), "text/event-stream".to_string()));
+    // The SDK sends `accept: application/json` even for streaming requests.
+    request_headers.push(("accept".to_string(), "application/json".to_string()));
     if !request_headers
         .iter()
         .any(|(key, _)| key.eq_ignore_ascii_case("authorization"))

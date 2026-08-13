@@ -1,131 +1,248 @@
-//! OpenAI Responses API.
+//! Azure OpenAI Responses API.
 //!
-//! 1:1 port of `packages/ai/src/api/openai-responses.ts`. The message, tool and stream
-//! handling live in [`crate::api::openai_responses_shared`]; this module builds the
-//! request, resolves the compat matrix and runs the transport.
+//! 1:1 port of `packages/ai/src/api/azure-openai-responses.ts`. The message, tool and
+//! stream handling come from [`crate::api::openai_responses_shared`]; what is specific
+//! here is the deployment-name resolution, the base-URL normalization and the `api-key`
+//! authentication the `AzureOpenAI` client performs.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use serde_json::{Map, Value, json};
+use url::Url;
 
 use crate::api::constrained_sampling::create_grammar_tool_input_properties;
-use crate::api::github_copilot_headers::{build_copilot_dynamic_headers, has_copilot_vision_input};
-use crate::api::openai_completions_params::{get_client_api_key, resolve_cache_retention};
 use crate::api::openai_prompt_cache::clamp_openai_prompt_cache_key;
 use crate::api::openai_responses_shared::{
-    ConvertResponsesMessagesOptions, ConvertResponsesToolsOptions, ResponsesDeferredToolsMode,
-    ResponsesStreamOptions, ResponsesStreamState, convert_responses_messages,
-    convert_responses_tools,
+    ConvertResponsesMessagesOptions, ConvertResponsesToolsOptions, ResponsesStreamOptions,
+    ResponsesStreamState, convert_responses_messages, convert_responses_tools,
 };
 use crate::api::simple_options::build_base_options;
 use crate::api::sse::SseDecoder;
 use crate::models::clamp_thinking_level;
 use crate::types::{
-    AssistantMessage, AssistantMessageEvent, CacheRetention, Context, DoneReason, ErrorReason,
-    Model, ModelThinkingLevel, ProviderHeaders, ProviderRequestOptions, SessionAffinityFormat,
-    SimpleStreamOptions, StopReason, ThinkingLevel, Usage,
+    AssistantMessage, AssistantMessageEvent, Context, DoneReason, ErrorReason, Model,
+    ModelThinkingLevel, ProviderEnv, ProviderHeaders, ProviderRequestOptions, SimpleStreamOptions,
+    StopReason, ThinkingLevel, Usage,
 };
-use crate::utils::deferred_tools::split_deferred_tools;
 use crate::utils::error_body::{RawProviderError, format_provider_error, normalize_provider_error};
 use crate::utils::event_stream::{
     AssistantMessageEventStream, create_assistant_message_event_stream,
 };
 use crate::utils::fetch::{FetchBody, FetchFunction, FetchRequest, ReqwestFetch};
+use crate::utils::provider_env::get_provider_env_value;
 use crate::utils::provider_retry::{
     ProviderErrorInfo, ProviderRetryError, ProviderRetryOptions, retry_provider_request,
 };
 
-/// `OPENAI_TOOL_CALL_PROVIDERS` — providers whose `callId|itemId` pairs survive replay.
-pub fn openai_tool_call_providers() -> BTreeSet<String> {
-    ["openai", "openai-codex", "opencode"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+pub const DEFAULT_AZURE_API_VERSION: &str = "v1";
+
+/// `AZURE_TOOL_CALL_PROVIDERS`
+pub fn azure_tool_call_providers() -> BTreeSet<String> {
+    [
+        "openai",
+        "openai-codex",
+        "opencode",
+        "azure-openai-responses",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 /// Responses rejects `max_output_tokens` below 16 (notagentdev/notagent#6265).
 pub const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS: u64 = 16;
 
-/// `Required<OpenAIResponsesCompat>`
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedOpenAIResponsesCompat {
-    pub supports_developer_role: bool,
-    pub session_affinity_format: SessionAffinityFormat,
-    pub supports_long_cache_retention: bool,
-    pub supports_strict_mode: bool,
-    pub supports_openai_grammar_tools: bool,
-    pub supports_additional_tools: bool,
-    pub supports_tool_search: bool,
-    pub supports_explicit_prompt_cache_mode: bool,
-}
+/// Error of this provider.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct AzureOpenAIError(pub String);
 
-/// `detectSessionAffinityFormat(model)`
-fn detect_session_affinity_format(model: &Model) -> SessionAffinityFormat {
-    if model.provider == "openrouter" || model.base_url.contains("openrouter.ai") {
-        SessionAffinityFormat::Openrouter
-    } else {
-        SessionAffinityFormat::Openai
-    }
-}
-
-/// `getCompat(model)`
-pub fn get_compat(model: &Model) -> ResolvedOpenAIResponsesCompat {
-    let compat = match &model.compat {
-        Some(crate::types::ModelCompat::OpenAIResponses(compat)) => Some(compat),
-        _ => None,
-    };
-    ResolvedOpenAIResponsesCompat {
-        supports_developer_role: compat
-            .and_then(|compat| compat.supports_developer_role)
-            .unwrap_or(true),
-        session_affinity_format: compat
-            .and_then(|compat| compat.session_affinity_format)
-            .unwrap_or_else(|| detect_session_affinity_format(model)),
-        supports_long_cache_retention: compat
-            .and_then(|compat| compat.supports_long_cache_retention)
-            .unwrap_or(true),
-        supports_strict_mode: compat
-            .and_then(|compat| compat.supports_strict_mode)
-            .unwrap_or(false),
-        supports_openai_grammar_tools: compat
-            .and_then(|compat| compat.supports_openai_grammar_tools)
-            .unwrap_or(false),
-        supports_additional_tools: compat
-            .and_then(|compat| compat.supports_additional_tools)
-            .unwrap_or(false),
-        supports_tool_search: compat
-            .and_then(|compat| compat.supports_tool_search)
-            .unwrap_or(false),
-        supports_explicit_prompt_cache_mode: compat
-            .and_then(|compat| compat.supports_explicit_prompt_cache_mode)
-            .unwrap_or(false),
-    }
-}
-
-/// `getPromptCacheRetention(compat, cacheRetention)`
-fn prompt_cache_retention(
-    compat: &ResolvedOpenAIResponsesCompat,
-    cache_retention: CacheRetention,
-) -> Option<&'static str> {
-    (cache_retention == CacheRetention::Long && compat.supports_long_cache_retention)
-        .then_some("24h")
-}
-
-/// `OpenAIResponsesOptions extends StreamOptions`
+/// `AzureOpenAIResponsesOptions extends StreamOptions`
 #[derive(Debug, Clone, Default)]
-pub struct OpenAIResponsesOptions {
+pub struct AzureOpenAIResponsesOptions {
     pub reasoning_effort: Option<ThinkingLevel>,
     /// `"auto" | "detailed" | "concise" | null`; `Some(None)` is an explicit `null`.
     pub reasoning_summary: Option<Option<String>>,
-    pub service_tier: Option<String>,
-    pub tool_choice: Option<Value>,
+    pub azure_api_version: Option<String>,
+    pub azure_resource_name: Option<String>,
+    pub azure_base_url: Option<String>,
+    pub azure_deployment_name: Option<String>,
     pub max_tokens: Option<u64>,
     pub temperature: Option<f64>,
     pub sampling_params: Option<Map<String, Value>>,
-    pub cache_retention: Option<CacheRetention>,
     pub session_id: Option<String>,
-    pub env: Option<crate::types::ProviderEnv>,
+    pub env: Option<ProviderEnv>,
+}
+
+/// `parseDeploymentNameMap(value)` — `modelId=deployment` pairs, comma separated.
+pub fn parse_deployment_name_map(value: Option<&str>) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    let Some(value) = value else {
+        return map;
+    };
+    for entry in value.split(',') {
+        let trimmed = entry.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // `split("=", 2)` in JS keeps only the first two parts and drops the rest.
+        let mut parts = trimmed.split('=');
+        let (Some(model_id), Some(deployment_name)) = (parts.next(), parts.next()) else {
+            continue;
+        };
+        if model_id.is_empty() || deployment_name.is_empty() {
+            continue;
+        }
+        map.insert(
+            model_id.trim().to_string(),
+            deployment_name.trim().to_string(),
+        );
+    }
+    map
+}
+
+/// `resolveDeploymentName(model, options)`
+pub fn resolve_deployment_name(model: &Model, options: &AzureOpenAIResponsesOptions) -> String {
+    if let Some(name) = options
+        .azure_deployment_name
+        .as_deref()
+        .filter(|name| !name.is_empty())
+    {
+        return name.to_string();
+    }
+    let mapped = parse_deployment_name_map(
+        get_provider_env_value("AZURE_OPENAI_DEPLOYMENT_NAME_MAP", options.env.as_ref()).as_deref(),
+    )
+    .get(&model.id)
+    .cloned();
+    mapped
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| model.id.clone())
+}
+
+/// `normalizeAzureBaseUrl(baseUrl)`
+pub fn normalize_azure_base_url(base_url: &str) -> Result<String, AzureOpenAIError> {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    let mut url = Url::parse(trimmed)
+        .map_err(|_| AzureOpenAIError(format!("Invalid Azure OpenAI base URL: {base_url}")))?;
+
+    let host = url.host_str().unwrap_or_default().to_string();
+    let is_azure_host = host.ends_with(".openai.azure.com")
+        || host.ends_with(".cognitiveservices.azure.com")
+        || host.ends_with(".ai.azure.com");
+    let normalized_path = url.path().trim_end_matches('/').to_string();
+
+    // Azure hosts need /openai/v1 as the base path so the SDK can append
+    // /deployments/<model>/... and ?api-version=v1 correctly.
+    if is_azure_host
+        && (normalized_path.is_empty()
+            || normalized_path == "/"
+            || normalized_path == "/openai"
+            || normalized_path == "/openai/v1/responses")
+    {
+        url.set_path("/openai/v1");
+        url.set_query(None);
+    }
+
+    Ok(url.to_string().trim_end_matches('/').to_string())
+}
+
+/// `buildURL(path, query)` of the SDK for `path = "/responses"`.
+///
+/// The base URL and the path are concatenated as plain strings before parsing, so a base
+/// URL that carries a query swallows the path into that query — the SDK then re-encodes
+/// it (`?custom=true%2Fresponses`). That quirk is part of the wire behaviour and is
+/// reproduced here.
+pub fn build_request_url(base_url: &str, api_version: &str) -> Result<String, AzureOpenAIError> {
+    let mut url = Url::parse(&format!("{base_url}/responses"))
+        .map_err(|_| AzureOpenAIError(format!("Invalid Azure OpenAI base URL: {base_url}")))?;
+    let mut query: Vec<(String, String)> = url
+        .query_pairs()
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .filter(|(key, _)| key != "api-version")
+        .collect();
+    query.push(("api-version".to_string(), api_version.to_string()));
+    url.query_pairs_mut().clear().extend_pairs(query);
+    Ok(url.to_string())
+}
+
+fn build_default_base_url(resource_name: &str) -> String {
+    format!("https://{resource_name}.openai.azure.com/openai/v1")
+}
+
+/// `resolveAzureConfig(model, options)`
+pub fn resolve_azure_config(
+    model: &Model,
+    options: &AzureOpenAIResponsesOptions,
+) -> Result<(String, String), AzureOpenAIError> {
+    let api_version = options
+        .azure_api_version
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            get_provider_env_value("AZURE_OPENAI_API_VERSION", options.env.as_ref())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| DEFAULT_AZURE_API_VERSION.to_string());
+
+    let mut resolved_base_url = options
+        .azure_base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            get_provider_env_value("AZURE_OPENAI_BASE_URL", options.env.as_ref())
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        });
+
+    let resource_name = options
+        .azure_resource_name
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            get_provider_env_value("AZURE_OPENAI_RESOURCE_NAME", options.env.as_ref())
+                .filter(|value| !value.is_empty())
+        });
+
+    if resolved_base_url.is_none()
+        && let Some(resource_name) = &resource_name
+    {
+        resolved_base_url = Some(build_default_base_url(resource_name));
+    }
+    if resolved_base_url.is_none() && !model.base_url.is_empty() {
+        resolved_base_url = Some(model.base_url.clone());
+    }
+    let Some(resolved_base_url) = resolved_base_url else {
+        return Err(AzureOpenAIError(
+            "Azure OpenAI base URL is required. Set AZURE_OPENAI_BASE_URL or AZURE_OPENAI_RESOURCE_NAME, or pass azureBaseUrl, azureResourceName, or model.baseUrl."
+                .to_string(),
+        ));
+    };
+
+    Ok((normalize_azure_base_url(&resolved_base_url)?, api_version))
+}
+
+fn model_supports_grammar_tools(model: &Model) -> bool {
+    match &model.compat {
+        Some(crate::types::ModelCompat::OpenAIResponses(compat)) => {
+            compat.supports_openai_grammar_tools.unwrap_or(false)
+        }
+        _ => false,
+    }
+}
+
+fn model_supports_strict_mode(model: &Model) -> bool {
+    match &model.compat {
+        Some(crate::types::ModelCompat::OpenAIResponses(compat)) => {
+            compat.supports_strict_mode.unwrap_or(true)
+        }
+        _ => true,
+    }
 }
 
 fn effort_str(effort: ThinkingLevel) -> &'static str {
@@ -139,65 +256,32 @@ fn effort_str(effort: ThinkingLevel) -> &'static str {
     }
 }
 
-/// `buildParams(model, context, options, compat, grammarToolInputProperties)`
+/// `buildParams(model, context, options, deploymentName, grammarToolInputProperties)`
 pub fn build_params(
     model: &Model,
     context: &Context,
-    options: &OpenAIResponsesOptions,
-    compat: &ResolvedOpenAIResponsesCompat,
+    options: &AzureOpenAIResponsesOptions,
+    deployment_name: &str,
     grammar_tool_input_properties: &BTreeMap<String, String>,
     timestamp: i64,
 ) -> Result<Value, crate::api::constrained_sampling::ConstrainedSamplingError> {
-    let deferred_tools_mode = if compat.supports_additional_tools {
-        Some(ResponsesDeferredToolsMode::AdditionalTools)
-    } else if compat.supports_tool_search {
-        Some(ResponsesDeferredToolsMode::ToolSearch)
-    } else {
-        None
-    };
-    let tool_placement = split_deferred_tools(context, deferred_tools_mode.is_some(), |name| {
-        name.to_string()
-    });
-    let tool_options = ConvertResponsesToolsOptions {
-        supports_strict_mode: Some(compat.supports_strict_mode),
-        supports_openai_grammar_tools: Some(compat.supports_openai_grammar_tools),
-        ..ConvertResponsesToolsOptions::default()
-    };
     let messages = convert_responses_messages(
         model,
         context,
-        &openai_tool_call_providers(),
+        &azure_tool_call_providers(),
         &ConvertResponsesMessagesOptions {
             grammar_tool_input_properties: Some(grammar_tool_input_properties),
-            deferred_tools: Some(&tool_placement.deferred),
-            deferred_tools_mode,
-            tool_options: Some(tool_options.clone()),
             ..ConvertResponsesMessagesOptions::default()
         },
         timestamp,
     )?;
 
-    let cache_retention = resolve_cache_retention(options.cache_retention, options.env.as_ref());
-    let disable_implicit_prompt_cache =
-        cache_retention == CacheRetention::None && compat.supports_explicit_prompt_cache_mode;
-
     let mut params = Map::new();
-    params.insert("model".to_string(), json!(model.id));
+    params.insert("model".to_string(), json!(deployment_name));
     params.insert("input".to_string(), Value::Array(messages));
     params.insert("stream".to_string(), json!(true));
-    if cache_retention != CacheRetention::None
-        && let Some(key) = clamp_openai_prompt_cache_key(options.session_id.as_deref())
-    {
+    if let Some(key) = clamp_openai_prompt_cache_key(options.session_id.as_deref()) {
         params.insert("prompt_cache_key".to_string(), json!(key));
-    }
-    if let Some(retention) = prompt_cache_retention(compat, cache_retention) {
-        params.insert("prompt_cache_retention".to_string(), json!(retention));
-    }
-    if disable_implicit_prompt_cache {
-        params.insert(
-            "prompt_cache_options".to_string(),
-            json!({ "mode": "explicit" }),
-        );
     }
     params.insert("store".to_string(), json!(false));
 
@@ -210,20 +294,19 @@ pub fn build_params(
     if let Some(temperature) = options.temperature {
         params.insert("temperature".to_string(), json!(temperature));
     }
-    if let Some(service_tier) = &options.service_tier {
-        params.insert("service_tier".to_string(), json!(service_tier));
-    }
-    if !tool_placement.immediate.is_empty() {
+
+    if let Some(tools) = context.tools.as_ref().filter(|tools| !tools.is_empty()) {
         params.insert(
             "tools".to_string(),
             Value::Array(convert_responses_tools(
-                &tool_placement.immediate,
-                &tool_options,
+                tools,
+                &ConvertResponsesToolsOptions {
+                    supports_strict_mode: Some(model_supports_strict_mode(model)),
+                    supports_openai_grammar_tools: Some(model_supports_grammar_tools(model)),
+                    ..ConvertResponsesToolsOptions::default()
+                },
             )?),
         );
-    }
-    if let Some(tool_choice) = &options.tool_choice {
-        params.insert("tool_choice".to_string(), tool_choice.clone());
     }
 
     if model.reasoning {
@@ -256,7 +339,13 @@ pub fn build_params(
                 "include".to_string(),
                 json!(["reasoning.encrypted_content"]),
             );
-        } else if model.provider != "github-copilot" && off_is_not_null(model) {
+        } else if !matches!(
+            model
+                .thinking_level_map
+                .as_ref()
+                .and_then(|map| map.get(&ModelThinkingLevel::Off)),
+            Some(None)
+        ) {
             let effort = model
                 .thinking_level_map
                 .as_ref()
@@ -265,12 +354,6 @@ pub fn build_params(
                 .flatten()
                 .unwrap_or_else(|| "none".to_string());
             params.insert("reasoning".to_string(), json!({ "effort": effort }));
-        }
-        if model.provider == "xai" {
-            params.insert(
-                "include".to_string(),
-                json!(["reasoning.encrypted_content"]),
-            );
         }
     }
 
@@ -284,25 +367,11 @@ pub fn build_params(
     Ok(Value::Object(params))
 }
 
-/// `model.thinkingLevelMap?.off !== null`
-fn off_is_not_null(model: &Model) -> bool {
-    !matches!(
-        model
-            .thinking_level_map
-            .as_ref()
-            .and_then(|map| map.get(&ModelThinkingLevel::Off)),
-        Some(None)
-    )
-}
-
-/// The `defaultHeaders` half of `createClient(model, context, …)`.
+/// The `defaultHeaders` half of `createClient(model, apiKey, options)`.
 pub fn build_client_headers(
     model: &Model,
-    context: &Context,
     options_headers: Option<&ProviderHeaders>,
-    session_id: Option<&str>,
 ) -> BTreeMap<String, Option<String>> {
-    let compat = get_compat(model);
     let mut headers: BTreeMap<String, Option<String>> = model
         .headers
         .clone()
@@ -310,69 +379,12 @@ pub fn build_client_headers(
         .into_iter()
         .map(|(key, value)| (key, Some(value)))
         .collect();
-
-    if model.provider == "github-copilot" {
-        let has_images = has_copilot_vision_input(&context.messages);
-        for (key, value) in build_copilot_dynamic_headers(&context.messages, has_images) {
-            headers.insert(key, Some(value));
-        }
-    }
-
-    if let Some(session_id) = session_id.filter(|value| !value.is_empty()) {
-        if compat.session_affinity_format == SessionAffinityFormat::Openrouter {
-            headers.insert("x-session-id".to_string(), Some(session_id.to_string()));
-        } else {
-            if compat.session_affinity_format == SessionAffinityFormat::Openai {
-                headers.insert("session_id".to_string(), Some(session_id.to_string()));
-            }
-            headers.insert(
-                "x-client-request-id".to_string(),
-                Some(session_id.to_string()),
-            );
-        }
-    }
-
-    // Options headers merge last so they can override the defaults.
     if let Some(options_headers) = options_headers {
         for (key, value) in options_headers {
             headers.insert(key.clone(), value.clone());
         }
     }
-
     headers
-}
-
-// ---------------------------------------------------------------------------
-// Service-tier pricing
-// ---------------------------------------------------------------------------
-
-/// `getServiceTierCostMultiplier(model, serviceTier)`
-pub fn service_tier_cost_multiplier(model_id: &str, service_tier: Option<&str>) -> f64 {
-    match service_tier {
-        Some("flex") => 0.5,
-        Some("priority") => {
-            if model_id == "gpt-5.5" {
-                2.5
-            } else {
-                2.0
-            }
-        }
-        _ => 1.0,
-    }
-}
-
-/// `applyServiceTierPricing(usage, serviceTier, model)`
-pub fn apply_service_tier_pricing(usage: &mut Usage, service_tier: Option<&str>, model_id: &str) {
-    let multiplier = service_tier_cost_multiplier(model_id, service_tier);
-    if multiplier == 1.0 {
-        return;
-    }
-    usage.cost.input *= multiplier;
-    usage.cost.output *= multiplier;
-    usage.cost.cache_read *= multiplier;
-    usage.cost.cache_write *= multiplier;
-    usage.cost.total =
-        usage.cost.input + usage.cost.output + usage.cost.cache_read + usage.cost.cache_write;
 }
 
 // ---------------------------------------------------------------------------
@@ -381,31 +393,28 @@ pub fn apply_service_tier_pricing(usage: &mut Usage, service_tier: Option<&str>,
 
 /// The HTTP half of an `APIError`; boxed so the error itself stays small.
 #[derive(Debug, Clone)]
-pub struct ResponsesApiErrorResponse {
+pub struct AzureApiErrorResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
-    /// `error.error` — the parsed JSON body, as the openai SDK exposes it.
     pub body: Option<Value>,
 }
 
-/// Error of the stream; carries the HTTP details the retry policy probes.
 #[derive(Debug, Clone, Default)]
-pub struct ResponsesTransportError {
+pub struct AzureTransportError {
     pub message: String,
-    /// Absent for plain thrown errors (aborts, transport failures).
-    pub response: Option<Box<ResponsesApiErrorResponse>>,
+    pub response: Option<Box<AzureApiErrorResponse>>,
 }
 
-impl ResponsesTransportError {
+impl AzureTransportError {
     fn message(message: impl Into<String>) -> Self {
-        ResponsesTransportError {
+        AzureTransportError {
             message: message.into(),
             response: None,
         }
     }
 }
 
-impl ProviderErrorInfo for ResponsesTransportError {
+impl ProviderErrorInfo for AzureTransportError {
     fn status(&self) -> Option<u16> {
         self.response.as_ref().map(|response| response.status)
     }
@@ -425,8 +434,8 @@ impl ProviderErrorInfo for ResponsesTransportError {
     }
 }
 
-/// `formatOpenAIResponsesError(error)`
-fn format_openai_responses_error(error: &ResponsesTransportError) -> String {
+/// `formatAzureOpenAIError(error)`
+fn format_azure_openai_error(error: &AzureTransportError) -> String {
     format_provider_error(
         &normalize_provider_error(&RawProviderError {
             status: error.response.as_ref().map(|response| response.status),
@@ -437,14 +446,15 @@ fn format_openai_responses_error(error: &ResponsesTransportError) -> String {
                 .and_then(|response| response.body.clone()),
             message: error.message.clone(),
         }),
-        Some("OpenAI API error"),
+        Some("Azure OpenAI API error"),
     )
 }
 
 fn empty_output(model: &Model, timestamp: i64) -> AssistantMessage {
     AssistantMessage {
         content: Vec::new(),
-        api: model.api.clone(),
+        // TS pins the api to the literal, independent of `model.api`.
+        api: "azure-openai-responses".to_string(),
         provider: model.provider.clone(),
         model: model.id.clone(),
         response_model: None,
@@ -468,31 +478,17 @@ pub fn stream(
     model: Model,
     context: Context,
     request: ProviderRequestOptions,
-    options: OpenAIResponsesOptions,
+    options: AzureOpenAIResponsesOptions,
 ) -> AssistantMessageEventStream {
     let outer = create_assistant_message_event_stream();
     let stream = outer.clone();
 
     tokio::spawn(async move {
         let timestamp = crate::auth::resolve::now_ms();
-        let compat = get_compat(&model);
-        let grammar_tool_input_properties = create_grammar_tool_input_properties(
-            context.tools.as_deref(),
-            compat.supports_openai_grammar_tools,
-        )
-        .unwrap_or_default();
         let mut state = ResponsesStreamState::new(empty_output(&model, timestamp), &model);
 
         let outcome = run_request(
-            &model,
-            &context,
-            &request,
-            &options,
-            &compat,
-            &grammar_tool_input_properties,
-            &mut state,
-            &stream,
-            timestamp,
+            &model, &context, &request, &options, &mut state, &stream, timestamp,
         )
         .await;
 
@@ -514,7 +510,7 @@ pub fn stream(
                 } else {
                     StopReason::Error
                 };
-                state.output.error_message = Some(format_openai_responses_error(&error));
+                state.output.error_message = Some(format_azure_openai_error(&error));
                 stream.push(AssistantMessageEvent::Error {
                     reason: if aborted {
                         ErrorReason::Aborted
@@ -531,48 +527,48 @@ pub fn stream(
     outer
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run_request(
     model: &Model,
     context: &Context,
     request: &ProviderRequestOptions,
-    options: &OpenAIResponsesOptions,
-    compat: &ResolvedOpenAIResponsesCompat,
-    grammar_tool_input_properties: &BTreeMap<String, String>,
+    options: &AzureOpenAIResponsesOptions,
     state: &mut ResponsesStreamState,
     stream: &AssistantMessageEventStream,
     timestamp: i64,
-) -> Result<DoneReason, ResponsesTransportError> {
-    let api_key = get_client_api_key(
-        &model.provider,
-        request.api_key.as_deref(),
-        request.headers.as_ref(),
-    )
-    .map_err(|error| ResponsesTransportError::message(error.to_string()))?;
-
-    let cache_retention = resolve_cache_retention(options.cache_retention, options.env.as_ref());
-    let cache_session_id = if cache_retention == CacheRetention::None {
-        None
-    } else {
-        options.session_id.as_deref()
+) -> Result<DoneReason, AzureTransportError> {
+    let deployment_name = resolve_deployment_name(model, options);
+    let Some(api_key) = request.api_key.as_deref().filter(|key| !key.is_empty()) else {
+        return Err(AzureTransportError::message(format!(
+            "No API key for provider: {}",
+            model.provider
+        )));
     };
+
+    let (base_url, api_version) = resolve_azure_config(model, options)
+        .map_err(|error| AzureTransportError::message(error.to_string()))?;
+
+    let grammar_tool_input_properties = create_grammar_tool_input_properties(
+        context.tools.as_deref(),
+        model_supports_grammar_tools(model),
+    )
+    .map_err(|error| AzureTransportError::message(error.to_string()))?;
 
     let mut params = build_params(
         model,
         context,
         options,
-        compat,
-        grammar_tool_input_properties,
+        &deployment_name,
+        &grammar_tool_input_properties,
         timestamp,
     )
-    .map_err(|error| ResponsesTransportError::message(error.to_string()))?;
+    .map_err(|error| AzureTransportError::message(error.to_string()))?;
     if let Some(on_payload) = &request.on_payload
         && let Some(replacement) = on_payload(params.clone(), model).await
     {
         params = replacement;
     }
 
-    let headers = build_client_headers(model, context, request.headers.as_ref(), cache_session_id);
+    let headers = build_client_headers(model, request.headers.as_ref());
     let mut request_headers: Vec<(String, String)> = headers
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key, value)))
@@ -580,20 +576,24 @@ async fn run_request(
     request_headers.push(("content-type".to_string(), "application/json".to_string()));
     // The SDK sends `accept: application/json` even for streaming requests.
     request_headers.push(("accept".to_string(), "application/json".to_string()));
+    // The AzureOpenAI client authenticates with `api-key`, not a bearer token.
     if !request_headers
         .iter()
-        .any(|(key, _)| key.eq_ignore_ascii_case("authorization"))
+        .any(|(key, _)| key.eq_ignore_ascii_case("api-key"))
     {
-        request_headers.push(("authorization".to_string(), format!("Bearer {api_key}")));
+        request_headers.push(("api-key".to_string(), api_key.to_string()));
     }
 
     let fetch: FetchFunction = request
         .fetch
         .clone()
         .unwrap_or_else(|| Arc::new(ReqwestFetch::default()));
-    let url = format!("{}/responses", model.base_url.trim_end_matches('/'));
+    // `/responses` is not one of the SDK's deployment endpoints, so no `/deployments/…`
+    // segment is inserted; the api-version rides along as a default query parameter.
+    let url = build_request_url(&base_url, &api_version)
+        .map_err(|error| AzureTransportError::message(error.to_string()))?;
     let body = serde_json::to_vec(&params)
-        .map_err(|error| ResponsesTransportError::message(error.to_string()))?;
+        .map_err(|error| AzureTransportError::message(error.to_string()))?;
 
     let response = retry_provider_request(
         || {
@@ -610,7 +610,7 @@ async fn run_request(
                         body: Some(body),
                     })
                     .await
-                    .map_err(|error| ResponsesTransportError::message(error.to_string()))?;
+                    .map_err(|error| AzureTransportError::message(error.to_string()))?;
                 if response.status < 200 || response.status >= 300 {
                     let status = response.status;
                     let headers = response.headers.clone();
@@ -629,8 +629,8 @@ async fn run_request(
     .await
     .map_err(|error| match error {
         ProviderRetryError::Request(error) => error,
-        ProviderRetryError::RetryDelayTooLong(message) => ResponsesTransportError::message(message),
-        ProviderRetryError::Aborted => ResponsesTransportError::message("Request aborted"),
+        ProviderRetryError::RetryDelayTooLong(message) => AzureTransportError::message(message),
+        ProviderRetryError::Aborted => AzureTransportError::message("Request aborted"),
     })?;
 
     if let Some(on_response) = &request.on_response {
@@ -648,22 +648,25 @@ async fn run_request(
         partial: state.output.clone(),
     });
 
-    let model_id = model.id.clone();
     let stream_options = ResponsesStreamOptions {
-        service_tier: options.service_tier.clone(),
-        grammar_tool_input_properties: Some(grammar_tool_input_properties),
-        resolve_service_tier: None,
-        apply_service_tier_pricing: Some(Box::new(move |usage: &mut Usage, tier: Option<&str>| {
-            apply_service_tier_pricing(usage, tier, &model_id);
-        })),
+        grammar_tool_input_properties: Some(&grammar_tool_input_properties),
+        ..ResponsesStreamOptions::default()
     };
 
     let mut decoder = SseDecoder::new();
     let pump = |events: Vec<crate::api::sse::ServerSentEvent>,
                 state: &mut ResponsesStreamState|
-     -> Result<(), ResponsesTransportError> {
+     -> Result<(), AzureTransportError> {
         for event in events {
-            for emitted in process_sse_event(&event, state, &stream_options)? {
+            if event.data.starts_with("[DONE]") || event.data.trim().is_empty() {
+                continue;
+            }
+            let parsed = serde_json::from_str::<Value>(&event.data)
+                .map_err(|error| AzureTransportError::message(error.to_string()))?;
+            for emitted in state
+                .process_event(&parsed, &stream_options)
+                .map_err(|error| AzureTransportError::message(error.to_string()))?
+            {
                 stream.push(emitted);
             }
         }
@@ -687,10 +690,10 @@ async fn run_request(
                     .as_ref()
                     .is_some_and(|signal| signal.is_cancelled())
                 {
-                    return Err(ResponsesTransportError::message("Request was aborted"));
+                    return Err(AzureTransportError::message("Request was aborted"));
                 }
                 let chunk =
-                    chunk.map_err(|error| ResponsesTransportError::message(error.to_string()))?;
+                    chunk.map_err(|error| AzureTransportError::message(error.to_string()))?;
                 let text = String::from_utf8_lossy(&chunk).to_string();
                 pump(decoder.feed(&text), state)?;
             }
@@ -699,7 +702,7 @@ async fn run_request(
     }
 
     if !state.saw_terminal_response_event() {
-        return Err(ResponsesTransportError::message(
+        return Err(AzureTransportError::message(
             "OpenAI Responses stream ended before a terminal response event",
         ));
     }
@@ -708,17 +711,17 @@ async fn run_request(
         .as_ref()
         .is_some_and(|signal| signal.is_cancelled())
     {
-        return Err(ResponsesTransportError::message("Request was aborted"));
+        return Err(AzureTransportError::message("Request was aborted"));
     }
     if state.output.stop_reason == StopReason::Pending {
-        return Err(ResponsesTransportError::message(
-            "OpenAI Responses stream ended without a stop reason",
+        return Err(AzureTransportError::message(
+            "Azure OpenAI Responses stream ended without a stop reason",
         ));
     }
     if state.output.stop_reason == StopReason::Aborted
         || state.output.stop_reason == StopReason::Error
     {
-        return Err(ResponsesTransportError::message(
+        return Err(AzureTransportError::message(
             state
                 .output
                 .error_message
@@ -735,23 +738,8 @@ async fn run_request(
     })
 }
 
-fn process_sse_event(
-    event: &crate::api::sse::ServerSentEvent,
-    state: &mut ResponsesStreamState,
-    options: &ResponsesStreamOptions<'_>,
-) -> Result<Vec<AssistantMessageEvent>, ResponsesTransportError> {
-    if event.data.starts_with("[DONE]") || event.data.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-    let parsed = serde_json::from_str::<Value>(&event.data)
-        .map_err(|error| ResponsesTransportError::message(error.to_string()))?;
-    state
-        .process_event(&parsed, options)
-        .map_err(|error| ResponsesTransportError::message(error.to_string()))
-}
-
 /// The openai SDK's `APIError.generate(status, errJSON, errText, headers)`.
-fn api_error(status: u16, headers: Vec<(String, String)>, body: &str) -> ResponsesTransportError {
+fn api_error(status: u16, headers: Vec<(String, String)>, body: &str) -> AzureTransportError {
     let err_json = serde_json::from_str::<Value>(body)
         .ok()
         .and_then(|body| body.get("error").cloned());
@@ -768,9 +756,9 @@ fn api_error(status: u16, headers: Vec<(String, String)>, body: &str) -> Respons
     } else {
         format!("{status} {message}")
     };
-    ResponsesTransportError {
+    AzureTransportError {
         message,
-        response: Some(Box::new(ResponsesApiErrorResponse {
+        response: Some(Box::new(AzureApiErrorResponse {
             status,
             headers,
             body: err_json,
@@ -791,36 +779,27 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)`
+/// `streamSimple(model, context, options)` — throws without an api key, like TS.
 pub fn stream_simple(
     model: Model,
     context: Context,
     options: Option<SimpleStreamOptions>,
-) -> AssistantMessageEventStream {
+) -> Result<AssistantMessageEventStream, AzureOpenAIError> {
     let options = options.unwrap_or_default();
-    if let Err(error) = get_client_api_key(
-        &model.provider,
-        options.base.base.api_key.as_deref(),
-        options.base.base.headers.as_ref(),
-    ) {
-        let stream = create_assistant_message_event_stream();
-        let mut output = empty_output(&model, crate::auth::resolve::now_ms());
-        output.stop_reason = StopReason::Error;
-        output.error_message = Some(error.to_string());
-        stream.push(AssistantMessageEvent::Error {
-            reason: ErrorReason::Error,
-            error: output.clone(),
-        });
-        stream.end(Some(output));
-        return stream;
-    }
+    let Some(api_key) = options
+        .base
+        .base
+        .api_key
+        .as_deref()
+        .filter(|key| !key.is_empty())
+    else {
+        return Err(AzureOpenAIError(format!(
+            "No API key for provider: {}",
+            model.provider
+        )));
+    };
 
-    let base = build_base_options(
-        &model,
-        &context,
-        Some(&options),
-        options.base.base.api_key.clone(),
-    );
+    let base = build_base_options(&model, &context, Some(&options), Some(api_key.to_string()));
     let clamped_reasoning = options
         .reasoning
         .map(|reasoning| clamp_thinking_level(&model, reasoning.into()));
@@ -834,21 +813,22 @@ pub fn stream_simple(
         Some(ModelThinkingLevel::Off) | None => None,
     };
 
-    stream(
+    Ok(stream(
         model,
         context,
         base.base.clone(),
-        OpenAIResponsesOptions {
+        AzureOpenAIResponsesOptions {
             reasoning_effort,
             reasoning_summary: None,
-            service_tier: None,
-            tool_choice: None,
+            azure_api_version: None,
+            azure_resource_name: None,
+            azure_base_url: None,
+            azure_deployment_name: None,
             max_tokens: base.max_tokens,
             temperature: base.temperature,
             sampling_params: base.sampling_params.clone(),
-            cache_retention: base.cache_retention,
             session_id: base.session_id.clone(),
             env: base.base.env.clone(),
         },
-    )
+    ))
 }
