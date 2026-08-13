@@ -98,7 +98,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   JS-Schreibweise ausgeben. Ohne das Feature bleibt die aktuelle Lösung (ganzzahlige Werte als
   JSON-Integer), die den häufigsten Fall (`0`) abdeckt; Kosten-Nachkommawerte unterhalb 1e-6
   bzw. ab 1e21 würden abweichend formatiert.
-- **Status**: offen
+- **Status**: umgesetzt (Root-`Cargo.toml`, `serde_json` mit `preserve_order` + `raw_value`)
 
 ## Sektion C (Workstream C — App)
 
