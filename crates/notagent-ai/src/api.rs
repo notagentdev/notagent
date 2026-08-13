@@ -20,6 +20,7 @@ pub mod openai_completions_params;
 pub mod openai_prompt_cache;
 pub mod openai_responses;
 pub mod openai_responses_shared;
+pub mod pi_messages;
 pub mod simple_options;
 pub mod sse;
 pub mod transform_messages;

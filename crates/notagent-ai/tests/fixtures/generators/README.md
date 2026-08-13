@@ -76,3 +76,10 @@ The Vertex adapter has no generator: its endpoint rules are covered by
 
 `mistral-conversations.mts` injects a fake `fetch` through the adapter's own `fetch`
 option and records the URL, the headers and the body next to the event sequence.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `pi-messages.mts` | `pi-messages.jsonl` | `node --experimental-strip-types pi-messages.mts > ../pi-messages.jsonl` |
+
+`pi-messages.mts` injects a fake `fetch` and records the URL, the headers, the body and
+the status text next to the event sequence.
