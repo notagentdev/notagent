@@ -631,3 +631,419 @@ async fn supports_bounded_filtered_and_cursor_based_queries() {
     );
     fixture.repo.close().await;
 }
+
+#[tokio::test]
+async fn persists_queue_cancellation_without_consuming_its_target() {
+    let (fixture, session) = fixture("session").await;
+    let enqueued = session
+        .append_record(LaneRecord::QueueEnqueued(QueueEnqueuedRecord {
+            id: "enqueue".to_owned(),
+            seq: 0,
+            lane: "main".to_owned(),
+            timestamp: 0,
+            queue: QueueKind::NextRun,
+            run_id: None,
+            target: message("queued-message", "queued"),
+        }))
+        .await
+        .expect("appends");
+    let cancelled = session
+        .append_record(LaneRecord::QueueCancelled(
+            notagent_session_sqlite::session_types::QueueCancelledRecord {
+                id: "cancel".to_owned(),
+                seq: 0,
+                lane: "main".to_owned(),
+                timestamp: 0,
+                run_id: None,
+                entry_id: "queued-message".to_owned(),
+            },
+        ))
+        .await
+        .expect("appends");
+    let LaneRecord::QueueCancelled(cancelled_record) = &cancelled else {
+        panic!("expected queue_cancelled")
+    };
+    assert_eq!(
+        (cancelled_record.seq, cancelled_record.entry_id.as_str()),
+        (2, "queued-message")
+    );
+    assert!(cancelled_record.run_id.is_none());
+    assert!(
+        session
+            .get_entry("queued-message")
+            .expect("entry")
+            .is_none()
+    );
+
+    let cancellations = session
+        .find_records(&RecordQuery {
+            record_type: Some(RecordType::QueueCancelled),
+            ..RecordQuery::default()
+        })
+        .expect("records");
+    assert_eq!(cancellations, vec![cancelled.clone()]);
+    let log = session.get_log(&Default::default()).expect("log");
+    assert_eq!(
+        log,
+        vec![
+            LogItem::Record {
+                seq: enqueued.seq(),
+                record: enqueued
+            },
+            LogItem::Record {
+                seq: cancelled.seq(),
+                record: cancelled
+            },
+        ]
+    );
+    fixture.repo.close().await;
+}
+
+fn step_attempt(id: &str, lane: &str, run_id: &str, result_entry_id: &str) -> LaneRecord {
+    LaneRecord::StepAttempt(notagent_session_sqlite::session_types::StepAttemptRecord {
+        id: id.to_owned(),
+        seq: 0,
+        lane: lane.to_owned(),
+        timestamp: 0,
+        run_id: run_id.to_owned(),
+        step: notagent_session_sqlite::session_types::StepKind::Assistant,
+        attempt: 1,
+        result_entry_id: result_entry_id.to_owned(),
+        compaction_reason: None,
+    })
+}
+
+fn operation_finished(id: &str, lane: &str, run_id: &str) -> LaneRecord {
+    LaneRecord::OperationFinished(OperationFinishedRecord {
+        id: id.to_owned(),
+        seq: 0,
+        lane: lane.to_owned(),
+        timestamp: 0,
+        run_id: run_id.to_owned(),
+        outcome: OperationOutcome::Completed,
+        error: None,
+    })
+}
+
+fn operation_started_with_kind(id: &str, lane: &str, intent: OperationIntent) -> LaneRecord {
+    LaneRecord::OperationStarted(OperationStartedRecord {
+        id: id.to_owned(),
+        seq: 0,
+        lane: lane.to_owned(),
+        timestamp: 0,
+        source_leaf_id: None,
+        intent,
+    })
+}
+
+fn record_ids(records: &[LaneRecord]) -> Vec<String> {
+    records
+        .iter()
+        .map(|record| record.id().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn filters_records_by_lane_type_run_sequence_and_order() {
+    let (fixture, session) = fixture("session").await;
+    session
+        .append_record(operation_started("run-1", "main"))
+        .await
+        .expect("appends");
+    session
+        .append_record(step_attempt("attempt-1", "main", "run-1", "assistant-1"))
+        .await
+        .expect("appends");
+    session
+        .create_lane("thread", None)
+        .await
+        .expect("creates lane");
+    session
+        .append_record(operation_started("run-2", "thread"))
+        .await
+        .expect("appends");
+    session
+        .append_record(step_attempt("attempt-2", "thread", "run-2", "assistant-2"))
+        .await
+        .expect("appends");
+
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&RecordQuery {
+                    lane: Some("thread".to_owned()),
+                    ..RecordQuery::default()
+                })
+                .expect("records")
+        ),
+        vec!["attempt-2", "run-2"]
+    );
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&RecordQuery {
+                    record_type: Some(RecordType::StepAttempt),
+                    order: Some(EntryOrder::OldestFirst),
+                    ..RecordQuery::default()
+                })
+                .expect("records")
+        ),
+        vec!["attempt-1", "attempt-2"]
+    );
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&RecordQuery {
+                    run_id: Some("run-1".to_owned()),
+                    after_seq: Some(1),
+                    ..RecordQuery::default()
+                })
+                .expect("records")
+        ),
+        vec!["attempt-1"]
+    );
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&RecordQuery {
+                    limit: Some(1),
+                    ..RecordQuery::default()
+                })
+                .expect("records")
+        ),
+        vec!["attempt-2"]
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn filters_operation_starts_by_operation_kind() {
+    let (fixture, session) = fixture("session").await;
+    let run_intent = || OperationIntent::Run {
+        original_prompt: vec![],
+        initial_messages: vec![],
+        system_prompt_override: None,
+        resume_data: None,
+    };
+    session
+        .append_record(operation_started_with_kind("run-old", "main", run_intent()))
+        .await
+        .expect("appends");
+    session
+        .append_record(operation_finished("run-old-finished", "main", "run-old"))
+        .await
+        .expect("appends");
+    session
+        .append_record(operation_started_with_kind(
+            "compaction",
+            "main",
+            OperationIntent::Compaction {
+                custom_instructions: None,
+                result_entry_id: "result".to_owned(),
+            },
+        ))
+        .await
+        .expect("appends");
+    session
+        .append_record(operation_finished(
+            "compaction-finished",
+            "main",
+            "compaction",
+        ))
+        .await
+        .expect("appends");
+    session
+        .append_record(operation_started_with_kind(
+            "navigation",
+            "main",
+            OperationIntent::Navigation {
+                target_id: None,
+                summarize: false,
+                custom_instructions: None,
+                label: None,
+                summary_entry_id: None,
+            },
+        ))
+        .await
+        .expect("appends");
+    session
+        .append_record(operation_finished(
+            "navigation-finished",
+            "main",
+            "navigation",
+        ))
+        .await
+        .expect("appends");
+    session
+        .append_record(operation_started_with_kind("run-new", "main", run_intent()))
+        .await
+        .expect("appends");
+
+    let started = |kind, order, limit| RecordQuery {
+        record_type: Some(RecordType::OperationStarted),
+        operation_kind: Some(kind),
+        order,
+        limit,
+        ..RecordQuery::default()
+    };
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&started(
+                    OperationKind::Run,
+                    Some(EntryOrder::OldestFirst),
+                    None
+                ))
+                .expect("records")
+        ),
+        vec!["run-old", "run-new"]
+    );
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&started(OperationKind::Compaction, None, None))
+                .expect("records")
+        ),
+        vec!["compaction"]
+    );
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&started(OperationKind::Navigation, None, None))
+                .expect("records")
+        ),
+        vec!["navigation"]
+    );
+    assert_eq!(
+        record_ids(
+            &session
+                .find_records(&started(OperationKind::Run, None, Some(1)))
+                .expect("records")
+        ),
+        vec!["run-new"]
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn tracks_and_enforces_one_open_operation_per_lane() {
+    let (fixture, session) = fixture("session").await;
+    assert!(
+        session
+            .find_open_operations("main", Some(2))
+            .expect("open")
+            .is_empty()
+    );
+
+    let first = session
+        .append_record(operation_started("first", "main"))
+        .await
+        .expect("appends");
+    let open = session.find_open_operations("main", Some(2)).expect("open");
+    assert_eq!(open.len(), 1);
+    assert_eq!(LaneRecord::OperationStarted(open[0].clone()), first);
+    let error = session
+        .append_record(operation_started("second", "main"))
+        .await
+        .expect_err("rejects");
+    assert_eq!(error.code, SessionErrorCode::Storage);
+    assert_eq!(
+        session
+            .find_open_operations("main", Some(2))
+            .expect("open")
+            .len(),
+        1
+    );
+
+    session
+        .append_record(operation_finished("finish-first", "main", "first"))
+        .await
+        .expect("appends");
+    assert!(
+        session
+            .find_open_operations("main", Some(2))
+            .expect("open")
+            .is_empty()
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn does_not_let_an_earlier_finish_close_a_later_start() {
+    let (fixture, session) = fixture("session").await;
+    session
+        .append_record(operation_finished("finish-before-start", "main", "run"))
+        .await
+        .expect("appends");
+    let started = session
+        .append_record(operation_started("run", "main"))
+        .await
+        .expect("appends");
+    let open = session.find_open_operations("main", Some(2)).expect("open");
+    assert_eq!(open.len(), 1);
+    assert_eq!(LaneRecord::OperationStarted(open[0].clone()), started);
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn scopes_open_operations_by_lane_and_limit() {
+    let (fixture, session) = fixture("session").await;
+    session
+        .create_lane("thread", None)
+        .await
+        .expect("creates lane");
+    let main_run = session
+        .append_record(operation_started("main-run", "main"))
+        .await
+        .expect("appends");
+    let thread_navigation = session
+        .append_record(operation_started_with_kind(
+            "thread-navigation",
+            "thread",
+            OperationIntent::Navigation {
+                target_id: None,
+                summarize: false,
+                custom_instructions: None,
+                label: None,
+                summary_entry_id: None,
+            },
+        ))
+        .await
+        .expect("appends");
+
+    for open in [
+        session.find_open_operations("main", None).expect("open"),
+        session.find_open_operations("main", Some(1)).expect("open"),
+    ] {
+        assert_eq!(LaneRecord::OperationStarted(open[0].clone()), main_run);
+    }
+    let thread_open = session
+        .find_open_operations("thread", Some(2))
+        .expect("open");
+    assert_eq!(
+        LaneRecord::OperationStarted(thread_open[0].clone()),
+        thread_navigation
+    );
+    fixture.repo.close().await;
+}
+
+/// TS mutates the returned record to prove the storage keeps its own copy;
+/// Rust returns owned values, so mutation cannot reach the storage at all.
+#[tokio::test]
+async fn returns_immutable_open_operation_records() {
+    let (fixture, session) = fixture("session").await;
+    let committed = session
+        .append_record(operation_started("run", "main"))
+        .await
+        .expect("appends");
+    let mut read = session.find_open_operations("main", None).expect("open");
+    if let OperationIntent::Run {
+        original_prompt, ..
+    } = &mut read[0].intent
+    {
+        original_prompt.push(user_message("mutated"));
+    }
+    let reread = session.find_open_operations("main", None).expect("open");
+    assert_eq!(LaneRecord::OperationStarted(reread[0].clone()), committed);
+    fixture.repo.close().await;
+}
