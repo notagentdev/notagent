@@ -4,11 +4,11 @@
 //! variables or literals. Used by auth storage and the model registry.
 
 use std::collections::{BTreeMap, HashMap};
-use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+#[cfg(any(windows, test))]
 use crate::utils::shell::{CommandTransport, get_shell_config};
 
 /// Cache for shell command results (persists for the process lifetime).
@@ -131,7 +131,10 @@ fn parse_config_value_reference(config: &str) -> ConfigValueReference {
 
 fn resolve_env_config_value(name: &str, env: Option<&BTreeMap<String, String>>) -> Option<String> {
     // TS uses `||`, so an empty override falls through to the process env.
-    if let Some(value) = env.and_then(|env| env.get(name)).filter(|value| !value.is_empty()) {
+    if let Some(value) = env
+        .and_then(|env| env.get(name))
+        .filter(|value| !value.is_empty())
+    {
         return Some(value.clone());
     }
     std::env::var(name).ok().filter(|value| !value.is_empty())
@@ -149,7 +152,10 @@ fn template_env_var_names(parts: &[TemplatePart]) -> Vec<String> {
     names
 }
 
-fn resolve_template(parts: &[TemplatePart], env: Option<&BTreeMap<String, String>>) -> Option<String> {
+fn resolve_template(
+    parts: &[TemplatePart],
+    env: Option<&BTreeMap<String, String>>,
+) -> Option<String> {
     let mut resolved = String::new();
     for part in parts {
         match part {
@@ -189,7 +195,10 @@ pub fn get_missing_config_value_env_var_names(
 }
 
 pub fn is_command_config_value(config: &str) -> bool {
-    matches!(parse_config_value_reference(config), ConfigValueReference::Command(_))
+    matches!(
+        parse_config_value_reference(config),
+        ConfigValueReference::Command(_)
+    )
 }
 
 pub fn is_config_value_configured(config: &str, env: Option<&BTreeMap<String, String>>) -> bool {
@@ -202,14 +211,20 @@ pub fn is_config_value_configured(config: &str, env: Option<&BTreeMap<String, St
 /// - `$ENV_VAR` and `${ENV_VAR}` interpolate the named environment variable
 /// - in non-command values `$$` escapes a literal `$` and `$!` a literal `!`
 /// - anything else is a literal
-pub fn resolve_config_value(config: &str, env: Option<&BTreeMap<String, String>>) -> Option<String> {
+pub fn resolve_config_value(
+    config: &str,
+    env: Option<&BTreeMap<String, String>>,
+) -> Option<String> {
     match parse_config_value_reference(config) {
         ConfigValueReference::Command(command) => execute_command(&command),
         ConfigValueReference::Template(parts) => resolve_template(&parts, env),
     }
 }
 
-pub fn resolve_config_value_uncached(config: &str, env: Option<&BTreeMap<String, String>>) -> Option<String> {
+pub fn resolve_config_value_uncached(
+    config: &str,
+    env: Option<&BTreeMap<String, String>>,
+) -> Option<String> {
     match parse_config_value_reference(config) {
         ConfigValueReference::Command(command) => execute_command_uncached(&command),
         ConfigValueReference::Template(parts) => resolve_template(&parts, env),
@@ -232,7 +247,10 @@ pub fn resolve_config_value_or_throw(
         ConfigValueReference::Template(_) => {
             let missing = get_missing_config_value_env_var_names(config, env);
             match missing.len() {
-                1 => Err(format!("Failed to resolve {description} from environment variable: {}", missing[0])),
+                1 => Err(format!(
+                    "Failed to resolve {description} from environment variable: {}",
+                    missing[0]
+                )),
                 count if count > 1 => Err(format!(
                     "Failed to resolve {description} from environment variables: {}",
                     missing.join(", ")
@@ -256,7 +274,11 @@ pub fn resolve_headers(
             resolved.insert(key.clone(), value);
         }
     }
-    if resolved.is_empty() { None } else { Some(resolved) }
+    if resolved.is_empty() {
+        None
+    } else {
+        Some(resolved)
+    }
 }
 
 pub fn resolve_headers_or_throw(
@@ -264,22 +286,36 @@ pub fn resolve_headers_or_throw(
     description: &str,
     env: Option<&BTreeMap<String, String>>,
 ) -> Result<Option<BTreeMap<String, String>>, String> {
-    let Some(headers) = headers else { return Ok(None) };
+    let Some(headers) = headers else {
+        return Ok(None);
+    };
     let mut resolved: BTreeMap<String, String> = BTreeMap::new();
     for (key, value) in headers {
-        let value = resolve_config_value_or_throw(value, &format!("{description} header \"{key}\""), env)?;
+        let value =
+            resolve_config_value_or_throw(value, &format!("{description} header \"{key}\""), env)?;
         resolved.insert(key.clone(), value);
     }
-    Ok(if resolved.is_empty() { None } else { Some(resolved) })
+    Ok(if resolved.is_empty() {
+        None
+    } else {
+        Some(resolved)
+    })
 }
 
 /// Clear the config value command cache. Exported for testing.
 pub fn clear_config_value_cache() {
-    COMMAND_RESULT_CACHE.lock().expect("command cache mutex").clear();
+    COMMAND_RESULT_CACHE
+        .lock()
+        .expect("command cache mutex")
+        .clear();
 }
 
 fn execute_command(command_config: &str) -> Option<String> {
-    if let Some(cached) = COMMAND_RESULT_CACHE.lock().expect("command cache mutex").get(command_config) {
+    if let Some(cached) = COMMAND_RESULT_CACHE
+        .lock()
+        .expect("command cache mutex")
+        .get(command_config)
+    {
         return cached.clone();
     }
     let result = execute_command_uncached(command_config);
@@ -317,8 +353,12 @@ struct ConfiguredShellResult {
 #[cfg(any(windows, test))]
 fn execute_with_configured_shell(command: &str) -> ConfiguredShellResult {
     let Ok(config) = get_shell_config(None) else {
-        return ConfiguredShellResult { executed: false, value: None };
+        return ConfiguredShellResult {
+            executed: false,
+            value: None,
+        };
     };
+    use std::io::Write;
     let command_from_stdin = config.command_transport == Some(CommandTransport::Stdin);
     let mut process = Command::new(&config.shell);
     process.args(&config.args);
@@ -326,31 +366,48 @@ fn execute_with_configured_shell(command: &str) -> ConfiguredShellResult {
         process.arg(command);
     }
     process
-        .stdin(if command_from_stdin { Stdio::piped() } else { Stdio::null() })
+        .stdin(if command_from_stdin {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
 
     let mut child = match process.spawn() {
         Ok(child) => child,
         // A missing shell is TS's ENOENT: not executed, so the caller falls back.
-        Err(_) => return ConfiguredShellResult { executed: false, value: None },
+        Err(_) => {
+            return ConfiguredShellResult {
+                executed: false,
+                value: None,
+            };
+        }
     };
-    if command_from_stdin
-        && let Some(mut stdin) = child.stdin.take()
-    {
+    if command_from_stdin && let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(command.as_bytes());
     }
     match wait_with_timeout(child) {
         Some((status, stdout)) if status.success() => {
             let value = stdout.trim().to_owned();
-            ConfiguredShellResult { executed: true, value: (!value.is_empty()).then_some(value) }
+            ConfiguredShellResult {
+                executed: true,
+                value: (!value.is_empty()).then_some(value),
+            }
         }
-        Some(_) | None => ConfiguredShellResult { executed: true, value: None },
+        Some(_) | None => ConfiguredShellResult {
+            executed: true,
+            value: None,
+        },
     }
 }
 
 fn execute_with_default_shell(command: &str) -> Option<String> {
-    let (shell, flag) = if cfg!(windows) { ("cmd", "/C") } else { ("/bin/sh", "-c") };
+    let (shell, flag) = if cfg!(windows) {
+        ("cmd", "/C")
+    } else {
+        ("/bin/sh", "-c")
+    };
     let child = Command::new(shell)
         .arg(flag)
         .arg(command)
@@ -403,64 +460,118 @@ mod tests {
     use super::*;
 
     fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs.iter().map(|(key, value)| ((*key).to_owned(), (*value).to_owned())).collect()
+        pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect()
     }
 
     #[test]
     fn treats_plain_values_as_literals() {
-        assert_eq!(resolve_config_value("sk-literal", None), Some("sk-literal".to_owned()));
+        assert_eq!(
+            resolve_config_value("sk-literal", None),
+            Some("sk-literal".to_owned())
+        );
         assert_eq!(resolve_config_value("", None), Some(String::new()));
     }
 
     #[test]
     fn interpolates_environment_variables_in_both_syntaxes() {
         let env = env(&[("TOKEN", "abc"), ("SUFFIX", "xyz")]);
-        assert_eq!(resolve_config_value("$TOKEN", Some(&env)), Some("abc".to_owned()));
-        assert_eq!(resolve_config_value("${TOKEN}", Some(&env)), Some("abc".to_owned()));
-        assert_eq!(resolve_config_value("pre-$TOKEN-$SUFFIX", Some(&env)), Some("pre-abc-xyz".to_owned()));
-        assert_eq!(resolve_config_value("${TOKEN}${SUFFIX}", Some(&env)), Some("abcxyz".to_owned()));
+        assert_eq!(
+            resolve_config_value("$TOKEN", Some(&env)),
+            Some("abc".to_owned())
+        );
+        assert_eq!(
+            resolve_config_value("${TOKEN}", Some(&env)),
+            Some("abc".to_owned())
+        );
+        assert_eq!(
+            resolve_config_value("pre-$TOKEN-$SUFFIX", Some(&env)),
+            Some("pre-abc-xyz".to_owned())
+        );
+        assert_eq!(
+            resolve_config_value("${TOKEN}${SUFFIX}", Some(&env)),
+            Some("abcxyz".to_owned())
+        );
     }
 
     #[test]
     fn returns_none_when_a_referenced_variable_is_missing() {
         let env = env(&[("TOKEN", "abc")]);
-        assert_eq!(resolve_config_value("$TOKEN/$NOTAGENT_MISSING_TEST_VAR", Some(&env)), None);
+        assert_eq!(
+            resolve_config_value("$TOKEN/$NOTAGENT_MISSING_TEST_VAR", Some(&env)),
+            None
+        );
         assert_eq!(
             get_missing_config_value_env_var_names("$TOKEN/$NOTAGENT_MISSING_TEST_VAR", Some(&env)),
             vec!["NOTAGENT_MISSING_TEST_VAR".to_owned()]
         );
-        assert!(!is_config_value_configured("$NOTAGENT_MISSING_TEST_VAR", Some(&env)));
+        assert!(!is_config_value_configured(
+            "$NOTAGENT_MISSING_TEST_VAR",
+            Some(&env)
+        ));
         assert!(is_config_value_configured("$TOKEN", Some(&env)));
     }
 
     #[test]
     fn escapes_dollar_and_bang() {
-        assert_eq!(resolve_config_value("$$HOME", None), Some("$HOME".to_owned()));
-        assert_eq!(resolve_config_value("$!echo hi", None), Some("!echo hi".to_owned()));
+        assert_eq!(
+            resolve_config_value("$$HOME", None),
+            Some("$HOME".to_owned())
+        );
+        assert_eq!(
+            resolve_config_value("$!echo hi", None),
+            Some("!echo hi".to_owned())
+        );
         // A lone dollar that starts no valid name stays literal.
-        assert_eq!(resolve_config_value("100$ and 5$", None), Some("100$ and 5$".to_owned()));
+        assert_eq!(
+            resolve_config_value("100$ and 5$", None),
+            Some("100$ and 5$".to_owned())
+        );
         // An unterminated brace stays literal too.
-        assert_eq!(resolve_config_value("${UNTERMINATED", None), Some("${UNTERMINATED".to_owned()));
+        assert_eq!(
+            resolve_config_value("${UNTERMINATED", None),
+            Some("${UNTERMINATED".to_owned())
+        );
         // An invalid name inside braces is kept verbatim.
-        assert_eq!(resolve_config_value("${not-a-name}", None), Some("${not-a-name}".to_owned()));
+        assert_eq!(
+            resolve_config_value("${not-a-name}", None),
+            Some("${not-a-name}".to_owned())
+        );
     }
 
     #[test]
     fn reports_the_single_environment_variable_of_a_value() {
-        assert_eq!(get_config_value_env_var_name("$TOKEN"), Some("TOKEN".to_owned()));
-        assert_eq!(get_config_value_env_var_name("${TOKEN}"), Some("TOKEN".to_owned()));
+        assert_eq!(
+            get_config_value_env_var_name("$TOKEN"),
+            Some("TOKEN".to_owned())
+        );
+        assert_eq!(
+            get_config_value_env_var_name("${TOKEN}"),
+            Some("TOKEN".to_owned())
+        );
         assert_eq!(get_config_value_env_var_name("pre-$TOKEN"), None);
         assert_eq!(get_config_value_env_var_name("!echo hi"), None);
-        assert_eq!(get_config_value_env_var_names("$A-$B-$A"), vec!["A".to_owned(), "B".to_owned()]);
+        assert_eq!(
+            get_config_value_env_var_names("$A-$B-$A"),
+            vec!["A".to_owned(), "B".to_owned()]
+        );
     }
 
     #[test]
     fn executes_shell_commands_and_caches_them() {
         clear_config_value_cache();
         assert!(is_command_config_value("!echo hello"));
-        assert_eq!(resolve_config_value("!echo hello", None), Some("hello".to_owned()));
+        assert_eq!(
+            resolve_config_value("!echo hello", None),
+            Some("hello".to_owned())
+        );
         // Trailing whitespace is trimmed and empty output becomes None.
-        assert_eq!(resolve_config_value_uncached("!printf '  spaced  '", None), Some("spaced".to_owned()));
+        assert_eq!(
+            resolve_config_value_uncached("!printf '  spaced  '", None),
+            Some("spaced".to_owned())
+        );
         assert_eq!(resolve_config_value_uncached("!true", None), None);
         // A failing command yields no value.
         assert_eq!(resolve_config_value_uncached("!exit 3", None), None);
@@ -470,13 +581,24 @@ mod tests {
     #[test]
     fn caches_command_results_for_the_process_lifetime() {
         clear_config_value_cache();
-        let directory = tempfile::Builder::new().prefix("notagent-config-value-").tempdir().expect("temp dir");
+        let directory = tempfile::Builder::new()
+            .prefix("notagent-config-value-")
+            .tempdir()
+            .expect("temp dir");
         let marker = directory.path().join("count");
-        let command = format!("!printf x >> {} && cat {}", marker.display(), marker.display());
+        let command = format!(
+            "!printf x >> {} && cat {}",
+            marker.display(),
+            marker.display()
+        );
         let first = resolve_config_value(&command, None);
         let second = resolve_config_value(&command, None);
         assert_eq!(first, second);
-        assert_eq!(first, Some("x".to_owned()), "the cached call must not run the command again");
+        assert_eq!(
+            first,
+            Some("x".to_owned()),
+            "the cached call must not run the command again"
+        );
         clear_config_value_cache();
     }
 
@@ -492,27 +614,45 @@ mod tests {
 
     #[test]
     fn or_throw_names_the_missing_source() {
-        let error = resolve_config_value_or_throw("$NOTAGENT_MISSING_TEST_VAR", "API key", None).expect_err("fails");
-        assert_eq!(error, "Failed to resolve API key from environment variable: NOTAGENT_MISSING_TEST_VAR");
-        let error =
-            resolve_config_value_or_throw("$NOTAGENT_MISSING_A/$NOTAGENT_MISSING_B", "API key", None).expect_err("fails");
+        let error = resolve_config_value_or_throw("$NOTAGENT_MISSING_TEST_VAR", "API key", None)
+            .expect_err("fails");
+        assert_eq!(
+            error,
+            "Failed to resolve API key from environment variable: NOTAGENT_MISSING_TEST_VAR"
+        );
+        let error = resolve_config_value_or_throw(
+            "$NOTAGENT_MISSING_A/$NOTAGENT_MISSING_B",
+            "API key",
+            None,
+        )
+        .expect_err("fails");
         assert_eq!(
             error,
             "Failed to resolve API key from environment variables: NOTAGENT_MISSING_A, NOTAGENT_MISSING_B"
         );
         let error = resolve_config_value_or_throw("!exit 1", "API key", None).expect_err("fails");
-        assert_eq!(error, "Failed to resolve API key from shell command: exit 1");
+        assert_eq!(
+            error,
+            "Failed to resolve API key from shell command: exit 1"
+        );
     }
 
     #[test]
     fn resolves_headers_and_drops_unresolvable_ones() {
         let overrides = env(&[("TOKEN", "abc")]);
-        let headers = env(&[("Authorization", "Bearer $TOKEN"), ("X-Missing", "$NOTAGENT_MISSING_TEST_VAR")]);
+        let headers = env(&[
+            ("Authorization", "Bearer $TOKEN"),
+            ("X-Missing", "$NOTAGENT_MISSING_TEST_VAR"),
+        ]);
         let resolved = resolve_headers(Some(&headers), Some(&overrides)).expect("headers");
-        assert_eq!(resolved.get("Authorization"), Some(&"Bearer abc".to_owned()));
+        assert_eq!(
+            resolved.get("Authorization"),
+            Some(&"Bearer abc".to_owned())
+        );
         assert!(!resolved.contains_key("X-Missing"));
 
-        let error = resolve_headers_or_throw(Some(&headers), "provider", Some(&overrides)).expect_err("fails");
+        let error = resolve_headers_or_throw(Some(&headers), "provider", Some(&overrides))
+            .expect_err("fails");
         assert_eq!(
             error,
             "Failed to resolve provider header \"X-Missing\" from environment variable: NOTAGENT_MISSING_TEST_VAR"

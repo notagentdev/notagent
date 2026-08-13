@@ -189,3 +189,24 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Wunsch**: die Variante entweder hinter `#[cfg(test)]` stellen oder produktiv nutzen
   (z. B. für den Byte-Log-Vergleich des RecordingTerminal-Äquivalents).
 - **Status**: offen
+
+### C-4 `Credential`/`AuthType` serialisieren OAuth als `o_auth` statt `oauth`
+- **Von / An**: C → B
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-ai/src/auth/types.rs:50-56` (`Credential`) und
+  `crates/notagent-ai/src/auth/types.rs:89-95` (`AuthType`)
+- **Beleg**: `packages/ai/src/auth/types.ts:33` — `OAuthCredential.type` ist `"oauth"`;
+  `packages/ai/src/auth/types.ts:114` — `AuthType = "api_key" | "oauth"`. Beide Rust-Typen
+  tragen `#[serde(rename_all = "snake_case")]`, und serde macht daraus für die Variante
+  `OAuth` den Wert `o_auth`.
+- **Wirkung**: `auth.json` ist nicht mehr formatkompatibel — eine von der TS-App
+  geschriebene Datei (`{"anthropic":{"type":"oauth",…}}`) lässt sich nicht lesen, eine vom
+  Port geschriebene nicht von der TS-App. Das verletzt die Konfigurationskompatibilität aus
+  dem Master-Plan. Betroffen sind auch alle Protokoll-/UI-Pfade, die `AuthType` serialisieren.
+- **Wunsch**: `#[serde(rename = "oauth")]` an beiden `OAuth`-Varianten (Wert `api_key`
+  bleibt durch `rename_all` korrekt).
+- **Auswirkung bei C**: `crates/notagent/tests/auth_storage.rs` — die beiden Tests
+  `returns_oauth_credentials_unchanged` und
+  `translates_a_credential_store_refresh_failure_and_allows_a_later_retry` sind mit
+  TS-Wire-Format geschrieben und bis zur Umsetzung `#[ignore]`.
+- **Status**: offen

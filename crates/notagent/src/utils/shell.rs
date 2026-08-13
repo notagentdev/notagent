@@ -25,10 +25,16 @@ pub struct ShellConfig {
 /// Legacy WSL `bash.exe` takes its command on stdin, not in argv.
 fn is_legacy_wsl_bash_path(path: &str) -> bool {
     let normalized = path.replace('/', "\\").to_lowercase();
-    let Some(rest) = normalized.strip_suffix("\\bash.exe") else { return false };
-    let Some((drive, system)) = rest.split_once(":\\windows\\") else { return false };
+    let Some(rest) = normalized.strip_suffix("\\bash.exe") else {
+        return false;
+    };
+    let Some((drive, system)) = rest.split_once(":\\windows\\") else {
+        return false;
+    };
     drive.len() == 1
-        && drive.chars().all(|character| character.is_ascii_lowercase())
+        && drive
+            .chars()
+            .all(|character| character.is_ascii_lowercase())
         && matches!(system, "system32" | "sysnative")
 }
 
@@ -40,7 +46,11 @@ fn bash_shell_config(shell: &str) -> ShellConfig {
             command_transport: Some(CommandTransport::Stdin),
         }
     } else {
-        ShellConfig { shell: shell.to_owned(), args: vec!["-c".to_owned()], command_transport: None }
+        ShellConfig {
+            shell: shell.to_owned(),
+            args: vec!["-c".to_owned()],
+            command_transport: None,
+        }
     }
 }
 
@@ -55,7 +65,11 @@ fn find_bash_on_path() -> Option<String> {
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         let first = stdout.trim().lines().next()?.trim().to_owned();
-        if !first.is_empty() && Path::new(&first).exists() { Some(first) } else { None }
+        if !first.is_empty() && Path::new(&first).exists() {
+            Some(first)
+        } else {
+            None
+        }
     }
     #[cfg(not(windows))]
     {
@@ -101,7 +115,11 @@ pub fn get_shell_config(custom_shell_path: Option<&str>) -> Result<ShellConfig, 
         if let Some(bash) = find_bash_on_path() {
             return Ok(bash_shell_config(&bash));
         }
-        let searched = paths.iter().map(|path| format!("  {path}")).collect::<Vec<_>>().join("\n");
+        let searched = paths
+            .iter()
+            .map(|path| format!("  {path}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         return Err(format!(
             "No bash shell found. Options:\n  1. Install Git for Windows: https://git-scm.com/download/win\n  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n  3. Set shellPath in settings.json\n\nSearched Git Bash in:\n{searched}"
         ));
@@ -115,7 +133,11 @@ pub fn get_shell_config(custom_shell_path: Option<&str>) -> Result<ShellConfig, 
         if let Some(bash) = find_bash_on_path() {
             return Ok(bash_shell_config(&bash));
         }
-        Ok(ShellConfig { shell: "sh".to_owned(), args: vec!["-c".to_owned()], command_transport: None })
+        Ok(ShellConfig {
+            shell: "sh".to_owned(),
+            args: vec!["-c".to_owned()],
+            command_transport: None,
+        })
     }
 }
 
@@ -165,21 +187,31 @@ pub fn sanitize_binary_output(value: &str) -> String {
 
 /// Detached child processes must be tracked so they can be killed on parent
 /// shutdown signals (SIGHUP/SIGTERM).
-static TRACKED_DETACHED_CHILD_PIDS: LazyLock<Mutex<Vec<u32>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+static TRACKED_DETACHED_CHILD_PIDS: LazyLock<Mutex<Vec<u32>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
 
 pub fn track_detached_child_pid(pid: u32) {
-    let mut tracked = TRACKED_DETACHED_CHILD_PIDS.lock().expect("tracked pids mutex");
+    let mut tracked = TRACKED_DETACHED_CHILD_PIDS
+        .lock()
+        .expect("tracked pids mutex");
     if !tracked.contains(&pid) {
         tracked.push(pid);
     }
 }
 
 pub fn untrack_detached_child_pid(pid: u32) {
-    TRACKED_DETACHED_CHILD_PIDS.lock().expect("tracked pids mutex").retain(|tracked| *tracked != pid);
+    TRACKED_DETACHED_CHILD_PIDS
+        .lock()
+        .expect("tracked pids mutex")
+        .retain(|tracked| *tracked != pid);
 }
 
 pub fn kill_tracked_detached_children() {
-    let pids: Vec<u32> = std::mem::take(&mut *TRACKED_DETACHED_CHILD_PIDS.lock().expect("tracked pids mutex"));
+    let pids: Vec<u32> = std::mem::take(
+        &mut *TRACKED_DETACHED_CHILD_PIDS
+            .lock()
+            .expect("tracked pids mutex"),
+    );
     for pid in pids {
         kill_process_tree(pid);
     }
@@ -244,7 +276,9 @@ mod tests {
     fn detects_legacy_wsl_bash_paths() {
         assert!(is_legacy_wsl_bash_path("C:\\Windows\\System32\\bash.exe"));
         assert!(is_legacy_wsl_bash_path("c:/windows/sysnative/bash.exe"));
-        assert!(!is_legacy_wsl_bash_path("C:\\Program Files\\Git\\bin\\bash.exe"));
+        assert!(!is_legacy_wsl_bash_path(
+            "C:\\Program Files\\Git\\bin\\bash.exe"
+        ));
         assert!(!is_legacy_wsl_bash_path("/bin/bash"));
     }
 
@@ -261,7 +295,10 @@ mod tests {
     #[test]
     fn sanitizes_control_and_format_characters() {
         assert_eq!(sanitize_binary_output("a\u{0}b\u{7}c"), "abc");
-        assert_eq!(sanitize_binary_output("keep\tthese\nlines\r"), "keep\tthese\nlines\r");
+        assert_eq!(
+            sanitize_binary_output("keep\tthese\nlines\r"),
+            "keep\tthese\nlines\r"
+        );
         assert_eq!(sanitize_binary_output("x\u{fff9}y\u{fffb}z"), "xyz");
         assert_eq!(sanitize_binary_output("emoji 🎉 stays"), "emoji 🎉 stays");
     }
@@ -269,10 +306,17 @@ mod tests {
     #[test]
     fn shell_env_puts_the_managed_bin_directory_first() {
         let env = get_shell_env();
-        let path_key = env.keys().find(|key| key.eq_ignore_ascii_case("path")).expect("PATH");
+        let path_key = env
+            .keys()
+            .find(|key| key.eq_ignore_ascii_case("path"))
+            .expect("PATH");
         let separator = if cfg!(windows) { ';' } else { ':' };
         let bin_dir = get_bin_dir().to_string_lossy().into_owned();
-        assert!(env[path_key].split(separator).any(|entry| entry == bin_dir), "{}", env[path_key]);
+        assert!(
+            env[path_key].split(separator).any(|entry| entry == bin_dir),
+            "{}",
+            env[path_key]
+        );
     }
 
     #[test]

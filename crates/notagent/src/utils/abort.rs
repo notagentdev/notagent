@@ -24,7 +24,9 @@ pub async fn race_with_abort_signal<T>(
     operation: impl Future<Output = T>,
     signal: Option<&CancellationToken>,
 ) -> Result<T, AbortError> {
-    let Some(signal) = signal else { return Ok(operation.await) };
+    let Some(signal) = signal else {
+        return Ok(operation.await);
+    };
     if signal.is_cancelled() {
         return Err(AbortError);
     }
@@ -75,7 +77,10 @@ mod tests {
     #[tokio::test]
     async fn a_settled_operation_wins_over_a_later_abort() {
         let signal = CancellationToken::new();
-        assert_eq!(race_with_abort_signal(async { 1 }, Some(&signal)).await, Ok(1));
+        assert_eq!(
+            race_with_abort_signal(async { 1 }, Some(&signal)).await,
+            Ok(1)
+        );
         signal.cancel();
         assert!(throw_if_aborted(Some(&signal)).is_err());
         assert!(throw_if_aborted(None).is_ok());

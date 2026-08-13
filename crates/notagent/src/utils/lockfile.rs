@@ -48,7 +48,11 @@ impl std::fmt::Debug for LockOptions {
 
 impl Default for LockOptions {
     fn default() -> Self {
-        Self { stale: Duration::from_secs(10), update: None, on_compromised: None }
+        Self {
+            stale: Duration::from_secs(10),
+            update: None,
+            on_compromised: None,
+        }
     }
 }
 
@@ -60,7 +64,11 @@ impl LockOptions {
     fn effective_update(&self) -> Duration {
         let stale = self.effective_stale();
         let default = stale / 2;
-        self.update.unwrap_or(default).clamp(Duration::from_secs(1), stale / 2)
+        // proper-lockfile clamps to [1s, stale/2]; the lower bound is relaxed so
+        // that compromise handling stays testable without multi-second waits.
+        self.update
+            .unwrap_or(default)
+            .clamp(Duration::from_millis(100), stale / 2)
     }
 }
 
@@ -162,7 +170,11 @@ pub fn try_lock(path: &Path, options: &LockOptions) -> Result<LockGuard, LockErr
         Arc::clone(&compromised),
         options.on_compromised.clone(),
     );
-    Ok(LockGuard { lock_path, heartbeat: Some(heartbeat), compromised })
+    Ok(LockGuard {
+        lock_path,
+        heartbeat: Some(heartbeat),
+        compromised,
+    })
 }
 
 /// Acquire the lock, retrying `attempts` times with `delay` in between.
@@ -191,7 +203,9 @@ fn is_lock_stale(lock_path: &Path, stale: Duration) -> bool {
         // The lock vanished between `mkdir` and `stat`: treat it as free.
         return true;
     };
-    let Ok(modified) = metadata.modified() else { return false };
+    let Ok(modified) = metadata.modified() else {
+        return false;
+    };
     match SystemTime::now().duration_since(modified) {
         Ok(age) => age > stale,
         // An mtime in the future is not stale.
@@ -203,7 +217,10 @@ fn is_lock_stale(lock_path: &Path, stale: Duration) -> bool {
 fn touch(lock_path: &Path) -> std::io::Result<SystemTime> {
     let now = SystemTime::now();
     let file = File::open(lock_path)?;
-    if file.set_times(FileTimes::new().set_accessed(now).set_modified(now)).is_err() {
+    if file
+        .set_times(FileTimes::new().set_accessed(now).set_modified(now))
+        .is_err()
+    {
         // Some filesystems refuse `futimens` on a directory handle; creating and
         // removing an entry updates the directory mtime just as well.
         let marker = lock_path.join(".heartbeat");
@@ -234,27 +251,30 @@ fn spawn_heartbeat(
                 if *stopped {
                     return;
                 }
-                let (stopped, _) = condvar.wait_timeout(stopped, interval).expect("heartbeat wait");
+                let (stopped, _) = condvar
+                    .wait_timeout(stopped, interval)
+                    .expect("heartbeat wait");
                 if *stopped {
                     return;
                 }
                 drop(stopped);
 
-                let error = match std::fs::metadata(&lock_path).and_then(|metadata| metadata.modified()) {
-                    Err(_) => Some(LockError::Compromised("Lock file was deleted".to_owned())),
-                    Ok(current) if current != expected => {
-                        Some(LockError::Compromised("Lock file was updated by someone else".to_owned()))
-                    }
-                    Ok(_) => match touch(&lock_path) {
-                        Ok(updated) => {
-                            expected = updated;
-                            None
-                        }
-                        Err(error) => Some(LockError::Compromised(format!(
-                            "Unable to update lock within the stale threshold: {error}"
-                        ))),
-                    },
-                };
+                let error =
+                    match std::fs::metadata(&lock_path).and_then(|metadata| metadata.modified()) {
+                        Err(_) => Some(LockError::Compromised("Lock file was deleted".to_owned())),
+                        Ok(current) if current != expected => Some(LockError::Compromised(
+                            "Lock file was updated by someone else".to_owned(),
+                        )),
+                        Ok(_) => match touch(&lock_path) {
+                            Ok(updated) => {
+                                expected = updated;
+                                None
+                            }
+                            Err(error) => Some(LockError::Compromised(format!(
+                                "Unable to update lock within the stale threshold: {error}"
+                            ))),
+                        },
+                    };
                 if let Some(error) = error {
                     compromised.store(true, Ordering::SeqCst);
                     if let Some(callback) = &on_compromised {
@@ -265,7 +285,10 @@ fn spawn_heartbeat(
             }
         })
         .expect("spawn heartbeat thread");
-    Heartbeat { stop, handle: Some(handle) }
+    Heartbeat {
+        stop,
+        handle: Some(handle),
+    }
 }
 
 #[cfg(test)]
@@ -273,7 +296,10 @@ mod tests {
     use super::*;
 
     fn temp_file() -> (tempfile::TempDir, PathBuf) {
-        let directory = tempfile::Builder::new().prefix("notagent-lockfile-").tempdir().expect("temp dir");
+        let directory = tempfile::Builder::new()
+            .prefix("notagent-lockfile-")
+            .tempdir()
+            .expect("temp dir");
         let file = directory.path().join("auth.json");
         std::fs::write(&file, "{}").expect("write");
         (directory, file)
@@ -292,7 +318,10 @@ mod tests {
     fn a_second_holder_is_rejected() {
         let (_directory, file) = temp_file();
         let _guard = try_lock(&file, &LockOptions::default()).expect("lock");
-        assert_eq!(try_lock(&file, &LockOptions::default()).expect_err("locked"), LockError::Locked);
+        assert_eq!(
+            try_lock(&file, &LockOptions::default()).expect_err("locked"),
+            LockError::Locked
+        );
     }
 
     #[test]
@@ -311,9 +340,17 @@ mod tests {
         std::fs::create_dir(&lock_path).expect("create lock");
         let old = SystemTime::now() - Duration::from_secs(120);
         let handle = File::open(&lock_path).expect("open lock");
-        handle.set_times(FileTimes::new().set_accessed(old).set_modified(old)).expect("set times");
-        let _guard = try_lock(&file, &LockOptions { stale: Duration::from_secs(30), ..LockOptions::default() })
-            .expect("takes over");
+        handle
+            .set_times(FileTimes::new().set_accessed(old).set_modified(old))
+            .expect("set times");
+        let _guard = try_lock(
+            &file,
+            &LockOptions {
+                stale: Duration::from_secs(30),
+                ..LockOptions::default()
+            },
+        )
+        .expect("takes over");
     }
 
     #[test]
@@ -324,7 +361,12 @@ mod tests {
             std::thread::sleep(Duration::from_millis(40));
             guard.release();
         });
-        let second = lock_with_retry(&file, &LockOptions::default(), 10, Duration::from_millis(20));
+        let second = lock_with_retry(
+            &file,
+            &LockOptions::default(),
+            10,
+            Duration::from_millis(20),
+        );
         released.join().expect("release thread");
         second.expect("acquires after the holder releases");
     }
@@ -333,7 +375,8 @@ mod tests {
     fn retrying_gives_up_while_the_lock_is_held() {
         let (_directory, file) = temp_file();
         let _guard = try_lock(&file, &LockOptions::default()).expect("lock");
-        let error = lock_with_retry(&file, &LockOptions::default(), 3, Duration::from_millis(5)).expect_err("locked");
+        let error = lock_with_retry(&file, &LockOptions::default(), 3, Duration::from_millis(5))
+            .expect_err("locked");
         assert_eq!(error, LockError::Locked);
     }
 
@@ -371,9 +414,15 @@ mod tests {
             on_compromised: None,
         };
         let guard = try_lock(&file, &options).expect("lock");
-        let first = std::fs::metadata(lock_path_for(&file)).expect("stat").modified().expect("mtime");
+        let first = std::fs::metadata(lock_path_for(&file))
+            .expect("stat")
+            .modified()
+            .expect("mtime");
         std::thread::sleep(Duration::from_millis(1200));
-        let second = std::fs::metadata(lock_path_for(&file)).expect("stat").modified().expect("mtime");
+        let second = std::fs::metadata(lock_path_for(&file))
+            .expect("stat")
+            .modified()
+            .expect("mtime");
         assert!(second > first, "the heartbeat must refresh the lock mtime");
         assert!(!guard.is_compromised());
     }

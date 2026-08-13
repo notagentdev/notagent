@@ -7,8 +7,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
 **Stand: Task 5 läuft.** `config.ts`, der Kern von `settings-manager.ts`, `migrations.ts`,
 `core/resolve-config-value.ts` und die dafür nötigen Utilities (`utils/paths.ts`,
-`utils/shell.ts`, `utils/abort.ts` + Lockfile-Ersatz) sind portiert. **Offen:**
-`auth-storage.ts` (baut auf resolve-config-value + Lockfile auf) sowie die ~45 typisierten
+`utils/shell.ts`, `utils/abort.ts` + Lockfile-Ersatz) und `core/auth-storage.ts` sind
+portiert. **Offen:** die ~45 typisierten
 Settings-Zugriffsmethoden (`getTheme`/`setTheme`/…), die derzeit über
 `set_global_field`/`set_project_field` mit den Wire-Namen abgedeckt sind.
 
@@ -43,9 +43,9 @@ Settings-Zugriffsmethoden (`getTheme`/`setTheme`/…), die derzeit über
 | test/paths.test.ts | 184 | src/utils/paths.rs (Testmodul) | Tests portiert | 13 Tests: canonicalize inkl. Symlinks/danglings, cwd-relative Pfade, Tilde-Regeln, file:-URLs inkl. Fehlerfällen, Windows-Shell-Pfade, isLocalPath |
 | src/utils/abort.ts | 46 | src/utils/abort.rs | portiert | Klasse 3: `AbortSignal` → `CancellationToken`; `raceWithAbortSignal` verlangt, dass abgebrochene Arbeit vom Aufrufer am Leben gehalten wird (Task/Shared-Future), weil ein fallengelassenes Rust-Future abbricht |
 | — (neu) | — | src/utils/lockfile.rs | neu (Tech-Substitution) | Klasse 3: `proper-lockfile` → `<datei>.lock`-Verzeichnis mit identischer Semantik: atomares `mkdir`, `ELOCKED`, Stale-Übernahme, Heartbeat-Thread der die mtime auffrischt, `onCompromised` |
-| src/core/auth-storage.ts | 507 | — | gelesen | Task 5 — folgt als nächstes |
+| src/core/auth-storage.ts | 507 | src/core/auth_storage.rs | portiert | Klasse 1: der Backend-Callback gibt nur `next` zurück (das `result`-Feld entfällt, weil ein Rust-Closure in seinen Aufrufer schreiben kann) — dadurch bleibt der Trait objektsicher; die Daten bleiben als `serde_json::Map` liegen, damit unbekannte Einträge verlustfrei erhalten bleiben (TS validiert in `AuthStorage` ebenfalls nicht), und werden erst beim Lesen in `Credential` überführt; eine abgebrochene In-Memory-Mutation wird beim Verwerfen des Futures gestoppt statt im Hintergrund weiterzulaufen (sie kann in beiden Fällen nicht mehr schreiben). Klasse 3: `proper-lockfile` → `src/utils/lockfile.rs`; `AbortSignal` → `CancellationToken`; der koaleszierte Reload läuft als `tokio::spawn` + `Shared`, damit ein abbrechender Leser die übrigen nicht mitreißt |
+| test/auth-storage.test.ts | 535 | tests/auth_storage.rs | Tests portiert | 26 Tests. Statt `vi.spyOn(lockfile, …)` werden echte Locks gehalten bzw. ein zählendes Backend benutzt; der Fall „releases a file lock acquired concurrently with cancellation" ist ohne Mock nicht deterministisch auslösbar und geht in „aborts while waiting for a held file lock" auf (dort wird zusätzlich geprüft, dass kein Lock zurückbleibt). Zwei OAuth-Fälle sind bis zur Umsetzung von Interface-Request C-4 `#[ignore]` |
 | test/config.test.ts | 446 | — | offen | Task 5 (Distributionsmechanik; die darstellbaren Fälle folgen mit den restlichen Settings-Zugriffen) |
-| test/auth-storage.test.ts | 535 | — | offen | Task 5 |
 
 ## Ausschlüsse
 

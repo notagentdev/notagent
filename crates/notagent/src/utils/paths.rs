@@ -6,11 +6,13 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 /// Unicode space variants that users paste from documents and chat clients.
-static UNICODE_SPACES: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("[\u{00A0}\u{2000}-\u{200A}\u{202F}\u{205F}\u{3000}]").expect("unicode space regex"));
+static UNICODE_SPACES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("[\u{00A0}\u{2000}-\u{200A}\u{202F}\u{205F}\u{3000}]").expect("unicode space regex")
+});
 
-static WINDOWS_SHELL_DRIVE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^/(?:mnt/|cygdrive/)?([a-z])(?:/(.*))?$").expect("windows drive regex"));
+static WINDOWS_SHELL_DRIVE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^/(?:mnt/|cygdrive/)?([a-z])(?:/(.*))?$").expect("windows drive regex")
+});
 
 /// Failures of `fileURLToPath`, which `normalizePath` propagates.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -117,16 +119,25 @@ pub fn normalize_windows_shell_path(file_path: &str) -> String {
         return file_path.to_owned();
     };
     let drive = captures[1].to_uppercase();
-    let suffix = captures.get(2).map(|suffix| suffix.as_str().replace('/', "\\")).unwrap_or_default();
+    let suffix = captures
+        .get(2)
+        .map(|suffix| suffix.as_str().replace('/', "\\"))
+        .unwrap_or_default();
     format!("{drive}:\\{suffix}")
 }
 
 pub fn normalize_path(input: &str, options: &PathInputOptions) -> Result<String, PathError> {
-    let mut normalized = if options.trim { input.trim().to_owned() } else { input.to_owned() };
+    let mut normalized = if options.trim {
+        input.trim().to_owned()
+    } else {
+        input.to_owned()
+    };
     if options.normalize_unicode_spaces {
         normalized = UNICODE_SPACES.replace_all(&normalized, " ").into_owned();
     }
-    if options.strip_at_prefix && let Some(rest) = normalized.strip_prefix('@') {
+    if options.strip_at_prefix
+        && let Some(rest) = normalized.strip_prefix('@')
+    {
         normalized = rest.to_owned();
     }
     if cfg!(windows) {
@@ -155,7 +166,11 @@ pub fn normalize_path_default(input: &str) -> Result<String, PathError> {
     normalize_path(input, &PathInputOptions::default())
 }
 
-pub fn resolve_path(input: &str, base_dir: &str, options: &PathInputOptions) -> Result<String, PathError> {
+pub fn resolve_path(
+    input: &str,
+    base_dir: &str,
+    options: &PathInputOptions,
+) -> Result<String, PathError> {
     let normalized = normalize_path(input, options)?;
     let normalized_base_dir = normalize_path_default(base_dir)?;
     Ok(if is_absolute_path(&normalized) {
@@ -180,13 +195,25 @@ pub fn get_cwd_relative_path(file_path: &str, cwd: &str) -> Result<Option<String
         || (relative_path != ".."
             && !relative_path.starts_with(&format!("..{separator}"))
             && !is_absolute_path(&relative_path));
-    Ok(is_inside_cwd.then(|| if relative_path.is_empty() { ".".to_owned() } else { relative_path }))
+    Ok(is_inside_cwd.then(|| {
+        if relative_path.is_empty() {
+            ".".to_owned()
+        } else {
+            relative_path
+        }
+    }))
 }
 
-pub fn format_path_relative_to_cwd_or_absolute(file_path: &str, cwd: &str) -> Result<String, PathError> {
+pub fn format_path_relative_to_cwd_or_absolute(
+    file_path: &str,
+    cwd: &str,
+) -> Result<String, PathError> {
     let absolute_path = resolve_path_default(file_path, cwd)?;
     let displayed = get_cwd_relative_path(&absolute_path, cwd)?.unwrap_or(absolute_path);
-    Ok(displayed.split(main_separator()).collect::<Vec<_>>().join("/"))
+    Ok(displayed
+        .split(main_separator())
+        .collect::<Vec<_>>()
+        .join("/"))
 }
 
 /// Ask cloud sync clients to leave a directory alone.
@@ -222,11 +249,17 @@ pub fn mark_path_ignored_by_cloud_sync(path: &str) {
 // =============================================================================
 
 fn default_home_dir() -> String {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).to_string_lossy().into_owned()
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn current_dir() -> String {
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).to_string_lossy().into_owned()
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn main_separator() -> char {
@@ -244,7 +277,11 @@ fn join_path(base: &str, rest: &str) -> String {
 fn is_absolute_path(path: &str) -> bool {
     if cfg!(windows) {
         let bytes = path.as_bytes();
-        if bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && is_separator(path.as_bytes()[2] as char) {
+        if bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && is_separator(path.as_bytes()[2] as char)
+        {
             return true;
         }
         return path.starts_with('/') || path.starts_with('\\');
@@ -273,13 +310,21 @@ fn node_resolve(segments: &[&str]) -> String {
     }
     if !absolute {
         let cwd = current_dir();
-        resolved = if resolved.is_empty() { cwd } else { format!("{cwd}{separator}{resolved}") };
+        resolved = if resolved.is_empty() {
+            cwd
+        } else {
+            format!("{cwd}{separator}{resolved}")
+        };
     }
 
     let (root, rest) = split_root(&resolved);
     let normalized = normalize_dot_segments(rest, true);
     let joined = format!("{root}{normalized}");
-    if joined.is_empty() { separator.to_string() } else { trim_trailing_separator(&joined) }
+    if joined.is_empty() {
+        separator.to_string()
+    } else {
+        trim_trailing_separator(&joined)
+    }
 }
 
 fn trim_trailing_separator(path: &str) -> String {
@@ -288,7 +333,11 @@ fn trim_trailing_separator(path: &str) -> String {
         return path.to_owned();
     }
     let trimmed = path.trim_end_matches(is_separator);
-    if trimmed.len() < root.len() { root } else { trimmed.to_owned() }
+    if trimmed.len() < root.len() {
+        root
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 /// Split off the root (`/`, `C:\`, `\\`) that dot-segment removal must keep.
@@ -303,7 +352,10 @@ fn split_root(path: &str) -> (String, &str) {
             return (format!("{}:\\", &path[..1]), &path[3..]);
         }
     }
-    match path.char_indices().find(|(_, character)| !is_separator(*character)) {
+    match path
+        .char_indices()
+        .find(|(_, character)| !is_separator(*character))
+    {
         Some((index, _)) if index > 0 => (main_separator().to_string(), &path[index..]),
         Some(_) => (String::new(), path),
         None if !path.is_empty() => (main_separator().to_string(), ""),
@@ -336,12 +388,25 @@ fn normalize_dot_segments(path: &str, rooted: bool) -> String {
 fn node_relative(from: &str, to: &str) -> String {
     let case_sensitive = !cfg!(windows);
     let equal = |left: &str, right: &str| {
-        if case_sensitive { left == right } else { left.eq_ignore_ascii_case(right) }
+        if case_sensitive {
+            left == right
+        } else {
+            left.eq_ignore_ascii_case(right)
+        }
     };
-    let from_parts: Vec<&str> = from.split(is_separator).filter(|part| !part.is_empty()).collect();
-    let to_parts: Vec<&str> = to.split(is_separator).filter(|part| !part.is_empty()).collect();
+    let from_parts: Vec<&str> = from
+        .split(is_separator)
+        .filter(|part| !part.is_empty())
+        .collect();
+    let to_parts: Vec<&str> = to
+        .split(is_separator)
+        .filter(|part| !part.is_empty())
+        .collect();
     let mut common = 0;
-    while common < from_parts.len() && common < to_parts.len() && equal(from_parts[common], to_parts[common]) {
+    while common < from_parts.len()
+        && common < to_parts.len()
+        && equal(from_parts[common], to_parts[common])
+    {
         common += 1;
     }
     let mut parts: Vec<&str> = vec![".."; from_parts.len() - common];
@@ -351,7 +416,9 @@ fn node_relative(from: &str, to: &str) -> String {
 
 /// `url.fileURLToPath(url)`.
 fn file_url_to_path(url: &str) -> Result<String, PathError> {
-    let Some(rest) = url.strip_prefix("file://") else { return Err(PathError::InvalidUrl) };
+    let Some(rest) = url.strip_prefix("file://") else {
+        return Err(PathError::InvalidUrl);
+    };
     // Everything up to the next separator is the host; WHATWG drops "localhost".
     let (host, path) = match rest.find('/') {
         Some(index) => (&rest[..index], &rest[index..]),
@@ -364,11 +431,11 @@ fn file_url_to_path(url: &str) -> Result<String, PathError> {
     let path = path.split(['?', '#']).next().unwrap_or("");
     let path = if path.is_empty() { "/" } else { path };
 
-    let mut bytes = path.as_bytes().iter().enumerate();
-    while let Some((index, byte)) = bytes.next() {
+    let bytes = path.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
         if *byte == b'%'
-            && path.as_bytes().get(index + 1) == Some(&b'2')
-            && matches!(path.as_bytes().get(index + 2), Some(b'f') | Some(b'F'))
+            && bytes.get(index + 1) == Some(&b'2')
+            && matches!(bytes.get(index + 2), Some(b'f') | Some(b'F'))
         {
             return Err(PathError::EncodedSlash);
         }
@@ -424,7 +491,9 @@ fn decode_uri_component(value: &str) -> Result<String, PathError> {
         if bytes[index] == b'%' {
             let high = bytes.get(index + 1).and_then(|byte| hex_value(*byte));
             let low = bytes.get(index + 2).and_then(|byte| hex_value(*byte));
-            let (Some(high), Some(low)) = (high, low) else { return Err(PathError::MalformedUri) };
+            let (Some(high), Some(low)) = (high, low) else {
+                return Err(PathError::MalformedUri);
+            };
             decoded.push(high * 16 + low);
             index += 3;
         } else {
@@ -446,8 +515,16 @@ fn hex_value(byte: u8) -> Option<u8> {
 
 /// `url.pathToFileURL(path).href` — the inverse of [`file_url_to_path`].
 pub fn path_to_file_url(path: &str) -> String {
-    let path = if is_absolute_path(path) { path.to_owned() } else { node_resolve(&[path]) };
-    let path = if cfg!(windows) { path.replace('\\', "/") } else { path };
+    let path = if is_absolute_path(path) {
+        path.to_owned()
+    } else {
+        node_resolve(&[path])
+    };
+    let path = if cfg!(windows) {
+        path.replace('\\', "/")
+    } else {
+        path
+    };
     let mut encoded = String::from("file://");
     if !path.starts_with('/') {
         encoded.push('/');
@@ -485,7 +562,10 @@ mod tests {
 
     impl TempDir {
         fn new() -> Self {
-            let directory = tempfile::Builder::new().prefix("notagent-paths-").tempdir().expect("temp dir");
+            let directory = tempfile::Builder::new()
+                .prefix("notagent-paths-")
+                .tempdir()
+                .expect("temp dir");
             // `keep` mirrors the TS suite, which removes the directory itself.
             let path = directory.path().to_path_buf();
             let _ = directory.keep();
@@ -556,7 +636,10 @@ mod tests {
 
     #[test]
     fn keeps_cwd_relative_names_that_start_with_dots() {
-        let cwd = join_path(&std::env::temp_dir().to_string_lossy(), "notagent-paths-cwd");
+        let cwd = join_path(
+            &std::env::temp_dir().to_string_lossy(),
+            "notagent-paths-cwd",
+        );
         let file = join_path(&cwd, "..config/AGENTS.md");
         assert_eq!(
             get_cwd_relative_path(&file, &cwd).expect("relative"),
@@ -566,29 +649,47 @@ mod tests {
 
     #[test]
     fn rejects_parent_directory_traversals() {
-        let cwd = join_path(&std::env::temp_dir().to_string_lossy(), "notagent-paths-cwd");
+        let cwd = join_path(
+            &std::env::temp_dir().to_string_lossy(),
+            "notagent-paths-cwd",
+        );
         let file = join_path(&cwd, "../AGENTS.md");
         assert_eq!(get_cwd_relative_path(&file, &cwd).expect("relative"), None);
     }
 
     #[test]
     fn expands_only_home_tilde_shortcuts() {
-        let cwd = join_path(&std::env::temp_dir().to_string_lossy(), "notagent-paths-cwd");
+        let cwd = join_path(
+            &std::env::temp_dir().to_string_lossy(),
+            "notagent-paths-cwd",
+        );
         let home = default_home_dir();
         assert_eq!(normalize_path_default("~").expect("home"), home);
-        assert_eq!(normalize_path_default("~/file.txt").expect("home file"), join_path(&home, "file.txt"));
+        assert_eq!(
+            normalize_path_default("~/file.txt").expect("home file"),
+            join_path(&home, "file.txt")
+        );
         assert_eq!(
             resolve_path_default("~draft.md", &cwd).expect("resolved"),
             node_resolve(&[&cwd, "~draft.md"])
         );
-        assert_eq!(normalize_path_default("~draft.md").expect("literal"), "~draft.md");
+        assert_eq!(
+            normalize_path_default("~draft.md").expect("literal"),
+            "~draft.md"
+        );
     }
 
     #[test]
     fn resolves_relative_paths_against_the_base_directory() {
-        let cwd = join_path(&std::env::temp_dir().to_string_lossy(), "notagent-paths-cwd");
+        let cwd = join_path(
+            &std::env::temp_dir().to_string_lossy(),
+            "notagent-paths-cwd",
+        );
         let expected = node_resolve(&[&cwd, "subdir/file.txt"]);
-        assert_eq!(resolve_path_default("subdir/file.txt", &cwd).expect("resolved"), expected);
+        assert_eq!(
+            resolve_path_default("subdir/file.txt", &cwd).expect("resolved"),
+            expected
+        );
         assert_eq!(
             resolve_path_default("subdir/file.txt", &path_to_file_url(&cwd)).expect("resolved"),
             expected
@@ -638,7 +739,10 @@ mod tests {
 
     #[test]
     fn converts_git_bash_msys_cygwin_and_wsl_drive_paths() {
-        assert_eq!(normalize_windows_shell_path("/c/Users/example/project"), "C:\\Users\\example\\project");
+        assert_eq!(
+            normalize_windows_shell_path("/c/Users/example/project"),
+            "C:\\Users\\example\\project"
+        );
         assert_eq!(normalize_windows_shell_path("/cygdrive/d/work"), "D:\\work");
         assert_eq!(normalize_windows_shell_path("/mnt/e/source"), "E:\\source");
         assert_eq!(normalize_windows_shell_path("/c"), "C:\\");
@@ -682,15 +786,22 @@ mod tests {
 
     #[test]
     fn formats_paths_relative_to_cwd_or_absolute() {
-        let cwd = join_path(&std::env::temp_dir().to_string_lossy(), "notagent-paths-cwd");
+        let cwd = join_path(
+            &std::env::temp_dir().to_string_lossy(),
+            "notagent-paths-cwd",
+        );
         assert_eq!(
-            format_path_relative_to_cwd_or_absolute(&join_path(&cwd, "src/main.rs"), &cwd).expect("formatted"),
+            format_path_relative_to_cwd_or_absolute(&join_path(&cwd, "src/main.rs"), &cwd)
+                .expect("formatted"),
             "src/main.rs"
         );
         let outside = node_resolve(&[&cwd, "../outside.md"]);
         assert_eq!(
             format_path_relative_to_cwd_or_absolute(&outside, &cwd).expect("formatted"),
-            outside.split(main_separator()).collect::<Vec<_>>().join("/")
+            outside
+                .split(main_separator())
+                .collect::<Vec<_>>()
+                .join("/")
         );
     }
 
@@ -711,8 +822,17 @@ mod tests {
             home_dir: Some("/home/tester".to_owned()),
             expand_tilde: Some(true),
         };
-        assert_eq!(normalize_path("  @~/a\u{00A0}b.txt  ", &options).expect("normalized"), "/home/tester/a b.txt");
-        let no_tilde = PathInputOptions { expand_tilde: Some(false), ..PathInputOptions::default() };
-        assert_eq!(normalize_path("~/a.txt", &no_tilde).expect("normalized"), "~/a.txt");
+        assert_eq!(
+            normalize_path("  @~/a\u{00A0}b.txt  ", &options).expect("normalized"),
+            "/home/tester/a b.txt"
+        );
+        let no_tilde = PathInputOptions {
+            expand_tilde: Some(false),
+            ..PathInputOptions::default()
+        };
+        assert_eq!(
+            normalize_path("~/a.txt", &no_tilde).expect("normalized"),
+            "~/a.txt"
+        );
     }
 }
