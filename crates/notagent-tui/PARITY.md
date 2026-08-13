@@ -220,6 +220,26 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `tools/gen-keys-oracle.mjs` | Erzeugt `tests/fixtures/keys-oracle.json` aus `packages/tui/src/keys.ts`. |
 | `tools/gen-virtual-terminal-oracle.mjs` | Erzeugt `tests/fixtures/virtual-terminal-oracle.json` aus `@xterm/headless` 5.5.0 — 23 Szenarien mit genau den Sequenzen, die beide Renderer emittieren. |
 
+## Stand der Plan-Tasks
+
+| Task | Stand |
+|---|---|
+| 1 Testinfrastruktur | fertig |
+| 2 utils | fertig |
+| 3 keys | fertig |
+| 4 stdin-buffer + terminal | fertig (native-modifiers aus Task 13 vorgezogen) |
+| 5 TUI-Kern | fertig |
+| 6 Main-Screen-Renderer | fertig (7 Kitty-Bild-Testfälle offen, brauchen Task 9/12) |
+| 7 Layout-Engine + ScrollView | fertig (Text/VStack/HStack aus Task 9 vorgezogen) |
+| 8 Alt-Screen-Renderer | offen |
+| 9 Basis-Komponenten | teilweise: spacer, truncated-text, box, alt-screen-flash, loader, select-list, input portiert; offen: settings-list, image, cancellable-loader |
+| 10 Editor | teilweise: kill-ring, undo-stack, word-navigation portiert; editor.ts offen |
+| 11 Markdown + LaTeX | offen |
+| 12 Terminal-Bilder | teilweise: Capability-Detection, Zellmaße, `is_image_line`, Kitty-Metadaten/Crop/Delete portiert; Protokoll-Encoder und Header-Parser offen |
+| 13 Autocomplete/Fuzzy/Keybindings/native | teilweise: fuzzy, keybindings, native-modifiers portiert; autocomplete offen |
+| 14 Öffentliche API + Ledger-Abschluss | offen |
+| 15 App-TUI-Schicht (ab G2) | offen |
+
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |
