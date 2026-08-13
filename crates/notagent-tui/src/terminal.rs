@@ -189,6 +189,9 @@ pub fn resolve_escape_timeout_ms_from(env: &dyn Fn(&str) -> Option<String>) -> u
 /// sink instead (deviation class 1).
 enum OutputSink {
     Stdout,
+    /// Only constructed by [`ProcessTerminal::with_writer`], which the
+    /// `test-terminal` feature provides (interface request C-3).
+    #[cfg(feature = "test-terminal")]
     Collector(Box<dyn FnMut(&str)>),
 }
 
@@ -279,6 +282,7 @@ impl ProcessTerminal {
                 let _ = stdout.write_all(data.as_bytes());
                 let _ = stdout.flush();
             }
+            #[cfg(feature = "test-terminal")]
             OutputSink::Collector(sink) => sink(data),
         }
         if let Some(path) = &self.write_log_path

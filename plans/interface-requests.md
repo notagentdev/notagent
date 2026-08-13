@@ -76,6 +76,31 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `ProcessTerminal::pump()` verarbeitet stdin, SIGWINCH und die Timeouts.
 - **Status**: umgesetzt (A)
 
+### A-4 Workstream A ist bis Task 14 fertig — Task 15 wartet auf G2 und die Komponenten-Zuteilung
+- **Von / An**: A → C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-tui/` (vollständig), `plans/2026-08-13-rust-port-ws-a-tui-v1.md` Task 15
+- **Stand**: Die Tasks 1–14 sind abgehakt und in main gemergt. Portiert und verifiziert sind
+  alle 39 src-Dateien von `packages/tui` samt Testsuiten: beide Renderer (Main-Screen mit
+  Scrollback, Alt-Screen mit Layout-Engine, Maus-Selektion, Scrollbar-Drag, Transkript-Suche),
+  Layout-Engine, alle Komponenten inkl. Editor (2 363 LOC) und Markdown/LaTeX, Autocomplete,
+  Keys/Keybindings/StdinBuffer/Terminal, Unicode-Breitenlogik und Terminal-Bilder.
+- **Tokenizer-Entscheidung (Task 11)**: eigener Lexer nach marked-Tokenstrom statt
+  pulldown-cmark-Adapter. Beleg: `tools/gen-markdown-oracle.mjs` erzeugt den echten
+  marked-Stream für alle Quellen der Testsuite, `tests/markdown_oracle.rs` prüft Gleichheit;
+  zusätzlich vergleicht `tests/markdown.rs` 2 920 Render-Ausgaben byteweise mit der
+  TS-Komponente.
+- **Nutzbar für die Interactive-Verdrahtung**: `notagent_tui::{TuiMainScreen, TuiAltScreen,
+  Editor, EditorComponent, Markdown, SelectList, SettingsList, Input, ScrollView, VStack,
+  HStack, Text, TruncatedText, Box, Loader, CancellableLoader, Image, Spacer}` plus
+  `CombinedAutocompleteProvider`. Timer rufen nie zurück: `render_deadline()`/`begin_frame()`,
+  `TuiAltScreen::selection_auto_scroll_deadline()`/`auto_scroll_selection()`,
+  `Editor::autocomplete_deadline()`/`pump_autocomplete().await`.
+- **Blockiert**: Task 15 (Theme-System + Interactive-Komponenten) beginnt laut Plan ab Gate G2
+  und braucht deine Zuteilung der Komponentendateien. Aktuell existiert nur `gate-g0`; sobald
+  G2 steht, trag die Priorisierung hier ein — ich übernehme die genannten Dateien dann direkt.
+- **Status**: offen (wartet auf C)
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)
@@ -188,7 +213,9 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `--workspace --all-targets` die tui-Tests mitbaut.
 - **Wunsch**: die Variante entweder hinter `#[cfg(test)]` stellen oder produktiv nutzen
   (z. B. für den Byte-Log-Vergleich des RecordingTerminal-Äquivalents).
-- **Status**: offen
+- **Status**: erledigt (A, 2026-08-13) — `OutputSink::Collector` steht jetzt hinter
+  `#[cfg(feature = "test-terminal")]`, ebenso der Match-Arm in `write()`. Ohne das Feature
+  existiert die Variante nicht mehr; `cargo clippy -p notagent-tui -- -D warnings` ist grün.
 
 ### C-4 `Credential`/`AuthType` serialisieren OAuth als `o_auth` statt `oauth`
 - **Von / An**: C → B
