@@ -113,6 +113,14 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/src/core/tools/read-minified.ts | 210 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/core/tools/patch-minified.ts | 367 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/test/patch-minified-tool.test.ts | 183 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/tools/todo-write.ts | 151 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/todos/todos.ts | 146 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/todos/render.ts | 152 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/tools/skill.ts | 198 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/modes/indicator.ts (`estimateInjectedTokens`) | 50 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/modes/modes.ts (`renderModeInjection`, Auszug) | — | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/todos.test.ts | 262 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/skill-tool.test.ts | 95 | C-Task 8 |
 
 ## Ledger
 
@@ -175,6 +183,13 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | src/core/tools/read-minified.ts | 210 | src/core/tools/read_minified.rs | portiert (Tool-Hälfte) | Schema, Beschreibung, Offset/Limit vor der Minifizierung, Rohtext-Rückfall (unbekannte Sprache, unparsbar oder leerer View) und beide Fußzeilen wörtlich. Klasse 3: `minifyForPath` ist synchron, weil keine Grammatik geladen wird. **Offen:** Renderer inkl. Syntax-Highlight — Task 13 |
 | src/core/tools/patch-minified.ts | 367 | src/core/tools/patch_minified.rs | portiert (Tool-Hälfte) | Klasse 1: `patch_minified` und `multi_patch_minified` sind eine Definition mit `multi`-Flag statt zweier Fabriken über `buildRenderers` — Name, Label, Beschreibung, Schema und Prompt-Beiträge bleiben je Variante wörtlich getrennt. Sequentielles Anwenden mit Neu-Minifizierung, Atomarität, BOM-Erhalt, Mutations-Queue und der Rohtext-Rückfall sind übernommen. **Offen:** Renderer mit Diff-Anzeige — Task 13 |
 | test/patch-minified-tool.test.ts | 183 | tests/minified_tools.rs | Tests portiert | 17 Tests: die 11 TS-Fälle plus sechs für `read_minified`, das im TS-Repo keine eigene Testdatei hat (Kompaktansicht, keep_comments, Offset/Limit vor der Minifizierung, Offset hinter Dateiende, Rohtext-Rückfall, Ablehnung von Bildern) |
+| src/core/todos/todos.ts | 146 | src/core/todos.rs | portiert | Ersetzungssemantik, Auto-Clear bei komplett abgeschlossener Liste, Validierung und die Paarung nach Text sind übernommen. Klasse 1: das 1000-Zeichen-Limit zählt Zeichen statt UTF-16-Einheiten; werfende Methoden geben `Result` zurück |
+| src/core/todos/render.ts | 152 | src/core/todos/render.rs | portiert | `renderTodosUpdated` inkl. der wörtlichen XML-Form (Attribut je Zeile, Inline-Schluss ohne Attribute/Kinder) und `buildTodoDiffLines` mit den drei Transkript-Icons; nur das Einfärben gehört zum Renderer (Task 13) |
+| src/core/todos/reminder.ts | 89 | — | offen | gehört zur Agent-Session (Turn-Ende-Erinnerung) — Task 11 |
+| src/core/tools/todo-write.ts | 151 | src/core/tools/todo_write.rs | portiert (Tool-Hälfte) | Beschreibung, Schema und Protokoll wörtlich; die Quelle ist ein `Arc<Mutex<TodoStore>>`-Getter wie die TS-Closure. **Offen:** Renderer — Task 13 |
+| src/core/tools/skill.ts | 198 | src/core/tools/skill.rs | portiert (Tool-Hälfte) | Klasse 1: aufgelöst wird gegen `SkillToolMode`/`SkillToolSkill` mit genau den Feldern, die `resolve` liest — `Mode` (Task 9) und `Skill` (Task 11) existieren noch nicht; `renderModeInjection` (2 Zeilen) und `estimateInjectedTokens` liegen bis dahin hier. Mode-vor-Skill-Auflösung, Kleinschreibungsvergleich, Envelope-Format und die Ressourcenliste (Sortierung wie `localeCompare(…, "en")`, Verzeichnisse übersprungen) sind übernommen. **Offen:** Renderer — Task 13 |
+| test/todos.test.ts | 262 | src/core/todos.rs + src/core/todos/render.rs (Testmodule) + tests/todo_and_skill_tools.rs | Tests portiert | 18 Unit-Tests (Store, Modell-Ausgabe, Transkript-Diff) plus 5 Tool-Tests. Die fünf Reminder-Fälle gehören zu `todos/reminder.ts` (Task 11), der `renderResult`-Fall zu Task 13 |
+| test/skill-tool.test.ts | 95 | tests/todo_and_skill_tools.rs | Tests portiert | 11 Tests gegen konstruierte Quellen statt `loadModes` (Task 9): Envelope, Pfad, Groß-/Kleinschreibung, Token-Zahl, unbekannter Name inkl. `(none loaded)`, Ressourcenliste ohne Inlining, kein `<resources>`-Block ohne Geschwister, identische Bodies für beide Aufrufpfade, Mode vor gleichnamigem Skill, Skill-Body aus der Datei |
 
 ## A: interactive components
 

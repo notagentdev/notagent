@@ -12,6 +12,8 @@ pub mod patch_minified;
 pub mod path_utils;
 pub mod read;
 pub mod read_minified;
+pub mod skill;
+pub mod todo_write;
 pub mod tool_definition;
 pub mod truncate;
 pub mod write;
