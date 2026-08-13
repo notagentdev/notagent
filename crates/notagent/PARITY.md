@@ -5,7 +5,7 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (68 856 LOC
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 7 läuft.** `config.ts`, `core/settings-manager.ts` (inkl. aller
+**Stand: Task 8 läuft.** `config.ts`, `core/settings-manager.ts` (inkl. aller
 typisierten Zugriffsmethoden), `migrations.ts`, `core/resolve-config-value.ts`,
 `core/auth-storage.ts` und die Utilities (`utils/paths.ts`, `utils/shell.ts`,
 `utils/abort.ts` + Lockfile-Ersatz) sind portiert und testbelegt. Offen bleibt nur, was
@@ -90,6 +90,15 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/show-images-selector.ts | 50 | A-Task 15 (Batch 3) |
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/user-message-selector.ts | 155 | A-Task 15 (Batch 3) |
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/ (Importköpfe der übrigen 12 Selektoren) | — | A-Task 15 (Batch 3, Abhängigkeitsprüfung) |
+| 2026-08-13 | packages/coding-agent/src/core/tools/bash.ts | 771 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/utils/shell.ts (erneut, Spawn-/Signalteil) | 259 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/utils/child-process.ts | 137 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/bash-executor.ts | 156 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/tasks/types.ts (Schnittstelle für den Managed-Pfad) | 139 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/tasks/shell-task.ts (dito) | 101 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/tools.test.ts (Abschnitt „bash tool") | 1 213 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/bash-background.test.ts | 133 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/bash-close-hang-windows.test.ts | 126 | C-Task 8 |
 
 ## Ledger
 
@@ -102,7 +111,7 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | src/migrations.ts | 314 | src/migrations.rs | portiert | Klasse 2: `checkDeprecatedExtensionDirs`/`showDeprecationWarnings` entfallen — sie verwiesen ausschließlich auf das Extension-System (extension-boundary §6); `commands/` → `prompts/` bleibt. Die keybindings.json-Migration folgt mit `core/keybindings.rs` (Task 13). Klasse 1: verzeichnis-parametrisierte Varianten für Tests |
 | — (neu) | — | tests/migrations.rs | verifiziert | 5 Tests: auth.json-Migration inkl. apiKeys-Entfernung und 0600-Rechten, Überspringen bei vorhandener auth.json, Session-Umzug mit cwd-Kodierung, vorhandene Zieldatei bleibt |
 | src/core/resolve-config-value.ts | 287 | src/core/resolve_config_value.rs | portiert | Klasse 1: `parseConfigValueTemplate` arbeitet auf Byte-Indizes statt auf JS-Regex-Gruppen (gleiche Fälle: `$VAR`, `${VAR}`, `$$`→`$`, `$!`→`!`, ungültige Namen bleiben literal); der Prozess-Cache ist ein `LazyLock<Mutex<HashMap>>`. Klasse 3: `execSync(timeout: 10_000)` → `spawn` + Deadline-Poll mit `kill`; die Windows-Sonderroute (`executeWithConfiguredShell`) ist `#[cfg(any(windows, test))]`, damit sie auch auf Unix getestet wird |
-| src/utils/shell.ts | 259 | src/utils/shell.rs | portiert (genutzte Teile) | `getShellConfig`/`getShellEnv`/`sanitizeBinaryOutput`/Prozessbaum-Signale portiert. Klasse 1: Lone-Surrogate-Filter entfällt (Rust-`str` ist immer gültiges UTF-8); `process.kill(-pid)` → `libc::kill(-pid)` mit Fallback auf den Einzelprozess. Offen (Task 7, Bash-Tool): `spawnShellCommand` und die Exit-Handler-Registrierung |
+| src/utils/shell.ts | 259 | src/utils/shell.rs | portiert (genutzte Teile) | `getShellConfig`/`getShellEnv`/`sanitizeBinaryOutput`/Prozessbaum-Signale portiert. Klasse 1: Lone-Surrogate-Filter entfällt (Rust-`str` ist immer gültiges UTF-8); `process.kill(-pid)` → `libc::kill(-pid)` mit Fallback auf den Einzelprozess. Der Spawn-Teil sitzt wie in TS im Bash-Tool. Offen: die Registrierung von `killTrackedDetachedChildren` an den Prozess-Exit-Signalen, die in `src/main.ts` liegt (Task 12) |
 | src/utils/paths.ts | 137 | src/utils/paths.rs | portiert | Klasse 1: `normalizePath` gibt `Result` zurück, weil `fileURLToPath` wirft; `path.resolve`/`path.relative`/`fileURLToPath`/`pathToFileURL` sind als Node-Semantik nachgebaut (Rusts `Path` normalisiert Punkt-Segmente nicht) |
 | test/paths.test.ts | 184 | src/utils/paths.rs (Testmodul) | Tests portiert | 13 Tests: canonicalize inkl. Symlinks/danglings, cwd-relative Pfade, Tilde-Regeln, file:-URLs inkl. Fehlerfällen, Windows-Shell-Pfade, isLocalPath |
 | src/utils/ansi.ts | 60 | src/utils/ansi.rs | portiert | Dieselbe Grammatik als `regex`-Literal; der MIT-Hinweis der abgeleiteten Pakete steht im Modulkopf |
@@ -137,6 +146,11 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | test/session-file-invalid.test.ts | 65 | — | offen | CLI-E2E (spawnt die Binary) — folgt mit Task 12 |
 | test/session-cwd.test.ts | 91 | — | offen | braucht `core/session-cwd.ts` und die Runtime — folgt mit Task 11 |
 | test/session-id-readonly.test.ts | 190 | — | offen | CLI-E2E — folgt mit Task 12 |
+| src/core/tools/bash.ts | 771 | src/core/tools/bash.rs | portiert (Tool-Hälfte) | Klasse 1: `BashToolSources` reicht einen [`BashTaskManager`]-Trait statt des konkreten `TaskManager` durch — TS erreicht dieselbe Indirektion über die `sources`-Closures, in Rust erlaubt sie zusätzlich, das Tool vor der Task-Maschinerie (Task 10) zu bauen und zu testen. Klasse 1: `ops.exec` lehnt mit einem `BashExecError`-Enum ab statt mit `Error`-Nachrichten (`aborted`, `timeout:<s>`); ein fehlgeschlagener Spawn meldet `spawn <shell> ENOENT` wie Node. Klasse 3: Node-Timer → tokio-Deadlines im selben `select!`, `AbortSignal` → `CancellationToken`, `detached: true` → `process_group(0)`. **Offen:** `renderCall`/`renderResult` inkl. Preview-Zeilen und Dauer-Anzeige — Task 13; der Managed-Pfad ist implementiert, seine Verdrahtung an den echten Manager folgt mit Task 10 |
+| src/utils/child-process.ts | 137 | src/core/tools/bash.rs (Lese-Schleife) | portiert (genutzter Teil) | `waitForChildProcess` ist als Zustandsautomat in der Exec-Schleife nachgebaut: nach `exit` wird auf das Leerlaufen der Pipes gewartet, der 100-ms-Grace-Timer bei jedem weiteren Chunk neu gestellt (notagentdev/notagent#5303). `spawnProcess`/`spawnProcessSync` (cross-spawn nur auf Windows) entfallen — `std::process::Command` braucht die Shim nicht |
+| src/core/bash-executor.ts | 156 | src/core/bash_executor.rs | portiert | Klasse 1: der Rolling-Buffer (2 × 50 KiB) zählt Zeichen statt UTF-16-Einheiten; er ist eine Speichergrenze, kein beobachtbarer Wert |
+| test/tools.test.ts (Abschnitt „bash tool") + test/bash-background.test.ts (Gate-Fälle) | 1 213 + 133 | tests/bash_tool.rs | Tests portiert | 27 Tests. Statt `vi.spyOn(shellModule, "getShellConfig")` gibt es zwei Seams: `bash::testing::local_bash_operations_with_shell_config` für den stdin-Transport (geprüft gegen `cat`) und ein Skript mit fehlendem Interpreter für den ENOENT-Spawnfehler. Zusätzlich ein Abbruch-Test gegen einen echten Prozess (TS skriptet nur die Ablehnung). **Offen:** die manager-gestützten Fälle von bash-background (Foreground-Release, Auto-Backgrounding gegen den echten Manager, Task-Log) — Task 10 |
+| test/bash-close-hang-windows.test.ts | 126 | — | entfällt (dokumentiert) | `describe.skipIf(process.platform !== "win32")` — die Testumgebung ist macOS; die Eigenschaft, die er prüft (Auflösen trotz offener geerbter Handles), deckt die portierte Idle-Grace-Logik plattformunabhängig ab |
 
 ## A: interactive components
 

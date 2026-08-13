@@ -1,0 +1,1285 @@
+//! Port of `packages/coding-agent/src/core/tools/bash.ts` (tool half).
+//!
+//! `renderCall`/`renderResult` need the theme and the TUI components and are
+//! wired in task 13.
+//!
+//! Deviation (class 1): `BashToolSources` hands the tool a
+//! [`BashTaskManager`] trait object instead of the concrete `TaskManager` of
+//! `core/tasks/manager.ts`. TS reaches the same indirection through the
+//! `sources` closures; in Rust it additionally lets the shell tool be built and
+//! tested before the task machinery exists (plan task 10), which is where the
+//! trait is implemented for the real manager and where
+//! `test/bash-background.test.ts` is ported.
+
+use std::collections::BTreeMap;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use notagent_agent::types::{
+    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+};
+use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use serde_json::{Map, Value, json};
+use tokio_util::sync::CancellationToken;
+
+use crate::core::experimental::get_experimental_tool_sampling;
+use crate::core::tools::output_accumulator::{
+    OutputAccumulator, OutputAccumulatorOptions, OutputSnapshot,
+};
+use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::truncate::{
+    DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, format_size,
+};
+use crate::utils::shell::{
+    CommandTransport, ShellConfig, get_shell_config, get_shell_env, kill_process_tree,
+    terminate_process_tree, track_detached_child_pid, untrack_detached_child_pid,
+};
+
+const MAX_TIMEOUT_MS: f64 = 2_147_483_647.0;
+const MAX_TIMEOUT_SECONDS: f64 = MAX_TIMEOUT_MS / 1000.0;
+
+/// Deadlines, foreground and background.
+///
+/// They differ because the two are used for different things. A foreground
+/// command is one the conversation is waiting on, so a minute is already long;
+/// a background command is a build, a watcher or a server, where ten minutes is
+/// ordinary and a day is the outer bound of anything sane.
+///
+/// The foreground default is only safe because reaching it moves the command to
+/// the background rather than killing it. Where that behaviour is switched off,
+/// the description says the command is killed instead.
+pub const DEFAULT_TIMEOUT_S: f64 = 60.0;
+pub const MAX_TIMEOUT_S: f64 = 5.0 * 60.0;
+pub const DEFAULT_BACKGROUND_TIMEOUT_S: f64 = 10.0 * 60.0;
+pub const MAX_BACKGROUND_TIMEOUT_S: f64 = 24.0 * 60.0 * 60.0;
+
+/// How long a command told to stop is given before it is killed.
+///
+/// Short on purpose: this is the escalation inside a single command, while the
+/// task manager's own grace window covers work that has no process at all.
+const ABORT_ESCALATION_MS: u64 = 2_000;
+
+/// Re-armed on every chunk that arrives after the shell exited, so a detached
+/// descendant still writing keeps us reading while a quiet inherited handle
+/// releases us (`utils/child-process.ts`, `waitForChildProcess`).
+const EXIT_STDIO_GRACE_MS: u64 = 100;
+
+const BASH_UPDATE_THROTTLE_MS: u64 = 100;
+
+pub const BASH_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
+    SystemPromptContribution {
+        snippet: "Execute bash commands (ls, grep, find, etc.)",
+        guidelines: &[
+            "You can inspect NOTAGENT_* environment variables for current model and session details.",
+        ],
+    };
+
+/// What `ops.exec` rejects with. TS encodes the same three cases in the message
+/// of a plain `Error` (`"aborted"`, `"timeout:<seconds>"`, anything else).
+#[derive(Debug, Clone, PartialEq)]
+pub enum BashExecError {
+    Aborted,
+    Timeout(f64),
+    Other(String),
+}
+
+impl std::fmt::Display for BashExecError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BashExecError::Aborted => formatter.write_str("aborted"),
+            BashExecError::Timeout(seconds) => write!(formatter, "timeout:{seconds}"),
+            BashExecError::Other(message) => formatter.write_str(message),
+        }
+    }
+}
+
+/// Receives raw output bytes as they arrive.
+pub type BashOutputSink = Arc<dyn Fn(&[u8]) + Send + Sync>;
+/// Reports the process id once the command is running.
+pub type BashSpawnSink = Arc<dyn Fn(u32) + Send + Sync>;
+
+#[derive(Clone, Default)]
+pub struct BashExecOptions {
+    pub on_data: Option<BashOutputSink>,
+    pub signal: Option<CancellationToken>,
+    /// Deadline in seconds, as in TS.
+    pub timeout: Option<f64>,
+    pub env: Option<BTreeMap<String, String>>,
+    /// Background tasks need the pid to show what they started and to force a
+    /// stop the polite one did not achieve. An implementation with no local
+    /// process — an SSH backend, say — simply never calls it.
+    pub on_spawn: Option<BashSpawnSink>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BashExecResult {
+    /// `null` in TS: the process was killed by a signal.
+    pub exit_code: Option<i32>,
+}
+
+/// Pluggable operations for the bash tool.
+///
+/// Override these to delegate command execution to remote systems (for example
+/// SSH).
+pub trait BashOperations: Send + Sync {
+    fn exec<'a>(
+        &'a self,
+        command: &'a str,
+        cwd: &'a str,
+        options: BashExecOptions,
+    ) -> BoxFuture<'a, Result<BashExecResult, BashExecError>>;
+}
+
+fn resolve_timeout_ms(timeout: Option<f64>) -> Result<Option<f64>, BashExecError> {
+    let Some(timeout) = timeout else {
+        return Ok(None);
+    };
+    if !timeout.is_finite() || timeout <= 0.0 {
+        return Err(BashExecError::Other(
+            "Invalid timeout: must be a finite number of seconds".to_owned(),
+        ));
+    }
+    let timeout_ms = timeout * 1000.0;
+    if timeout_ms > MAX_TIMEOUT_MS {
+        return Err(BashExecError::Other(format!(
+            "Invalid timeout: maximum is {MAX_TIMEOUT_SECONDS} seconds"
+        )));
+    }
+    Ok(Some(timeout_ms))
+}
+
+/// Bash operations using notagent's built-in local shell execution backend.
+///
+/// This is useful where a caller intercepts a command and still wants
+/// notagent's standard local shell behaviour while wrapping or rewriting it.
+pub struct LocalBashOperations {
+    shell_path: Option<String>,
+    /// Set only by [`testing::local_bash_operations_with_shell_config`].
+    shell_config: Option<ShellConfig>,
+}
+
+pub fn create_local_bash_operations(shell_path: Option<String>) -> LocalBashOperations {
+    LocalBashOperations {
+        shell_path,
+        shell_config: None,
+    }
+}
+
+/// Seams the ported suites need. TS reaches the same places with
+/// `vi.spyOn(shellModule, "getShellConfig")`, which has no Rust equivalent.
+pub mod testing {
+    use super::{LocalBashOperations, ShellConfig};
+
+    /// Local operations that skip shell resolution and use `config` as it is.
+    pub fn local_bash_operations_with_shell_config(config: ShellConfig) -> LocalBashOperations {
+        LocalBashOperations {
+            shell_path: None,
+            shell_config: Some(config),
+        }
+    }
+}
+
+enum ReaderEvent {
+    Chunk(Vec<u8>),
+    StdoutEnd,
+    StderrEnd,
+}
+
+impl BashOperations for LocalBashOperations {
+    fn exec<'a>(
+        &'a self,
+        command: &'a str,
+        cwd: &'a str,
+        options: BashExecOptions,
+    ) -> BoxFuture<'a, Result<BashExecResult, BashExecError>> {
+        Box::pin(async move {
+            let timeout_ms = resolve_timeout_ms(options.timeout)?;
+            if matches!(&options.signal, Some(signal) if signal.is_cancelled()) {
+                return Err(BashExecError::Aborted);
+            }
+            let shell_config = match &self.shell_config {
+                Some(config) => config.clone(),
+                None => {
+                    get_shell_config(self.shell_path.as_deref()).map_err(BashExecError::Other)?
+                }
+            };
+            if tokio::fs::metadata(cwd).await.is_err() {
+                return Err(BashExecError::Other(format!(
+                    "Working directory does not exist: {cwd}\nCannot execute bash commands."
+                )));
+            }
+
+            let command_from_stdin =
+                shell_config.command_transport == Some(CommandTransport::Stdin);
+            let mut builder = tokio::process::Command::new(&shell_config.shell);
+            builder.args(&shell_config.args);
+            if !command_from_stdin {
+                builder.arg(command);
+            }
+            builder
+                .current_dir(cwd)
+                .env_clear()
+                .envs(options.env.clone().unwrap_or_else(get_shell_env))
+                .stdin(if command_from_stdin {
+                    Stdio::piped()
+                } else {
+                    Stdio::null()
+                })
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            #[cfg(unix)]
+            builder.process_group(0);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                // CREATE_NO_WINDOW — the `windowsHide` of the TS spawn call.
+                builder.creation_flags(0x0800_0000);
+            }
+
+            let mut child = builder.spawn().map_err(|error| {
+                BashExecError::Other(if error.kind() == std::io::ErrorKind::NotFound {
+                    // Node rejects with `spawn <shell> ENOENT`; callers and the
+                    // ported tests match on that shape.
+                    format!("spawn {} ENOENT", shell_config.shell)
+                } else {
+                    error.to_string()
+                })
+            })?;
+
+            if command_from_stdin && let Some(mut stdin) = child.stdin.take() {
+                use tokio::io::AsyncWriteExt;
+                let _ = stdin.write_all(command.as_bytes()).await;
+                let _ = stdin.shutdown().await;
+            }
+
+            let pid = child.id();
+            if let Some(pid) = pid {
+                track_detached_child_pid(pid);
+                if let Some(on_spawn) = &options.on_spawn {
+                    on_spawn(pid);
+                }
+            }
+
+            let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<ReaderEvent>();
+            spawn_reader(child.stdout.take(), sender.clone(), ReaderEvent::StdoutEnd);
+            spawn_reader(child.stderr.take(), sender, ReaderEvent::StderrEnd);
+
+            let mut stdout_ended = false;
+            let mut stderr_ended = false;
+            let mut readers_gone = false;
+            let mut exited = false;
+            let mut exit_code: Option<i32> = None;
+            let mut timed_out = false;
+            let mut abort_started = false;
+            let mut timeout_deadline = timeout_ms
+                .map(|timeout_ms| Instant::now() + Duration::from_secs_f64(timeout_ms / 1000.0));
+            let mut escalation_deadline: Option<Instant> = None;
+            let mut idle_deadline: Option<Instant> = None;
+            let wait = child.wait();
+            tokio::pin!(wait);
+
+            loop {
+                if exited && stdout_ended && stderr_ended {
+                    break;
+                }
+                let signal_wait = async {
+                    match &options.signal {
+                        Some(signal) if !abort_started => signal.cancelled().await,
+                        _ => std::future::pending().await,
+                    }
+                };
+                let deadline_wait = |deadline: Option<Instant>| async move {
+                    match deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+                        None => std::future::pending().await,
+                    }
+                };
+
+                tokio::select! {
+                    biased;
+                    event = receiver.recv(), if !readers_gone => match event {
+                        Some(ReaderEvent::Chunk(chunk)) => {
+                            if let Some(on_data) = &options.on_data {
+                                on_data(&chunk);
+                            }
+                            // Output is still arriving after exit; defer
+                            // finalizing so the tail is not cut off.
+                            if exited {
+                                idle_deadline =
+                                    Some(Instant::now() + Duration::from_millis(EXIT_STDIO_GRACE_MS));
+                            }
+                        }
+                        Some(ReaderEvent::StdoutEnd) => stdout_ended = true,
+                        Some(ReaderEvent::StderrEnd) => stderr_ended = true,
+                        // Both readers are gone: nothing more can arrive, and
+                        // polling a closed channel again would starve the
+                        // other branches.
+                        None => {
+                            readers_gone = true;
+                            stdout_ended = true;
+                            stderr_ended = true;
+                        }
+                    },
+                    status = &mut wait, if !exited => {
+                        exited = true;
+                        exit_code = status.ok().and_then(|status| status.code());
+                        idle_deadline =
+                            Some(Instant::now() + Duration::from_millis(EXIT_STDIO_GRACE_MS));
+                    },
+                    () = deadline_wait(timeout_deadline), if timeout_deadline.is_some() => {
+                        timeout_deadline = None;
+                        timed_out = true;
+                        if let Some(pid) = pid {
+                            kill_process_tree(pid);
+                        }
+                    },
+                    () = signal_wait => {
+                        abort_started = true;
+                        // Ask first, kill after. A command that handles
+                        // termination gets to close what it opened; one that
+                        // ignores it still dies on schedule.
+                        if let Some(pid) = pid {
+                            terminate_process_tree(pid);
+                            escalation_deadline =
+                                Some(Instant::now() + Duration::from_millis(ABORT_ESCALATION_MS));
+                        }
+                    },
+                    () = deadline_wait(escalation_deadline), if escalation_deadline.is_some() => {
+                        escalation_deadline = None;
+                        if !exited && let Some(pid) = pid {
+                            kill_process_tree(pid);
+                        }
+                    },
+                    () = deadline_wait(idle_deadline), if idle_deadline.is_some() && exited => break,
+                }
+            }
+
+            if let Some(pid) = pid {
+                untrack_detached_child_pid(pid);
+            }
+            if matches!(&options.signal, Some(signal) if signal.is_cancelled()) {
+                return Err(BashExecError::Aborted);
+            }
+            if timed_out {
+                return Err(BashExecError::Timeout(options.timeout.unwrap_or_default()));
+            }
+            Ok(BashExecResult { exit_code })
+        })
+    }
+}
+
+fn spawn_reader<R>(
+    reader: Option<R>,
+    sender: tokio::sync::mpsc::UnboundedSender<ReaderEvent>,
+    end: ReaderEvent,
+) where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    let Some(mut reader) = reader else {
+        let _ = sender.send(end);
+        return;
+    };
+    tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut buffer = vec![0u8; 8 * 1024];
+        loop {
+            match reader.read(&mut buffer).await {
+                Ok(0) | Err(_) => break,
+                Ok(read) => {
+                    if sender
+                        .send(ReaderEvent::Chunk(buffer[..read].to_vec()))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+        let _ = sender.send(end);
+    });
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BashSpawnContext {
+    pub command: String,
+    pub cwd: String,
+    pub env: BTreeMap<String, String>,
+}
+
+pub type BashSpawnHook = Arc<dyn Fn(BashSpawnContext) -> BashSpawnContext + Send + Sync>;
+
+fn resolve_spawn_context(
+    command: &str,
+    cwd: &str,
+    spawn_hook: Option<&BashSpawnHook>,
+    expose_session_environment: bool,
+    context: Option<&ToolContext>,
+) -> BashSpawnContext {
+    let mut env = get_shell_env();
+    env.remove("NOTAGENT_SESSION_ID");
+    env.remove("NOTAGENT_SESSION_FILE");
+    env.remove("NOTAGENT_PROVIDER");
+    env.remove("NOTAGENT_MODEL");
+    env.remove("NOTAGENT_REASONING_LEVEL");
+    if expose_session_environment && let Some(context) = context {
+        if let Some(session_id) = &context.session_id {
+            env.insert("NOTAGENT_SESSION_ID".to_owned(), session_id.clone());
+        }
+        if let Some(session_file) = &context.session_file {
+            env.insert("NOTAGENT_SESSION_FILE".to_owned(), session_file.clone());
+        }
+        if let Some(model) = &context.model {
+            env.insert("NOTAGENT_PROVIDER".to_owned(), model.provider.clone());
+            env.insert("NOTAGENT_MODEL".to_owned(), model.id.clone());
+        }
+        if let Some(thinking_level) = &context.thinking_level {
+            env.insert(
+                "NOTAGENT_REASONING_LEVEL".to_owned(),
+                thinking_level.clone(),
+            );
+        }
+    }
+    let base = BashSpawnContext {
+        command: command.to_owned(),
+        cwd: cwd.to_owned(),
+        env,
+    };
+    match spawn_hook {
+        Some(hook) => hook(base),
+        None => base,
+    }
+}
+
+/// Why a foreground tool call stopped waiting (`core/tasks/types.ts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForegroundRelease {
+    Terminal,
+    Detached,
+    TimeoutDetached,
+}
+
+/// Where a task stands (`core/tasks/types.ts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagedTaskStatus {
+    Running,
+    Completed,
+    Failed,
+    TimedOut,
+    Killed,
+    Lost,
+}
+
+/// The slice of `TaskInfo` the shell tool reads back after a foreground run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedTaskSnapshot {
+    pub status: ManagedTaskStatus,
+    pub stop_reason: Option<String>,
+    /// `exitCode` of a shell task; `None` for any other kind, matching the
+    /// `info?.kind === "shell" ? info.exitCode : null` of the TS source.
+    pub exit_code: Option<i32>,
+}
+
+/// Receives output while a tool call is still watching.
+pub type ShellTaskOutputSink = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// A shell command handed to the task manager (`core/tasks/shell-task.ts`).
+#[derive(Clone)]
+pub struct ShellTaskSpec {
+    pub operations: Arc<dyn BashOperations>,
+    pub command: String,
+    pub cwd: String,
+    pub env: Option<BTreeMap<String, String>>,
+    pub description: String,
+    /// Receives output while a tool call is still watching.
+    pub on_output: Option<ShellTaskOutputSink>,
+}
+
+/// `RegisterTaskOptions` of `core/tasks/manager.ts`.
+#[derive(Clone, Default)]
+pub struct RegisterTaskOptions {
+    pub detached: bool,
+    pub timeout_ms: Option<u64>,
+    pub detach_timeout_ms: Option<u64>,
+    pub auto_background_on_timeout: bool,
+    pub signal: Option<CancellationToken>,
+}
+
+/// The part of `TaskManager` the shell tool uses. Implemented for the real
+/// manager in plan task 10.
+pub trait BashTaskManager: Send + Sync {
+    fn register_shell_task(
+        &self,
+        task: ShellTaskSpec,
+        options: RegisterTaskOptions,
+    ) -> Result<String, String>;
+    fn wait_for_foreground_release<'a>(
+        &'a self,
+        task_id: &'a str,
+    ) -> BoxFuture<'a, Option<ForegroundRelease>>;
+    fn get_task(&self, task_id: &str) -> Option<ManagedTaskSnapshot>;
+}
+
+/// What the shell tool needs in order to detach a command.
+#[derive(Clone)]
+pub struct BashToolSources {
+    /// Where a detached command is registered. Absent inside a subagent.
+    pub manager: Arc<dyn Fn() -> Option<Arc<dyn BashTaskManager>> + Send + Sync>,
+    /// Whether this session may detach work at all.
+    pub background_allowed: Arc<dyn Fn() -> bool + Send + Sync>,
+    /// Whether a foreground command that reaches its deadline is backgrounded.
+    pub auto_background_on_timeout: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+}
+
+#[derive(Default, Clone)]
+pub struct BashToolOptions {
+    /// Custom operations for command execution. Default: local shell.
+    pub operations: Option<Arc<dyn BashOperations>>,
+    /// Command prefix prepended to every command (for example shell setup).
+    pub command_prefix: Option<String>,
+    /// Optional explicit shell path from settings.
+    pub shell_path: Option<String>,
+    /// Expose current notagent session metadata as `NOTAGENT_*` environment
+    /// variables. Default: true.
+    pub expose_session_environment: Option<bool>,
+    /// Hook to adjust command, cwd, or env before execution.
+    pub spawn_hook: Option<BashSpawnHook>,
+    /// Background-task wiring. Without it the tool runs commands directly.
+    pub sources: Option<BashToolSources>,
+}
+
+fn bash_base_properties() -> Map<String, Value> {
+    let mut properties = Map::new();
+    properties.insert(
+        "command".to_owned(),
+        json!({ "type": "string", "description": "Bash command to execute" }),
+    );
+    properties.insert(
+        "timeout".to_owned(),
+        json!({
+            "type": "number",
+            "description": format!(
+                "Timeout in seconds. Foreground: default {DEFAULT_TIMEOUT_S}, maximum {MAX_TIMEOUT_S}. Background: default {DEFAULT_BACKGROUND_TIMEOUT_S}, maximum {MAX_BACKGROUND_TIMEOUT_S}."
+            ),
+        }),
+    );
+    properties
+}
+
+fn bash_schema(with_background: bool) -> Value {
+    let mut properties = bash_base_properties();
+    if with_background {
+        properties.insert(
+            "run_in_background".to_owned(),
+            json!({
+                "type": "boolean",
+                "description": "Start the command as a background task and return its id instead of waiting for it.",
+            }),
+        );
+        properties.insert(
+            "description".to_owned(),
+            json!({
+                "type": "string",
+                "description": "Short label for the task. Required when run_in_background is set.",
+            }),
+        );
+        properties.insert(
+            "disable_timeout".to_owned(),
+            json!({
+                "type": "boolean",
+                "description": "Run without any deadline. Only meaningful together with run_in_background.",
+            }),
+        );
+    }
+    json!({
+        "type": "object",
+        "properties": Value::Object(properties),
+        "required": ["command"],
+    })
+}
+
+fn description_without_background() -> String {
+    [
+        base_description(),
+        String::new(),
+        format!(
+            "Set `timeout` in seconds for anything slow; the default is {DEFAULT_TIMEOUT_S}s and the maximum is {MAX_TIMEOUT_S}s. A command that reaches its deadline is stopped."
+        ),
+        "Background execution is not available here. Do not set `run_in_background`.".to_owned(),
+    ]
+    .join("\n")
+}
+
+fn base_description() -> String {
+    format!(
+        "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last {DEFAULT_MAX_LINES} lines or {}KB (whichever is hit first). If truncated, full output is saved to a temp file.",
+        DEFAULT_MAX_BYTES / 1024
+    )
+}
+
+fn description_with_background(auto_background: bool) -> String {
+    [
+        base_description(),
+        String::new(),
+        format!(
+            "Foreground commands default to a {DEFAULT_TIMEOUT_S}s deadline and allow up to {MAX_TIMEOUT_S}s."
+        ),
+        if auto_background {
+            "A foreground command that reaches its deadline is moved to the background rather than stopped, and reports itself when it finishes.".to_owned()
+        } else {
+            "A foreground command that reaches its deadline is stopped.".to_owned()
+        },
+        String::new(),
+        format!(
+            "With `run_in_background` the command starts as a task and this returns its id immediately; `description` is required. Background commands default to {DEFAULT_BACKGROUND_TIMEOUT_S}s and allow up to {MAX_BACKGROUND_TIMEOUT_S}s, or none at all with `disable_timeout`."
+        ),
+        "Use it for builds, test runs, watchers and servers — anything you want to keep working alongside. Its result arrives on its own; do not follow it with task_output to wait, and use task_stop only to cancel.".to_owned(),
+    ]
+    .join("\n")
+}
+
+/// Clamps a requested deadline to the ceiling for the mode it runs in.
+fn normalize_timeout_seconds(
+    requested: Option<f64>,
+    is_background: bool,
+) -> Result<f64, ToolExecutionError> {
+    let fallback = if is_background {
+        DEFAULT_BACKGROUND_TIMEOUT_S
+    } else {
+        DEFAULT_TIMEOUT_S
+    };
+    let ceiling = if is_background {
+        MAX_BACKGROUND_TIMEOUT_S
+    } else {
+        MAX_TIMEOUT_S
+    };
+    let Some(requested) = requested else {
+        return Ok(fallback);
+    };
+    if !requested.is_finite() || requested <= 0.0 {
+        return Err(ToolExecutionError::new(
+            "Invalid timeout: must be a finite number of seconds",
+        ));
+    }
+    Ok(requested.min(ceiling))
+}
+
+/// What the model is told about a command it can no longer wait for.
+fn render_detached_result(task_id: &str, description: &str, reason: ForegroundRelease) -> String {
+    let opening = match reason {
+        ForegroundRelease::TimeoutDetached => {
+            "The command reached its foreground deadline and was moved to the background."
+        }
+        ForegroundRelease::Detached => "The command was moved to the background.",
+        ForegroundRelease::Terminal => "Started in the background.",
+    };
+    [
+        format!("task_id: {task_id}"),
+        "status: running".to_owned(),
+        format!("description: {description}"),
+        opening.to_owned(),
+        "next_step: its result arrives on its own in a later turn — do not wait for it or poll task_output; carry on with other work.".to_owned(),
+        "next_step: use task_stop only if it must be cancelled.".to_owned(),
+    ]
+    .join("\n")
+}
+
+struct ThrottleState {
+    dirty: bool,
+    last_update_at: Option<Instant>,
+    timer_armed: bool,
+}
+
+/// The accumulator plus the throttled `onUpdate` emission around it.
+struct OutputPipeline {
+    accumulator: Mutex<OutputAccumulator>,
+    on_update: Option<AgentToolUpdateCallback>,
+    throttle: Mutex<ThrottleState>,
+    accepting: AtomicBool,
+    closed: CancellationToken,
+}
+
+impl OutputPipeline {
+    fn new(on_update: Option<AgentToolUpdateCallback>) -> Arc<Self> {
+        Arc::new(Self {
+            accumulator: Mutex::new(OutputAccumulator::new(OutputAccumulatorOptions {
+                temp_file_prefix: "notagent-bash".to_owned(),
+                ..OutputAccumulatorOptions::default()
+            })),
+            on_update,
+            throttle: Mutex::new(ThrottleState {
+                dirty: false,
+                last_update_at: None,
+                timer_armed: false,
+            }),
+            accepting: AtomicBool::new(true),
+            closed: CancellationToken::new(),
+        })
+    }
+
+    fn handle_data(self: &Arc<Self>, data: &[u8]) {
+        if !self.accepting.load(Ordering::SeqCst) {
+            return;
+        }
+        self.accumulator
+            .lock()
+            .expect("output accumulator mutex")
+            .append(data);
+        self.schedule_update();
+    }
+
+    fn schedule_update(self: &Arc<Self>) {
+        if self.on_update.is_none() {
+            return;
+        }
+        let delay = {
+            let mut throttle = self.throttle.lock().expect("throttle mutex");
+            throttle.dirty = true;
+            let elapsed = throttle
+                .last_update_at
+                .map(|last| last.elapsed())
+                .unwrap_or(Duration::MAX);
+            let throttle_window = Duration::from_millis(BASH_UPDATE_THROTTLE_MS);
+            if elapsed >= throttle_window {
+                throttle.timer_armed = false;
+                None
+            } else if throttle.timer_armed {
+                return;
+            } else {
+                throttle.timer_armed = true;
+                Some(throttle_window - elapsed)
+            }
+        };
+        match delay {
+            None => self.emit_update(),
+            Some(delay) => {
+                let pipeline = Arc::clone(self);
+                tokio::spawn(async move {
+                    tokio::select! {
+                        () = tokio::time::sleep(delay) => {}
+                        () = pipeline.closed.cancelled() => return,
+                    }
+                    pipeline
+                        .throttle
+                        .lock()
+                        .expect("throttle mutex")
+                        .timer_armed = false;
+                    pipeline.emit_update();
+                });
+            }
+        }
+    }
+
+    fn emit_update(&self) {
+        let Some(on_update) = &self.on_update else {
+            return;
+        };
+        {
+            let mut throttle = self.throttle.lock().expect("throttle mutex");
+            if !throttle.dirty {
+                return;
+            }
+            throttle.dirty = false;
+            throttle.last_update_at = Some(Instant::now());
+        }
+        let snapshot = self
+            .accumulator
+            .lock()
+            .expect("output accumulator mutex")
+            .snapshot(true);
+        on_update(AgentToolResult {
+            content: vec![TextOrImageContent::Text(TextContent::new(
+                snapshot.content.clone(),
+            ))],
+            details: Some(details_value(&snapshot)),
+            usage: None,
+            added_tool_names: None,
+            terminate: None,
+        });
+    }
+
+    /// `finishOutput` — stop accepting, flush a last update, close the file.
+    fn finish(&self) -> OutputSnapshot {
+        self.accepting.store(false, Ordering::SeqCst);
+        self.accumulator
+            .lock()
+            .expect("output accumulator mutex")
+            .finish();
+        self.closed.cancel();
+        self.emit_update();
+        let mut accumulator = self.accumulator.lock().expect("output accumulator mutex");
+        let snapshot = accumulator.snapshot(true);
+        accumulator.close_temp_file();
+        snapshot
+    }
+
+    fn last_line_bytes(&self) -> usize {
+        self.accumulator
+            .lock()
+            .expect("output accumulator mutex")
+            .get_last_line_bytes()
+    }
+}
+
+/// `details` as the TS object literal serializes: absent keys for `undefined`.
+fn details_value(snapshot: &OutputSnapshot) -> Value {
+    let mut details = Map::new();
+    if snapshot.truncation.truncated {
+        details.insert(
+            "truncation".to_owned(),
+            serde_json::to_value(&snapshot.truncation).expect("truncation is serializable"),
+        );
+    }
+    if let Some(path) = &snapshot.full_output_path {
+        details.insert("fullOutputPath".to_owned(), Value::String(path.clone()));
+    }
+    Value::Object(details)
+}
+
+fn format_output(
+    pipeline: &OutputPipeline,
+    snapshot: &OutputSnapshot,
+    empty_text: &str,
+) -> (String, Option<Value>) {
+    let truncation = &snapshot.truncation;
+    let mut text = if snapshot.content.is_empty() {
+        empty_text.to_owned()
+    } else {
+        snapshot.content.clone()
+    };
+    let mut details = None;
+    if truncation.truncated {
+        details = Some(details_value(snapshot));
+        let start_line = truncation.total_lines - truncation.output_lines + 1;
+        let end_line = truncation.total_lines;
+        let full_output_path = snapshot.full_output_path.clone().unwrap_or_default();
+        if truncation.last_line_partial {
+            let last_line_size = format_size(pipeline.last_line_bytes());
+            text.push_str(&format!(
+                "\n\n[Showing last {} of line {end_line} (line is {last_line_size}). Full output: {full_output_path}]",
+                format_size(truncation.output_bytes)
+            ));
+        } else if truncation.truncated_by == Some(TruncatedBy::Lines) {
+            text.push_str(&format!(
+                "\n\n[Showing lines {start_line}-{end_line} of {}. Full output: {full_output_path}]",
+                truncation.total_lines
+            ));
+        } else {
+            text.push_str(&format!(
+                "\n\n[Showing lines {start_line}-{end_line} of {} ({} limit). Full output: {full_output_path}]",
+                truncation.total_lines,
+                format_size(DEFAULT_MAX_BYTES)
+            ));
+        }
+    }
+    (text, details)
+}
+
+fn append_status(text: &str, status: &str) -> String {
+    if text.is_empty() {
+        status.to_owned()
+    } else {
+        format!("{text}\n\n{status}")
+    }
+}
+
+pub struct BashToolDefinition {
+    cwd: String,
+    operations: Arc<dyn BashOperations>,
+    command_prefix: Option<String>,
+    expose_session_environment: bool,
+    spawn_hook: Option<BashSpawnHook>,
+    sources: Option<BashToolSources>,
+    description_without_background: String,
+    description_auto_background: String,
+    description_stopped_on_timeout: String,
+    schema_with_background: Value,
+    schema_without_background: Value,
+    constrained_sampling: Option<ConstrainedSampling>,
+}
+
+pub fn create_bash_tool_definition(
+    cwd: &str,
+    options: Option<BashToolOptions>,
+) -> BashToolDefinition {
+    let options = options.unwrap_or_default();
+    let operations = options.operations.clone().unwrap_or_else(|| {
+        Arc::new(create_local_bash_operations(options.shell_path.clone()))
+            as Arc<dyn BashOperations>
+    });
+    BashToolDefinition {
+        cwd: cwd.to_owned(),
+        operations,
+        command_prefix: options.command_prefix,
+        expose_session_environment: options.expose_session_environment.unwrap_or(true),
+        spawn_hook: options.spawn_hook,
+        sources: options.sources,
+        description_without_background: description_without_background(),
+        description_auto_background: description_with_background(true),
+        description_stopped_on_timeout: description_with_background(false),
+        schema_with_background: bash_schema(true),
+        schema_without_background: bash_schema(false),
+        constrained_sampling: get_experimental_tool_sampling(),
+    }
+}
+
+pub fn create_bash_tool(cwd: &str, options: Option<BashToolOptions>) -> Arc<dyn ToolDefinition> {
+    Arc::new(create_bash_tool_definition(cwd, options))
+}
+
+impl BashToolDefinition {
+    fn manager(&self) -> Option<Arc<dyn BashTaskManager>> {
+        self.sources
+            .as_ref()
+            .and_then(|sources| (sources.manager)())
+    }
+
+    fn background_allowed(&self) -> bool {
+        match &self.sources {
+            Some(sources) => (sources.background_allowed)() && self.manager().is_some(),
+            None => false,
+        }
+    }
+
+    fn auto_background(&self) -> bool {
+        self.background_allowed()
+            && self
+                .sources
+                .as_ref()
+                .and_then(|sources| sources.auto_background_on_timeout.as_ref())
+                .map(|allowed| allowed())
+                .unwrap_or(true)
+    }
+}
+
+impl ToolDefinition for BashToolDefinition {
+    fn name(&self) -> &str {
+        "bash"
+    }
+
+    fn label(&self) -> &str {
+        "bash"
+    }
+
+    /// Rebuilt on each read, because what this tool can do depends on which
+    /// other tools are active right now. A description that promised
+    /// backgrounding in a mode without the tools to observe it would be a
+    /// promise the call itself refuses.
+    fn description(&self) -> &str {
+        if !self.background_allowed() {
+            return &self.description_without_background;
+        }
+        if self.auto_background() {
+            &self.description_auto_background
+        } else {
+            &self.description_stopped_on_timeout
+        }
+    }
+
+    fn prompt_snippet(&self) -> Option<&str> {
+        Some(BASH_TOOL_SYSTEM_PROMPT_CONTRIBUTION.snippet)
+    }
+
+    fn prompt_guidelines(&self) -> Vec<String> {
+        if self.expose_session_environment {
+            BASH_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+                .guidelines
+                .iter()
+                .map(|guideline| (*guideline).to_owned())
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn parameters(&self) -> &Value {
+        if self.background_allowed() {
+            &self.schema_with_background
+        } else {
+            &self.schema_without_background
+        }
+    }
+
+    fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
+        self.constrained_sampling.as_ref()
+    }
+
+    fn execute<'a>(
+        &'a self,
+        _tool_call_id: &'a str,
+        params: Value,
+        signal: Option<CancellationToken>,
+        on_update: Option<AgentToolUpdateCallback>,
+        context: Option<ToolContext>,
+    ) -> BoxFuture<'a, Result<AgentToolResult, ToolExecutionError>> {
+        Box::pin(async move {
+            let command = params
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            let starts_in_background = params
+                .get("run_in_background")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if starts_in_background && !self.background_allowed() {
+                return Err(ToolExecutionError::new(
+                    "Background execution is not available here, because the tools that list, read and stop background tasks are not active.",
+                ));
+            }
+            let description = params
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_owned();
+            if starts_in_background && description.is_empty() {
+                return Err(ToolExecutionError::new(
+                    "`description` is required when starting a command in the background.",
+                ));
+            }
+            let timeout = normalize_timeout_seconds(
+                params.get("timeout").and_then(Value::as_f64),
+                starts_in_background,
+            )?;
+            let resolved_command = match &self.command_prefix {
+                Some(prefix) => format!("{prefix}\n{command}"),
+                None => command.clone(),
+            };
+            let spawn_context = resolve_spawn_context(
+                &resolved_command,
+                &self.cwd,
+                self.spawn_hook.as_ref(),
+                self.expose_session_environment,
+                context.as_ref(),
+            );
+
+            let pipeline = OutputPipeline::new(on_update.clone());
+            if let Some(on_update) = &on_update {
+                on_update(AgentToolResult {
+                    content: Vec::new(),
+                    details: None,
+                    usage: None,
+                    added_tool_names: None,
+                    terminate: None,
+                });
+            }
+
+            if let Some(manager) = self.manager() {
+                let sink_pipeline = Arc::clone(&pipeline);
+                let task = ShellTaskSpec {
+                    operations: Arc::clone(&self.operations),
+                    command: spawn_context.command.clone(),
+                    cwd: spawn_context.cwd.clone(),
+                    env: Some(spawn_context.env.clone()),
+                    description: if starts_in_background {
+                        description.clone()
+                    } else {
+                        format!("bash: {}", truncate_command_label(&command))
+                    },
+                    on_output: Some(Arc::new(move |chunk: &str| {
+                        sink_pipeline.handle_data(chunk.as_bytes());
+                    })),
+                };
+                return run_managed(
+                    manager.as_ref(),
+                    task,
+                    RegisterTaskOptions {
+                        detached: starts_in_background,
+                        timeout_ms: if starts_in_background
+                            && params
+                                .get("disable_timeout")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false)
+                        {
+                            None
+                        } else {
+                            Some((timeout * 1000.0) as u64)
+                        },
+                        detach_timeout_ms: Some((DEFAULT_BACKGROUND_TIMEOUT_S * 1000.0) as u64),
+                        auto_background_on_timeout: self.auto_background(),
+                        signal: if starts_in_background {
+                            None
+                        } else {
+                            signal.clone()
+                        },
+                    },
+                    starts_in_background,
+                    &pipeline,
+                    timeout,
+                )
+                .await;
+            }
+
+            let on_data_pipeline = Arc::clone(&pipeline);
+            let result = self
+                .operations
+                .exec(
+                    &spawn_context.command,
+                    &spawn_context.cwd,
+                    BashExecOptions {
+                        on_data: Some(Arc::new(move |data: &[u8]| {
+                            on_data_pipeline.handle_data(data);
+                        })),
+                        signal: signal.clone(),
+                        timeout: Some(timeout),
+                        env: Some(spawn_context.env.clone()),
+                        on_spawn: None,
+                    },
+                )
+                .await;
+
+            let exit_code = match result {
+                Ok(result) => result.exit_code,
+                Err(error) => {
+                    let snapshot = pipeline.finish();
+                    let (text, _) = format_output(&pipeline, &snapshot, "");
+                    return Err(match error {
+                        BashExecError::Aborted => {
+                            ToolExecutionError::new(append_status(&text, "Command aborted"))
+                        }
+                        BashExecError::Timeout(seconds) => ToolExecutionError::new(append_status(
+                            &text,
+                            &format!("Command timed out after {seconds} seconds"),
+                        )),
+                        BashExecError::Other(message) => ToolExecutionError::new(message),
+                    });
+                }
+            };
+
+            let snapshot = pipeline.finish();
+            let (output_text, details) = format_output(&pipeline, &snapshot, "(no output)");
+            if let Some(exit_code) = exit_code
+                && exit_code != 0
+            {
+                return Err(ToolExecutionError::new(append_status(
+                    &output_text,
+                    &format!("Command exited with code {exit_code}"),
+                )));
+            }
+            Ok(AgentToolResult {
+                content: vec![TextOrImageContent::Text(TextContent::new(output_text))],
+                details,
+                usage: None,
+                added_tool_names: None,
+                terminate: None,
+            })
+        })
+    }
+}
+
+/// TS truncates the derived foreground label at 60 characters.
+fn truncate_command_label(command: &str) -> String {
+    let characters: Vec<char> = command.chars().collect();
+    if characters.len() > 60 {
+        format!("{}…", characters[..60].iter().collect::<String>())
+    } else {
+        command.to_owned()
+    }
+}
+
+/// Runs a command as a managed task.
+///
+/// The foreground case is the interesting one: it waits for the task to release
+/// it, which happens either because the command ended or because it was moved to
+/// the background — by the user, or by its own deadline. Both are ordinary
+/// outcomes here rather than errors.
+async fn run_managed(
+    manager: &dyn BashTaskManager,
+    task: ShellTaskSpec,
+    options: RegisterTaskOptions,
+    starts_in_background: bool,
+    pipeline: &OutputPipeline,
+    timeout_seconds: f64,
+) -> Result<AgentToolResult, ToolExecutionError> {
+    let description = task.description.clone();
+    let task_id = manager
+        .register_shell_task(task, options)
+        .map_err(ToolExecutionError::new)?;
+
+    if starts_in_background {
+        return Ok(AgentToolResult {
+            content: vec![TextOrImageContent::Text(TextContent::new(
+                render_detached_result(&task_id, &description, ForegroundRelease::Terminal),
+            ))],
+            details: None,
+            usage: None,
+            added_tool_names: None,
+            terminate: None,
+        });
+    }
+
+    let release = manager.wait_for_foreground_release(&task_id).await;
+    if matches!(
+        release,
+        Some(ForegroundRelease::Detached | ForegroundRelease::TimeoutDetached)
+    ) {
+        let snapshot = pipeline.finish();
+        let (text, _) = format_output(pipeline, &snapshot, "");
+        let header = render_detached_result(
+            &task_id,
+            &description,
+            release.expect("release is detached here"),
+        );
+        return Ok(AgentToolResult {
+            content: vec![TextOrImageContent::Text(TextContent::new(
+                if text.is_empty() {
+                    header
+                } else {
+                    format!("{header}\n\noutput so far:\n{text}")
+                },
+            ))],
+            details: None,
+            usage: None,
+            added_tool_names: None,
+            terminate: None,
+        });
+    }
+
+    let info = manager.get_task(&task_id);
+    let snapshot = pipeline.finish();
+    let (output_text, details) = format_output(pipeline, &snapshot, "(no output)");
+    if let Some(info) = &info {
+        if info.status == ManagedTaskStatus::TimedOut {
+            return Err(ToolExecutionError::new(append_status(
+                &output_text,
+                &format!("Command timed out after {timeout_seconds} seconds"),
+            )));
+        }
+        if info.status == ManagedTaskStatus::Killed {
+            return Err(ToolExecutionError::new(append_status(
+                &output_text,
+                info.stop_reason.as_deref().unwrap_or("Command aborted"),
+            )));
+        }
+    }
+    let exit_code = info.as_ref().and_then(|info| info.exit_code);
+    if info
+        .as_ref()
+        .is_some_and(|info| info.status == ManagedTaskStatus::Failed)
+        && exit_code.is_none()
+    {
+        return Err(ToolExecutionError::new(append_status(
+            &output_text,
+            info.as_ref()
+                .and_then(|info| info.stop_reason.as_deref())
+                .unwrap_or("Command failed"),
+        )));
+    }
+    if let Some(exit_code) = exit_code
+        && exit_code != 0
+    {
+        return Err(ToolExecutionError::new(append_status(
+            &output_text,
+            &format!("Command exited with code {exit_code}"),
+        )));
+    }
+    Ok(AgentToolResult {
+        content: vec![TextOrImageContent::Text(TextContent::new(output_text))],
+        details,
+        usage: None,
+        added_tool_names: None,
+        terminate: None,
+    })
+}
