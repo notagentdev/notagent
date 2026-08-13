@@ -212,6 +212,47 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: offen
 
 
+### A-8 Batch 2 zur Hälfte geliefert — fünf Komponenten warten auf C-Module
+- **Von / An**: A → C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/`
+- **Geliefert**: `diff` (inkl. Wortdiff), `user_message`, `assistant_message`,
+  `compaction_summary_message`, `branch_summary_message`, `custom_message`,
+  `bash_execution`. Alles mit Tests; die drei zugehörigen TS-Suiten sind portiert.
+- **Für dich sofort nutzbar**:
+  `notagent::modes::interactive::components::diff::{render_diff, RenderDiffOptions}` —
+  das brauchen deine Tools `core/tools/edit.ts` (Zeile 234, 272) und
+  `core/tools/patch-minified.ts` (Zeile 263).
+- **Nebenprodukt, das dir Arbeit spart**: `components/diff/word_diff.rs` ist ein
+  vollständiger Port von jsdiff 8.0.4 (`base.js` Myers-Kern, `word.js`, `util/string.js`)
+  für den Optionssatz von `diffWords`. Zeichengenau gegen die Bibliothek geprüft
+  (`tests/diff_words_oracle.rs`, 900 Fälle). Dein `core/tools/edit-diff.ts` braucht laut
+  eurem Ledger noch `Diff.diffLines` und `Diff.createTwoFilesPatch`: der Myers-Kern dort ist
+  tokenizer-agnostisch, ich hebe ihn dir auf Zuruf in ein gemeinsames Modul (Vorschlag:
+  `crates/notagent/src/utils/jsdiff.rs`, dann gehört er dir) und du setzt den Zeilen-Tokenizer
+  darauf. Sag Bescheid, sonst lasse ich ihn, wo er ist.
+- **Ausschluss, den ich eingetragen habe**: `components/custom-entry.ts` entfällt vollständig
+  (Klasse 2). Die Komponente verlangt zwingend einen `EntryRenderer`, den nur
+  `extensionRunner.getEntryRenderer` liefert (`interactive-mode.ts:3689`);
+  `plans/facts/extension-boundary.md` führt Entry-Renderer als ersatzlos entfallend.
+  Bei `custom-message.ts` ist nur der optionale Renderer-Pfad entfallen, der Default-Pfad bleibt.
+- **Offen, weil dein Modul fehlt** (ich ziehe sie sofort nach, sobald es liegt):
+  | Komponente | LOC | fehlende Abhängigkeit |
+  |---|---|---|
+  | `tool-execution.ts` | 377 | `core/tools/render-utils.ts`, `createAllToolDefinitions`/`ToolName` aus `core/tools/index.ts`, `utils/image-convert.ts` |
+  | `footer.ts` | 253 | `core/agent-session.ts`, `core/footer-data-provider.ts`, `core/modes/indicator.ts`, `core/usage-totals.ts` |
+  | `todo-list.ts` | 216 | `core/todos/todos.ts` (`Todo`, `TodoStatus`) |
+  | `mermaid.ts` | 89 | Ersatz für `grok-mermaid` (Master-Plan, deine Task 15) |
+  | `skill-invocation-message.ts` | 55 | `ParsedSkillBlock` aus `core/agent-session.ts` |
+  Die günstigste Reihenfolge für mich wäre `core/todos/todos.ts` und `core/tools/render-utils.ts`
+  zuerst — damit fallen `todo-list` und `tool-execution` (zusammen 593 LOC) sofort.
+- **Zwei kleine Dinge, die ich in gemeinsamen Dateien angelegt habe**:
+  `components::to_locale_string` (die en-US-Gruppierung von `Number.prototype.toLocaleString`,
+  die auch dein `interactive-mode.ts:6313-6334` braucht) und die Typen
+  `MarkdownTransformer`/`MarkdownTransformContext` in `components/markdown_transform.rs`.
+- **Status**: offen (wartet auf C)
+
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)

@@ -65,6 +65,25 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/markdown-transform.ts | 29 | A-Task 15 (Batch 1) |
 | 2026-08-13 | packages/coding-agent/test/status-indicator.test.ts | 32 | A-Task 15 (Batch 1) |
 | 2026-08-13 | packages/coding-agent/src/core/keybindings.ts (Abhängigkeit von custom-editor.ts) | 386 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/diff.ts | 147 | A-Task 15 (Batch 2) |
+| 2026-08-13 | node_modules/diff/libesm/diff/base.js (jsdiff 8.0.4) | 253 | A-Task 15 (Batch 2) |
+| 2026-08-13 | node_modules/diff/libesm/diff/word.js (jsdiff 8.0.4) | 281 | A-Task 15 (Batch 2) |
+| 2026-08-13 | node_modules/diff/libesm/util/string.js (jsdiff 8.0.4) | 184 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/user-message.ts | 70 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/assistant-message.ts | 197 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/compaction-summary-message.ts | 59 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/branch-summary-message.ts | 58 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/skill-invocation-message.ts | 55 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/custom-message.ts | 113 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/custom-entry.ts | 62 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/bash-execution.ts | 220 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/footer.ts | 253 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/tool-execution.ts | 377 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/todo-list.ts | 216 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/mermaid.ts | 89 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/test/assistant-message.test.ts | 241 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/test/custom-message.test.ts | 44 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/test/bash-execution-width.test.ts | 80 | A-Task 15 (Batch 2) |
 
 ## Ledger
 
@@ -144,6 +163,26 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | src/modes/interactive/components/custom-editor.ts | 96 | — | offen | Braucht `src/core/keybindings.ts` (`AppKeybinding`, `KeybindingsManager`) — Workstream C, Task 13; siehe Interface-Request A-7 |
 | test/status-indicator.test.ts | 32 | tests/status_indicator.rs | verifiziert | 4 Tests (TS: 2). Der TS-Fall „disposes retry countdown updates" prüft über gefälschte Timer, dass nach `dispose()` kein `requestRender` mehr kommt; der gepollte Port prüft, dass keine Deadline übrig ist. Zwei zusätzliche Fälle decken die Countdown-Meldung und die Labels aller vier Arten ab |
 | — (neu) | — | tests/component_utilities.rs | verifiziert | 20 Tests für die Batch-1-Bausteine, die die TS-Suite nicht abdeckt: visual-truncate inkl. Zeilenumbruch, Padding und Null-Limit, DynamicBorder, keybinding-hints (Formatierung, macOS-Option, Auflösung über die globale Registry, Theming), CountdownTimer und markdown-transform, BorderedLoader in beiden Varianten |
+| src/modes/interactive/components/diff.ts | 147 | src/modes/interactive/components/diff.rs | verifiziert | Klasse 3: das npm-Paket `diff` (jsdiff 8.0.4) hat für `diffWords` keine Rust-Entsprechung — die Master-Tabelle setzt `similar` nur für Unified-Patches ein, und dessen Gruppierung weicht ab. Der Port bringt jsdiffs Wortdiff selbst mit (siehe nächste Zeile). Klasse 1: die Regex `/^([+-\s])(\s*\d*)\s(.*)$/` ist als Backtracking-Suche über Zeichenklassen nachgebaut (gleiche Kandidatenreihenfolge; `.` matcht wie in JS keinen Zeilenumbruch) |
+| node_modules/diff (jsdiff 8.0.4): base.js, word.js, util/string.js | 718 | src/modes/interactive/components/diff/word_diff.rs | verifiziert | Klasse 3: Port der Bibliothek für genau den Optionssatz, den `renderDiff` benutzt (kein Segmenter, kein `ignoreCase`, kein Comparator, kein `oneChangePerToken`, keine Edit-/Zeitgrenze). Enthalten: Tokenizer inkl. Whitespace-Anheftung, `equals` über `trim`, der Myers-Kern mit Diagonalen-Pruning, `buildValues`, `join` und die vollständige Whitespace-Nachbearbeitung. Der Rückgabewert `undefined` bei erschöpfter Editlänge ist ohne `maxEditLength` unerreichbar |
+| src/modes/interactive/components/user-message.ts | 70 | src/modes/interactive/components/user_message.rs | verifiziert | Klasse 1: Vererbung von `Container` → Komposition; Default-Parameter werden `Option` |
+| src/modes/interactive/components/assistant-message.ts | 197 | src/modes/interactive/components/assistant_message.rs | verifiziert | Klasse 1: Vererbung → Komposition; der `contentContainer` wird direkt gerendert statt zusätzlich als eigenes Kind gehalten (identische Ausgabe); `errorMessage` ist `Option<String>`, leerer String verhält sich wie in JS falsy |
+| src/modes/interactive/components/compaction-summary-message.ts | 59 | src/modes/interactive/components/compaction_summary_message.rs | verifiziert | Klasse 3: `Number.prototype.toLocaleString()` → `components::to_locale_string` mit der en-US-Gruppierung, die Node in dieser App auflöst (statt einer ICU-Abhängigkeit, die die Master-Tabelle nicht führt) |
+| src/modes/interactive/components/branch-summary-message.ts | 58 | src/modes/interactive/components/branch_summary_message.rs | verifiziert | Klasse 1: Vererbung von `Box` → Komposition |
+| src/modes/interactive/components/custom-message.ts | 113 | src/modes/interactive/components/custom_message.rs | verifiziert | Klasse 2: der optionale `MessageRenderer` entfällt — er kommt ausschließlich aus `extensionRunner.getMessageRenderer` (`interactive-mode.ts:3728`), und `plans/facts/extension-boundary.md` führt Message-Renderer-Overrides als ersatzlos entfallend. Der Default-Renderpfad bleibt vollständig, weil `CustomMessage` ein Kern-Nachrichtentyp ist. `setExpanded`/`setOutputPad` bleiben als API erhalten, wirken aber wie in TS nur auf den entfallenen Renderer |
+| src/modes/interactive/components/bash-execution.ts | 220 | src/modes/interactive/components/bash_execution.rs | verifiziert | Klasse 1: das anonyme Komponenten-Literal mit Breiten-Cache wird zur Struktur `PreviewLines`; der Loader braucht keinen `TUI`-Parameter mehr (er wird gepollt). bug-compat: der Kommandokopf wird in `updateDisplay` immer in `bashMode` gefärbt, auch wenn der Konstruktor für `!!`-Kommandos `dim` gewählt hat |
+| src/modes/interactive/components/custom-entry.ts | 62 | — | ausgeschlossen | Klasse 2: die Komponente verlangt zwingend einen `EntryRenderer`, den nur `extensionRunner.getEntryRenderer` liefert (`interactive-mode.ts:3689`); Entry-Renderer entfallen laut `plans/facts/extension-boundary.md` ersatzlos, ebenso die Custom-Entries, die nur Extensions schreiben |
+| src/modes/interactive/components/skill-invocation-message.ts | 55 | — | offen | braucht `ParsedSkillBlock` aus `core/agent-session.ts` (Workstream C, Task 11) — Interface-Request A-8 |
+| src/modes/interactive/components/todo-list.ts | 216 | — | offen | braucht `Todo`/`TodoStatus` aus `core/todos/todos.ts` (Workstream C) — A-8 |
+| src/modes/interactive/components/tool-execution.ts | 377 | — | offen | braucht `core/tools/render-utils.ts`, `createAllToolDefinitions`/`ToolName` aus `core/tools/index.ts` und `utils/image-convert.ts` (Workstream C) — A-8 |
+| src/modes/interactive/components/footer.ts | 253 | — | offen | braucht `core/agent-session.ts`, `core/footer-data-provider.ts`, `core/modes/indicator.ts` und `core/usage-totals.ts` (Workstream C) — A-8 |
+| src/modes/interactive/components/mermaid.ts | 89 | — | offen | braucht den Ersatz für `grok-mermaid` (Master-Plan, WS-C Task 15) — A-8 |
+| test/assistant-message.test.ts | 241 | tests/assistant_message.rs | verifiziert | 10 Tests (TS: 11). Der Fall „continues the Markdown transformer chain when a transformer throws" entfällt mit der Schutzprüfung, die er testet: ein Rust-Transformer kann nicht werfen, und die Prüfung fing nur ungetypten Extension-Code ab |
+| test/custom-message.test.ts | 44 | tests/custom_message.rs | verifiziert | 2 Tests. Der TS-Fall treibt die Komponente über einen Custom-Renderer; beobachtbar bleibt der Default-Renderpfad, den die beiden Fälle prüfen |
+| test/bash-execution-width.test.ts | 80 | tests/bash_execution_width.rs | verifiziert | 2 Tests, unverändert; der TUI-Stub entfällt, weil die portierten Komponenten gepollt werden |
+| — (neu) | — | tests/diff_words_oracle.rs | verifiziert | 900 Fälle (30 × 30 Zeilenpaare): der Wortdiff stimmt zeichengenau mit jsdiff 8.0.4 überein. Generator `tools/gen-diff-words-oracle.mjs` |
+| — (neu) | — | tests/render_diff_oracle.rs | verifiziert | 20 Diff-Texte byteweise gegen die TS-Komponente (dark, truecolor, `FORCE_COLOR=1`). Generator `tools/gen-render-diff-oracle.mjs` |
+| — (neu) | — | tests/summary_messages.rs | verifiziert | 3 Tests für die beiden Summary-Komponenten (Collapse/Expand, Tausendertrennung, Bold-Label), die die TS-Suite nicht abdeckt |
 
 ## Ausschlüsse
 
