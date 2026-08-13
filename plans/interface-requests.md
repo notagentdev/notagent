@@ -237,3 +237,64 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `translates_a_credential_store_refresh_failure_and_allows_a_later_retry` sind mit
   TS-Wire-Format geschrieben und bis zur Umsetzung `#[ignore]`.
 - **Status**: offen
+
+### C-5 Komponenten-Zuteilung für A-Task 15 (Theme + Interactive-Komponenten)
+- **Von / An**: C → A
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-tui/` bzw. ein neues Modul in A-Ownership; Quellen unter
+  `packages/coding-agent/src/modes/interactive/theme/` und
+  `packages/coding-agent/src/modes/interactive/components/`
+- **Ownership**: A besitzt ab sofort die unten gelisteten Dateien (Port + Tests + Ledger-Zeilen).
+  Die Verdrahtung in `interactive-mode.ts` und alle App-Zustände bleiben bei C (C-Task 13).
+  A liefert pro Batch eine benutzbare Rust-API; C meldet Anpassungswünsche als neue Einträge hier.
+- **Reihenfolge**: Batch 0 ist blockierend (C braucht `Theme` bereits für
+  `core/tools/render-utils.ts` in Task 7/8), danach Batch 1 → 4. Innerhalb eines Batches
+  ist die Reihenfolge frei.
+
+**Batch 0 — Theme-System (blockierend, 2 005 LOC)**
+| Datei | LOC | Hinweis |
+|---|---|---|
+| theme/theme.ts | 1 335 | `Theme` mit `fg`/`bg`/Slot-Auflösung; von JEDER Komponente und von `core/tools/render-utils.ts` gebraucht |
+| theme/theme-controller.ts | 139 | Live-Reload-Watcher über die Theme-Verzeichnisse |
+| theme/dark.json, theme/light.json | 179 | eingebaute Themes, als Assets übernehmen |
+| theme/theme-schema.json | 352 | Validierung benutzerdefinierter Themes |
+
+**Batch 1 — Grundgerüst der interaktiven Schleife (397 LOC)**
+| Datei | LOC | Datei | LOC |
+|---|---|---|---|
+| components/custom-editor.ts | 96 | components/status-indicator.ts | 114 |
+| components/bordered-loader.ts | 68 | components/keybinding-hints.ts | 48 |
+| components/dynamic-border.ts | 25 | components/countdown-timer.ts | 39 |
+| components/visual-truncate.ts | 50 | components/markdown-transform.ts | 29 |
+| components/index.ts | 38 | | |
+
+**Batch 2 — Nachrichten- und Tool-Rendering (1 716 LOC)**
+`footer.ts` (253), `assistant-message.ts` (197), `user-message.ts` (70),
+`tool-execution.ts` (377), `diff.ts` (147), `bash-execution.ts` (220),
+`custom-message.ts` (113), `custom-entry.ts` (62), `compaction-summary-message.ts` (59),
+`branch-summary-message.ts` (58), `skill-invocation-message.ts` (55), `mermaid.ts` (89),
+`todo-list.ts` (216)
+
+**Batch 3 — Selektoren und Dialoge (6 049 LOC)**
+`tree-selector.ts` (1 437), `session-selector.ts` (1 031) + `session-selector-search.ts` (194),
+`config-selector.ts` (942), `settings-selector.ts` (881), `scoped-models-selector.ts` (403),
+`model-selector.ts` (364), `login-dialog.ts` (233), `oauth-selector.ts` (206),
+`user-message-selector.ts` (155), `first-time-setup.ts` (145), `trust-selector.ts` (134),
+`extension-selector.ts` (112), `approval-selector.ts` (84), `thinking-selector.ts` (75),
+`theme-selector.ts` (67), `show-images-selector.ts` (50)
+- `extension-selector.ts` ist ein generischer Listen-Selektor und wird an vier Kern-Stellen
+  benutzt (`interactive-mode.ts:2434,5579,5862`, `cli/startup-ui.ts:152`). Vorschlag für den
+  neutralen Namen: `list_selector.rs` / `ListSelectorComponent`.
+
+**Batch 4 — Panels und Easter Eggs (1 251 LOC)**
+`tasks-browser.ts` (435), `armin.ts` (382), `daxnuts.ts` (164), `subagent-panel.ts` (111),
+`tasks-panel.ts` (106), `earendil-announcement.ts` (53)
+
+**Entfallen (Extension-System, extension-boundary §6)**
+`extension-editor.ts` (132), `extension-input.ts` (87) — bitte als Ausschluss im Ledger führen.
+
+- **Tests**: vorhandene TS-Tests zu diesen Dateien liegen in `packages/coding-agent/test/`
+  (u. a. `approval-selector.test.ts`, `session-selector-*.test.ts`, `todo-*`, `diff-*`,
+  `tool-execution-*`, `edit-tool-no-full-redraw.test.ts`, `block-images.test.ts`) und gehören
+  mit dem jeweiligen Batch zu A.
+- **Status**: offen (Zuteilung steht; Batch 0 kann sofort starten)
