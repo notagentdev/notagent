@@ -325,3 +325,110 @@ async fn on_payload_can_replace_the_request_body() {
     let body: serde_json::Value = serde_json::from_slice(&sent.body.expect("body")).unwrap();
     assert_eq!(body["model"], serde_json::json!("replaced"));
 }
+
+// ---------------------------------------------------------------------------
+// streamSimple
+// ---------------------------------------------------------------------------
+
+use notagent_ai::api::anthropic_messages::stream_simple;
+
+fn simple_options(
+    fetch: Arc<dyn FetchFn>,
+    reasoning: Option<ThinkingLevel>,
+) -> SimpleStreamOptions {
+    SimpleStreamOptions {
+        base: StreamOptions {
+            base: ProviderRequestOptions {
+                api_key: Some("key".to_string()),
+                fetch: Some(fetch),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        reasoning,
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn stream_simple_disables_thinking_without_a_reasoning_level() {
+    let seen = Arc::new(Mutex::new(None));
+    let fetch = Arc::new(RecordingFetch {
+        status: 200,
+        body: sse_body(),
+        chunk_size: 512,
+        seen: Arc::clone(&seen),
+    });
+
+    stream_simple(model(), context(), Some(simple_options(fetch, None)))
+        .result()
+        .await;
+
+    let sent = seen.lock().expect("poisoned").clone().expect("request");
+    let body: serde_json::Value = serde_json::from_slice(&sent.body.expect("body")).unwrap();
+    assert_eq!(body["thinking"], serde_json::json!({"type": "disabled"}));
+}
+
+#[tokio::test]
+async fn stream_simple_maps_a_reasoning_level_to_a_thinking_budget() {
+    let seen = Arc::new(Mutex::new(None));
+    let fetch = Arc::new(RecordingFetch {
+        status: 200,
+        body: sse_body(),
+        chunk_size: 512,
+        seen: Arc::clone(&seen),
+    });
+
+    stream_simple(
+        model(),
+        context(),
+        Some(simple_options(fetch, Some(ThinkingLevel::Medium))),
+    )
+    .result()
+    .await;
+
+    let sent = seen.lock().expect("poisoned").clone().expect("request");
+    let body: serde_json::Value = serde_json::from_slice(&sent.body.expect("body")).unwrap();
+    assert_eq!(body["thinking"]["type"], serde_json::json!("enabled"));
+    assert_eq!(
+        body["thinking"]["budget_tokens"],
+        serde_json::json!(8192),
+        "the medium default budget"
+    );
+    assert_eq!(body["thinking"]["display"], serde_json::json!("summarized"));
+}
+
+#[tokio::test]
+async fn stream_simple_uses_effort_for_adaptive_thinking_models() {
+    let seen = Arc::new(Mutex::new(None));
+    let fetch = Arc::new(RecordingFetch {
+        status: 200,
+        body: sse_body(),
+        chunk_size: 512,
+        seen: Arc::clone(&seen),
+    });
+    let adaptive = Model {
+        compat: Some(
+            ModelCompat::from_api_value(
+                "anthropic-messages",
+                serde_json::json!({"forceAdaptiveThinking": true}),
+            )
+            .unwrap(),
+        ),
+        ..model()
+    };
+
+    stream_simple(
+        adaptive,
+        context(),
+        Some(simple_options(fetch, Some(ThinkingLevel::High))),
+    )
+    .result()
+    .await;
+
+    let sent = seen.lock().expect("poisoned").clone().expect("request");
+    let body: serde_json::Value = serde_json::from_slice(&sent.body.expect("body")).unwrap();
+    assert_eq!(body["thinking"]["type"], serde_json::json!("adaptive"));
+    assert_eq!(body["output_config"]["effort"], serde_json::json!("high"));
+    assert!(body.get("budget_tokens").is_none());
+}

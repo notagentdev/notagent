@@ -814,3 +814,83 @@ fn options_session_id(request: &ProviderRequestOptions) -> Option<&str> {
     let _ = request;
     None
 }
+
+/// `streamSimple(model, context, options)` — maps a reasoning level onto the Anthropic
+/// thinking options and delegates to [`stream`].
+pub fn stream_simple(
+    model: Model,
+    context: Context,
+    options: Option<crate::types::SimpleStreamOptions>,
+) -> AssistantMessageEventStream {
+    let options = options.unwrap_or_default();
+    if let Err(error) = assert_request_auth(
+        &model.provider,
+        options.base.base.api_key.as_deref(),
+        options.base.base.headers.as_ref(),
+    ) {
+        let stream = create_assistant_message_event_stream();
+        let message = crate::api::lazy::create_setup_error_message(
+            &model,
+            &error,
+            crate::auth::resolve::now_ms(),
+        );
+        stream.push(AssistantMessageEvent::Error {
+            reason: ErrorReason::Error,
+            error: message.clone(),
+        });
+        stream.end(Some(message));
+        return stream;
+    }
+
+    let base = crate::api::simple_options::build_base_options(
+        &model,
+        &context,
+        Some(&options),
+        options.base.base.api_key.clone(),
+    );
+    let request = base.base.clone();
+    let mut anthropic = AnthropicOptions {
+        max_tokens: base.max_tokens,
+        temperature: base.temperature,
+        cache_retention: base.cache_retention,
+        metadata: base.metadata.clone(),
+        env: base.base.env.clone(),
+        ..Default::default()
+    };
+
+    let Some(reasoning) = options.reasoning else {
+        anthropic.thinking_enabled = Some(false);
+        return stream(model, context, request, anthropic);
+    };
+
+    if crate::api::anthropic_params::force_adaptive_thinking(&model) {
+        // Adaptive thinking: Claude decides when and how much to think.
+        anthropic.thinking_enabled = Some(true);
+        anthropic.effort = Some(crate::api::anthropic_params::map_thinking_level_to_effort(
+            &model,
+            Some(reasoning),
+        ));
+        return stream(model, context, request, anthropic);
+    }
+
+    // Budget-based thinking for older models.
+    let adjusted = crate::api::simple_options::adjust_max_tokens_for_thinking(
+        options.base.max_tokens,
+        model.max_tokens,
+        reasoning,
+        options.thinking_budgets.as_ref(),
+    );
+    let max_tokens = crate::api::simple_options::clamp_max_tokens_to_context(
+        &model,
+        &context,
+        adjusted.max_tokens,
+    );
+    anthropic.max_tokens = Some(max_tokens);
+    anthropic.thinking_enabled = Some(true);
+    anthropic.thinking_budget_tokens = Some(
+        adjusted
+            .thinking_budget
+            .min(max_tokens.saturating_sub(crate::api::simple_options::MIN_ANSWER_TOKENS)),
+    );
+    stream(model, context, request, anthropic)
+}
