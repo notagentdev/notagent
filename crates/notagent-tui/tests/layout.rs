@@ -1,6 +1,6 @@
 //! Port of `packages/tui/test/layout.test.ts` (306 LOC).
 //!
-//! The Kitty crop case needs `encodeKitty` and follows with task 12.
+//! Includes the Kitty crop case, which needs the image encoder.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -563,3 +563,49 @@ fn renders_a_transient_proportional_scrollbar_without_replacing_cell_content() {
 
 /// Keeps `ScrollViewState` referenced for the doc link above.
 type _State = ScrollViewState;
+
+#[test]
+fn crops_kitty_images_at_a_scroll_views_lower_boundary() {
+    use notagent_tui::terminal_image::{
+        EncodeKittyOptions, KittyImageMetadata, encode_kitty, register_kitty_image_metadata,
+    };
+
+    let image_id = 124;
+    let image_line = encode_kitty(
+        "AAAA",
+        EncodeKittyOptions {
+            columns: Some(2),
+            rows: Some(3),
+            image_id: Some(image_id),
+            move_cursor: Some(false),
+        },
+    );
+    register_kitty_image_metadata(KittyImageMetadata {
+        image_id,
+        columns: 2,
+        rows: 3,
+        width_px: 100,
+        height_px: 100,
+    });
+
+    let transcript = component_ref(ScrollView::new(
+        component_ref(Lines {
+            lines: vec![
+                "one".to_string(),
+                "two".to_string(),
+                image_line,
+                String::new(),
+                String::new(),
+            ],
+            render_count: Rc::new(RefCell::new(0)),
+        }),
+        ScrollViewOptions::default(),
+    ));
+    let mut stack = VStack::new(StackOptions::default());
+    stack.add_child_with(transcript, entry(Some(StackBasis::Size(0)), Some(1), None));
+    stack.add_child(text("dock"));
+    let root = component_ref(stack);
+
+    let frame = render_layout_frame(&root, 20, 4);
+    assert!(frame.lines[2].contains("y=0,h=34,r=1"));
+}

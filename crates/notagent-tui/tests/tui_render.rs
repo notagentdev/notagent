@@ -657,3 +657,233 @@ async fn clears_stale_content_when_max_lines_rendered_was_inflated_by_a_transien
 
     tui.stop(TuiStopOptions::default());
 }
+
+// describe("TUI Kitty image cleanup")
+
+use notagent_tui::components::image::{Image, ImageOptions, ImageTheme};
+use notagent_tui::terminal_image::{
+    CellDimensions, EncodeKittyOptions, ImageDimensions, ImageProtocol, TerminalCapabilities,
+    delete_kitty_image, encode_kitty, reset_capabilities_cache, set_capabilities,
+    set_cell_dimensions,
+};
+
+/// Pretend to run in a Kitty-capable terminal with 10×10 px cells.
+fn with_kitty_terminal(body: impl FnOnce()) {
+    set_capabilities(TerminalCapabilities {
+        images: Some(ImageProtocol::Kitty),
+        true_color: true,
+        hyperlinks: true,
+    });
+    set_cell_dimensions(CellDimensions {
+        width_px: 10,
+        height_px: 10,
+    });
+    body();
+    reset_capabilities_cache();
+    set_cell_dimensions(CellDimensions {
+        width_px: 9,
+        height_px: 18,
+    });
+}
+
+fn test_image(max_width_cells: usize, size_px: u32) -> Image {
+    Image::new(
+        "AAAA",
+        "image/png",
+        ImageTheme {
+            fallback_color: std::rc::Rc::new(|value: &str| value.to_string()),
+        },
+        ImageOptions {
+            max_width_cells: Some(max_width_cells),
+            ..ImageOptions::default()
+        },
+        Some(ImageDimensions {
+            width_px: size_px,
+            height_px: size_px,
+        }),
+    )
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn clears_reserved_kitty_image_rows_before_drawing_appended_placements() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    let image_lines = with_kitty_image_lines(2, 20);
+    handle.set_lines(["before"]);
+    tui.start();
+    tui.wait_for_render().await;
+    terminal.clear_writes();
+
+    let image_sequence = image_lines[0].clone();
+    let mut lines = vec!["before".to_string()];
+    lines.extend(image_lines);
+    lines.push("after".to_string());
+    handle.set_lines(lines);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let writes = terminal.get_writes();
+    assert!(
+        writes.contains(&format!("\x1b[2K\r\n\x1b[2K\x1b[1A{image_sequence}\x1b[1B")),
+        "reserved rows should be cleared before the image placement is drawn"
+    );
+    assert!(
+        !writes.contains(&format!("{image_sequence}\r\n\x1b[2K")),
+        "reserved row clears must not run after the image placement is drawn"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+/// Renders the test image inside the Kitty capability scope.
+fn with_kitty_image_lines(max_width_cells: usize, size_px: u32) -> Vec<String> {
+    let mut lines = Vec::new();
+    with_kitty_terminal(|| {
+        lines = test_image(max_width_cells, size_px).render(40);
+    });
+    // The renderer itself only needs is_image_line and the registered metadata,
+    // both of which survive leaving the capability scope.
+    lines
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn deletes_changed_image_ids_before_drawing_moved_placements() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    let old_image = encode_kitty(
+        "AAAA",
+        EncodeKittyOptions {
+            columns: Some(2),
+            rows: Some(2),
+            image_id: Some(42),
+            move_cursor: Some(false),
+        },
+    );
+    handle.set_lines(["top".to_string(), old_image]);
+    tui.start();
+    tui.wait_for_render().await;
+    terminal.clear_writes();
+
+    let new_image = encode_kitty(
+        "BBBB",
+        EncodeKittyOptions {
+            columns: Some(2),
+            rows: Some(1),
+            image_id: Some(42),
+            move_cursor: Some(false),
+        },
+    );
+    handle.set_lines([new_image.clone(), String::new()]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let writes = terminal.get_writes();
+    let delete_index = writes
+        .find(&delete_kitty_image(42))
+        .expect("changed old image should be deleted");
+    let draw_index = writes.find(&new_image).expect("new image should be drawn");
+    assert!(
+        delete_index < draw_index,
+        "old image must be deleted before the new placement is drawn"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn redraws_image_lines_when_an_earlier_reserved_image_row_changes() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    let image = encode_kitty(
+        "AAAA",
+        EncodeKittyOptions {
+            columns: Some(2),
+            rows: Some(2),
+            image_id: Some(88),
+            move_cursor: Some(false),
+        },
+    );
+    handle.set_lines([String::new(), image.clone()]);
+    tui.start();
+    tui.wait_for_render().await;
+    terminal.clear_writes();
+
+    handle.set_lines(["covered".to_string(), image.clone()]);
+    tui.request_render(false);
+    tui.wait_for_render().await;
+
+    let writes = terminal.get_writes();
+    let delete_index = writes
+        .find(&delete_kitty_image(88))
+        .expect("image should be deleted when a reserved row changes");
+    let draw_index = writes
+        .find(&image)
+        .expect("unchanged image line should be redrawn");
+    assert!(
+        delete_index < draw_index,
+        "old placement must be deleted before the image line is redrawn"
+    );
+    assert!(
+        !writes.contains("\x1b[2J"),
+        "reserved row changes should not force a full redraw"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn deletes_previously_rendered_image_ids_during_full_redraws() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    tui.core().add_child(component);
+
+    let image = encode_kitty(
+        "AAAA",
+        EncodeKittyOptions {
+            columns: Some(2),
+            rows: Some(2),
+            image_id: Some(77),
+            move_cursor: Some(false),
+        },
+    );
+    handle.set_lines([image]);
+    tui.start();
+    tui.wait_for_render().await;
+    terminal.clear_writes();
+
+    handle.set_lines(["plain text"]);
+    tui.request_render(true);
+    tui.wait_for_render().await;
+
+    let writes = terminal.get_writes();
+    let delete_index = writes
+        .find(&delete_kitty_image(77))
+        .expect("previous image should be deleted during full redraw");
+    let clear_index = writes
+        .find("\x1b[2J")
+        .expect("full redraw should clear the screen");
+    assert!(
+        delete_index < clear_index,
+        "old image should be deleted before the screen is cleared"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}

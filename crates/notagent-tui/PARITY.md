@@ -64,14 +64,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
-| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
 | `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
 | `test/tui-overlay-style-leak.test.ts` | 81 | `tests/tui_overlay_style_leak.rs` (2 Fälle) | verifiziert |
 | `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
-| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
+| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (21 von 24 Fällen) | verifiziert; offen sind drei Kitty-Fälle, die den Vollredraw-Fallback über Bildhöhen prüfen |
 | `test/terminal.test.ts` | 300 | Task 4 |
 | 2026-08-13 | `src/tui.ts` (vollständig) | 1257 | Task 5 |
 | 2026-08-13 | `src/tui.ts` | 1257 | `src/tui.rs` | verifiziert | Klasse 1: `TuiBase` (abstrakte Klasse) → `TuiCore` (geteilter Zustand) plus konkrete Renderer; Overlay-Handles halten einen `TuiCore`-Klon statt `this`-Closures; Timer rufen nicht zurück, sondern `render_deadline()` + `begin_frame()` treibt die Schleife des Renderers (Handlerausführung bleibt einsträngig wie im Node-Event-Loop); `addInputListener` gibt eine `ListenerId` statt einer Unsubscribe-Closure zurück; Promises → `async fn` mit tokio-Timeout; Fokus-Flags einer Komponente, die gerade `handle_input` ausführt (und damit `RefCell`-geliehen ist), werden bis zum Rücksprung nachgezogen — beobachtbar identisch, da niemand vorher lesen kann |
@@ -108,7 +108,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
-| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
@@ -138,14 +138,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
-| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
 | `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
 | `test/tui-overlay-style-leak.test.ts` | 81 | `tests/tui_overlay_style_leak.rs` (2 Fälle) | verifiziert |
 | `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
-| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
+| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (21 von 24 Fällen) | verifiziert; offen sind drei Kitty-Fälle, die den Vollredraw-Fallback über Bildhöhen prüfen |
 | `test/terminal.test.ts` | 300 | `tests/terminal.rs` (17 Fälle) | verifiziert |
 | `test/keys.test.ts` | 633 | Task 3 |
 | 2026-08-13 | `src/tui.ts:1-120` (Kontraktbereich) | 120 von 1257 | Master-Plan Task 2 (Kontrakt-Commit) |
@@ -211,14 +211,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/settings-list.test.ts` | 58 | `tests/settings_list.rs` (2 Fälle) | verifiziert |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
-| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (14 Fälle) | verifiziert |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
 | `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
 | `test/tui-overlay-style-leak.test.ts` | 81 | `tests/tui_overlay_style_leak.rs` (2 Fälle) | verifiziert |
 | `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
-| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
+| `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (21 von 24 Fällen) | verifiziert; offen sind drei Kitty-Fälle, die den Vollredraw-Fallback über Bildhöhen prüfen |
 | `test/terminal.test.ts` | 300 | `tests/terminal.rs` (17 Fälle) | verifiziert |
 | `test/keys.test.ts` | 633 | `tests/keys.rs` (57 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/keys_oracle.rs` + `tests/fixtures/keys-oracle.json` | Differenztest gegen die TS-Implementierung: 1611 Eingabesequenzen × 637 KeyIds × beide Kitty-Zustände (≈ 2 Mio. `matchesKey`-Vergleiche) plus `parseKey`, `isKeyRelease`, `isKeyRepeat`, `decodeKittyPrintable`, `decodePrintableKey` — alle identisch |
@@ -243,8 +243,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 3 keys | fertig |
 | 4 stdin-buffer + terminal | fertig (native-modifiers aus Task 13 vorgezogen) |
 | 5 TUI-Kern | fertig |
-| 6 Main-Screen-Renderer | fertig (7 Kitty-Bild-Testfälle offen, brauchen Task 9/12) |
-| 7 Layout-Engine + ScrollView | fertig (Text/VStack/HStack aus Task 9 vorgezogen) |
+| 6 Main-Screen-Renderer | fertig (3 Kitty-Vollredraw-Testfälle offen) |
+| 7 Layout-Engine + ScrollView | fertig (Text/VStack/HStack aus Task 9 vorgezogen; Testsuite vollständig) |
 | 8 Alt-Screen-Renderer | offen |
 | 9 Basis-Komponenten | fertig portiert (spacer, truncated-text, box, alt-screen-flash, loader, cancellable-loader, select-list, settings-list, input, image); offene Testfälle: input 14, truncated-text-Suite |
 | 10 Editor | teilweise: kill-ring, undo-stack, word-navigation portiert; editor.ts offen |
