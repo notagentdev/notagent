@@ -18,3 +18,12 @@ installed `partial-json` package. `anthropic-payloads.mts` imports the real
 
 `session-messages.jsonl` is not generated: it holds unmodified message entries from
 `packages/coding-agent/test/fixtures/*.jsonl`.
+
+`openai-completions-payloads.mts` and `openai-completions-stream.mts` do the same for
+`openai-completions.ts`: the first captures request bodies through `onPayload`, the
+second records the event sequence for scripted SSE bodies through a fake `fetch`.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `openai-completions-payloads.mts` | `openai-completions-payloads.jsonl` | `node --experimental-strip-types openai-completions-payloads.mts > ../openai-completions-payloads.jsonl` |
+| `openai-completions-stream.mts` | `openai-completions-stream.jsonl` | `node --experimental-strip-types openai-completions-stream.mts > ../openai-completions-stream.jsonl` |

@@ -9,7 +9,9 @@ description = "Multi-Provider-LLM-Layer (Streaming, Auth, Modellkatalog)."
 [dependencies]
 notagent-telemetry = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
+# `float_roundtrip` makes the parser exact: without it serde_json can be one ULP off,
+# which would corrupt costs and other floats read back from session files.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
