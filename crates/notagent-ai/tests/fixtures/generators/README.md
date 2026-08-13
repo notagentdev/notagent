@@ -53,3 +53,12 @@ real socket and is covered by a local server in `tests/openai_codex_responses.rs
 
 `google-generative-ai.mts` swaps `globalThis.fetch`, because the `@google/genai` SDK
 takes no fetch option; it records the URL, headers and the body the SDK serializes.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `google-generative-ai.mts` | `google-generative-ai.jsonl` | `node --experimental-strip-types google-generative-ai.mts > ../google-generative-ai.jsonl` |
+
+`google-generative-ai.mts` swaps `globalThis.fetch`, because the `@google/genai` SDK
+takes no fetch option; it records the URL, the headers and the body the SDK serializes.
+The Vertex adapter has no generator: its endpoint rules are covered by
+`tests/google_vertex.rs` against the URLs the SDK's own `getBaseUrl`/`constructUrl` build.
