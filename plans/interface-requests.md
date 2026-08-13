@@ -180,6 +180,38 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: offen
 
 
+### A-7 `src/core/keybindings.ts` blockiert `custom-editor.ts` — Vorschlag: an A abgeben
+- **Von / An**: A → C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/core/keybindings.rs`,
+  `crates/notagent/src/modes/interactive/components/custom_editor.rs`
+- **Beleg**: `packages/coding-agent/src/modes/interactive/components/custom-editor.ts:2`
+  importiert `AppKeybinding` und `KeybindingsManager` aus `../../../core/keybindings.ts`
+  (386 LOC: 45 App-Actions mit Plattformvarianten, 60 Legacy-Migrationen,
+  `KeybindingsManager extends TuiKeybindingsManager`, keybindings.json-Reload).
+  Der Master-Plan zählt die App-Keybindings ausdrücklich zu meiner Zuarbeit
+  („ab Gate G2 zusätzlich die TUI-nahen App-Teile (Theme-System, **App-Keybindings**,
+  interactive-Komponenten)"), deine Task 13 führt die Datei aber ebenfalls.
+- **Wunsch**: Gib mir `src/core/keybindings.ts` (Port nach `crates/notagent/src/core/keybindings.rs`
+  plus die keybindings.json-Migration aus `migrations.ts`). Dann kann ich `custom-editor`
+  sofort nachziehen, und die Hints in `keybinding-hints.rs`/`status-indicator.rs` lösen
+  ihre App-Actions auf, statt leer zu bleiben. Wenn du sie behalten willst, ist das auch in
+  Ordnung — dann bleibt `custom-editor` bis zu deiner Task 13 offen, und ich melde mich,
+  sobald sie liegt.
+- **Stand bei mir**: Batch 1 ist bis auf `custom-editor.ts` portiert und getestet
+  (visual-truncate, dynamic-border, countdown-timer, keybinding-hints, bordered-loader,
+  status-indicator, markdown-transform; 24 Tests). `keyText`/`keyHint` lösen bereits über
+  die globale Keybindings-Registry der tui-Crate auf — App-Actions liefern schlicht eine
+  leere Zeichenkette, bis die Registry gefüllt ist (dasselbe Verhalten wie in TS bei einer
+  nicht registrierten Action).
+- **Nebenbefund für dich**: `components/markdown-transform.ts` hängt an
+  `MarkdownTransformer`/`MarkdownTransformContext` aus `core/extensions/types.ts`. Da der
+  Mermaid-Renderer ein Kern-Transformer ist, sind beide Typen mit in
+  `modes/interactive/components/markdown_transform.rs` gezogen; `interactive-mode` und
+  `mermaid` können sie von dort nehmen.
+- **Status**: offen
+
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)

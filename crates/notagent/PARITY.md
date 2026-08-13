@@ -54,6 +54,17 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/src/utils/fs-watch.ts (Abhängigkeit von theme.ts) | 30 | A-Task 15 (Batch 0) |
 | 2026-08-13 | packages/coding-agent/src/core/source-info.ts (Abhängigkeit von theme.ts) | 40 | A-Task 15 (Batch 0) |
 | 2026-08-13 | packages/coding-agent/src/core/tools/render-utils.ts (Konsument von Theme) | 85 | A-Task 15 (Batch 0) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/index.ts | 38 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/custom-editor.ts | 96 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/status-indicator.ts | 114 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/bordered-loader.ts | 68 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/keybinding-hints.ts | 48 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/visual-truncate.ts | 50 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/countdown-timer.ts | 39 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/dynamic-border.ts | 25 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/markdown-transform.ts | 29 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/test/status-indicator.test.ts | 32 | A-Task 15 (Batch 1) |
+| 2026-08-13 | packages/coding-agent/src/core/keybindings.ts (Abhängigkeit von custom-editor.ts) | 386 | A-Task 15 (Batch 1) |
 
 ## Ledger
 
@@ -122,6 +133,17 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | — (neu) | — | tests/theme_validation.rs | verifiziert | 15 Tests, die die TS-Testsuite nicht abdeckt: alle Validierungs-Fehlertexte, Fehlerreihenfolge, 8-Fehler-Obergrenze, Var-Auflösungsfehler, unbekannte Farbschlüssel. Erwartungswerte stammen aus Läufen gegen `theme.ts` (`npx tsx`), nicht aus dem Schema-Text |
 | — (neu) | — | tests/theme_runtime.rs | verifiziert | 9 Tests: chalk-Ersatz (12 Fälle gegen chalk 5 abgeglichen), 256-Farb-Quantisierung (40 Hex-Werte gegen `rgbTo256` der TS-Implementierung), leere Farbwerte, Palettenindizes, Dark-Fallback bei ungültigem Theme, Change-Callback, Live-Reload inkl. Debounce und `stopThemeWatcher` |
 | test/test-theme-colors.ts | 249 | — | ausgeschlossen | manuelles CLI-Skript (Kontrastrechner/Theme-Vorschau, `npx tsx test-theme-colors.ts light|dark|contrast|test`), kein Test-Runner-Ziel — wie die manuellen Harnesses des tui-Pakets klassifiziert |
+| src/modes/interactive/components/visual-truncate.ts | 50 | src/modes/interactive/components/visual_truncate.rs | verifiziert | Klasse 1: bug-compat — `slice(-0)` ist in JS `slice(0)`, ein Limit von 0 behält also alle Zeilen und meldet sie zugleich als übersprungen; im Port explizit nachgebildet |
+| src/modes/interactive/components/dynamic-border.ts | 25 | src/modes/interactive/components/dynamic_border.rs | verifiziert | Klasse 1: der Default-Parameter wird zu `Option<StyleFn>`; beide Wege lesen das globale Theme beim Rendern. Der jiti-Hinweis im TS-Kommentar entfällt mit dem Extension-System (Klasse 2) |
+| src/modes/interactive/components/countdown-timer.ts | 39 | src/modes/interactive/components/countdown_timer.rs | verifiziert | Klasse 1: `setInterval` + `onTick`/`onExpire` → Poll-Schnittstelle (`deadline()`/`tick()`), wie alle Timer der tui-Crate (A-4, „Timer rufen nie zurück"); ein Tick auf 0 meldet wie in TS beides (`onTick(0)` und `onExpire`) und entsorgt den Timer |
+| src/modes/interactive/components/keybinding-hints.ts | 48 | src/modes/interactive/components/keybinding_hints.rs | verifiziert | Klasse 1: `Keybinding`/`KeyId` sind im Port `&str` (TS: String-Literal-Unions); `process.platform === "darwin"` → `cfg!(target_os = "macos")`; `charAt(0).toUpperCase()` → erstes Zeichen statt erster UTF-16-Einheit |
+| src/modes/interactive/components/status-indicator.ts | 114 | src/modes/interactive/components/status_indicator.rs | verifiziert | Klasse 1: die vier Loader-Unterklassen werden zu Konstruktoren einer Struktur (Rust kennt keine Vererbung); der Retry-Countdown liegt als optionales Feld daneben und wird über `tick_countdown()` gepumpt statt über `setInterval` + `tui.requestRender()`. `WorkingIndicatorOptions` (Extension-Typ) → `LoaderIndicatorOptions` der tui-Crate (Klasse 2) |
+| src/modes/interactive/components/bordered-loader.ts | 68 | src/modes/interactive/components/bordered_loader.rs | verifiziert | Klasse 1: Vererbung von `Container` → Komposition; die beiden Loader-Varianten liegen in einem Enum, weil Rust keinen Union-Typ für Felder hat. Klasse 3: `AbortController`/`AbortSignal` → `CancellationToken`; die tui-Loader brauchen keinen `TUI`-Parameter mehr (sie werden gepollt), deshalb entfällt er auch hier |
+| src/modes/interactive/components/markdown-transform.ts | 29 | src/modes/interactive/components/markdown_transform.rs | verifiziert | Klasse 2: `MarkdownTransformer`/`MarkdownTransformContext` stammen aus `core/extensions/types.ts` und ziehen mit in diese Datei um — der Mermaid-Renderer ist ein Kern-Transformer (`interactive-mode.ts:471,1991`), das Extension-System entfällt. Damit entfallen auch die beiden Schutzprüfungen (`try`/`catch` und `typeof === "string"`), die nur ungetypten Extension-Code abfingen |
+| src/modes/interactive/components/index.ts | 38 | src/modes/interactive/components.rs | teilweise portiert | Die Barrel-Datei wird zur Modulliste; sie wächst mit den Batches. Klasse 2: `ExtensionEditorComponent`/`ExtensionInputComponent` entfallen |
+| src/modes/interactive/components/custom-editor.ts | 96 | — | offen | Braucht `src/core/keybindings.ts` (`AppKeybinding`, `KeybindingsManager`) — Workstream C, Task 13; siehe Interface-Request A-7 |
+| test/status-indicator.test.ts | 32 | tests/status_indicator.rs | verifiziert | 4 Tests (TS: 2). Der TS-Fall „disposes retry countdown updates" prüft über gefälschte Timer, dass nach `dispose()` kein `requestRender` mehr kommt; der gepollte Port prüft, dass keine Deadline übrig ist. Zwei zusätzliche Fälle decken die Countdown-Meldung und die Labels aller vier Arten ab |
+| — (neu) | — | tests/component_utilities.rs | verifiziert | 20 Tests für die Batch-1-Bausteine, die die TS-Suite nicht abdeckt: visual-truncate inkl. Zeilenumbruch, Padding und Null-Limit, DynamicBorder, keybinding-hints (Formatierung, macOS-Option, Auflösung über die globale Registry, Theming), CountdownTimer und markdown-transform, BorderedLoader in beiden Varianten |
 
 ## Ausschlüsse
 
