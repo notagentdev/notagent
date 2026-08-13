@@ -3,3 +3,6 @@ Cargo.lock.orig
 .DS_Store
 *.log
 /worktrees
+/crates/*/target
+**/*.rs.bk
+.claude/settings.local.json

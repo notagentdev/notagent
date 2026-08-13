@@ -1,0 +1,11 @@
+[package]
+name = "notagent-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Agent-Kern: Agent-Loop, Tools, Queues, CustomMessages."
+
+[dependencies]
+notagent-ai = { workspace = true }
+notagent-telemetry = { workspace = true }

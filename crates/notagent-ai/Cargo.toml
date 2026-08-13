@@ -1,0 +1,10 @@
+[package]
+name = "notagent-ai"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Multi-Provider-LLM-Layer (Streaming, Auth, Modellkatalog)."
+
+[dependencies]
+notagent-telemetry = { workspace = true }

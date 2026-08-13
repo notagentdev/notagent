@@ -1,0 +1,22 @@
+[package]
+name = "notagent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Interaktiver Coding-Agent (Binary) — Port von packages/coding-agent."
+
+[lib]
+name = "notagent"
+path = "src/lib.rs"
+
+[[bin]]
+name = "notagent"
+path = "src/main.rs"
+
+[dependencies]
+notagent-agent = { workspace = true }
+notagent-ai = { workspace = true }
+notagent-client = { workspace = true }
+notagent-protocol = { workspace = true }
+notagent-tui = { workspace = true }

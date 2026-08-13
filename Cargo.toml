@@ -1,0 +1,110 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+
+# Zentrale Versionsverwaltung. Jede Crate übernimmt Abhängigkeiten per
+# `dep = { workspace = true }`, damit die Root-Cargo.toml die einzige Stelle
+# bleibt, an der Versionen stehen (siehe CONVENTIONS.md).
+[workspace.dependencies]
+# --- interne Crates (Abhängigkeitsgraph identisch zum TS-Monorepo) ---
+notagent-agent = { path = "crates/notagent-agent" }
+notagent-ai = { path = "crates/notagent-ai" }
+notagent-client = { path = "crates/notagent-client" }
+notagent-protocol = { path = "crates/notagent-protocol" }
+notagent-server = { path = "crates/notagent-server" }
+notagent-session-sqlite = { path = "crates/notagent-session-sqlite" }
+notagent-telemetry = { path = "crates/notagent-telemetry" }
+notagent-tui = { path = "crates/notagent-tui" }
+
+# --- Laufzeit / Async ---
+tokio = { version = "1.53", features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "fs",
+    "process",
+    "signal",
+    "io-util",
+    "io-std",
+    "net",
+] }
+tokio-stream = "0.1"
+tokio-util = "0.7"
+futures = "0.3"
+async-trait = "0.1"
+bytes = "1"
+
+# --- Serialisierung ---
+# preserve_order: JSON-Objekte behalten ihre Einfügereihenfolge wie in
+# JavaScript (nötig für byte-identische Tool-Schemas und Settings-Rewrites).
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+# --- Netzwerk ---
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "http2",
+    "stream",
+    "gzip",
+    "brotli",
+    "deflate",
+] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+aws-config = { version = "1.10", features = ["behavior-version-latest"] }
+aws-sdk-bedrockruntime = { version = "1.139", features = ["behavior-version-latest"] }
+
+# --- Persistenz ---
+rusqlite = { version = "0.40", features = ["bundled"] }
+fs4 = { version = "1.1", features = ["sync"] }
+
+# --- Text / Unicode / Diff / Suche ---
+unicode-segmentation = "1.13"
+unicode-width = "0.2"
+similar = { version = "3.1", features = ["inline"] }
+globset = "0.4"
+ignore = "0.4"
+regex = "1"
+
+# --- tree-sitter (Versionen aus plans/facts/rust-minify-reference.md) ---
+tree-sitter = "0.26.9"
+tree-sitter-bash = "0.25.1"
+tree-sitter-c = "0.24.2"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-css = "0.25.0"
+tree-sitter-go = "0.25.0"
+tree-sitter-highlight = "0.26"
+tree-sitter-html = "0.23.2"
+tree-sitter-java = "0.23.5"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-json = "0.24.8"
+tree-sitter-python = "0.25.0"
+tree-sitter-ruby = "0.23.1"
+tree-sitter-rust = "0.24.2"
+tree-sitter-typescript = "0.23.2"
+
+# --- Sonstiges ---
+anyhow = "1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+image = "0.25"
+rand = "0.10"
+semver = "1"
+sha2 = "0.11"
+thiserror = "2"
+uuid = { version = "1.24", features = ["v4", "v7", "serde"] }
+
+# --- Plattform ---
+libc = "0.2"
+windows-sys = "0.61"
+
+# --- Test-Hilfen ---
+tempfile = "3"

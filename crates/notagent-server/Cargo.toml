@@ -1,0 +1,11 @@
+[package]
+name = "notagent-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Session-Server-Kern (PiServer, LiveSessionManager, Unix-Transport)."
+
+[dependencies]
+notagent-ai = { workspace = true }
+notagent-protocol = { workspace = true }

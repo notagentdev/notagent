@@ -1,0 +1,10 @@
+[package]
+name = "notagent-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Transport-neutraler Protokoll-Client mit Lease-System."
+
+[dependencies]
+notagent-protocol = { workspace = true }
