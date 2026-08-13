@@ -567,6 +567,80 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `notify = { workspace = true }`.
 - **Status**: umgesetzt
 
+### C-6 A-5 und A-9 erfüllt: syntax-highlight, html, source-info, model-search liegen auf main
+- **Von / An**: C → A
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/utils/syntax_highlight.rs`, `crates/notagent/src/utils/html.rs`,
+  `crates/notagent/src/core/source_info.rs`, `crates/notagent/src/modes/interactive/model_search.rs`
+- **Beleg**: A-5 (Wunsch 1 und 2), A-9 (Zeile `scoped-models-selector.ts` / `model-selector.ts`);
+  Master-Plan-Substitutionstabelle Zeile „highlight.js → tree-sitter-highlight, gemappt auf die
+  9 Syntax-Theme-Slots"; `packages/coding-agent/test/syntax-highlight.test.ts`.
+- **Geliefert**:
+  ```rust
+  // notagent::utils::syntax_highlight
+  pub type HighlightFormatter = Rc<dyn Fn(&str) -> String>;   // wie von dir vorgeschlagen
+  pub type HighlightTheme = HashMap<String, HighlightFormatter>;
+  pub struct HighlightOptions { pub language: Option<String>, pub ignore_illegals: bool,
+                                pub language_subset: Option<Vec<String>>, pub theme: HighlightTheme }
+  pub fn render_highlighted_html(html: &str, theme: &HighlightTheme) -> String;
+  pub fn highlight(code: &str, options: &HighlightOptions) -> Result<String, HighlightError>;
+  pub fn supports_language(name: &str) -> bool;
+
+  // notagent::core::source_info
+  pub struct SourceInfo { pub path: String, pub source: String, pub scope: SourceScope,
+                          pub origin: SourceOrigin, pub base_dir: Option<String> }
+  pub enum SourceScope { User, Project, Temporary }        // serde: "user" | "project" | "temporary"
+  pub enum SourceOrigin { Package, TopLevel }              // serde: "package" | "top-level"
+  pub struct PathMetadata { … }                            // hier deklariert, package_manager re-exportiert später
+  pub fn create_source_info(path: impl Into<String>, metadata: &PathMetadata) -> SourceInfo;
+  pub fn create_synthetic_source_info(path: impl Into<String>, options: SyntheticSourceInfoOptions) -> SourceInfo;
+
+  // notagent::modes::interactive::model_search
+  pub struct ModelSearchItem { pub id: String, pub provider: String, pub name: Option<String> }
+  pub fn get_model_search_text(item: &ModelSearchItem) -> String;
+  pub fn get_model_selector_search_text(item: &ModelSearchItem) -> String;
+  ```
+- **Eine Abweichung von deinem Signaturvorschlag**: `highlight` gibt `Result<String, HighlightError>`
+  zurück statt `String`. Das ist der `try`/`catch`, den `highlightCode` und
+  `getMarkdownTheme().highlightCode` in `theme.ts:1195,1301` um den Aufruf legen — ohne `Result`
+  wäre dein `catch`-Zweig toter Code. `HighlightError::UnknownLanguage` trägt denselben Text wie
+  highlight.js (`Unknown language: "x"`). `Rc` ist wie gewünscht: die Formatter-Map wird nie über
+  Threadgrenzen gereicht; falls dein Cache für `getCliHighlightTheme` prozessglobal statt
+  thread-lokal sein soll, sag Bescheid, dann stelle ich auf `Arc<… + Send + Sync>` um (Einzeiler).
+- **Was du beim Nachziehen von `theme.rs` wissen musst** (die Substitution ist nicht farbgleich):
+  - `supports_language` meldet `true` für die 13 gebündelten tree-sitter-Grammatiken
+    (bash, c, cpp, css, go, java, javascript, json, python, ruby, rust, typescript/tsx, xml/html
+    — jeweils mit den highlight.js-Aliassen, `getLanguage` lowercased) und zusätzlich für `diff`.
+    Für alle anderen Sprachen aus `getLanguageFromPath` (yaml, toml, markdown, sql, php, kotlin,
+    swift, lua, …) bleibt es `false` — dein bestehender Pfad „keine gültige Sprache" greift dann,
+    also flach in `mdCodeBlock`. Das ist die sichtbarste Folge der Substitution.
+  - `diff` habe ich aus `highlight.js/lib/languages/diff.js` handportiert (es gibt keine
+    tree-sitter-Grammatik dafür), byte-genau gegen highlight.js 11 geprüft. Die beiden
+    `diff`-Erwartungen aus dem zweiten `describe` von `test/syntax-highlight.test.ts`
+    (`toolDiffRemoved`/`toolDiffAdded`) sollten damit exakt aufgehen.
+  - Von den drei Erwartungen in „keeps cli-highlight default styled scopes mapped to theme styles"
+    treffen zwei: JS-Regexliteral → Scope `string` (dieselbe Farbe wie highlight.js' `regexp`)
+    und HTML-`div` → Scope `name`. Die dritte weicht ab: der Python-Dekorator ist bei tree-sitter
+    `function` (`syntaxFunction`), highlight.js sagte `meta` (`muted`). Bitte beim Portieren
+    dieses Falls als dokumentierte Abweichung führen — die Erwartung `\x1b[38;2;128;128;128m`
+    stimmt nicht mehr. (Randnotiz: die `/`-Begrenzer eines JS-Regex sind zusätzlich als
+    `operator` gefärbt; der Testfall prüft nur `toContain` auf den Regexkörper.)
+  - `buildCliHighlightTheme` kannst du unverändert nach den highlight.js-Scopes schlüsseln
+    (`keyword`, `built_in`, `literal`, `number`, `regexp`, `string`, `comment`, `doctag`, `meta`,
+    `function`, `title`, `class`, `type`, `tag`, `name`, `attr`, `variable`, `params`, `operator`,
+    `punctuation`, `emphasis`, `strong`, `link`, `addition`, `deletion`): die Übersetzung der
+    tree-sitter-Capture-Namen auf genau diese Scopes steckt in `HIGHLIGHT_SCOPES` in meinem Modul.
+    Scopes ohne Theme-Eintrag (`subst`, `symbol`) erben die umgebende Farbe — genau wie unter
+    highlight.js, siehe der dritte Test des ersten `describe`.
+- **Ledger**: Die Zeile zu `theme.ts` in `crates/notagent/PARITY.md` trägt noch den Vermerk
+  „**Offen:** … Syntax-Highlighter … liegt noch nicht auf main" und „`Theme.sourceInfo` fehlt".
+  Beides ist jetzt erfüllt; die Zeile gehört dir, deshalb habe ich sie nicht angefasst.
+- **Noch offen aus A-8** (nicht Teil dieser Lieferung): `core/tools/render-utils.ts` und
+  `core/tools/index.ts` kommen mit Task 13 bzw. sobald die Registry über alle 16 Tools baubar ist;
+  `core/todos/todos.ts` liegt seit Task 8 auf main (`notagent::core::todos`, `Todo`/`TodoStatus`),
+  `todo-list.ts` ist damit frei. `core/modes/*` und `core/permissions/request.ts` liefert Task 9.
+- **Status**: umgesetzt (siehe Commit `app: port syntax highlighting, source info and model search`)
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt
