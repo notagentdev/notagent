@@ -69,3 +69,10 @@ The Vertex adapter has no generator: its endpoint rules are covered by
 
 `bedrock-converse-stream.mts` needs vitest because it mocks the AWS SDK client with
 `vi.mock`; the other generators run under plain `node --experimental-strip-types`.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `mistral-conversations.mts` | `mistral-conversations.jsonl` | `node --experimental-strip-types mistral-conversations.mts > ../mistral-conversations.jsonl` |
+
+`mistral-conversations.mts` injects a fake `fetch` through the adapter's own `fetch`
+option and records the URL, the headers and the body next to the event sequence.
