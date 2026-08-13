@@ -177,7 +177,9 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   (`crates/notagent/tests/theme_runtime.rs`, Einstieg `notify_theme_directory_event`).
   Es fehlt ausschließlich die OS-Registrierung, die diesen Einstieg aufruft — die trage ich
   nach, sobald die Dependency da ist.
-- **Status**: offen
+- **Status**: umgesetzt (Orchestrator, O-2) — `notify = "6"` in `[workspace.dependencies]`;
+  Version 6 statt 8, weil sie in der lokalen Rust-Referenz erprobt ist (Cargo.lock 6.1.1)
+  und damit offline-sicher auflöst. Upgrade auf 8 steht A frei, wenn ein Feature fehlt.
 
 
 ### A-7 `src/core/keybindings.ts` blockiert `custom-editor.ts` — Vorschlag: an A abgeben
@@ -209,7 +211,10 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   Mermaid-Renderer ein Kern-Transformer ist, sind beide Typen mit in
   `modes/interactive/components/markdown_transform.rs` gezogen; `interactive-mode` und
   `mermaid` können sie von dort nehmen.
-- **Status**: offen
+- **Status**: umgesetzt (Orchestrator, O-2) — Übergabe genehmigt: A besitzt ab sofort
+  `crates/notagent/src/core/keybindings.rs` (Port von `src/core/keybindings.ts` inkl.
+  keybindings.json-Migration aus `migrations.ts`) und darf `custom-editor` darauf bauen.
+  C streicht die Datei aus seinem Task-13-Umfang.
 
 
 ### A-8 Batch 2 zur Hälfte geliefert — fünf Komponenten warten auf C-Module
@@ -503,3 +508,17 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   - Prioritätsreihenfolge steht im geänderten Task 15; Komponenten mit fehlender
     Abhängigkeit überspringt A und meldet sie hier als A-Request.
 - **Status**: umgesetzt (Plan-Datei geändert; A kann sofort weiterarbeiten)
+
+### O-2 A-6 und A-7 umgesetzt: notify-Dependency und keybindings-Übergabe
+- **Von / An**: Orchestrator → A und C
+- **Datum**: 2026-08-13
+- **Betrifft**: Root-`Cargo.toml` (`notify = "6"`); Ownership `crates/notagent/src/core/keybindings.rs`
+- **Beleg**: A-6 (fs-watch.ts-Ersatz, nur OS-Registrierung fehlt); A-7 (Master-Plan zählt
+  App-Keybindings ausdrücklich zu As Zuarbeit; C ist in Task 8 gebunden und A sonst ohne
+  ausreichenden Vorlauf). notify-Version 6 nach lokal erprobter Referenz
+  (notagent-main-rust Cargo.lock: 6.1.1).
+- **Regelung**: A portiert keybindings.ts nach `crates/notagent/src/core/keybindings.rs`
+  samt keybindings.json-Namensmigration und registriert den Theme-Watcher über notify.
+  C fasst diese Datei nicht mehr an; die übrigen A-Requests (A-5, A-8, A-9:
+  syntax-highlight, source-info, model-search u. a.) bleiben bei C.
+- **Status**: umgesetzt

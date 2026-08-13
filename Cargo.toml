@@ -98,6 +98,9 @@ base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 image = "0.25"
+# notify: A-6 (Theme-Live-Reload, fs-watch.ts-Ersatz); Version 6 wie in der
+# lokal erprobten Rust-Referenz (notagent-main-rust, Cargo.lock: 6.1.1).
+notify = "6"
 rand = "0.10"
 semver = "1"
 sha2 = "0.11"
