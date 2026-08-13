@@ -23,6 +23,13 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/layout-node.ts` | 51 | `src/layout_node.rs` | verifiziert | Klasse 1: `LAYOUT_NODE`-Symbol → `Component::layout_node()` |
 | `src/components/stack.ts` | 154 | `src/components/stack.rs` | verifiziert | Klasse 1: abstrakte Basisklasse → Struct mit `layout_type` |
 | `src/components/scroll-view.ts` | 216 | `src/components/scroll_view.rs` | verifiziert | Klasse 1: Zustand als `Rc<RefCell<ScrollViewState>>` (in TS ist die Komponente selbst der Zustand); Scrollbar-Auto-Hide-Timer als Deadline für den Aufrufer |
+| `src/keybindings.ts` | 320 | `src/keybindings.rs` | verifiziert (Task 13 vorgezogen) | Klasse 1: Deklarations-Merging-Interface → statische Definitionstabelle mit 47 Einträgen; globaler Manager als `Mutex` statt Modulvariable |
+| `src/components/spacer.ts` | 28 | `src/components/spacer.rs` | portiert | — |
+| `src/components/truncated-text.ts` | 65 | `src/components/truncated_text.rs` | portiert | — |
+| `src/components/box.ts` | 137 | `src/components/box_component.rs` | portiert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist |
+| `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
+| `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
+| `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
 | `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
@@ -43,6 +50,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | Task 4 |
 | 2026-08-13 | `src/terminal.ts` (vollständig) | 559 | Task 4 |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
@@ -59,6 +68,13 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/layout-node.ts` | 51 | `src/layout_node.rs` | verifiziert | Klasse 1: `LAYOUT_NODE`-Symbol → `Component::layout_node()` |
 | `src/components/stack.ts` | 154 | `src/components/stack.rs` | verifiziert | Klasse 1: abstrakte Basisklasse → Struct mit `layout_type` |
 | `src/components/scroll-view.ts` | 216 | `src/components/scroll_view.rs` | verifiziert | Klasse 1: Zustand als `Rc<RefCell<ScrollViewState>>` (in TS ist die Komponente selbst der Zustand); Scrollbar-Auto-Hide-Timer als Deadline für den Aufrufer |
+| `src/keybindings.ts` | 320 | `src/keybindings.rs` | verifiziert (Task 13 vorgezogen) | Klasse 1: Deklarations-Merging-Interface → statische Definitionstabelle mit 47 Einträgen; globaler Manager als `Mutex` statt Modulvariable |
+| `src/components/spacer.ts` | 28 | `src/components/spacer.rs` | portiert | — |
+| `src/components/truncated-text.ts` | 65 | `src/components/truncated_text.rs` | portiert | — |
+| `src/components/box.ts` | 137 | `src/components/box_component.rs` | portiert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist |
+| `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
+| `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
+| `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
 | `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
@@ -66,7 +82,9 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/terminal-colors.ts` | 73 | Task 5 (vorgezogen aus Task 12) |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | Task 5 |
 | 2026-08-13 | `src/tui-main-screen.ts` | 586 | Task 6 |
-| 2026-08-13 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
+| 2026-08-13 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
+| `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
 | `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
@@ -80,10 +98,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `src/components/stack.ts` | 154 | Task 7 |
 | 2026-08-13 | `src/components/scroll-view.ts` | 216 | Task 7 |
 | 2026-08-13 | `src/components/{text,v-stack,h-stack}.ts` | 183 | Task 7 (aus Task 9 vorgezogen) |
-| 2026-08-13 | `test/layout.test.ts` | 306 | Task 7 |
+| 2026-08-13 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
+| `test/layout.test.ts` | 306 | Task 7 |
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
@@ -113,6 +135,13 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/layout-node.ts` | 51 | `src/layout_node.rs` | verifiziert | Klasse 1: `LAYOUT_NODE`-Symbol → `Component::layout_node()` |
 | `src/components/stack.ts` | 154 | `src/components/stack.rs` | verifiziert | Klasse 1: abstrakte Basisklasse → Struct mit `layout_type` |
 | `src/components/scroll-view.ts` | 216 | `src/components/scroll_view.rs` | verifiziert | Klasse 1: Zustand als `Rc<RefCell<ScrollViewState>>` (in TS ist die Komponente selbst der Zustand); Scrollbar-Auto-Hide-Timer als Deadline für den Aufrufer |
+| `src/keybindings.ts` | 320 | `src/keybindings.rs` | verifiziert (Task 13 vorgezogen) | Klasse 1: Deklarations-Merging-Interface → statische Definitionstabelle mit 47 Einträgen; globaler Manager als `Mutex` statt Modulvariable |
+| `src/components/spacer.ts` | 28 | `src/components/spacer.rs` | portiert | — |
+| `src/components/truncated-text.ts` | 65 | `src/components/truncated_text.rs` | portiert | — |
+| `src/components/box.ts` | 137 | `src/components/box_component.rs` | portiert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist |
+| `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
+| `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
+| `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
 | `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
@@ -136,6 +165,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |

@@ -4,6 +4,7 @@
 //! Das Export-Set spiegelt `packages/tui/src/index.ts`.
 
 pub mod components;
+pub mod keybindings;
 pub mod keys;
 pub mod layout;
 pub mod layout_node;
