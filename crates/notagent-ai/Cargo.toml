@@ -28,7 +28,12 @@ url = "2"
 tokio-tungstenite = { workspace = true }
 # The Codex backend accepts zstd-compressed request bodies on the SSE endpoint.
 zstd = "0.13"
+aws-config = { workspace = true }
+aws-sdk-bedrockruntime = { workspace = true }
+aws-smithy-types = "1"
 
 [dev-dependencies]
+aws-config = { workspace = true }
+aws-sdk-bedrockruntime = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }

@@ -62,3 +62,10 @@ takes no fetch option; it records the URL, headers and the body the SDK serializ
 takes no fetch option; it records the URL, the headers and the body the SDK serializes.
 The Vertex adapter has no generator: its endpoint rules are covered by
 `tests/google_vertex.rs` against the URLs the SDK's own `getBaseUrl`/`constructUrl` build.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `bedrock-converse-stream.mts` | `bedrock-converse-stream.jsonl` | copy into `packages/ai/test/tmpgen/gen.test.ts`, wrap the loop in an `it(...)` that writes the file, then `node ../../node_modules/vitest/vitest.mjs --run test/tmpgen/gen.test.ts` |
+
+`bedrock-converse-stream.mts` needs vitest because it mocks the AWS SDK client with
+`vi.mock`; the other generators run under plain `node --experimental-strip-types`.
