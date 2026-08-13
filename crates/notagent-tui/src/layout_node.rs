@@ -97,6 +97,8 @@ pub trait ScrollLayoutState {
     fn scroll_to_end_line(&mut self);
     /// Whether the view sticks to the content end.
     fn following_end(&self) -> bool;
+    /// Mark the scrollbar as actively hovered or dragged.
+    fn set_scrollbar_active_state(&mut self, active: bool);
 }
 
 /// Shared scroll state (the TS version passes the `ScrollView` itself).

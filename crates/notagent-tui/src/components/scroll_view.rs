@@ -297,6 +297,10 @@ impl ScrollLayoutState for ScrollViewState {
         }
     }
 
+    fn set_scrollbar_active_state(&mut self, active: bool) {
+        self.set_scrollbar_active(active);
+    }
+
     fn scrollbar_visible(&self) -> bool {
         ScrollViewState::is_scrollbar_visible(self)
     }

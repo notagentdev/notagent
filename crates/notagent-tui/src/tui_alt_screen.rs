@@ -9,9 +9,18 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::alt_screen_search::{
+    AltScreenSearchComponent, AltScreenSearchMatch, find_alt_screen_search_matches,
+    get_alt_screen_search_match_key,
+};
 use crate::components::alt_screen_flash::AltScreenFlashContainer;
 use crate::components::scroll_view::{ScrollView, ScrollViewOptions, ScrollViewState};
-use crate::layout::{LayoutFrame, get_scroll_view_box, get_scroll_views_at, render_layout_frame};
+use crate::keybindings::keybindings_match;
+use crate::keys::is_key_release;
+use crate::layout::{
+    LayoutFrame, ScrollbarGeometry, get_scroll_view_box, get_scroll_views_at,
+    get_scrollbar_geometry, render_layout_frame,
+};
 use crate::layout_node::ScrollStateRef;
 use crate::terminal::Terminal;
 use crate::terminal_image::{
@@ -20,7 +29,8 @@ use crate::terminal_image::{
     set_capabilities,
 };
 use crate::tui::{
-    CURSOR_MARKER, Component, ComponentRef, TuiCore, TuiMode, TuiStopOptions, component_ref,
+    CURSOR_MARKER, Component, ComponentRef, OverlayAnchor, OverlayHandle, OverlayMargin,
+    OverlayOptions, SizeValue, TuiCore, TuiMode, TuiStopOptions, component_ref,
 };
 use crate::utils::{
     extract_ansi_code, get_grapheme_cell_range, get_osc8_link_at_column, slice_by_column,
@@ -41,6 +51,11 @@ const MAX_CACHED_OFFSCREEN_KITTY_TRANSMISSION_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_CACHED_OFFSCREEN_KITTY_DECODED_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Strip leading OSC 133 zone markers.
+/// Whether `line` starts with an OSC 133;A prompt marker.
+fn is_osc133_prompt_start(line: &str) -> bool {
+    line.starts_with("\x1b]133;A\x07") || line.starts_with("\x1b]133;A\x1b\\")
+}
+
 fn strip_osc133_zone_prefix(line: &str) -> &str {
     let mut rest = line;
     loop {
@@ -81,6 +96,8 @@ pub struct TuiAltScreenOptions {
     pub search_match_style: Rc<dyn Fn(&str) -> String>,
     /// Style of the current search match.
     pub search_current_match_style: Rc<dyn Fn(&str) -> String>,
+    /// Whether right click pastes the clipboard (TS `onRightClickPaste`).
+    pub right_click_paste: bool,
 }
 
 impl Default for TuiAltScreenOptions {
@@ -90,6 +107,7 @@ impl Default for TuiAltScreenOptions {
             mouse: true,
             search_match_style: Rc::new(|text| format!("\x1b[4m{text}\x1b[24m")),
             search_current_match_style: Rc::new(|text| format!("\x1b[1;7m{text}\x1b[22;27m")),
+            right_click_paste: false,
         }
     }
 }
@@ -122,6 +140,49 @@ pub struct TuiAltScreen {
     last_click: Option<ClickTarget>,
     pressed_url: Option<String>,
     clicked_url: Option<String>,
+    scrollbar_hover: Option<usize>,
+    scrollbar_drag: Option<ScrollbarDrag>,
+    selection_drag_pointer: Option<(i64, i64)>,
+    selection_auto_scroll_direction: i64,
+    selection_auto_scroll_deadline: Option<std::time::Instant>,
+    right_click_paste_requested: bool,
+    active_search: Option<ActiveSearch>,
+}
+
+/// The open transcript search.
+struct ActiveSearch {
+    component: Rc<std::cell::RefCell<AltScreenSearchComponent>>,
+    overlay: Option<OverlayHandle>,
+    query: String,
+    matches: Vec<AltScreenSearchMatch>,
+    selected_index: i64,
+    selected_key: Option<String>,
+    anchor_row: usize,
+    selection_mode: SearchSelectionMode,
+}
+
+/// How `refresh_search` picks the selected match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchSelectionMode {
+    Query,
+    Next,
+    Previous,
+    Retain,
+}
+
+/// One highlighted run inside a screen row.
+#[derive(Debug, Clone, Copy)]
+struct SearchHighlightRange {
+    start_col: usize,
+    end_col: usize,
+    current: bool,
+}
+
+/// An in-progress scrollbar thumb drag.
+#[derive(Debug, Clone, Copy)]
+struct ScrollbarDrag {
+    scroll_view: usize,
+    grab_offset: i64,
 }
 
 /// A point of the current text selection.
@@ -168,6 +229,15 @@ struct SgrMouseEvent {
 }
 
 const DOUBLE_CLICK_INTERVAL_MS: u64 = 500;
+
+/// Rows of overlap kept when paging the viewport.
+const PAGE_SCROLL_OVERLAP: i64 = 4;
+
+const FOCUS_IN: &str = "\x1b[I";
+const FOCUS_OUT: &str = "\x1b[O";
+
+/// Interval of the selection auto-scroll timer.
+const SELECTION_AUTO_SCROLL_INTERVAL_MS: u64 = 50;
 
 /// Renders the mounted children; the implicit document of the TS version.
 struct ImplicitDocument {
@@ -227,6 +297,13 @@ impl TuiAltScreen {
             last_click: None,
             pressed_url: None,
             clicked_url: None,
+            scrollbar_hover: None,
+            scrollbar_drag: None,
+            selection_drag_pointer: None,
+            selection_auto_scroll_direction: 0,
+            selection_auto_scroll_deadline: None,
+            right_click_paste_requested: false,
+            active_search: None,
         }
     }
 
@@ -303,6 +380,7 @@ impl TuiAltScreen {
         if remaining != 0 && !already_seen {
             primary.borrow_mut().scroll_by_lines(remaining);
         }
+        self.update_scrollbar_hover(x, y);
         self.core.request_render();
     }
 
@@ -346,6 +424,551 @@ impl TuiAltScreen {
         None
     }
 
+    // === Transcript search ===
+
+    /// Scroll to the previous or next OSC 133 prompt marker.
+    fn scroll_to_prompt(&mut self, direction: i64) {
+        let Some(layout) = &self.current_layout else {
+            return;
+        };
+        let scroll_view = self.primary_scroll_state();
+        let Some(lines) = get_scroll_view_box(layout, &scroll_view)
+            .and_then(|layout_box| layout_box.scroll_content_lines.clone())
+        else {
+            return;
+        };
+        let mut row = scroll_view.borrow().scroll_top() as i64 + direction;
+        while row >= 0 && row < lines.len() as i64 {
+            if is_osc133_prompt_start(&lines[row as usize]) {
+                scroll_view.borrow_mut().scroll_to_line(row, false);
+                self.core.request_render();
+                return;
+            }
+            row += direction;
+        }
+    }
+
+    fn open_search(&mut self) {
+        if let Some(search) = &self.active_search {
+            if let Some(overlay) = &search.overlay {
+                overlay.focus();
+            }
+            return;
+        }
+        let component = Rc::new(std::cell::RefCell::new(AltScreenSearchComponent::new()));
+        let overlay = self.core.show_overlay(
+            component.clone(),
+            Some(OverlayOptions {
+                anchor: Some(OverlayAnchor::TopRight),
+                width: Some(SizeValue::Percent(40.0)),
+                min_width: Some(24),
+                margin: Some(OverlayMargin::all(1)),
+                ..OverlayOptions::default()
+            }),
+        );
+        self.active_search = Some(ActiveSearch {
+            component,
+            overlay: Some(overlay),
+            query: String::new(),
+            matches: Vec::new(),
+            selected_index: -1,
+            selected_key: None,
+            anchor_row: self.primary_scroll_state().borrow().scroll_top(),
+            selection_mode: SearchSelectionMode::Query,
+        });
+    }
+
+    fn close_search(&mut self) {
+        let Some(search) = self.active_search.take() else {
+            return;
+        };
+        if let Some(overlay) = &search.overlay {
+            overlay.hide();
+        }
+        self.core.request_render();
+    }
+
+    /// Adopt a new query from the search input (TS `onQueryChange`).
+    fn update_search_query(&mut self, query: String) {
+        let scroll_top = self.primary_scroll_state().borrow().scroll_top();
+        let Some(search) = &mut self.active_search else {
+            return;
+        };
+        if query == search.query {
+            return;
+        }
+        search.anchor_row = search
+            .matches
+            .get(usize::try_from(search.selected_index).unwrap_or(usize::MAX))
+            .and_then(|selected| selected.segments.first())
+            .map_or(scroll_top, |segment| segment.row);
+        search.query = query;
+        search.selection_mode = SearchSelectionMode::Query;
+        search.component.borrow_mut().set_result(-1, 0);
+        self.core.request_render();
+    }
+
+    fn navigate_search(&mut self, direction: i64) {
+        let Some(search) = &mut self.active_search else {
+            return;
+        };
+        if search.query.is_empty() {
+            return;
+        }
+        search.selection_mode = if direction < 0 {
+            SearchSelectionMode::Previous
+        } else {
+            SearchSelectionMode::Next
+        };
+        self.core.request_render();
+    }
+
+    /// Recompute the matches for `layout`; returns `true` when the viewport moved.
+    fn refresh_search(&mut self, layout: &LayoutFrame) -> bool {
+        if self.active_search.is_none() {
+            return false;
+        }
+        let scroll_view = layout
+            .primary_scroll_view
+            .clone()
+            .unwrap_or_else(|| self.implicit_scroll_state.clone());
+        let layout_box = get_scroll_view_box(layout, &scroll_view);
+        let lines = layout_box.and_then(|layout_box| layout_box.scroll_content_lines.clone());
+        let search = self.active_search.as_mut().expect("search present");
+
+        let Some(lines) = lines.filter(|_| !search.query.trim().is_empty()) else {
+            search.matches = Vec::new();
+            search.selected_index = -1;
+            search.selected_key = None;
+            search.selection_mode = SearchSelectionMode::Retain;
+            search.component.borrow_mut().set_result(-1, 0);
+            return false;
+        };
+
+        let should_reveal_selection = search.selection_mode != SearchSelectionMode::Retain;
+        let matches = find_alt_screen_search_matches(&lines, &search.query);
+        let exact_index = search.selected_key.as_ref().map_or(-1, |key| {
+            matches
+                .iter()
+                .position(|search_match| &get_alt_screen_search_match_key(search_match) == key)
+                .map_or(-1, |index| index as i64)
+        });
+        let mut selected_index = -1;
+        if !matches.is_empty() {
+            let count = matches.len() as i64;
+            selected_index = match search.selection_mode {
+                SearchSelectionMode::Query => matches
+                    .iter()
+                    .position(|search_match| {
+                        search_match
+                            .segments
+                            .first()
+                            .map_or(0, |segment| segment.row)
+                            >= search.anchor_row
+                    })
+                    .map_or(0, |index| index as i64),
+                SearchSelectionMode::Next => {
+                    let base_index = if exact_index >= 0 {
+                        exact_index
+                    } else {
+                        search.selected_index.min(count - 1)
+                    };
+                    if base_index < 0 {
+                        0
+                    } else {
+                        (base_index + 1) % count
+                    }
+                }
+                SearchSelectionMode::Previous => {
+                    let base_index = if exact_index >= 0 {
+                        exact_index
+                    } else {
+                        search.selected_index.min(count - 1)
+                    };
+                    if base_index < 0 {
+                        count - 1
+                    } else {
+                        (base_index - 1 + count) % count
+                    }
+                }
+                SearchSelectionMode::Retain => {
+                    if exact_index >= 0 {
+                        exact_index
+                    } else {
+                        search.selected_index.max(0).min(count - 1)
+                    }
+                }
+            };
+        }
+
+        search.matches = matches;
+        search.selected_index = selected_index;
+        search.selected_key = usize::try_from(selected_index)
+            .ok()
+            .and_then(|index| search.matches.get(index))
+            .map(get_alt_screen_search_match_key);
+        search.selection_mode = SearchSelectionMode::Retain;
+        search
+            .component
+            .borrow_mut()
+            .set_result(selected_index, search.matches.len());
+        if !should_reveal_selection {
+            return false;
+        }
+
+        let selected = usize::try_from(selected_index)
+            .ok()
+            .and_then(|index| search.matches.get(index));
+        let first_segment = selected
+            .and_then(|selected| selected.segments.first())
+            .copied();
+        let last_segment = selected
+            .and_then(|selected| selected.segments.last())
+            .copied();
+        let viewport_height = scroll_view.borrow().viewport_height() as i64;
+        let (Some(_), Some(first_segment), Some(last_segment)) =
+            (layout_box, first_segment, last_segment)
+        else {
+            return false;
+        };
+        if viewport_height <= 0 {
+            return false;
+        }
+        let before = scroll_view.borrow().scroll_top() as i64;
+        let visible_bottom = before + viewport_height - 1;
+        let mut target = before;
+        if (first_segment.row as i64) < before || last_segment.row as i64 > visible_bottom {
+            target = first_segment.row as i64 - viewport_height / 3;
+        }
+        scroll_view.borrow_mut().scroll_to_line(target, true);
+        scroll_view.borrow().scroll_top() as i64 != before
+    }
+
+    /// Style the plain runs of `text`, leaving embedded ANSI codes intact.
+    fn apply_search_text_highlight(&self, text: &str, current: bool) -> String {
+        let style = if current {
+            &self.options.search_current_match_style
+        } else {
+            &self.options.search_match_style
+        };
+        let mut result = String::new();
+        let mut plain_start = 0;
+        let mut index = 0;
+        while index < text.len() {
+            let Some(ansi) = extract_ansi_code(text, index) else {
+                index += text[index..].chars().next().map_or(1, char::len_utf8);
+                continue;
+            };
+            if index > plain_start {
+                result.push_str(&style(&text[plain_start..index]));
+            }
+            result.push_str(ansi.code);
+            index += ansi.length;
+            plain_start = index;
+        }
+        if plain_start < text.len() {
+            result.push_str(&style(&text[plain_start..]));
+        }
+        result
+    }
+
+    fn apply_search_highlights(&self, screen: Vec<String>, layout: &LayoutFrame) -> Vec<String> {
+        let Some(search) = &self.active_search else {
+            return screen;
+        };
+        if search.selected_index < 0 || search.matches.is_empty() {
+            return screen;
+        }
+        let scroll_view = layout
+            .primary_scroll_view
+            .clone()
+            .unwrap_or_else(|| self.implicit_scroll_state.clone());
+        let Some(layout_box) = get_scroll_view_box(layout, &scroll_view) else {
+            return screen;
+        };
+
+        let scrollbar_column = get_scrollbar_geometry(layout_box).map(|geometry| geometry.column);
+        let min_row = layout_box.rect.y.max(layout_box.clip.y).max(0);
+        let max_row = (screen.len() as i64)
+            .min(layout_box.rect.y + layout_box.rect.height)
+            .min(layout_box.clip.y + layout_box.clip.height);
+        let min_column = layout_box.rect.x.max(layout_box.clip.x).max(0);
+        let max_column = (self.core.columns() as i64)
+            .min(layout_box.rect.x + layout_box.rect.width)
+            .min(layout_box.clip.x + layout_box.clip.width)
+            .min(scrollbar_column.unwrap_or(i64::MAX));
+        let scroll_top = scroll_view.borrow().scroll_top() as i64;
+
+        let mut ranges_by_row: HashMap<usize, Vec<SearchHighlightRange>> = HashMap::new();
+        for (match_index, search_match) in search.matches.iter().enumerate() {
+            for segment in &search_match.segments {
+                let row = layout_box.rect.y + segment.row as i64 - scroll_top;
+                if row < min_row || row >= max_row {
+                    continue;
+                }
+                let start_col = min_column.max(layout_box.rect.x + segment.start_col as i64);
+                let end_col = max_column.min(layout_box.rect.x + segment.end_col as i64);
+                if end_col <= start_col {
+                    continue;
+                }
+                ranges_by_row
+                    .entry(row as usize)
+                    .or_default()
+                    .push(SearchHighlightRange {
+                        start_col: start_col as usize,
+                        end_col: end_col as usize,
+                        current: match_index as i64 == search.selected_index,
+                    });
+            }
+        }
+
+        let mut result = screen;
+        for (row, mut ranges) in ranges_by_row {
+            let Some(line) = result.get_mut(row) else {
+                continue;
+            };
+            if is_image_line(line) {
+                continue;
+            }
+            let line_width = visible_width(line);
+            ranges.sort_by_key(|range| std::cmp::Reverse(range.start_col));
+            for range in ranges {
+                let start_col = range.start_col.min(line_width);
+                let end_col = range.end_col.min(line_width);
+                if end_col <= start_col {
+                    continue;
+                }
+                let before = slice_by_column(line, 0, start_col, true);
+                let highlighted = slice_by_column(line, start_col, end_col - start_col, true);
+                let after =
+                    slice_by_column(line, end_col, line_width.saturating_sub(end_col), true);
+                *line = format!(
+                    "{before}{}{after}",
+                    self.apply_search_text_highlight(&highlighted, range.current)
+                );
+            }
+        }
+        result
+    }
+
+    // === Scrollbar hover and drag ===
+
+    /// The scrollbar thumb under the pointer, if any.
+    fn get_scrollbar_target_at(&self, x: i64, y: i64) -> Option<(usize, ScrollbarGeometry)> {
+        if self.core.has_overlay() {
+            return None;
+        }
+        let layout = self.current_layout.as_ref()?;
+        get_scroll_views_at(layout, x, y)
+            .into_iter()
+            .find_map(|scroll_view| {
+                let geometry =
+                    get_scroll_view_box(layout, &scroll_view).and_then(get_scrollbar_geometry)?;
+                (x == geometry.column
+                    && y >= geometry.thumb_top
+                    && y < geometry.thumb_top + geometry.thumb_height)
+                    .then(|| (Self::scroll_view_key(&scroll_view), geometry))
+            })
+    }
+
+    fn set_scrollbar_hover(&mut self, scroll_view: Option<usize>) {
+        if scroll_view == self.scrollbar_hover {
+            return;
+        }
+        if let Some(previous) = self
+            .scrollbar_hover
+            .and_then(|key| self.scroll_view_by_key(key))
+        {
+            previous.borrow_mut().set_scrollbar_active_state(false);
+        }
+        self.scrollbar_hover = scroll_view;
+        if let Some(current) = self
+            .scrollbar_hover
+            .and_then(|key| self.scroll_view_by_key(key))
+        {
+            current.borrow_mut().set_scrollbar_active_state(true);
+        }
+    }
+
+    fn update_scrollbar_hover(&mut self, x: i64, y: i64) {
+        let target = self.get_scrollbar_target_at(x, y).map(|(key, _)| key);
+        self.set_scrollbar_hover(target);
+    }
+
+    fn stop_scrollbar_hover(&mut self) {
+        self.set_scrollbar_hover(None);
+    }
+
+    /// Handle a scrollbar mouse event; returns `true` when consumed.
+    fn handle_scrollbar_mouse_event(&mut self, event: SgrMouseEvent) -> bool {
+        if let Some(drag) = self.scrollbar_drag {
+            if event.release {
+                self.stop_scrollbar_drag();
+                return true;
+            }
+            if let Some(scroll_view) = self.scroll_view_by_key(drag.scroll_view)
+                && let Some(geometry) = self
+                    .current_layout
+                    .as_ref()
+                    .and_then(|layout| get_scroll_view_box(layout, &scroll_view))
+                    .and_then(get_scrollbar_geometry)
+            {
+                let max_thumb_offset = geometry.track_height - geometry.thumb_height;
+                let thumb_offset = (event.y - geometry.track_top - drag.grab_offset)
+                    .clamp(0, max_thumb_offset.max(0));
+                let scroll_top = if max_thumb_offset == 0 {
+                    0
+                } else {
+                    ((thumb_offset as f64 / max_thumb_offset as f64)
+                        * geometry.max_scroll_top as f64)
+                        .round() as i64
+                };
+                scroll_view.borrow_mut().scroll_to_line(scroll_top, false);
+            }
+            // Deviation class 1: the TS scroll view repaints through its
+            // `requestRender` callback; the port requests the frame here.
+            self.core.request_render();
+            return true;
+        }
+
+        if event.release || (event.button & 32) != 0 || (event.button & 3) != 0 {
+            return false;
+        }
+        let Some((scroll_view, geometry)) = self.get_scrollbar_target_at(event.x, event.y) else {
+            return false;
+        };
+        self.stop_selection_auto_scroll();
+        self.selection_press_active = false;
+        self.selection_anchor = None;
+        self.selection_focus = None;
+        self.selection_granularity = SelectionGranularity::Character;
+        self.selection_initial_range = None;
+        self.last_click = None;
+        self.pressed_url = None;
+        self.selection_dragged = false;
+        self.set_scrollbar_hover(Some(scroll_view));
+        self.scrollbar_drag = Some(ScrollbarDrag {
+            scroll_view,
+            grab_offset: event.y - geometry.thumb_top,
+        });
+        self.core.request_render();
+        true
+    }
+
+    fn stop_scrollbar_drag(&mut self) {
+        self.scrollbar_drag = None;
+    }
+
+    // === Selection auto-scroll ===
+
+    /// Arm or disarm the auto-scroll timer for a drag that left the viewport.
+    fn update_selection_auto_scroll(&mut self, event: SgrMouseEvent) {
+        let Some(key) = self
+            .selection_anchor
+            .as_ref()
+            .and_then(|anchor| anchor.scroll_view)
+        else {
+            self.stop_selection_auto_scroll();
+            return;
+        };
+        let bounds = self
+            .current_layout
+            .as_ref()
+            .zip(self.scroll_view_by_key(key))
+            .and_then(|(layout, scroll_view)| get_scroll_view_box(layout, &scroll_view))
+            .filter(|layout_box| layout_box.rect.height > 0 && layout_box.clip.height > 0)
+            .map(|layout_box| {
+                (
+                    layout_box.rect.y.max(layout_box.clip.y).max(0),
+                    (self.core.rows() as i64 - 1)
+                        .min(layout_box.rect.y + layout_box.rect.height - 1)
+                        .min(layout_box.clip.y + layout_box.clip.height - 1),
+                )
+            });
+        let Some((visible_top, visible_bottom)) = bounds else {
+            self.stop_selection_auto_scroll();
+            return;
+        };
+        self.selection_drag_pointer = Some((event.x, event.y));
+        self.selection_auto_scroll_direction = if event.y <= visible_top {
+            -1
+        } else if event.y >= visible_bottom {
+            1
+        } else {
+            0
+        };
+        if self.selection_auto_scroll_direction == 0 {
+            self.stop_selection_auto_scroll();
+            return;
+        }
+        if self.selection_auto_scroll_deadline.is_none() {
+            self.selection_auto_scroll_deadline = Some(
+                std::time::Instant::now()
+                    + std::time::Duration::from_millis(SELECTION_AUTO_SCROLL_INTERVAL_MS),
+            );
+        }
+    }
+
+    /// When the next auto-scroll step is due, or `None` while idle.
+    pub fn selection_auto_scroll_deadline(&self) -> Option<std::time::Instant> {
+        self.selection_auto_scroll_deadline
+    }
+
+    /// Advance one auto-scroll step (the TS `setInterval` callback).
+    pub fn auto_scroll_selection(&mut self) {
+        let scroll_view = self
+            .selection_anchor
+            .as_ref()
+            .and_then(|anchor| anchor.scroll_view)
+            .and_then(|key| self.scroll_view_by_key(key).map(|state| (key, state)));
+        let direction = self.selection_auto_scroll_direction;
+        let (Some((key, state)), Some(pointer)) = (scroll_view, self.selection_drag_pointer) else {
+            self.stop_selection_auto_scroll();
+            return;
+        };
+        if direction == 0 {
+            self.stop_selection_auto_scroll();
+            return;
+        }
+        // Rearm from the previous deadline, as `setInterval` does.
+        self.selection_auto_scroll_deadline = Some(
+            self.selection_auto_scroll_deadline
+                .unwrap_or_else(std::time::Instant::now)
+                + std::time::Duration::from_millis(SELECTION_AUTO_SCROLL_INTERVAL_MS),
+        );
+        let remaining = state.borrow_mut().scroll_by_lines(direction);
+        if remaining == direction {
+            self.stop_selection_auto_scroll();
+            return;
+        }
+        if let Some(point) = self.get_scroll_selection_point(key, pointer.0, pointer.1) {
+            self.update_selection_focus(point);
+        }
+        self.core.request_render();
+    }
+
+    fn stop_selection_auto_scroll(&mut self) {
+        self.selection_auto_scroll_deadline = None;
+        self.selection_auto_scroll_direction = 0;
+        self.selection_drag_pointer = None;
+    }
+
+    /// Right-click paste (Windows only, as in the TS version); returns `true`
+    /// when consumed. The caller retrieves the request via
+    /// [`Self::take_right_click_paste`].
+    fn handle_right_click_paste(&mut self, event: SgrMouseEvent) -> bool {
+        if !self.options.right_click_paste || !cfg!(windows) || event.release || event.button != 2 {
+            return false;
+        }
+        self.right_click_paste_requested = true;
+        true
+    }
+
+    /// Whether a right click asked for a clipboard paste (TS `onRightClickPaste`).
+    pub fn take_right_click_paste(&mut self) -> bool {
+        std::mem::take(&mut self.right_click_paste_requested)
+    }
+
     // === Text selection ===
 
     /// Parse an SGR mouse event.
@@ -359,9 +982,15 @@ impl TuiAltScreen {
             return None;
         };
         let mut parts = body.split(';');
-        let button: i64 = parts.next()?.parse().ok()?;
-        let x: i64 = parts.next()?.parse().ok()?;
-        let y: i64 = parts.next()?.parse().ok()?;
+        let number = |part: Option<&str>| -> Option<i64> {
+            let part = part?;
+            (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+                .then(|| part.parse().ok())
+                .flatten()
+        };
+        let button = number(parts.next())?;
+        let x = number(parts.next())?;
+        let y = number(parts.next())?;
         if parts.next().is_some() {
             return None;
         }
@@ -756,6 +1385,7 @@ impl TuiAltScreen {
                 return;
             }
             self.selection_press_active = false;
+            self.stop_selection_auto_scroll();
             let Some(anchor) = self.selection_anchor.clone() else {
                 return;
             };
@@ -789,6 +1419,7 @@ impl TuiAltScreen {
             self.selection_dragged = true;
             self.last_click = None;
             self.pressed_url = None;
+            self.update_selection_auto_scroll(event);
             self.update_selection_focus(point);
             self.core.request_render();
             return;
@@ -845,37 +1476,155 @@ impl TuiAltScreen {
     /// here the renderer's input handler calls it before the component dispatch
     /// because the listener needs `&mut self`.
     pub fn handle_viewport_input(&mut self, data: &str) -> bool {
-        if data == "\x1b[O" {
-            // Focus out discards an active selection.
+        if data == FOCUS_OUT {
             let had_active_selection = self.selection_press_active;
+            let had_non_empty_active_selection =
+                had_active_selection && self.get_selection_bounds().is_some();
             self.selection_press_active = false;
+            self.stop_selection_auto_scroll();
+            self.stop_scrollbar_hover();
+            self.stop_scrollbar_drag();
             self.pressed_url = None;
             self.selection_dragged = false;
             if had_active_selection {
-                let had_selection = self.get_selection_bounds().is_some();
                 self.selection_anchor = None;
                 self.selection_focus = None;
                 self.selection_granularity = SelectionGranularity::Character;
                 self.selection_initial_range = None;
-                if had_selection {
+                if had_non_empty_active_selection {
                     self.core.request_render();
                 }
             }
             self.last_click = None;
             return true;
         }
-        if data == "\x1b[I" {
+        if data == FOCUS_IN {
             return true;
         }
+
         if let Some((direction, x, y)) = Self::parse_wheel_event(data) {
             self.route_wheel(direction, x, y);
             return true;
         }
         if let Some(event) = Self::parse_sgr_mouse_event(data) {
-            self.handle_selection_mouse_event(event);
+            if self.handle_right_click_paste(event) {
+                return true;
+            }
+            let handled = self.handle_scrollbar_mouse_event(event);
+            if self.scrollbar_drag.is_none() {
+                self.update_scrollbar_hover(event.x, event.y);
+            }
+            if !handled {
+                self.handle_selection_mouse_event(event);
+            }
+            return true;
+        }
+        if Self::is_mouse_sequence(data) {
+            return true;
+        }
+
+        let is_release = is_key_release(data);
+        if keybindings_match(data, "tui.altScreen.search") {
+            if !is_release {
+                self.open_search();
+            }
+            return true;
+        }
+        if self
+            .active_search
+            .as_ref()
+            .and_then(|search| search.overlay.as_ref())
+            .is_some_and(OverlayHandle::is_focused)
+        {
+            if keybindings_match(data, "tui.altScreen.searchNext") {
+                if !is_release {
+                    self.navigate_search(1);
+                }
+                return true;
+            }
+            if keybindings_match(data, "tui.altScreen.searchPrevious") {
+                if !is_release {
+                    self.navigate_search(-1);
+                }
+                return true;
+            }
+            if keybindings_match(data, "tui.altScreen.searchClose") {
+                if !is_release {
+                    self.close_search();
+                }
+                return true;
+            }
+        }
+        let viewport_height = self.primary_scroll_state().borrow().viewport_height() as i64;
+        if keybindings_match(data, "tui.altScreen.pageUp") {
+            if !is_release {
+                self.scroll_by(-(viewport_height - PAGE_SCROLL_OVERLAP).max(1));
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.pageDown") {
+            if !is_release {
+                self.scroll_by((viewport_height - PAGE_SCROLL_OVERLAP).max(1));
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.halfPageUp") {
+            if !is_release {
+                self.scroll_by(-(viewport_height / 2).max(1));
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.halfPageDown") {
+            if !is_release {
+                self.scroll_by((viewport_height / 2).max(1));
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.lineUp") {
+            if !is_release {
+                self.scroll_by(-1);
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.lineDown") {
+            if !is_release {
+                self.scroll_by(1);
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.previousPrompt") {
+            if !is_release {
+                self.scroll_to_prompt(-1);
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.nextPrompt") {
+            if !is_release {
+                self.scroll_to_prompt(1);
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.top") {
+            if !is_release {
+                self.scroll_to_top();
+            }
+            return true;
+        }
+        if keybindings_match(data, "tui.altScreen.bottom") {
+            if !is_release {
+                self.scroll_to_bottom();
+            }
             return true;
         }
         false
+    }
+
+    /// Whether `data` is a mouse report that must not reach the components.
+    fn is_mouse_sequence(data: &str) -> bool {
+        if Self::parse_sgr_mouse_event(data).is_some() {
+            return true;
+        }
+        data.len() == 6 && data.starts_with("\x1b[M")
     }
 
     /// Feed terminal input: viewport handling first, then the TUI dispatch.
@@ -884,6 +1633,24 @@ impl TuiAltScreen {
             return;
         }
         self.core.handle_terminal_input(data);
+        self.poll_search_query();
+    }
+
+    /// Adopt a query the search input changed while handling the last input.
+    ///
+    /// Deviation class 1: the TS component reports changes through an
+    /// `onQueryChange` callback, which would need `&mut` access to the renderer
+    /// while the component itself is borrowed.
+    fn poll_search_query(&mut self) {
+        let Some(search) = &self.active_search else {
+            return;
+        };
+        let changed = search.component.borrow_mut().take_query_changed();
+        if !changed {
+            return;
+        }
+        let query = search.component.borrow().query().to_string();
+        self.update_search_query(query);
     }
 
     /// Scroll the primary view by `lines`.
@@ -1168,19 +1935,27 @@ impl TuiAltScreen {
         height: usize,
     ) -> Vec<String> {
         self.flashes.borrow_mut().expire();
-        let flash_lines = self.flashes.borrow_mut().render(width);
+        let mut flash_lines = self.flashes.borrow_mut().render(width);
+        if flash_lines.len() > height {
+            flash_lines = flash_lines.split_off(flash_lines.len() - height);
+        }
         if flash_lines.is_empty() {
             return screen;
         }
         let mut result = screen;
-        // Flash messages sit at the bottom of the viewport.
-        let start = height.saturating_sub(flash_lines.len());
-        for (index, flash_line) in flash_lines.iter().enumerate() {
-            let row = start + index;
-            if row < result.len() {
-                result[row] =
-                    crate::tui::composite_tui_line(&result[row], flash_line, 0, width, width);
+        result.resize(result.len().max(height), String::new());
+        for (row, flash_line) in flash_lines.iter().enumerate() {
+            let flash_width = visible_width(flash_line);
+            if flash_width == 0 {
+                continue;
             }
+            result[row] = crate::tui::composite_tui_line(
+                &result[row],
+                flash_line,
+                width.saturating_sub(flash_width),
+                flash_width,
+                width,
+            );
         }
         result
     }
@@ -1195,13 +1970,17 @@ impl TuiAltScreen {
             .layout_root
             .clone()
             .unwrap_or_else(|| self.implicit_scroll_view.clone());
-        let next_layout = render_layout_frame(&root, width, height);
+        let mut next_layout = render_layout_frame(&root, width, height);
+        if self.refresh_search(&next_layout) {
+            next_layout = render_layout_frame(&root, width, height);
+        }
 
         let mut screen: Vec<String> = next_layout
             .lines
             .iter()
             .map(|line| strip_osc133_zone_prefix(line).to_string())
             .collect();
+        screen = self.apply_search_highlights(screen, &next_layout);
         screen = self.core.composite_overlays(screen, width, height);
         if screen.len() > height {
             screen = screen[screen.len() - height..].to_vec();
