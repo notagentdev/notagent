@@ -197,13 +197,13 @@ pub enum ChatTemplateKwargValue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ThinkingBudgets {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub minimal: Option<u32>,
+    pub minimal: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub low: Option<u32>,
+    pub low: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub medium: Option<u32>,
+    pub medium: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub high: Option<u32>,
+    pub high: Option<u64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +349,8 @@ pub struct StreamOptions {
     /// Wird nach den benannten Feldern in den Request-Body gemischt und überschreibt sie
     /// dadurch; nur OpenAI-kompatible Adapter werten sie aus.
     pub sampling_params: Option<Map<String, Value>>,
-    pub max_tokens: Option<u32>,
+    /// Token counts share one width across model, context and request options.
+    pub max_tokens: Option<u64>,
     pub transport: Option<Transport>,
     /// Default: `"short"`.
     pub cache_retention: Option<CacheRetention>,

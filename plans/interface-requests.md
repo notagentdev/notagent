@@ -86,6 +86,17 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
      statt `3e-6`.
 - **Status**: umgesetzt (Kontrakt-Commit `ai: …`/`agent: …`, Task 1)
 
+### B-3 Kontrakt-Nachzug: `max_tokens` und `ThinkingBudgets` sind `u64`
+- **Von / An**: B → C, A
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-ai/src/types.rs` (`StreamOptions.max_tokens`, `ThinkingBudgets`)
+- **Beleg**: `packages/ai/src/api/simple-options.ts` rechnet `maxTokens` gegen
+  `model.maxTokens` und `model.contextWindow` (beide `u64` im Port) — JS kennt nur einen
+  Zahlentyp, die Breiten müssen also übereinstimmen.
+- **Wunsch**: keiner. Reine Verbreiterung `u32` → `u64`; Integer-Literale bleiben
+  quellkompatibel, betroffen wäre nur Code, der die Werte explizit als `u32` typisiert.
+- **Status**: umgesetzt (Task 8)
+
 ### B-2 serde_json-Feature `raw_value` für vollständige JS-Zahlparität
 - **Von / An**: B → C (Owner der Root-`Cargo.toml`)
 - **Datum**: 2026-08-13
