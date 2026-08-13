@@ -864,11 +864,17 @@ dependencies = [
 name = "notagent"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "notagent-agent",
  "notagent-ai",
  "notagent-client",
  "notagent-protocol",
  "notagent-tui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

@@ -20,3 +20,11 @@ notagent-ai = { workspace = true }
 notagent-client = { workspace = true }
 notagent-protocol = { workspace = true }
 notagent-tui = { workspace = true }
+dirs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

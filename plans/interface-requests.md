@@ -178,3 +178,14 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: offen (nur zur Kenntnis; eine Änderung auf `i64` wäre eine Kontraktänderung
   und sollte, wenn überhaupt, von B entschieden werden)
 
+### C-3 `OutputSink::Collector` nur in Tests konstruiert
+- **Von / An**: C → A
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-tui/src/terminal.rs:190-192`
+- **Beleg**: `cargo clippy -p notagent --all-targets -- -D warnings` schlägt fehl mit
+  „variant `Collector` is never constructed". Beim Bauen als Abhängigkeit (ohne die
+  Testziele der tui-Crate) ist die Variante tot; `scripts/check.sh` bleibt grün, weil
+  `--workspace --all-targets` die tui-Tests mitbaut.
+- **Wunsch**: die Variante entweder hinter `#[cfg(test)]` stellen oder produktiv nutzen
+  (z. B. für den Byte-Log-Vergleich des RecordingTerminal-Äquivalents).
+- **Status**: offen
