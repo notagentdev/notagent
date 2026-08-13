@@ -193,3 +193,99 @@ fn ansi_sequences_do_not_shift_match_columns() {
     assert_eq!(matches[0].segments[0].start_col, 4);
     assert_eq!(matches[0].segments[0].end_col, 10);
 }
+
+// Mouse text selection.
+
+#[tokio::test]
+async fn snaps_mouse_selection_to_wide_grapheme_boundaries() {
+    let terminal = VirtualTerminal::new(20, 2);
+    let mut tui = TuiAltScreen::new(Box::new(terminal.clone()), TuiAltScreenOptions::default());
+    tui.core()
+        .add_child(component_ref(Text::new("A界🙂éZ", 0, 0)));
+    tui.start();
+    tui.wait_for_render().await;
+
+    let expected = format!("\x1b]52;c;{}\x07", base64("界🙂"));
+
+    // Press inside 界, drag onto 🙂, release: both wide graphemes are selected.
+    tui.handle_terminal_input("\x1b[<0;3;1M");
+    tui.handle_terminal_input("\x1b[<32;4;1M");
+    tui.handle_terminal_input("\x1b[<0;4;1m");
+    tui.wait_for_render().await;
+    assert_eq!(
+        terminal.get_writes().matches(expected.as_str()).count(),
+        1,
+        "selection snapped to the grapheme boundaries"
+    );
+
+    // The same selection in the opposite direction.
+    tui.handle_terminal_input("\x1b[<0;5;1M");
+    tui.handle_terminal_input("\x1b[<32;2;1M");
+    tui.handle_terminal_input("\x1b[<0;2;1m");
+    tui.wait_for_render().await;
+    assert_eq!(terminal.get_writes().matches(expected.as_str()).count(), 2);
+
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn double_click_selects_a_word_and_triple_click_the_line() {
+    let terminal = VirtualTerminal::new(30, 2);
+    let mut tui = TuiAltScreen::new(Box::new(terminal.clone()), TuiAltScreenOptions::default());
+    tui.core()
+        .add_child(component_ref(Text::new("alpha beta gamma", 0, 0)));
+    tui.start();
+    tui.wait_for_render().await;
+
+    // Two presses on the same word select it.
+    tui.handle_terminal_input("\x1b[<0;8;1M");
+    tui.handle_terminal_input("\x1b[<0;8;1m");
+    tui.handle_terminal_input("\x1b[<0;8;1M");
+    tui.handle_terminal_input("\x1b[<0;8;1m");
+    tui.wait_for_render().await;
+    assert!(
+        terminal
+            .get_writes()
+            .contains(&format!("\x1b]52;c;{}\x07", base64("beta"))),
+        "double click copies the word"
+    );
+
+    // A third press extends the selection to the whole line.
+    tui.handle_terminal_input("\x1b[<0;8;1M");
+    tui.handle_terminal_input("\x1b[<0;8;1m");
+    tui.wait_for_render().await;
+    assert!(
+        terminal
+            .get_writes()
+            .contains(&format!("\x1b]52;c;{}\x07", base64("alpha beta gamma"))),
+        "triple click copies the line"
+    );
+
+    tui.stop(TuiStopOptions::default());
+}
+
+/// Base64 of the expected clipboard payload.
+fn base64(text: &str) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = text.as_bytes();
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let b0 = u32::from(chunk[0]);
+        let b1 = u32::from(chunk.get(1).copied().unwrap_or(0));
+        let b2 = u32::from(chunk.get(2).copied().unwrap_or(0));
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[(triple >> 18) as usize & 0x3f] as char);
+        out.push(ALPHABET[(triple >> 12) as usize & 0x3f] as char);
+        out.push(if chunk.len() > 1 {
+            ALPHABET[(triple >> 6) as usize & 0x3f] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[triple as usize & 0x3f] as char
+        } else {
+            '='
+        });
+    }
+    out
+}

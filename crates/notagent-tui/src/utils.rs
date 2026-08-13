@@ -26,6 +26,10 @@ pub fn graphemes(text: &str) -> impl DoubleEndedIterator<Item = &str> {
 
 /// Wortsegmente eines Strings (entspricht `Intl.Segmenter` mit
 /// `granularity: "word"`; UAX #29 Wortgrenzen).
+pub fn word_segments_public(text: &str) -> impl Iterator<Item = &str> {
+    word_segments(text)
+}
+
 pub(crate) fn word_segments(text: &str) -> impl Iterator<Item = &str> {
     text.split_word_bounds()
 }
