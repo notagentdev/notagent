@@ -312,3 +312,24 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `tool-execution-*`, `edit-tool-no-full-redraw.test.ts`, `block-images.test.ts`) und gehören
   mit dem jeweiligen Batch zu A.
 - **Status**: offen (Zuteilung steht; Batch 0 kann sofort starten)
+
+## Sektion Orchestrator
+
+### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt
+- **Von / An**: Orchestrator → A und C
+- **Datum**: 2026-08-13
+- **Betrifft**: `plans/2026-08-13-rust-port-ws-a-tui-v1.md` Task 15; Ownership unter `crates/notagent/src/modes/interactive/`
+- **Beleg**: Die ursprüngliche G2-Schranke sollte sicherstellen, dass A nicht gegen instabile
+  Kontrakte portiert. Diese Kontrakte liegen inzwischen auf main: B-Typen (Kontrakt-Commit
+  Task 1 + Nachzüge B-3), Cs Session-Manager inkl. SessionInfo/Baum (WS-C Task 6, Commit
+  221c1ee), die vollständige tui-API (WS-A Task 14). Damit ist die Schranke gegenstandslos;
+  A wäre sonst unbeschäftigt, während C der Engpass ist (Master-Plan, Risiko 4).
+- **Regelung**:
+  - A besitzt ab sofort exklusiv `crates/notagent/src/modes/interactive/theme/` und
+    `crates/notagent/src/modes/interactive/components/` (plus zugehörige Tests und die
+    Sektion „A: interactive components" in `crates/notagent/PARITY.md`).
+  - C fasst diese Pfade nicht an; die Verdrahtung in `interactive-mode` (Hauptschleife,
+    Slash-Commands, App-Zustand) bleibt bei C und weiterhin hinter G2.
+  - Prioritätsreihenfolge steht im geänderten Task 15; Komponenten mit fehlender
+    Abhängigkeit überspringt A und meldet sie hier als A-Request.
+- **Status**: umgesetzt (Plan-Datei geändert; A kann sofort weiterarbeiten)
