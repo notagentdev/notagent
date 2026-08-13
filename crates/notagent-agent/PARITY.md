@@ -14,12 +14,15 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/agent/src/stream-fn.ts` | 20 | 1 |
 | 2026-08-13 | `packages/agent/src/harness/messages.ts` | 168 | 1 |
 | 2026-08-13 | `packages/coding-agent/src/core/messages.ts` (Konsumentenbeleg) | 120 (Auszug) | 1 |
+| 2026-08-13 | `packages/agent/src/agent-loop.ts` | 796 | 12 |
+| 2026-08-13 | `packages/agent/test/agent-loop.test.ts` | 1607 | 12 |
 
 ## Ledger
 
 | TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
 |---|---|---|---|---|
 | `src/types.ts` | 443 | `types.rs` | verifiziert (Task 1) | Klasse 1: Kein Declaration Merging — die vier Custom-Rollen aus `harness/messages.ts:55-62` (identisch in `coding-agent/src/core/messages.ts:69-76`) sind feste `AgentMessage`-Varianten. Klasse 1: `AgentTool` ist ein Trait (TS-Interface mit `execute`), `AgentToolResult.details` ist `Option<Value>` (TS `T` kann `undefined` sein). Klasse 1: Callbacks als `Arc<dyn Fn(..) -> BoxFuture>`. Klasse 1: `pendingToolCalls` als `BTreeSet` (nur Mitgliedschaft wird ausgewertet). Klasse 3: `AbortSignal` → `CancellationToken`. |
+| `src/agent-loop.ts` | 796 | `agent_loop.rs` | portiert (Task 12, laufend) | Master-Architektur: parallele Ausführung als `JoinSet` mit echten tokio-Tasks; TS-Semantik erhalten (sequentieller Preflight mit Abbruchprüfung je Call, `tool_execution_end` in Abschlussreihenfolge, Result-Messages in Assistant-Quellreihenfolge). Klasse 1: Event-Sink als `Arc<dyn Fn -> BoxFuture>`; `emit` wird wie in TS vor dem Weiterlaufen abgewartet. Offen: `agent.ts` (Agent-Klasse, Queues, Listener) |
 | `src/stream-fn.ts` | 20 | `stream_fn.rs` | portiert (Task 1, Tests in Task 12) | Klasse 1: `throw` → `Result<_, NoDefaultStreamFn>` mit wortgleicher Meldung |
 | `src/harness/messages.ts` | 168 | `harness/messages.rs` | portiert (Task 1, Tests in Task 12) | Klasse 1: `timestamp: string \| number` → `i64`; die String-Variante wandelt der Aufrufer (App) um |
 | `src/index.ts` | 145 | `lib.rs` | teilweise (Task 1) | vollständige Oberfläche in Task 13; Harness-Re-Exports entfallen laut Ausschlusstabelle |
