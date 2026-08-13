@@ -14,7 +14,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `plans/facts/tui.md` | 287 | Pflichtlektüre |
 | 2026-08-13 | `CONVENTIONS.md` | 121 | Pflichtlektüre |
 | 2026-08-13 | `test/virtual-terminal.ts` | 218 | Task 1 |
-| 2026-08-13 | `src/utils.ts` | 1326 | Task 2 |
+| 2026-08-13 | `src/keys.ts` | 1401 | `src/keys.rs` | verifiziert | Klasse 1: `_kittyProtocolActive` → prozessglobales `AtomicBool`; `_lastEventType` entfällt (in TS nur geschrieben, nie gelesen); `String.fromCharCode`-Semantik (16-Bit-Truncation) als `js_from_char_code` nachgebildet; Codepoints als `i64` wegen der negativen Sentinels; das TS-Hilfsobjekt `Key` (reine Template-Literal-Typen) entfällt, KeyIds sind `&str`; `parseInt`-Überlauf ⇒ „kein Treffer" statt Gleitkomma-Codepoint (in beiden Fällen unauffindbarer Key) |
+| `src/utils.ts` | 1326 | Task 2 |
 | 2026-08-13 | `test/virtual-terminal.ts` | 218 | `src/test_terminal.rs` (Feature `test-terminal`) | verifiziert — `tests/virtual_terminal.rs` prüft den Harness gegen 21 `@xterm/headless`-Fixtures (Viewport, Scrollback, Cursor, Resize, CSI/OSC/APC, Synchronized Output) plus Ereignisaufzeichnung, Handler-Weiterleitung und Sequenz-Helfer |
 | `test/wrap-ansi.test.ts` | 266 | Task 2 |
 | 2026-08-13 | `test/truncate-to-width.test.ts` | 127 | Task 2 |
@@ -33,6 +34,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 |---|---|---|---|---|
 | `src/tui.ts` | 1257 | `src/tui.rs` | Kontrakt portiert (Component/Focusable/CURSOR_MARKER); Rest offen (Task 5) | Klasse 1: `handleInput?` → Default-Methode; `isFocusable()`-Type-Guard → `Component::as_focusable()`; Referenzsemantik der TS-Objekte → `ComponentRef = Rc<RefCell<dyn Component>>` |
 | `src/terminal.ts` | 559 | `src/terminal.rs` | Kontrakt portiert (`Terminal`-Trait); `ProcessTerminal` offen (Task 4) | Klasse 1: Default-Parameter von `drainInput` → `Option<u64>`; `async` Methode via `async-trait` (dyn-Kompatibilität) |
+| `src/keys.ts` | 1401 | `src/keys.rs` | verifiziert | Klasse 1: `_kittyProtocolActive` → prozessglobales `AtomicBool`; `_lastEventType` entfällt (in TS nur geschrieben, nie gelesen); `String.fromCharCode`-Semantik (16-Bit-Truncation) als `js_from_char_code` nachgebildet; Codepoints als `i64` wegen der negativen Sentinels; das TS-Hilfsobjekt `Key` (reine Template-Literal-Typen) entfällt, KeyIds sind `&str`; `parseInt`-Überlauf ⇒ „kein Treffer" statt Gleitkomma-Codepoint (in beiden Fällen unauffindbarer Key) |
 | `src/utils.ts` | 1326 | `src/utils.rs` (+ generiertes `src/unicode_tables.rs`) | verifiziert | Klasse 3: `Intl.Segmenter` → `unicode-segmentation`; `get-east-asian-width` und die `\p{…}`-Klassen (inkl. `\p{RGI_Emoji}`) als generierte Tabellen aus derselben Node-/Datenquelle (Rusts `regex` kennt weder `\p{RGI_Emoji}` noch `[A--[B]]`). Klasse 1: gepoolter `AnsiCodeTracker` in `extractSegments` → lokale Instanz (kein globaler Zustand, `clear()` beim Eintritt macht das verhaltensgleich); Width-Cache als `thread_local` mit identischer FIFO-Eviktion (512); Default-Parameter `truncateToWidth(text, w)` → zusätzliche Funktion `truncate_to_width_opts` |
 
 ## Portierte Testdateien
@@ -45,6 +47,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/regression-regional-indicator-width.test.ts` | 52 | `tests/regression_regional_indicator_width.rs` (5 Fälle) | verifiziert |
 | `test/tab-width.test.ts` | 88 | `tests/tab_width.rs` (3 von 4 Fällen) | Fall 4 („keeps tab-containing overlays on one physical terminal row") rendert über `TuiMainScreen` + virtuelles Terminal → Task 6 |
 | `test/regression-overlay-cjk-boundary.test.ts` | 46 | `tests/regression_overlay_cjk_boundary.rs` (2 von 4 Fällen) | Die beiden `compositeTuiLine`-Fälle → Task 5 |
+| `test/keys.test.ts` | 633 | `tests/keys.rs` (57 Fälle) | verifiziert |
+| — (zusätzlich) | — | `tests/keys_oracle.rs` + `tests/fixtures/keys-oracle.json` | Differenztest gegen die TS-Implementierung: 1611 Eingabesequenzen × 637 KeyIds × beide Kitty-Zustände (≈ 2 Mio. `matchesKey`-Vergleiche) plus `parseKey`, `isKeyRelease`, `isKeyRepeat`, `decodeKittyPrintable`, `decodePrintableKey` — alle identisch |
 | — (zusätzlich) | — | `tests/utils_oracle.rs` + `tests/fixtures/utils-oracle.json` | Differenztest gegen die TS-Implementierung: 2695 Korpusfälle × {visibleWidth, wrapTextWithAnsi ×5 Breiten, truncateToWidth ×5 (auch mit `…`+Padding), sliceWithWidth ×5 Konfigurationen, extractSegments ×4} — alle identisch. Erzeugt von `tools/gen-utils-oracle.mjs` (Master-Plan, Risiko 1) |
 
 ## Werkzeuge
@@ -53,6 +57,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 |---|---|
 | `tools/gen-unicode-tables.mjs` | Erzeugt `src/unicode_tables.rs` aus der Node-Runtime (Unicode 17.0) und `get-east-asian-width`. Die 1494 RGI-ZWJ-Sequenzen entstehen aus `emoji-zwj-sequences.txt` (Emoji 16.0, alle 1468 Einträge gegen V8 verifiziert) plus vollständiger Paarsuche über alle 1438 Emoji-Codepoints (26 Ergänzungen aus Unicode 17). |
 | `tools/gen-utils-oracle.mjs` | Erzeugt `tests/fixtures/utils-oracle.json` aus `packages/tui/src/utils.ts`. |
+| `tools/gen-keys-oracle.mjs` | Erzeugt `tests/fixtures/keys-oracle.json` aus `packages/tui/src/keys.ts`. |
 | `tools/gen-virtual-terminal-oracle.mjs` | Erzeugt `tests/fixtures/virtual-terminal-oracle.json` aus `@xterm/headless` 5.5.0 — 23 Szenarien mit genau den Sequenzen, die beide Renderer emittieren. |
 
 ## Ausschlüsse

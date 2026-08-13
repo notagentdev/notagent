@@ -14,6 +14,7 @@ test-terminal = ["dep:vt100", "dep:tokio"]
 
 [dependencies]
 async-trait = { workspace = true }
+regex = { workspace = true }
 unicode-segmentation = { workspace = true }
 tokio = { workspace = true, optional = true }
 vt100 = { workspace = true, optional = true }
