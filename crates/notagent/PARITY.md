@@ -110,6 +110,9 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/src/core/mini-read/minify-edit.ts | 493 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/test/mini-read-minify.test.ts | 269 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/test/mini-read-minify-edit.test.ts | 413 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/tools/read-minified.ts | 210 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/src/core/tools/patch-minified.ts | 367 | C-Task 8 |
+| 2026-08-13 | packages/coding-agent/test/patch-minified-tool.test.ts | 183 | C-Task 8 |
 
 ## Ledger
 
@@ -169,6 +172,9 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | src/core/mini-read/parser.ts | 121 | — | entfällt (Tech-Substitution) | Klasse 3: natives tree-sitter statt web-tree-sitter — kein Runtime-Init, keine wasm-Assets, kein Grammatik-Cache. Damit entfällt auch die UTF-16-Rechnung: Offsets sind Bytes |
 | test/mini-read-minify.test.ts | 269 | src/core/mini_read/minify.rs (Testmodul) | Tests portiert | 26 Tests. Die TS-Datei ist ausweislich ihres Kopfes ein 1:1-Port des Referenz-Testmoduls; portiert ist deshalb das Referenzmodul selbst, mit denselben Fixtures und Erwartungswerten |
 | test/mini-read-minify-edit.test.ts | 413 | src/core/mini_read/minify_edit.rs (Testmodul) + tests/mini_read_multi_edit.rs | Tests portiert | 24 + 7 Tests. Die letzten sechs TS-Fälle stammen aus `minify_multi_edit_tests.rs` und liegen deshalb in der Integrationsdatei; dort steht zusätzlich ein deterministischer Durchlauf der Referenz-Testbench (`edge_cases.rs` als Fixture, die zehn Edits aus PROMPT.md, Bewertung nach den Grading-Regeln). Dokumentiert dort: eine `///`-Doc-Kommentarzeile steht im View verbatim (tree-sitter-rust zieht den Zeilenumbruch in den Knoten), weshalb Suchtext MIT View-Einrückung überindentiert — Referenzverhalten, bug-kompatibel übernommen |
+| src/core/tools/read-minified.ts | 210 | src/core/tools/read_minified.rs | portiert (Tool-Hälfte) | Schema, Beschreibung, Offset/Limit vor der Minifizierung, Rohtext-Rückfall (unbekannte Sprache, unparsbar oder leerer View) und beide Fußzeilen wörtlich. Klasse 3: `minifyForPath` ist synchron, weil keine Grammatik geladen wird. **Offen:** Renderer inkl. Syntax-Highlight — Task 13 |
+| src/core/tools/patch-minified.ts | 367 | src/core/tools/patch_minified.rs | portiert (Tool-Hälfte) | Klasse 1: `patch_minified` und `multi_patch_minified` sind eine Definition mit `multi`-Flag statt zweier Fabriken über `buildRenderers` — Name, Label, Beschreibung, Schema und Prompt-Beiträge bleiben je Variante wörtlich getrennt. Sequentielles Anwenden mit Neu-Minifizierung, Atomarität, BOM-Erhalt, Mutations-Queue und der Rohtext-Rückfall sind übernommen. **Offen:** Renderer mit Diff-Anzeige — Task 13 |
+| test/patch-minified-tool.test.ts | 183 | tests/minified_tools.rs | Tests portiert | 17 Tests: die 11 TS-Fälle plus sechs für `read_minified`, das im TS-Repo keine eigene Testdatei hat (Kompaktansicht, keep_comments, Offset/Limit vor der Minifizierung, Offset hinter Dateiende, Rohtext-Rückfall, Ablehnung von Bildern) |
 
 ## A: interactive components
 
