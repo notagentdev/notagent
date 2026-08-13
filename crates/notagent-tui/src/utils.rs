@@ -26,7 +26,6 @@ pub(crate) fn graphemes(text: &str) -> impl Iterator<Item = &str> {
 
 /// Wortsegmente eines Strings (entspricht `Intl.Segmenter` mit
 /// `granularity: "word"`; UAX #29 Wortgrenzen).
-#[allow(dead_code)] // 1:1-Port; Konsument ist word-navigation.rs (Task 10).
 pub(crate) fn word_segments(text: &str) -> impl Iterator<Item = &str> {
     text.split_word_bounds()
 }

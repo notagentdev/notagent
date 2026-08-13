@@ -7,6 +7,7 @@ pub mod components;
 pub mod fuzzy;
 pub mod keybindings;
 pub mod keys;
+pub mod kill_ring;
 pub mod layout;
 pub mod layout_node;
 pub mod native_modifiers;
@@ -18,8 +19,10 @@ pub mod terminal_image;
 pub mod test_terminal;
 pub mod tui;
 pub mod tui_main_screen;
+pub mod undo_stack;
 mod unicode_tables;
 pub mod utils;
+pub mod word_navigation;
 
 pub use keys::{
     KeyEventType, decode_kitty_printable, decode_printable_key, is_key_release, is_key_repeat,
