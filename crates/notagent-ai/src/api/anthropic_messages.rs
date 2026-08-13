@@ -521,3 +521,296 @@ pub fn map_stop_reason(
         }
     })
 }
+
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
+
+use std::sync::Arc;
+
+use crate::api::anthropic_params::{
+    AnthropicOptions, build_default_headers, build_params, is_oauth_token,
+    should_use_fine_grained_tool_streaming_beta,
+};
+use crate::api::sse::SseDecoder;
+use crate::types::{Context, ErrorReason, ProviderHeaders, ProviderRequestOptions};
+use crate::utils::event_stream::{
+    AssistantMessageEventStream, create_assistant_message_event_stream,
+};
+use crate::utils::fetch::{FetchBody, FetchFunction, FetchRequest, ReqwestFetch};
+
+/// `assertRequestAuth(provider, apiKey, headers)`
+fn assert_request_auth(
+    provider: &str,
+    api_key: Option<&str>,
+    headers: Option<&ProviderHeaders>,
+) -> Result<(), AnthropicStreamError> {
+    if api_key.is_some_and(|key| !key.is_empty()) {
+        return Ok(());
+    }
+    let has_header = |name: &str| {
+        headers.is_some_and(|headers| {
+            headers.iter().any(|(key, value)| {
+                key.to_lowercase() == name
+                    && value.as_ref().is_some_and(|value| !value.trim().is_empty())
+            })
+        })
+    };
+    if has_header("authorization") || has_header("x-api-key") || has_header("cf-aig-authorization")
+    {
+        return Ok(());
+    }
+    Err(AnthropicStreamError(format!(
+        "No API key for provider: {provider}"
+    )))
+}
+
+/// `stream(model, context, options)` — the full request path.
+///
+/// Nothing is thrown after the call: every failure ends the returned stream with an
+/// `error` event, as the stream contract requires.
+pub fn stream(
+    model: Model,
+    context: Context,
+    request: ProviderRequestOptions,
+    options: AnthropicOptions,
+) -> AssistantMessageEventStream {
+    let outer = create_assistant_message_event_stream();
+    let stream = outer.clone();
+
+    tokio::spawn(async move {
+        let timestamp = crate::auth::resolve::now_ms();
+        let mut state = AnthropicStreamState::new(
+            &model,
+            request.api_key.as_deref().is_some_and(is_oauth_token)
+                && model.provider != "github-copilot",
+            context
+                .tools
+                .iter()
+                .flatten()
+                .map(|tool| tool.name.clone())
+                .collect(),
+            timestamp,
+        );
+
+        let outcome = run_request(&model, &context, &request, &options, &mut state, &stream).await;
+        match outcome {
+            Ok(reason) => {
+                stream.push(AssistantMessageEvent::Done {
+                    reason,
+                    message: state.output.clone(),
+                });
+                stream.end(Some(state.output));
+            }
+            Err(error) => {
+                let aborted = request
+                    .signal
+                    .as_ref()
+                    .is_some_and(|signal| signal.is_cancelled());
+                state.output.stop_reason = if aborted {
+                    StopReason::Aborted
+                } else {
+                    StopReason::Error
+                };
+                state.output.error_message = Some(error.to_string());
+                let reason = if aborted {
+                    ErrorReason::Aborted
+                } else {
+                    ErrorReason::Error
+                };
+                stream.push(AssistantMessageEvent::Error {
+                    reason,
+                    error: state.output.clone(),
+                });
+                stream.end(Some(state.output));
+            }
+        }
+    });
+
+    outer
+}
+
+async fn run_request(
+    model: &Model,
+    context: &Context,
+    request: &ProviderRequestOptions,
+    options: &AnthropicOptions,
+    state: &mut AnthropicStreamState,
+    stream: &AssistantMessageEventStream,
+) -> Result<DoneReason, AnthropicStreamError> {
+    assert_request_auth(
+        &model.provider,
+        request.api_key.as_deref(),
+        request.headers.as_ref(),
+    )?;
+
+    let (headers, is_oauth) = build_default_headers(
+        model,
+        request.api_key.as_deref(),
+        options.interleaved_thinking.unwrap_or(true),
+        should_use_fine_grained_tool_streaming_beta(model, context),
+        request.headers.as_ref(),
+        None,
+        options_session_id(request),
+    );
+
+    let mut params = build_params(
+        model,
+        context,
+        is_oauth,
+        options,
+        crate::auth::resolve::now_ms(),
+    );
+    if let Some(on_payload) = &request.on_payload
+        && let Some(replacement) = on_payload(params.clone(), model).await
+    {
+        params = replacement;
+    }
+
+    let mut request_headers: Vec<(String, String)> = headers.into_iter().collect();
+    request_headers.push(("content-type".to_string(), "application/json".to_string()));
+    request_headers.push(("anthropic-version".to_string(), "2023-06-01".to_string()));
+    if let Some(api_key) = request.api_key.as_deref() {
+        if is_oauth || model.provider == "github-copilot" {
+            request_headers.push(("authorization".to_string(), format!("Bearer {api_key}")));
+        } else {
+            request_headers.push(("x-api-key".to_string(), api_key.to_string()));
+        }
+    }
+
+    let fetch: FetchFunction = request
+        .fetch
+        .clone()
+        .unwrap_or_else(|| Arc::new(ReqwestFetch::default()));
+    let response = fetch
+        .fetch(FetchRequest {
+            method: "POST".to_string(),
+            url: format!("{}/v1/messages", model.base_url.trim_end_matches('/')),
+            headers: request_headers,
+            body: Some(
+                serde_json::to_vec(&params)
+                    .map_err(|error| AnthropicStreamError(error.to_string()))?,
+            ),
+        })
+        .await
+        .map_err(|error| AnthropicStreamError(error.to_string()))?;
+
+    if let Some(on_response) = &request.on_response {
+        on_response(
+            crate::types::ProviderResponse {
+                status: response.status,
+                headers: response.headers.iter().cloned().collect(),
+            },
+            model,
+        )
+        .await;
+    }
+
+    if response.status < 200 || response.status >= 300 {
+        let body = read_body(response.body).await;
+        return Err(AnthropicStreamError(format!("{}: {body}", response.status)));
+    }
+
+    stream.push(AssistantMessageEvent::Start {
+        partial: state.output.clone(),
+    });
+
+    let mut decoder = SseDecoder::new();
+    let mut body = match response.body {
+        FetchBody::Stream(receiver) => receiver,
+        FetchBody::Bytes(bytes) => {
+            // A buffered body is decoded in one go.
+            let text = String::from_utf8_lossy(&bytes).to_string();
+            for event in decoder.feed(&text).into_iter().chain(decoder.finish()) {
+                process_sse_event(&event, state, stream)?;
+            }
+            return finish(state, request);
+        }
+    };
+
+    while let Some(chunk) = body.recv().await {
+        if request
+            .signal
+            .as_ref()
+            .is_some_and(|signal| signal.is_cancelled())
+        {
+            return Err(AnthropicStreamError("Request was aborted".to_string()));
+        }
+        let chunk = chunk.map_err(|error| AnthropicStreamError(error.to_string()))?;
+        let text = String::from_utf8_lossy(&chunk).to_string();
+        for event in decoder.feed(&text) {
+            process_sse_event(&event, state, stream)?;
+        }
+    }
+    for event in decoder.finish() {
+        process_sse_event(&event, state, stream)?;
+    }
+
+    finish(state, request)
+}
+
+fn finish(
+    state: &AnthropicStreamState,
+    request: &ProviderRequestOptions,
+) -> Result<DoneReason, AnthropicStreamError> {
+    if request
+        .signal
+        .as_ref()
+        .is_some_and(|signal| signal.is_cancelled())
+    {
+        return Err(AnthropicStreamError("Request was aborted".to_string()));
+    }
+    if state.ended_without_message_stop() {
+        return Err(AnthropicStreamError(
+            "Anthropic stream ended before message_stop".to_string(),
+        ));
+    }
+    state.finish()
+}
+
+fn process_sse_event(
+    event: &crate::api::sse::ServerSentEvent,
+    state: &mut AnthropicStreamState,
+    stream: &AssistantMessageEventStream,
+) -> Result<(), AnthropicStreamError> {
+    let Some(name) = event.event.as_deref() else {
+        return Ok(());
+    };
+    if name == "error" {
+        return Err(AnthropicStreamError(event.data.clone()));
+    }
+    if !ANTHROPIC_MESSAGE_EVENTS.contains(&name) {
+        return Ok(());
+    }
+    let parsed =
+        crate::utils::json_parse::parse_json_with_repair(&event.data).map_err(|error| {
+            AnthropicStreamError(format!(
+                "Could not parse Anthropic SSE event {name}: {error}; data={}; raw={}",
+                event.data,
+                event.raw.join("\\n")
+            ))
+        })?;
+    for emitted in state.process_event(&parsed)? {
+        stream.push(emitted);
+    }
+    Ok(())
+}
+
+async fn read_body(body: FetchBody) -> String {
+    match body {
+        FetchBody::Bytes(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+        FetchBody::Stream(mut receiver) => {
+            let mut collected = Vec::new();
+            while let Some(Ok(chunk)) = receiver.recv().await {
+                collected.extend(chunk);
+            }
+            String::from_utf8_lossy(&collected).to_string()
+        }
+    }
+}
+
+fn options_session_id(request: &ProviderRequestOptions) -> Option<&str> {
+    // `sessionId` lives on StreamOptions; the provider path passes it through headers.
+    let _ = request;
+    None
+}

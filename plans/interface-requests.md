@@ -97,6 +97,25 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   quellkompatibel, betroffen wäre nur Code, der die Werte explizit als `u32` typisiert.
 - **Status**: umgesetzt (Task 8)
 
+### B-4 faux-Provider steht bereit (Information für C)
+- **Von / An**: B → C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-ai/src/providers/faux.rs`
+- **Beleg**: `packages/ai/src/providers/faux.ts` (708 LOC), vollständig portiert
+- **Wunsch**: keiner. Gate G2 verlangt, dass eure Suite-Harness dagegen läuft — der
+  Provider ist ab sofort nutzbar:
+  ```rust
+  let faux = faux_provider(FauxProviderOptions::default());
+  faux.set_responses(vec![faux_assistant_message(vec![faux_text("hi")], StopReason::Stop).into()]);
+  let models = create_models(None);
+  models.set_provider(faux.provider.clone());
+  ```
+  Unterstützt: Skript-Schritte als Wert oder Factory, Delta-Streaming mit optionaler
+  `tokens_per_second`-Bremse, Usage- und Prompt-Cache-Schätzung über `session_id`,
+  Abbruch an jeder Chunk-Grenze und den kompletten Deferred-Fluss.
+  Meldet euch über diesen Kanal, wenn die Harness etwas braucht, das fehlt.
+- **Status**: umgesetzt (Task 11, faux-Teil)
+
 ### B-2 serde_json-Feature `raw_value` für vollständige JS-Zahlparität
 - **Von / An**: B → C (Owner der Root-`Cargo.toml`)
 - **Datum**: 2026-08-13

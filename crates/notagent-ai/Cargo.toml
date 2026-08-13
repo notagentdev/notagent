@@ -15,6 +15,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
+reqwest = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
