@@ -5,11 +5,13 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/session-backends/sqlite-n
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 4 läuft.** Fundament (Schema, Migrationen, SQL-Komposition, Datenbank-Adapter,
-Session-Typoberfläche), alle zehn Storage-Module, der Branch-Cache und die FTS5-Suche sind
-portiert; **offen** sind `repo.ts` (SqliteSessionRepository inkl. Writer-Lease-Heartbeat,
-SerialOperationQueue, Fork/Delete), die `Session`-Klasse aus dem agent-Paket und die neun
-Testsuiten (1 704 LOC).
+**Stand: Task 4 läuft.** Die gesamte `src/` des Pakets ist portiert (Schema, Migrationen,
+SQL-Komposition, Datenbank-Adapter, Session-Typoberfläche, alle zehn Storage-Module, Branch-Cache,
+FTS5-Suche und das Repository inklusive Writer-Lease mit Heartbeat, serialisierten Writes,
+Fork nach Branch/Tree und Delete). **Offen** sind die `Session`-Wrapper-Klasse aus dem agent-Paket
+(299 LOC) und der Rest der Testsuiten: `adapter.test.ts`, `branch-cache.test.ts`,
+`search.test.ts` (bis auf den Schema-Rauchtest), `conformance.test.ts` sowie die
+Randfälle von `repository.test.ts`/`writer-leases.test.ts`.
 
 ## Lektüre-Protokoll
 
@@ -50,12 +52,13 @@ Testsuiten (1 704 LOC).
 | src/sqlite/storage/branch-entries.ts | 174 | src/sqlite/storage/branch_entries.rs | portiert | — |
 | src/sqlite/branch-cache.ts | 101 | src/sqlite/branch_cache.rs | portiert | — |
 | src/sqlite/search-backend.ts | 188 | src/sqlite/search_backend.rs | portiert | Klasse 1: die agent-core-`FileSystem`-Abstraktion wird zu `std::fs`; `search()` liefert einen Vec statt eines AsyncIterable (die DB wird ohnehin am Ende geschlossen); `AbortSignal` → `CancellationToken` |
-| src/sqlite/repo.ts | 953 | — | teilweise gelesen | Task 4 |
+| src/sqlite/repo.ts | 953 | src/sqlite/repo.rs | portiert | Klasse 1: `SerialOperationQueue` wird zur fairen `tokio::sync::Mutex`; der Heartbeat ist ein abbrechbarer tokio-Task; die agent-core-`FileSystem`-Abstraktion wird zu `std::fs`; `create/open/fork` liefern `Arc<SqliteSessionStorage>` statt `Session`, solange der Wrapper fehlt |
 | (agent) src/harness/session/session.ts | 299 | — | offen | Task 4 (SessionRepo liefert `Session`) |
 | test/sql.test.ts | 39 | tests/sql.rs | verifiziert | — (2 Tests) |
 | test/migrations.test.ts | 61 | tests/migrations.rs | verifiziert | — (1 Test) |
 | test/search.test.ts (Teil: FTS-Schema) | 314 | tests/search_schema.rs | Tests portiert | nur der Schema-/Trigram-Rauchtest; die vollständige Suite braucht das Repository |
-| test/{adapter,branch-cache,branch-query,conformance,facts-query,log-query,repository,search,writer-leases}.test.ts | 1 704 | — | offen | Task 4 |
+| test/repository.test.ts (Kernfälle) + branch-query/facts-query/log-query/writer-leases | 918 | tests/repository.rs | Tests portiert | 8 Tests: create/list/open/fork (Branch und Tree), Entry-Roundtrip aller Typen, Lanes, Records mit offener Operation, Fakten und Log, Delete, Writer-Lease-Übernahme. Die Tests laufen gegen `SqliteSessionStorage`, weil der `Session`-Wrapper noch fehlt |
+| test/{adapter,branch-cache,conformance}.test.ts + Rest von search/repository | 786 | — | offen | Task 4 |
 
 ## Ausschlüsse
 
