@@ -39,3 +39,10 @@ second records the event sequence for scripted SSE bodies through a fake `fetch`
 
 `azure-openai-responses.mts` also records the URL and the headers the `AzureOpenAI`
 client sends, because both are built inside the SDK rather than by the adapter.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `openai-codex-responses.mts` | `openai-codex-responses.jsonl` | `node --experimental-strip-types openai-codex-responses.mts > ../openai-codex-responses.jsonl` |
+
+`openai-codex-responses.mts` forces `transport: "sse"`; the WebSocket transport needs a
+real socket and is covered by a local server in `tests/openai_codex_responses.rs`.
