@@ -1,4 +1,4 @@
-//! Port von `packages/protocol/src/framing.ts`.
+//! Port of `packages/protocol/src/framing.ts`.
 
 const FRAME_HEADER_LENGTH: usize = 4;
 const MAX_UINT32: u64 = 0xffff_ffff;
@@ -20,14 +20,14 @@ impl FrameDecoderOptions {
     }
 }
 
-/// TS kennt zwei Fehlerklassen: `FrameError` und den `RangeError` aus
-/// `resolveMaxFrameLength`. Beide sind hier Varianten eines Typs.
+/// TS has two error classes: `FrameError` and the `RangeError` thrown by
+/// `resolveMaxFrameLength`. Both are variants of one type here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FrameError {
-    /// Entspricht `class FrameError extends Error`.
+    /// Corresponds to `class FrameError extends Error`.
     #[error("{0}")]
     Frame(String),
-    /// Entspricht dem `RangeError` aus `resolveMaxFrameLength`.
+    /// Corresponds to the `RangeError` thrown by `resolveMaxFrameLength`.
     #[error("{0}")]
     Range(String),
 }
@@ -50,7 +50,7 @@ pub(crate) fn resolve_max_frame_length(
     let value = options
         .and_then(|options| options.max_frame_length)
         .unwrap_or(DEFAULT_MAX_FRAME_LENGTH);
-    // Nicht-Integer und negative Werte sind in Rust nicht darstellbar (u64).
+    // Non-integer and negative values cannot be represented in Rust (u64).
     if value > MAX_UINT32 {
         return Err(FrameError::Range(format!(
             "maxFrameLength must be an integer between 0 and {MAX_UINT32}"
@@ -178,8 +178,8 @@ impl FrameDecoder {
                 continue;
             };
             while chunk_offset < chunk.len() && self.payload_length < expected_payload_length {
-                // Blockgrenzen liegen auf Vielfachen von PAYLOAD_BLOCK_SIZE: es wird nie
-                // mehr Speicher vorab belegt, als bereits empfangen werden kann.
+                // Block boundaries sit on multiples of PAYLOAD_BLOCK_SIZE: never
+                // allocate more memory up front than can already be received.
                 let offset_in_block = self.payload_length % PAYLOAD_BLOCK_SIZE;
                 if offset_in_block == 0 {
                     let block_size =

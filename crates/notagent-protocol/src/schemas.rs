@@ -1,11 +1,11 @@
-//! Port von `packages/protocol/src/schemas.ts`.
+//! Port of `packages/protocol/src/schemas.ts`.
 //!
-//! Abweichung Klasse 3 (Tech-Substitution): TypeBox-Schemas werden zu
-//! serde-Typen. `additionalProperties: false` → `deny_unknown_fields`,
-//! `Type.Union` → `#[serde(untagged)]` (Varianten in TS-Reihenfolge),
-//! `Type.Literal` → generierte Tag-Typen, `minLength`/`minimum`/`minItems` →
-//! `deserialize_with`-Prüfungen. Optionale Felder lehnen explizites `null` ab,
-//! genau wie `Type.Optional` in TypeBox.
+//! Deviation class 3 (tech substitution): TypeBox schemas become serde types.
+//! `additionalProperties: false` → `deny_unknown_fields`, `Type.Union` →
+//! `#[serde(untagged)]` (variants in TS order), `Type.Literal` → generated tag
+//! types, `minLength`/`minimum`/`minItems` → `deserialize_with` checks.
+//! Optional fields reject an explicit `null`, exactly like `Type.Optional` in
+//! TypeBox.
 
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
@@ -15,7 +15,7 @@ pub const PROTOCOL_VERSION: u64 = 1;
 /// `JsonValue` aus schemas.ts (rekursives TypeBox-Schema).
 pub type JsonValue = serde_json::Value;
 
-// --- Literal-Tags (Type.Literal) --------------------------------------------
+// --- Literal tags (Type.Literal) --------------------------------------------
 
 macro_rules! literal_tag {
     ($(#[$meta:meta])* $name:ident, str $value:literal) => {
@@ -116,9 +116,9 @@ literal_tag!(
     u64 PROTOCOL_VERSION
 );
 
-// --- Constraint-Helfer -------------------------------------------------------
+// --- Constraint helpers ------------------------------------------------------
 
-/// `Type.String({ minLength: 1 })` (identisch mit `IdSchema`).
+/// `Type.String({ minLength: 1 })` (identical to `IdSchema`).
 fn de_non_empty_string<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
     let value = String::deserialize(deserializer)?;
     if value.is_empty() {
@@ -136,7 +136,7 @@ fn de_optional_non_empty_string<'de, D: Deserializer<'de>>(
     de_non_empty_string(deserializer).map(Some)
 }
 
-/// `Type.Optional(...)`: fehlendes Feld ist erlaubt, explizites `null` nicht.
+/// `Type.Optional(...)`: a missing field is allowed, an explicit `null` is not.
 fn de_optional<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,
 ) -> Result<Option<T>, D::Error> {
@@ -158,7 +158,7 @@ fn de_positive_integer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64
 /// `Type.Number({ minimum: 0 })`.
 fn de_non_negative_number<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
     let value = f64::deserialize(deserializer)?;
-    // `Type.Number({ minimum: 0 })`: NaN erfüllt `value >= minimum` nicht.
+    // `Type.Number({ minimum: 0 })`: NaN does not satisfy `value >= minimum`.
     if value < 0.0 || value.is_nan() {
         return Err(de::Error::invalid_value(
             de::Unexpected::Float(value),
@@ -182,7 +182,7 @@ fn de_non_empty_vec<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     Ok(value)
 }
 
-// --- Basistypen --------------------------------------------------------------
+// --- Base types --------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -268,7 +268,7 @@ pub struct ModelMetadata {
     pub authenticated: bool,
 }
 
-// --- Inhalte -----------------------------------------------------------------
+// --- Content -----------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -379,7 +379,7 @@ pub struct Usage {
     pub cost: UsageCost,
 }
 
-// --- Transkript --------------------------------------------------------------
+// --- Transcript --------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -765,7 +765,7 @@ pub struct ServerSnapshot {
     pub models: Vec<ModelMetadata>,
 }
 
-// --- Fehler ------------------------------------------------------------------
+// --- Errors ------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -792,7 +792,7 @@ pub struct ProtocolError {
     pub details: Option<JsonValue>,
 }
 
-// --- Kommandos ---------------------------------------------------------------
+// --- Commands ----------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -904,7 +904,7 @@ pub enum Command {
     SetThinking(SetThinkingCommand),
 }
 
-/// `Command["command"]` — der Name des Kommandos.
+/// `Command["command"]` — the command name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandName {
@@ -935,7 +935,7 @@ impl Command {
     }
 }
 
-// --- Ergebnisse --------------------------------------------------------------
+// --- Results -----------------------------------------------------------------
 
 macro_rules! session_result {
     ($name:ident, $tag:ident) => {
@@ -986,7 +986,7 @@ pub enum CommandResult {
 }
 
 impl CommandResult {
-    /// Entspricht `result.command` in `client.ts` (Antwort-Zuordnung).
+    /// Corresponds to `result.command` in `client.ts` (response correlation).
     pub fn command(&self) -> CommandName {
         match self {
             Self::List(_) => CommandName::List,
@@ -1002,7 +1002,7 @@ impl CommandResult {
     }
 }
 
-// --- Client-Nachrichten ------------------------------------------------------
+// --- Client messages ---------------------------------------------------------
 
 /// Must be the first frame sent by a client. Version is intentionally an
 /// integer, not a coercible string.
@@ -1031,7 +1031,7 @@ pub enum ClientMessage {
     Request(RequestEnvelope),
 }
 
-// --- Server-Nachrichten ------------------------------------------------------
+// --- Server messages ---------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

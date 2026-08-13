@@ -1,28 +1,28 @@
-//! Dynamischer CBOR-Wert.
+//! Dynamic CBOR value.
 //!
-//! Abweichung Klasse 1 (Sprachidiomatik): TS arbeitet mit `unknown` und den
-//! nativen JS-Typen (null, boolean, number, string, Uint8Array, Array, plain
-//! object). Rust braucht dafür einen expliziten Wertetyp. `Number` ist wie in
-//! JavaScript immer ein f64 — die Unterscheidung Integer/Float trifft der
-//! Encoder zur Laufzeit, exakt wie `Number.isInteger` in
+//! Deviation class 1 (language idiom): TS works with `unknown` and the native
+//! JS types (null, boolean, number, string, Uint8Array, Array, plain object).
+//! Rust needs an explicit value type for that. `Number` is always an f64 just
+//! like in JavaScript — the integer/float distinction is made by the encoder at
+//! runtime, exactly like `Number.isInteger` in
 //! `packages/protocol/src/cbor/encoder.ts`.
 
 use serde_json::Value as JsonValue;
 
-/// Größter in JavaScript sicher darstellbarer Integer (`Number.MAX_SAFE_INTEGER`).
+/// Largest integer JavaScript can represent safely (`Number.MAX_SAFE_INTEGER`).
 pub(crate) const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
-/// Port von `Number.isSafeInteger`.
+/// Port of `Number.isSafeInteger`.
 pub(crate) fn is_safe_integer(value: f64) -> bool {
     is_integer(value) && value.abs() <= MAX_SAFE_INTEGER
 }
 
-/// Port von `Number.isInteger`.
+/// Port of `Number.isInteger`.
 pub(crate) fn is_integer(value: f64) -> bool {
     value.is_finite() && value.fract() == 0.0
 }
 
-/// Port von `Object.is(value, -0)`.
+/// Port of `Object.is(value, -0)`.
 pub(crate) fn is_negative_zero(value: f64) -> bool {
     value == 0.0 && value.is_sign_negative()
 }
@@ -35,8 +35,8 @@ pub enum CborValue {
     Text(String),
     Bytes(Vec<u8>),
     Array(Vec<CborValue>),
-    /// Einfügereihenfolge bleibt erhalten (JS-Objekt-Semantik); doppelte
-    /// Schlüssel weist der Decoder ab.
+    /// Insertion order is preserved (JS object semantics); duplicate keys are
+    /// rejected by the decoder.
     Map(Vec<(String, CborValue)>),
 }
 
@@ -64,10 +64,10 @@ impl CborValue {
         }
     }
 
-    /// Port von `isProtocolValue` aus `codec.ts`: erlaubt sind ausschließlich
-    /// JSON-Werte. Byte-Strings (JS: `Uint8Array`) sind keine Protokollwerte.
-    /// Zyklen, `undefined` und Nicht-Plain-Objekte sind in `CborValue` nicht
-    /// darstellbar und können daher nicht auftreten.
+    /// Port of `isProtocolValue` from `codec.ts`: only JSON values are allowed.
+    /// Byte strings (JS: `Uint8Array`) are not protocol values. Cycles,
+    /// `undefined` and non-plain objects cannot be represented by `CborValue`
+    /// and therefore cannot occur.
     pub fn to_json_value(&self) -> Option<JsonValue> {
         match self {
             Self::Null => Some(JsonValue::Null),
@@ -92,7 +92,7 @@ impl CborValue {
         }
     }
 
-    /// Gegenrichtung für den Encode-Pfad.
+    /// Reverse direction, used by the encode path.
     pub fn from_json_value(value: &JsonValue) -> Self {
         match value {
             JsonValue::Null => Self::Null,
@@ -112,8 +112,8 @@ impl CborValue {
     }
 }
 
-/// JS kennt nur einen Zahlentyp. Ganzzahlige Werte werden als Integer
-/// abgebildet, damit `Type.Integer`-Schemas sie akzeptieren.
+/// JS has a single number type. Integral values are mapped to integers so that
+/// `Type.Integer` schemas accept them.
 fn number_to_json(value: f64) -> Option<JsonValue> {
     if is_integer(value) && !is_negative_zero(value) && value.abs() <= MAX_SAFE_INTEGER {
         if value >= 0.0 {

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-//! Port von `packages/client/test/support.ts`.
+//! Port of `packages/client/test/support.ts`.
 
 use std::sync::{Arc, Mutex};
 
@@ -64,7 +64,7 @@ impl MemoryByteServer {
         self.lock().message_listeners.push(listener);
     }
 
-    /// Antwortet automatisch auf den Client-Hello.
+    /// Answers the client hello automatically.
     pub fn answer_hello(&self, connection_id: &str, snapshot: ServerSnapshot) {
         let server = self.clone();
         let connection_id = connection_id.to_owned();
@@ -137,8 +137,8 @@ impl MemoryByteServer {
                 .map_err(|error| PiError::ProtocolValidation(error.message().to_owned()))?
         };
         for message in messages {
-            // Listener niemals unter gehaltenem Lock aufrufen: sie senden
-            // ihrerseits Server-Nachrichten.
+            // Never call listeners while holding the lock: they send server
+            // messages themselves.
             let listeners = self.lock().message_listeners.clone();
             for listener in listeners {
                 listener(&message);
@@ -155,8 +155,8 @@ struct MemoryTransport {
 
 impl ByteTransport for MemoryTransport {
     fn send(&self, chunk: Vec<u8>) -> BoxFuture<Result<(), PiError>> {
-        // Wie in TS läuft der Rumpf synchron: der Server sieht die Nachricht,
-        // bevor der Aufrufer das Versprechen abwartet.
+        // As in TS the body runs synchronously: the server sees the message
+        // before the caller awaits the promise.
         if *self.closed.lock().expect("closed mutex") {
             return Box::pin(async { Err(PiError::Other("Transport is closed".to_owned())) });
         }
@@ -215,7 +215,7 @@ pub async fn connect_client(server: &MemoryByteServer) -> PiClient {
     client
 }
 
-/// Port von `collectRequests`.
+/// Port of `collectRequests`.
 #[derive(Clone, Default)]
 pub struct RequestLog {
     requests: Arc<Mutex<Vec<RequestEnvelope>>>,
@@ -336,7 +336,7 @@ pub fn session_event(snapshot: SessionSnapshot) -> ServerMessage {
     })
 }
 
-/// Port von `attachSession`.
+/// Port of `attachSession`.
 pub async fn attach_session(
     client: &PiClient,
     server: &MemoryByteServer,

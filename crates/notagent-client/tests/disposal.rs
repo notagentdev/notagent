@@ -1,4 +1,4 @@
-//! Port von `packages/client/test/disposal.test.ts`.
+//! Port of `packages/client/test/disposal.test.ts`.
 
 mod support;
 
@@ -36,8 +36,8 @@ async fn disconnects_invalidates_child_handles_and_rejects_pending_requests() {
     let error = handle.prompt("after disposal").await.expect_err("rejects");
     assert_eq!(error.name(), "PiClientDisposedError");
     first_disposal.await.expect("disposes");
-    // TS prüft Promise-Identität (`toBe`); in Rust teilen sich beide dasselbe
-    // `Shared`-Versprechen und liefern dasselbe Ergebnis.
+    // TS checks promise identity (`toBe`); in Rust both share the same
+    // `Shared` promise and yield the same result.
     second_disposal.await.expect("disposes");
 }
 

@@ -1,4 +1,4 @@
-//! Port von `packages/client/test/state.test.ts`.
+//! Port of `packages/client/test/state.test.ts`.
 
 mod support;
 

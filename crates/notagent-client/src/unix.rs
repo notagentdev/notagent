@@ -1,4 +1,4 @@
-//! Port von `packages/client/src/unix.ts`.
+//! Port of `packages/client/src/unix.ts`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -142,8 +142,8 @@ impl ByteTransport for UnixByteTransport {
         let pending_bytes = Arc::clone(&self.pending_bytes);
         let closed = Arc::clone(&self.closed);
         Box::pin(async move {
-            // Die faire tokio-Mutex serialisiert die Schreibvorgänge in
-            // Aufrufreihenfolge (TS: `writeTail`-Promise-Kette).
+            // The fair tokio mutex serializes writes in call order (TS: the
+            // `writeTail` promise chain).
             let result = {
                 let mut writer = writer.lock().await;
                 if closed.load(Ordering::SeqCst) {

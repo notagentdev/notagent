@@ -1,3 +1,3 @@
-//! SQLite-Session-Backend (SessionRepo/SessionStorage).
+//! SQLite session backend (SessionRepo/SessionStorage).
 //!
-//! 1:1-Port von `packages/session-backends/sqlite-node` (siehe crates/notagent-session-sqlite/PARITY.md).
+//! 1:1 port of `packages/session-backends/sqlite-node` (see crates/notagent-session-sqlite/PARITY.md).

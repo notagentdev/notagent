@@ -1,4 +1,4 @@
-//! Port von `packages/protocol/test/cbor/cbor.test.ts`.
+//! Port of `packages/protocol/test/cbor/cbor.test.ts`.
 
 use notagent_protocol::{
     CborOptions, CborValue, DEFAULT_MAX_CBOR_BYTE_LENGTH, DEFAULT_MAX_CBOR_CONTAINER_LENGTH,
@@ -97,7 +97,7 @@ fn encodes_and_decodes_rfc_8949_vectors() {
         assert_eq!(to_hex(&encode(&value)), wire, "vector {index} encodes");
         let decoded = decode_cbor(&from_hex(wire), None).expect("decodes");
         assert_eq!(decoded, value, "vector {index} decodes");
-        // `Object.is(decoded, -0)` — das Vorzeichen der Null bleibt erhalten.
+        // `Object.is(decoded, -0)` — the sign of zero is preserved.
         if let (CborValue::Number(decoded), CborValue::Number(expected)) = (&decoded, &value) {
             assert_eq!(
                 decoded.is_sign_negative(),
@@ -108,9 +108,9 @@ fn encodes_and_decodes_rfc_8949_vectors() {
     }
 }
 
-// Der TS-Fall „omits undefined object properties without omitting falsey values"
-// hat in Rust keine Entsprechung (kein `undefined`); das Weglassen optionaler
-// Felder deckt `tests/protocol.rs` auf der Codec-Ebene ab.
+// The TS case "omits undefined object properties without omitting falsey values"
+// has no Rust equivalent (there is no `undefined`); omitting optional fields is
+// covered by `tests/protocol.rs` at the codec level.
 
 #[test]
 fn preserves_a_leading_unicode_bom_and_treats_proto_as_data() {
@@ -124,8 +124,8 @@ fn preserves_a_leading_unicode_bom_and_treats_proto_as_data() {
 
 #[test]
 fn rejects_unsupported_encoder_values() {
-    // Nicht darstellbar in Rust: undefined, Array-Löcher, bigint, symbol,
-    // function, Date, Map, Symbol-Keys (Abweichung Klasse 1).
+    // Not representable in Rust: undefined, array holes, bigint, symbol,
+    // function, Date, Map, symbol keys (deviation class 1).
     for (label, value) in [
         ("NaN", CborValue::Number(f64::NAN)),
         ("positive infinity", CborValue::Number(f64::INFINITY)),
@@ -145,7 +145,7 @@ fn rejects_unsupported_encoder_values() {
 
 #[test]
 fn rejects_excessive_encoder_depth() {
-    // Verlustbehaftete Strings und Zyklen sind in Rust nicht darstellbar.
+    // Lossy strings and cycles cannot be represented in Rust.
     let mut too_deep = CborValue::Null;
     for _ in 0..=DEFAULT_MAX_CBOR_DEPTH {
         too_deep = CborValue::Array(vec![too_deep]);

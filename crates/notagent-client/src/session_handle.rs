@@ -1,4 +1,4 @@
-//! Port von `packages/client/src/session-handle.ts`.
+//! Port of `packages/client/src/session-handle.ts`.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -43,9 +43,9 @@ pub(crate) struct SessionHandleCallbacks {
 
 /// `SessionLease` / `PiSessionHandle`.
 ///
-/// Abweichung Klasse 1: `subscribe`/`onEvent` geben `Result` zurück statt zu
-/// werfen; `AsyncDisposable` entfällt (Rust kennt kein `Symbol.asyncDispose`),
-/// `dispose()` ist der explizite Ersatz.
+/// Deviation class 1: `subscribe`/`onEvent` return `Result` instead of
+/// throwing; `AsyncDisposable` is dropped (Rust has no `Symbol.asyncDispose`),
+/// `dispose()` is the explicit replacement.
 #[derive(Clone)]
 pub struct SessionHandle {
     id: String,

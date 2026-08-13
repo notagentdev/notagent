@@ -1,4 +1,4 @@
-//! Port von `packages/protocol/src/cbor/decoder.ts`.
+//! Port of `packages/protocol/src/cbor/decoder.ts`.
 
 use std::collections::HashSet;
 

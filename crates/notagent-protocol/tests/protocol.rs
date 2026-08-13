@@ -1,4 +1,4 @@
-//! Port von `packages/protocol/test/protocol.test.ts`.
+//! Port of `packages/protocol/test/protocol.test.ts`.
 
 use notagent_protocol::{
     CborValue, ClientHello, ClientMessage, ClientMessageDecoder, Command, FrameDecoder,
@@ -62,7 +62,7 @@ fn uses_protocol_version_1() {
     assert_eq!(PROTOCOL_VERSION, 1);
     assert!(is_supported_protocol_version(1));
     assert!(!is_supported_protocol_version(2));
-    // `isSupportedProtocolVersion(2.5)` ist mit u64 nicht darstellbar.
+    // `isSupportedProtocolVersion(2.5)` is not representable with u64.
 }
 
 #[test]
@@ -357,8 +357,8 @@ fn rejects_inconsistent_tool_items() {
     }
 }
 
-// `rejects cyclic protocol values` entfällt: Zyklen sind in `CborValue` nicht
-// darstellbar (Abweichung Klasse 1).
+// `rejects cyclic protocol values` is dropped: cycles cannot be represented by
+// `CborValue` (deviation class 1).
 
 #[test]
 fn validation_errors_do_not_retain_rejected_payloads() {
@@ -409,8 +409,8 @@ fn enforces_an_outbound_frame_limit_before_returning_encoded_bytes() {
 
 #[test]
 fn validates_messages_before_encoding() {
-    // `version: PROTOCOL_VERSION + 0.5` ist in Rust nicht darstellbar; die
-    // äquivalente Constraint-Verletzung ist eine leere ID (`minLength: 1`).
+    // `version: PROTOCOL_VERSION + 0.5` is not representable in Rust; the
+    // equivalent constraint violation is an empty id (`minLength: 1`).
     let message = ClientMessage::Request(RequestEnvelope {
         kind: RequestTag,
         id: String::new(),

@@ -1,4 +1,4 @@
-//! Port von `packages/protocol/src/cbor/encoder.ts`.
+//! Port of `packages/protocol/src/cbor/encoder.ts`.
 
 use super::options::{
     CborError, CborOptions, MAX_UINT32, ResolvedCborOptions, UINT32_BASE, resolve_options,
@@ -103,9 +103,9 @@ fn encode_text(
             options.max_byte_length
         )));
     }
-    // Die Prüfung `textDecoder.decode(bytes) !== value` (verlustbehaftete
-    // Strings mit einsamen Surrogaten) entfällt: Rust-`String` ist per
-    // Konstruktion gültiges UTF-8. Abweichung Klasse 1.
+    // The `textDecoder.decode(bytes) !== value` check (lossy strings with lone
+    // surrogates) is dropped: a Rust `String` is valid UTF-8 by construction.
+    // Deviation class 1.
     write_argument(writer, 3, bytes.len() as u64)?;
     writer.write_bytes(bytes)
 }
@@ -158,7 +158,7 @@ fn encode_value(
             writer.write_bytes(value)
         }
         CborValue::Array(items) => {
-            // Zyklen sind in `CborValue` nicht darstellbar (Abweichung Klasse 1).
+            // Cycles cannot be represented by `CborValue` (deviation class 1).
             if items.len() as u64 > options.max_container_length {
                 return Err(CborError::cbor(format!(
                     "CBOR array length exceeds configured limit of {}",

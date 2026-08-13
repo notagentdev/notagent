@@ -1,3 +1,3 @@
-//! Binary-Entry (Port von `packages/coding-agent/src/cli.ts` -> `src/main.ts`).
+//! Binary entry point (port of `packages/coding-agent/src/cli.ts` -> `src/main.ts`).
 
 fn main() {}

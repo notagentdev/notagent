@@ -1,4 +1,4 @@
-//! Port von `packages/client/test/sessions.test.ts`.
+//! Port of `packages/client/test/sessions.test.ts`.
 
 mod support;
 
@@ -21,7 +21,7 @@ fn exclusive() -> AcquireSessionOptions {
     }
 }
 
-/// Antwortet automatisch auf attach/detach.
+/// Answers attach/detach automatically.
 fn auto_respond(server: &MemoryByteServer, log: Option<Arc<Mutex<Vec<String>>>>) {
     let responder = server.clone();
     server.on_message(Arc::new(move |message: &ClientMessage| {

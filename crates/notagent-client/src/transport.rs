@@ -1,4 +1,4 @@
-//! Port von `packages/client/src/transport.ts`.
+//! Port of `packages/client/src/transport.ts`.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -19,7 +19,7 @@ pub type DataHandler = Arc<dyn Fn(&[u8]) + Send + Sync>;
 pub type CloseHandler = Arc<dyn Fn() + Send + Sync>;
 pub type ErrorHandler = Arc<dyn Fn(PiError) + Send + Sync>;
 
-/// Delivers inbound bytes und die beiden terminalen Ereignisse.
+/// Delivers inbound bytes and the two terminal events.
 #[derive(Clone)]
 pub struct ByteTransportHandlers {
     on_data: DataHandler,

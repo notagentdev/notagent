@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Transport-neutraler Protokoll-Client mit Lease-System."
+description = "Transport-neutral protocol client with a lease system."
 
 [dependencies]
 notagent-protocol = { workspace = true }

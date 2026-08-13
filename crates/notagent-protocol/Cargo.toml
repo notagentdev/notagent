@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "CBOR-Binaerprotokoll fuer Remote-Sessions (Version 1)."
+description = "CBOR binary protocol for remote sessions (version 1)."
 
 [dependencies]
 serde = { workspace = true }

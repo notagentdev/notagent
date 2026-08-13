@@ -44,8 +44,9 @@ bytes = "1"
 # --- Serialisierung ---
 # preserve_order: JSON-Objekte behalten ihre Einfügereihenfolge wie in
 # JavaScript (nötig für byte-identische Tool-Schemas und Settings-Rewrites).
+# raw_value: JS-kompatible Zahlformatierung (Interface-Request B-2).
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
 
 # --- Netzwerk ---
 reqwest = { version = "0.12", default-features = false, features = [

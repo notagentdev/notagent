@@ -1,4 +1,4 @@
-//! Port von `packages/client/src/client.ts`.
+//! Port of `packages/client/src/client.ts`.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -43,8 +43,8 @@ struct PendingRequest {
     resolver: Arc<Resolver<CommandResult>>,
 }
 
-/// Gemeinsamer, versionierter Eintrag für in-flight Operationen
-/// (TS vergleicht die Promise-Identität, Rust die laufende Nummer).
+/// Shared, versioned entry for in-flight operations (TS compares promise
+/// identity, Rust compares the sequence number).
 struct Tracked {
     id: u64,
     promise: SharedPromise<()>,
@@ -76,8 +76,8 @@ pub(crate) struct ClientInner {
     data: Mutex<ClientData>,
 }
 
-/// Abweichung Klasse 1: `Clone` teilt denselben Client (Arc), damit Listener
-/// und Tasks den Client wie eine JS-Objektreferenz weiterreichen können.
+/// Deviation class 1: `Clone` shares the same client (Arc) so listeners and
+/// tasks can pass the client around like a JS object reference.
 #[derive(Clone)]
 pub struct PiClient {
     inner: Arc<ClientInner>,
@@ -99,7 +99,7 @@ impl PiClient {
             max_frame_length,
             on_listener_error,
         } = options;
-        // Vorab prüfen, damit `Arc::new_cyclic` nicht fehlschlagen kann.
+        // Validate up front so that `Arc::new_cyclic` cannot fail.
         Connection::new(
             Arc::clone(&transport_factory),
             max_frame_length,
@@ -268,8 +268,8 @@ impl PiClient {
     ) -> impl Future<Output = Result<SessionHandle, PiError>> + Send + use<> {
         let inner = Arc::clone(&self.inner);
         let session_id = session_id.to_owned();
-        // Synchroner Vorlauf wie in TS: `acquireSession` reserviert das Lease und
-        // schickt den Attach-Request noch vor dem ersten `await`.
+        // Synchronous prologue as in TS: `acquireSession` reserves the lease and
+        // sends the attach request before the first `await`.
         let started = inner.begin_acquire_session(&session_id, options.mode);
         async move {
             let step = match started {
@@ -340,7 +340,7 @@ impl ClientInner {
         data.tracked_sequence
     }
 
-    /// Port von `#request`: sendet sofort und liefert das Versprechen.
+    /// Port of `#request`: sends immediately and returns the promise.
     fn request(self: &Arc<Self>, command: Command) -> SharedPromise<CommandResult> {
         if self.lock().disposed {
             return rejected(PiError::Disposed);
@@ -572,7 +572,7 @@ impl ClientInner {
         Ok(self.create_session_lease(session_id.to_owned(), token))
     }
 
-    /// Port von `#attachSession` inklusive Dedup über `#sessionAttachments`.
+    /// Port of `#attachSession` including dedup via `#sessionAttachments`.
     fn start_attachment(self: &Arc<Self>, session_id: &str) -> (SharedPromise<()>, u64) {
         if let Some(tracked) = self.lock().session_attachments.get(session_id) {
             return (tracked.promise.clone(), tracked.id);
@@ -616,7 +616,7 @@ impl ClientInner {
         }
     }
 
-    /// Port von `#reconcileSessionCleanup`.
+    /// Port of `#reconcileSessionCleanup`.
     fn reconcile_session_cleanup(self: &Arc<Self>, session_id: &str) -> SharedPromise<()> {
         if let Some(tracked) = self.lock().session_reconciliations.get(session_id) {
             return tracked.promise.clone();

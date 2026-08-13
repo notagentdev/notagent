@@ -1,4 +1,4 @@
-//! Port von `packages/protocol/src/codec.ts`.
+//! Port of `packages/protocol/src/codec.ts`.
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -17,8 +17,8 @@ pub struct ProtocolValidationError {
 }
 
 impl ProtocolValidationError {
-    /// Der zweite TS-Parameter (`_value`) wird bewusst nicht gespeichert:
-    /// Fehler dürfen abgelehnte Payloads nicht festhalten.
+    /// The second TS parameter (`_value`) is deliberately not stored: errors
+    /// must not retain rejected payloads.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -30,11 +30,11 @@ impl ProtocolValidationError {
     }
 }
 
-/// Port von `isProtocolValue` + `Check(Schema, value)`.
+/// Port of `isProtocolValue` + `Check(Schema, value)`.
 ///
-/// `isProtocolValue` lässt ausschließlich JSON-Werte zu. Byte-Strings sind
-/// keine Protokollwerte; Zyklen, `undefined` und Nicht-Plain-Objekte sind in
-/// `CborValue` nicht darstellbar.
+/// `isProtocolValue` only allows JSON values. Byte strings are not protocol
+/// values; cycles, `undefined` and non-plain objects cannot be represented by
+/// `CborValue`.
 fn parse_protocol_message<T: DeserializeOwned>(
     value: &CborValue,
     kind: &str,
@@ -265,8 +265,8 @@ pub fn create_server_message_decoder(
     ServerMessageDecoder::new(options)
 }
 
-/// TS prüft zusätzlich `Number.isInteger(version)`; in Rust ist `version`
-/// bereits ganzzahlig (Abweichung Klasse 1).
+/// TS additionally checks `Number.isInteger(version)`; in Rust `version` is
+/// already an integer (deviation class 1).
 pub fn is_supported_protocol_version(version: u64) -> bool {
     version == PROTOCOL_VERSION
 }

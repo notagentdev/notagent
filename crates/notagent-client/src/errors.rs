@@ -1,8 +1,7 @@
-//! Port von `packages/client/src/errors.ts`.
+//! Port of `packages/client/src/errors.ts`.
 //!
-//! Abweichung Klasse 1: die fünf TS-Fehlerklassen werden zu Varianten eines
-//! Enums. `name` und `message` bleiben wortgleich, damit Konsumenten dieselben
-//! Texte sehen.
+//! Deviation class 1: the five TS error classes become variants of one enum.
+//! `name` and `message` stay verbatim so consumers see the same texts.
 
 use notagent_protocol::{JsonValue, ProtocolError, ProtocolErrorCode};
 
@@ -27,10 +26,10 @@ pub enum PiError {
     /// `PiSessionDetachedError`
     #[error("Session {session_id} is not attached")]
     SessionDetached { session_id: String },
-    /// `ProtocolValidationError` aus `@notagent/protocol`
+    /// `ProtocolValidationError` from `@notagent/protocol`
     #[error("{0}")]
     ProtocolValidation(String),
-    /// Fehler des Byte-Transports oder eines Listeners (TS: generischer `Error`).
+    /// Byte transport or listener failure (TS: generic `Error`).
     #[error("{0}")]
     Other(String),
 }
@@ -78,7 +77,7 @@ impl PiError {
     }
 }
 
-/// Port von `toDisconnectedError`.
+/// Port of `toDisconnectedError`.
 pub(crate) fn to_disconnected_error(error: PiError) -> PiError {
     match error {
         PiError::Disconnected(_) => error,

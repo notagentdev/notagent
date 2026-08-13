@@ -1,4 +1,4 @@
-//! Port von `packages/client/src/types.ts`.
+//! Port of `packages/client/src/types.ts`.
 
 use std::sync::Arc;
 

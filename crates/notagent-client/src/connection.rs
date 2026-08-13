@@ -1,4 +1,4 @@
-//! Port von `packages/client/src/connection.ts`.
+//! Port of `packages/client/src/connection.ts`.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, Weak};
@@ -72,8 +72,8 @@ impl Lifecycle {
 
 struct Inner {
     lifecycle: Lifecycle,
-    /// Ersetzt den Objektidentitäts-Vergleich `this.#lifecycle !== connected`
-    /// der TS-Vorlage (Abweichung Klasse 1).
+    /// Replaces the object identity comparison `this.#lifecycle !== connected`
+    /// of the TS original (deviation class 1).
     epoch: u64,
     sequence: u64,
 }
@@ -194,7 +194,7 @@ impl Connection {
             )
         };
         let connection = Arc::clone(self);
-        // TS: `void this.#openTransport(id, handlers)` — Fire-and-forget.
+        // TS: `void this.#openTransport(id, handlers)` — fire and forget.
         tokio::spawn(async move {
             connection.open_transport(id, handlers).await;
         });

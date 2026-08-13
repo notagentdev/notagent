@@ -1,4 +1,4 @@
-//! Port von `packages/protocol/src/cbor/index.ts`.
+//! Port of `packages/protocol/src/cbor/index.ts`.
 
 mod decoder;
 mod encoder;
