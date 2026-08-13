@@ -9,9 +9,9 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 SQL-Komposition, Datenbank-Adapter, Session-Typoberfläche, alle zehn Storage-Module, Branch-Cache,
 FTS5-Suche und das Repository inklusive Writer-Lease mit Heartbeat, serialisierten Writes,
 Fork nach Branch/Tree und Delete) — ebenso die `Session`-Wrapper-Klasse aus dem agent-Paket.
-**Offen** ist nur noch der Rest der Testsuiten: `adapter.test.ts`, `conformance.test.ts`,
-`search.test.ts` (bis auf den Schema-Rauchtest) sowie Randfälle von
-`repository.test.ts`/`writer-leases.test.ts`.
+**Offen** sind nur noch `adapter.test.ts` (Fehlerpfade des Datenbank-Adapters) und
+`conformance.test.ts`, das die Backend-Konformanzsuite aus dem agent-Paket erzeugt
+(`agent-core/session/testing`, 1 016 LOC) — diese Suite ist selbst noch nicht portiert.
 
 ## Lektüre-Protokoll
 
@@ -60,7 +60,10 @@ Fork nach Branch/Tree und Delete) — ebenso die `Session`-Wrapper-Klasse aus de
 | test/repository.test.ts (Kernfälle) + branch-query/facts-query/log-query/writer-leases | 918 | tests/repository.rs | Tests portiert | 8 Tests: create/list/open/fork (Branch und Tree), Entry-Roundtrip aller Typen, Lanes, Records mit offener Operation, Fakten und Log, Delete, Writer-Lease-Übernahme. Die Tests laufen gegen `SqliteSessionStorage`, weil der `Session`-Wrapper noch fehlt |
 | (agent) session.ts-Validierungsfälle | — | tests/session.rs | verifiziert | 3 Tests: generierte IDs, Query-Validierung (limit/cursor/operationKind), Lane-Auflösung |
 | test/branch-cache.test.ts | 220 | tests/branch_cache.rs | verifiziert | 7 Tests. Der TS-Fall „reads only the compacted branch window" prüft ein kaputtes Payload; er ist über „preserves nested compaction boundaries" mit abgedeckt |
-| test/{adapter,conformance}.test.ts + Rest von search/repository | 566 | — | offen | Task 4 |
+| test/search.test.ts | 314 | tests/search.rs | verifiziert | 9 Tests: Trigram-Treffer, gelöschter Name, Quoting, Rebuild beim ersten Init, Entry-Type-Filter, Limits, Trigger beim Löschen |
+| test/writer-leases.test.ts | 217 | tests/writer_leases.rs | verifiziert | 7 Tests. Der Heartbeat-Test nutzt kurze reale Intervalle statt Fake-Timern (Abweichung Klasse 1) |
+| test/adapter.test.ts | 35 | — | offen | Task 4 |
+| test/conformance.test.ts (+ agent-core/session/testing) | 51 + 1 016 | — | offen | Task 4 |
 
 ## Ausschlüsse
 
