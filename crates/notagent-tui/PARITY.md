@@ -36,6 +36,11 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | Task 4 |
 | 2026-08-13 | `src/terminal.ts` (vollständig) | 559 | Task 4 |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
+| `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
+| `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
+| `test/tui-overlay-style-leak.test.ts` | 81 | `tests/tui_overlay_style_leak.rs` (2 Fälle) | verifiziert |
+| `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
 | `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
 | `test/terminal.test.ts` | 300 | Task 4 |
 | 2026-08-13 | `src/tui.ts` (vollständig) | 1257 | Task 5 |
@@ -45,11 +50,21 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/terminal-colors.ts` | 73 | Task 5 (vorgezogen aus Task 12) |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | Task 5 |
 | 2026-08-13 | `src/tui-main-screen.ts` | 586 | Task 6 |
-| 2026-08-13 | `test/tui-render.test.ts` | 832 | Task 6 |
+| 2026-08-13 | `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
+| `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
+| `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
+| `test/tui-overlay-style-leak.test.ts` | 81 | `tests/tui_overlay_style_leak.rs` (2 Fälle) | verifiziert |
+| `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
+| `test/tui-render.test.ts` | 832 | Task 6 |
 | 2026-08-13 | `src/terminal-image.ts` (Capability-/Bildzeilen-Teil) | 657 | Task 5/6 |
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
+| `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
+| `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
+| `test/tui-overlay-style-leak.test.ts` | 81 | `tests/tui_overlay_style_leak.rs` (2 Fälle) | verifiziert |
+| `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
 | `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
 | `test/terminal.test.ts` | 300 | `tests/terminal.rs` (17 Fälle) | verifiziert |
 | `test/keys.test.ts` | 633 | Task 3 |
@@ -88,6 +103,11 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/stdin_buffer_oracle.rs` + `tests/fixtures/stdin-buffer-oracle.json` | Differenztest gegen die TS-Implementierung: 1276 Chunk-Zerlegungen von 38 Eingabeströmen (Ereignisfolge und Restpuffer) — alle identisch |
 | `test/terminal-colors.test.ts` | 252 | `tests/terminal_colors.rs` (9 Fälle) | verifiziert |
+| `test/overlay-options.test.ts` | 541 | `tests/overlay_options.rs` (24 Fälle) | verifiziert |
+| `test/overlay-short-content.test.ts` | 62 | `tests/overlay_short_content.rs` (1 Fall) | verifiziert |
+| `test/tui-shrink.test.ts` | 45 | `tests/tui_shrink.rs` (1 Fall) | verifiziert |
+| `test/tui-overlay-style-leak.test.ts` | 81 | `tests/tui_overlay_style_leak.rs` (2 Fälle) | verifiziert |
+| `test/tui-cell-size-input.test.ts` | 82 | `tests/tui_cell_size_input.rs` (2 Fälle) | verifiziert |
 | `test/tui-render.test.ts` | 832 | `tests/tui_render.rs` (17 von 24 Fällen) | verifiziert; die sieben Kitty-Bild-Fälle brauchen `encodeKitty` und die `Image`-Komponente → Tasks 9/12 |
 | `test/terminal.test.ts` | 300 | `tests/terminal.rs` (17 Fälle) | verifiziert |
 | `test/keys.test.ts` | 633 | `tests/keys.rs` (57 Fälle) | verifiziert |

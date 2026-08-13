@@ -269,19 +269,19 @@ pub enum OverlayAnchor {
 /// Margin from the terminal edges.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct OverlayMargin {
-    /// Top margin.
-    pub top: usize,
-    /// Right margin.
-    pub right: usize,
-    /// Bottom margin.
-    pub bottom: usize,
-    /// Left margin.
-    pub left: usize,
+    /// Top margin (negative values are clamped to zero).
+    pub top: i64,
+    /// Right margin (negative values are clamped to zero).
+    pub right: i64,
+    /// Bottom margin (negative values are clamped to zero).
+    pub bottom: i64,
+    /// Left margin (negative values are clamped to zero).
+    pub left: i64,
 }
 
 impl OverlayMargin {
     /// Same margin on all sides (TS: `margin: number`).
-    pub fn all(value: usize) -> Self {
+    pub fn all(value: i64) -> Self {
         Self {
             top: value,
             right: value,
@@ -1508,8 +1508,12 @@ impl TuiCore {
         let options = entry.options.as_ref();
 
         let margin = options.and_then(|o| o.margin).unwrap_or_default();
-        let (margin_top, margin_right, margin_bottom, margin_left) =
-            (margin.top, margin.right, margin.bottom, margin.left);
+        let (margin_top, margin_right, margin_bottom, margin_left) = (
+            margin.top.max(0) as usize,
+            margin.right.max(0) as usize,
+            margin.bottom.max(0) as usize,
+            margin.left.max(0) as usize,
+        );
 
         let avail_width = term_width.saturating_sub(margin_left + margin_right).max(1);
         let avail_height = term_height

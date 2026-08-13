@@ -163,6 +163,19 @@ impl VirtualTerminal {
         out
     }
 
+    /// Ob die Zelle kursiv gesetzt ist (TS-Tests lesen `cell.isItalic()`).
+    pub fn get_cell_italic(&self, row: usize, col: usize) -> bool {
+        let state = self.0.borrow();
+        state
+            .parser
+            .screen()
+            .cell(
+                u16::try_from(row).expect("row fits u16"),
+                u16::try_from(col).expect("col fits u16"),
+            )
+            .is_some_and(vt100::Cell::italic)
+    }
+
     /// Cursorposition als `(x, y)` — Spalte und Zeile im Viewport.
     pub fn get_cursor_position(&self) -> (usize, usize) {
         let state = self.0.borrow();
