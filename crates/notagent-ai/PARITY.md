@@ -132,6 +132,23 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/ai/src/auth/helpers.ts` (lazyOAuth) + `auth/oauth/load.ts` | 59 + 71 | 11 |
 | 2026-08-13 | `packages/ai/src/cli.ts` | 119 | 11 |
 | 2026-08-13 | `packages/ai/test/providers.test.ts` | 629 | 11 |
+| 2026-08-13 | `packages/ai/test/xiaomi-models.test.ts` | 17 | 13 |
+| 2026-08-13 | `packages/ai/test/openrouter-cache-control-models.test.ts` | 15 | 13 |
+| 2026-08-13 | `packages/ai/test/together-models.test.ts` | 86 | 13 |
+| 2026-08-13 | `packages/ai/test/bedrock-models.test.ts` | 70 | 13 |
+| 2026-08-13 | `packages/ai/test/baseten-models.test.ts` | 141 | 13 |
+| 2026-08-13 | `packages/ai/test/qwen-token-plan-models.test.ts` | 283 | 13 |
+| 2026-08-13 | `packages/ai/test/fireworks-models.test.ts` | 343 | 13 |
+| 2026-08-13 | `packages/ai/test/model-catalog-types.test.ts` | 15 | 13 |
+| 2026-08-13 | `packages/ai/test/model-data-validation.test.ts` | 177 | 13 |
+| 2026-08-13 | `packages/ai/test/reasoning-options.test.ts` | 36 | 13 |
+| 2026-08-13 | `packages/ai/test/anthropic-adaptive-thinking-models.test.ts` | 40 | 13 |
+| 2026-08-13 | `packages/ai/test/anthropic-temperature-compat.test.ts` | 103 | 13 |
+| 2026-08-13 | `packages/ai/test/anthropic-force-adaptive-thinking.test.ts` | 123 | 13 |
+| 2026-08-13 | `packages/ai/test/anthropic-empty-thinking-signature-compat.test.ts` | 108 | 13 |
+| 2026-08-13 | `packages/ai/test/anthropic-eager-tool-input-compat.test.ts` | 166 | 13 |
+| 2026-08-13 | `packages/ai/test/anthropic-cache-write-1h-cost.test.ts` | 86 | 13 |
+| 2026-08-13 | `packages/ai/test/anthropic-auth-token.test.ts` | 187 | 13 |
 | 2026-08-13 | `packages/ai/test/cloudflare-stream.test.ts` | 64 | 11 |
 | 2026-08-13 | `packages/ai/src/api/openai-completions.ts` (Struktur + Compat-Matrix) | 1577 (Compat 134 vollständig) | 9 (laufend) |
 | 2026-08-13 | `packages/ai/test/anthropic-sse-parsing.test.ts` | 424 | 8 (laufend) |
@@ -176,6 +193,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/providers/all.ts` | 155 | `providers/all.rs` | verifiziert (Task 11) | Klasse 1: die katalogseitigen Exporte (`getBuiltinModel(s)`, `getBuiltinProviders`, `getBuiltinModelDataGeneratedAt`) liegen bei den Daten in `model_catalog.rs` und werden hier re-exportiert; `builtinImagesProviders`/`builtinImagesModels` liegen bei `images_models.rs` neben `createImagesProvider` |
 | `src/providers/openrouter-images.ts` | 22 | `images_models.rs` (`openrouter_images_provider`) | verifiziert (Task 10) | Klasse 1: neben `create_images_provider` abgelegt statt in einer eigenen Datei |
 | `src/api/*.lazy.ts` (11 Wrapper) | 216 | `api/streams.rs` | verifiziert (Task 11) | Klasse 4: die Wrapper existieren, damit ein Bundler das dynamisch importierte Modul aus Browser-Builds schneiden kann; Rust linkt statisch, also bleibt je Wrapper eine Unit-Struct, die in ihr Modul weiterleitet. `setBedrockProviderModule`/`registerBundledOAuthFlowLoaders` (Bun-Binary-Registrierung) entfallen aus demselben Grund |
+| `test/xiaomi-models.test.ts`, `openrouter-cache-control-models.test.ts`, `together-models.test.ts`, `baseten-models.test.ts`, `qwen-token-plan-models.test.ts`, `fireworks-models.test.ts`, offline-Teil von `bedrock-models.test.ts` | 955 | `tests/model_data.rs` | portiert (Task 13) | Klasse 1: die TS-Suites lesen über das ausgeschlossene `compat.ts` (`getModel`/`getModels`) — der Port liest dieselben Daten über `model_catalog`. Klasse 1: Payload-Zusicherungen erfassen den serialisierten Request-Body über ein injiziertes `fetch` statt über `onPayload` + geworfenen Fehler (dasselbe Objekt). Die key-gated Bedrock-Modellläufe (`BEDROCK_EXTENSIVE_MODEL_TEST`) sind wie in TS nicht Teil des Standardlaufs |
+| `test/anthropic-adaptive-thinking-models.test.ts`, `anthropic-temperature-compat.test.ts`, `anthropic-force-adaptive-thinking.test.ts`, `anthropic-empty-thinking-signature-compat.test.ts`, `anthropic-eager-tool-input-compat.test.ts`, `anthropic-cache-write-1h-cost.test.ts`, `anthropic-auth-token.test.ts` | 813 | `tests/anthropic_compat.rs` | portiert (Task 13) | Klasse 1: statt lokalem HTTP-Server bzw. SDK-Konstruktor-Mock beobachtet ein injiziertes `fetch` denselben Request (Header und Body). Dabei aufgedeckt und behoben: `sessionId` erreichte die Anthropic-Optionen nicht, wodurch der `x-session-affinity`-Header fehlte |
 | `src/cli.ts` | 119 | `src/bin/notagent-ai.rs` | verifiziert (Task 11) | Klasse 4: der npm-Bin (`dist/cli.js`) wird ein Cargo-Bin-Target; die Usage-Zeile nennt entsprechend `notagent-ai` statt `npx @notagent/ai`. Klasse 1: `readline` wird ein gepufferter Stdin-Reader; die Ausgaben von `list`/`help` sind zeichengleich mit dem TS-Original (verglichen) |
 | `src/providers/faux.ts` | 708 | `providers/faux.rs` | verifiziert (Task 11) | Klasse 1: Skript-Schritte als Enum (`Message`/`Factory`) statt einer TS-Union aus Wert und Funktion; Zustand hinter `Arc<Mutex<..>>`. Klasse 1: `structuredClone` der Submission-Options entfällt — beim Auflösen eines Deferred-Handles zählt nur der Kontext, wie in TS nach dem Entfernen von `deferred`/`signal`/`onResponse` |
 | `src/models.ts` | 944 | `models.rs` | portiert (Task 4) | Klasse 1: `Provider`/`Models` werden Traits bzw. eine Struktur; `provider.refreshModels !== undefined` ist zur Laufzeit nicht prüfbar und wird zu `Provider::is_dynamic()`. Klasse 1: Publikationsketten und Refresh-Controller nutzen async-Mutex und `CancellationToken` statt Promise-Ketten und `AbortController`. Klasse 1: `getAuth` ist in `get_auth_for_provider`/`get_auth_for_model` geteilt (kein Overloading). `login` persistiert außerhalb des Abbruchpfads, damit ein Abbruch während des Schreibens die Credential nicht verliert |
@@ -248,3 +267,5 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/providers/data-json.d.ts` | reine Typdeklaration für JSON-Importe; ohne Laufzeitanteil |
 | `src/providers/*.models.ts` (39 Dateien, je 8 LOC) | generierte Leser des `data/`-Snapshots (`flattenModelCatalog`); die Factories lesen dieselben Daten über `model_catalog::get_builtin_models` |
 | `scripts/generate-models.ts` | WS-B-Plan Task 5: der JSON-Snapshot ist die Quelle; Aktualisierung bleibt im TS-Repo |
+| `scripts/model-data.ts` + `test/model-data-validation.test.ts` (177), `scripts/models-dev-reasoning-options.ts` + `test/reasoning-options.test.ts` (36), `test/generate-models-strict.test.ts` (85) | Generator-Werkzeuge und ihre Tests: sie prüfen die Erzeugung des Snapshots im TS-Repo, nicht das Laufzeitverhalten |
+| `test/model-catalog-types.test.ts` (15) | `expectTypeOf`-Zusicherungen über die generierten Literaltypen; die eine Laufzeitzusicherung (Copilot `grok-4.5` → `openai-responses`) deckt `tests/model_catalog.rs` über den Snapshot ab |

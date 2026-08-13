@@ -526,6 +526,9 @@ pub struct AnthropicOptions {
     pub max_tokens: Option<u64>,
     pub temperature: Option<f64>,
     pub cache_retention: Option<CacheRetention>,
+    /// `StreamOptions.sessionId` — providers with `sendSessionAffinityHeaders` pin the
+    /// prompt cache to it.
+    pub session_id: Option<String>,
     pub metadata: Option<Map<String, Value>>,
     pub env: Option<ProviderEnv>,
 }

@@ -678,7 +678,7 @@ async fn run_request(
         should_use_fine_grained_tool_streaming_beta(model, context),
         request.headers.as_ref(),
         None,
-        options_session_id(request),
+        cache_session_id(options),
     );
 
     let mut params = build_params(
@@ -870,10 +870,16 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-fn options_session_id(request: &ProviderRequestOptions) -> Option<&str> {
-    // `sessionId` lives on StreamOptions; the provider path passes it through headers.
-    let _ = request;
-    None
+/// `const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId`
+fn cache_session_id(options: &AnthropicOptions) -> Option<&str> {
+    let retention = crate::api::anthropic_params::resolve_cache_retention(
+        options.cache_retention,
+        options.env.as_ref(),
+    );
+    if retention == crate::types::CacheRetention::None {
+        return None;
+    }
+    options.session_id.as_deref().filter(|id| !id.is_empty())
 }
 
 /// `streamSimple(model, context, options)` — maps a reasoning level onto the Anthropic
@@ -914,6 +920,7 @@ pub fn stream_simple(
         max_tokens: base.max_tokens,
         temperature: base.temperature,
         cache_retention: base.cache_retention,
+        session_id: base.session_id.clone(),
         metadata: base.metadata.clone(),
         env: base.base.env.clone(),
         ..Default::default()

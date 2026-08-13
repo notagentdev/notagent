@@ -37,6 +37,7 @@ impl ProviderStreams for AnthropicMessagesApi {
                 max_tokens: options.max_tokens,
                 temperature: options.temperature,
                 cache_retention: options.cache_retention,
+                session_id: options.session_id.clone(),
                 metadata: options.metadata.clone(),
                 env: options.base.env.clone(),
                 ..Default::default()
