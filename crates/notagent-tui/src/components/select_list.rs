@@ -68,6 +68,9 @@ pub struct SelectListTruncatePrimaryContext<'a> {
     pub is_selected: bool,
 }
 
+/// Custom truncation of the primary column.
+pub type TruncatePrimaryFn = Rc<dyn Fn(SelectListTruncatePrimaryContext) -> String>;
+
 /// Layout options of a [`SelectList`].
 #[derive(Default)]
 pub struct SelectListLayoutOptions {
@@ -76,7 +79,7 @@ pub struct SelectListLayoutOptions {
     /// Upper bound of the primary column.
     pub max_primary_column_width: Option<usize>,
     /// Custom truncation of the primary column.
-    pub truncate_primary: Option<Rc<dyn Fn(SelectListTruncatePrimaryContext) -> String>>,
+    pub truncate_primary: Option<TruncatePrimaryFn>,
 }
 
 /// Callback invoked on selection events.
