@@ -175,6 +175,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/markdown.test.ts` | 1667 | `tests/markdown.rs` | Task 11 |
 | `test/latex.test.ts` | 496 | `tests/latex.rs` + `tests/latex_cases.rs` | Task 11 |
 | `test/terminal-image.test.ts` | 632 | `tests/terminal_image.rs` | Task 12 |
+| 2026-08-13 | `packages/tui/test/test-themes.ts` | 38 | Task 14 (Selbstaudit) |
+| 2026-08-13 | `packages/tui/test/chat-simple.ts` | 130 | Task 14 (Selbstaudit) |
+| 2026-08-13 | `packages/tui/test/key-tester.ts` | 124 | Task 14 (Selbstaudit) |
+| 2026-08-13 | `packages/tui/test/image-test.ts` | 57 | Task 14 (Selbstaudit) |
+| 2026-08-13 | `packages/tui/test/viewport-overwrite-repro.ts` | 108 | Task 14 (Selbstaudit) |
+| 2026-08-13 | `packages/tui/test/render-churn-bench.ts` | 203 | Task 14 (Selbstaudit) |
+| 2026-08-13 | `packages/tui/native/darwin/build.sh` | 62 | Task 14 (Selbstaudit) |
+| 2026-08-13 | `packages/tui/native/win32/build.mjs` | 229 | Task 14 (Selbstaudit) |
 
 ## Ledger
 
@@ -269,6 +277,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/markdown.test.ts` | 1667 | `tests/markdown.rs` (4 Fälle über 2920 Render-Vergleiche) + `tests/markdown_oracle.rs` (73 Token-Vergleiche) | Klasse 1 (Testinfrastruktur): statt der 79 Substring-Assertions vergleicht der Port die vollständige Ausgabe der TS-Komponente (`tools/gen-markdown-render-oracle.mjs`) über dieselben Quellen × Breiten × Paddings × Optionen × Hyperlink-Fähigkeit — strenger als die Vorlage; die nicht-render-basierten Fälle (Transform-Caching, OSC-8) sind direkt portiert |
 | `test/terminal-image.test.ts` | 632 | `tests/terminal_image.rs` (26 Fälle) | alle TS-Fälle portiert; die `detectCapabilities`-Fälle sind zu einem Fall zusammengefasst, weil sie prozessglobale Umgebungsvariablen setzen und über einen Lock serialisiert laufen |
 | `test/bug-regression-isimageline-startswith-bug.test.ts` | 237 | `tests/regression_is_image_line_starts_with.rs` (11 Fälle) | vollständig portiert |
+| `test/test-themes.ts` | 38 | je Suite eigene Theme-Konstruktoren (`tests/select_list.rs::test_theme`, `tests/markdown.rs::default_markdown_theme`, `tests/editor*.rs`) | verifiziert — Klasse 1: TS teilt ein Modul mit `chalk`-Instanzen; in Rust baut jede Suite ihr Theme selbst, weil die Stilfunktionen dort Closures sind |
 
 ## Werkzeuge
 
@@ -302,7 +311,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 11 Markdown + LaTeX | fertig (eigener marked-Lexer, gegen den echten Tokenstrom verifiziert; Renderer gegen die TS-Ausgabe verifiziert) |
 | 12 Terminal-Bilder | fertig (Modul und Testsuite portiert) |
 | 13 Autocomplete/Fuzzy/Keybindings/native | fertig (autocomplete vorgezogen, weil Task 10 den Provider braucht) |
-| 14 Öffentliche API + Ledger-Abschluss | fertig: `lib.rs` deckungsgleich mit `index.ts`, Ledger-Selbstaudit abgeschlossen (39 src-Dateien, 30 Testdateien, 8 Werkzeuge) |
+| 14 Öffentliche API + Ledger-Abschluss | fertig: `lib.rs` deckungsgleich mit `index.ts`. Ledger-Selbstaudit vor G2 nachgezogen: 39 src-Dateien, 39 Testdateien (30 portierte Suiten, 1 verteilt portiert, 5 manuelle Skripte und 1 Benchmark als Ausschluss), 4 native-Quellen (2 portiert, 2 Build-Skripte als Ausschluss) |
 | 15 App-TUI-Schicht (ab G2) | offen |
 
 ## Verification Criteria
@@ -314,13 +323,18 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | Byte-Level-Tests belegen identische Sequenz-Klammerung | erfüllt (`tests/tui_render.rs`, `tests/tui_alt_screen*.rs` prüfen Synchronized Output, Erase-Muster, Cursorbewegungen) |
 | Überbreiten-Guard schreibt Crash-Log und bricht ab | erfüllt (`src/tui_main_screen.rs`, Test in `tests/tui_render.rs`) |
 | Manueller Smoke auf zwei realen Emulatoren (Kitty-Protokoll + Legacy) | **offen — nur manuell ausführbar**: `cargo run -p notagent-tui --example input-smoke` in je einem Emulator mit und ohne Kitty-Protokoll starten; das Beispiel gibt Rohbytes, geparste Taste und den Verhandlungszustand aus und aktiviert Maus-Reporting sowie Bracketed Paste |
-| PARITY.md enthält alle 39 src-Dateien, alle Testdateien und die native/-Quellen | erfüllt (Selbstaudit Task 14) |
+| PARITY.md enthält alle 39 src-Dateien, alle Testdateien und die native/-Quellen | erfüllt (Selbstaudit vor G2: die acht zuvor fehlenden Einträge — sechs manuelle Skripte, `test-themes.ts` und die beiden native-Build-Skripte — sind nachgetragen; ein Abgleich gegen `find src test native` findet keine Lücke mehr) |
 
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |
 |---|---|
-| | |
+| `test/chat-simple.ts` (130) | Interaktive Demo-App, kein Testfall — sie zeigt Main-Screen, Editor und Autocomplete zusammen; das Verhalten deckt `tests/tui_render.rs`, `tests/editor.rs` und `tests/autocomplete.rs` ab |
+| `test/key-tester.ts` (124) | Manueller Tasten-Inspektor; ersetzt durch `examples/input-smoke.rs`, das zusätzlich den Verhandlungszustand und die Rohbytes zeigt (Verification Criterion „manueller Smoke") |
+| `test/image-test.ts` (57) | Manuelle Bild-Demo gegen ein echtes Terminal; die Capability-Erkennung und die Platzierung prüfen `tests/terminal_image.rs` und `tests/tui_alt_screen_images.rs` |
+| `test/viewport-overwrite-repro.ts` (108) | Manuelles Repro (braucht tmux mit 8–12 Zeilen) für das Überschreiben des Viewports nach einer Tool-Pause; das Szenario ist als Testfall portiert (`tests/tui_render.rs::full_re_renders_when_deleted_lines_move_the_viewport_upward` und `::appends_after_a_shrink_without_another_full_redraw_once_the_viewport_is_reset`) |
+| `test/render-churn-bench.ts` (203) | Allokations- und Laufzeit-Benchmark über den V8-Sampling-Heap-Profiler (`node:inspector`); misst JS-Churn, kein Verhalten. Klasse 4: kein Rust-Pendant, da die gemessene Größe nicht existiert |
+| `native/darwin/build.sh` (62), `native/win32/build.mjs` (229) | Build-Skripte, die die `.node`-Addons für die Prebuilds übersetzen. Klasse 4 (Distributionsmechanik): der Rust-Port übersetzt denselben C-Code über `build.rs` bzw. ruft die Plattform-API direkt auf; die Addon-Verpackung entfällt |
 
 ## Entscheidungen
 

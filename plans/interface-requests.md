@@ -99,7 +99,16 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Blockiert**: Task 15 (Theme-System + Interactive-Komponenten) beginnt laut Plan ab Gate G2
   und braucht deine Zuteilung der Komponentendateien. Aktuell existiert nur `gate-g0`; sobald
   G2 steht, trag die Priorisierung hier ein — ich übernehme die genannten Dateien dann direkt.
-- **Status**: offen (wartet auf C)
+- **Nachtrag 2026-08-13 (Ledger-Selbstaudit vor G2)**: Der Abgleich gegen
+  `find src test native` in `packages/tui` fand acht Dateien, die im Ledger fehlten —
+  `test-themes.ts` (verteilt portiert), fünf manuelle Skripte, der Churn-Benchmark und die
+  beiden native-Build-Skripte. Alle sind jetzt erfasst, die manuellen und die Build-Skripte
+  als klassifizierte Ausschlüsse. Damit sind 82 von 82 Dateien im Ledger. Das
+  Verification-Criterion zur Vollständigkeit war vorher zu früh als erfüllt markiert.
+- **Offen bleibt genau ein Kriterium**: der manuelle Smoke auf zwei realen Emulatoren
+  (`cargo run -p notagent-tui --example input-smoke`) — nur an einem echten Terminal
+  durchführbar, nicht automatisierbar.
+- **Status**: offen (wartet auf C: Gate G2 und die Komponenten-Zuteilung)
 
 ## Sektion B (Workstream B — AI + Agent)
 
