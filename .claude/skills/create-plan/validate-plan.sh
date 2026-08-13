@@ -132,8 +132,11 @@ section_names=(
     "Alternative Approaches section"
 )
 
+# Note: grep must consume its whole input here (no -q): with `set -o pipefail`,
+# an early-exiting grep SIGPIPEs the upstream writer on large plans and the
+# pipeline falsely reports failure.
 for i in "${!required_sections[@]}"; do
-    if echo "$CONTENT" | grep -qE "${required_sections[$i]}"; then
+    if echo "$CONTENT" | grep -E "${required_sections[$i]}" >/dev/null; then
         success "${section_names[$i]} present"
     else
         error "Missing required section: ${section_names[$i]}"
@@ -141,26 +144,26 @@ for i in "${!required_sections[@]}"; do
 done
 
 # 4. Check for markdown checkboxes in Implementation Plan
-if echo "$CONTENT" | sed -n '/^## Implementation Plan$/,/^## /p' | grep -qE '^\- \[ \]'; then
+if echo "$CONTENT" | sed -n '/^## Implementation Plan$/,/^## /p' | grep -E '^\- \[ \]' >/dev/null; then
     success "Implementation Plan uses checkbox format"
 else
     error "Implementation Plan must use checkbox format: - [ ] Task description"
 fi
 
 # 5. Check for numbered lists in Implementation Plan (should not exist)
-if echo "$CONTENT" | sed -n '/^## Implementation Plan$/,/^## /p' | grep -qE '^[0-9]+\.'; then
+if echo "$CONTENT" | sed -n '/^## Implementation Plan$/,/^## /p' | grep -E '^[0-9]+\.' >/dev/null; then
     error "Implementation Plan should NOT use numbered lists (1., 2., 3.). Use checkboxes instead: - [ ]"
 fi
 
 # 6. Check for plain bullet points in Implementation Plan (should not exist)
 IMPL_SECTION=$(echo "$CONTENT" | sed -n '/^## Implementation Plan$/,/^## /p')
-if echo "$IMPL_SECTION" | grep -E '^\- [^\[]' | grep -qv '^\- \[ \]'; then
+if echo "$IMPL_SECTION" | grep -E '^\- [^\[]' | grep -v '^\- \[ \]' >/dev/null; then
     error "Implementation Plan should NOT use plain bullet points (-). Use checkboxes instead: - [ ]"
 fi
 
 # 7. Check for code blocks (should not exist)
 CODE_FENCE='```'
-if echo "$CONTENT" | grep -q "$CODE_FENCE"; then
+if echo "$CONTENT" | grep "$CODE_FENCE" >/dev/null; then
     error "Plan contains code blocks. Plans should NEVER include code, only natural language descriptions"
 else
     success "No code blocks found"
@@ -197,8 +200,8 @@ fi
 
 # 12. Check that risks have mitigations
 RISKS_SECTION=$(echo "$CONTENT" | sed -n '/^## Potential Risks and Mitigations$/,/^## /p')
-if echo "$RISKS_SECTION" | grep -qE '^[0-9]+\.|^\*\*'; then
-    if echo "$RISKS_SECTION" | grep -qi "mitigation"; then
+if echo "$RISKS_SECTION" | grep -E '^[0-9]+\.|^\*\*' >/dev/null; then
+    if echo "$RISKS_SECTION" | grep -i "mitigation" >/dev/null; then
         success "Risks section includes mitigations"
     else
         warning "Risks section should include mitigation strategies"
