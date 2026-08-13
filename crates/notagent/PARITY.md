@@ -84,6 +84,12 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/test/assistant-message.test.ts | 241 | A-Task 15 (Batch 2) |
 | 2026-08-13 | packages/coding-agent/test/custom-message.test.ts | 44 | A-Task 15 (Batch 2) |
 | 2026-08-13 | packages/coding-agent/test/bash-execution-width.test.ts | 80 | A-Task 15 (Batch 2) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/extension-selector.ts | 112 | A-Task 15 (Batch 3) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/thinking-selector.ts | 75 | A-Task 15 (Batch 3) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/theme-selector.ts | 67 | A-Task 15 (Batch 3) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/show-images-selector.ts | 50 | A-Task 15 (Batch 3) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/user-message-selector.ts | 155 | A-Task 15 (Batch 3) |
+| 2026-08-13 | packages/coding-agent/src/modes/interactive/components/ (Importköpfe der übrigen 12 Selektoren) | — | A-Task 15 (Batch 3, Abhängigkeitsprüfung) |
 
 ## Ledger
 
@@ -183,6 +189,24 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | — (neu) | — | tests/diff_words_oracle.rs | verifiziert | 900 Fälle (30 × 30 Zeilenpaare): der Wortdiff stimmt zeichengenau mit jsdiff 8.0.4 überein. Generator `tools/gen-diff-words-oracle.mjs` |
 | — (neu) | — | tests/render_diff_oracle.rs | verifiziert | 20 Diff-Texte byteweise gegen die TS-Komponente (dark, truecolor, `FORCE_COLOR=1`). Generator `tools/gen-render-diff-oracle.mjs` |
 | — (neu) | — | tests/summary_messages.rs | verifiziert | 3 Tests für die beiden Summary-Komponenten (Collapse/Expand, Tausendertrennung, Bold-Label), die die TS-Suite nicht abdeckt |
+| src/modes/interactive/components/extension-selector.ts | 112 | src/modes/interactive/components/list_selector.rs | verifiziert | Klasse 2: umbenannt zu `ListSelectorComponent` (Interface-Request C-5) — die Komponente ist ein generischer Listen-Selektor, den vier Kern-Stellen benutzen; das Wort „extension" verschwindet mit dem Extension-System. Klasse 1: der `tui`-Parameter der Optionen entfällt, weil der Countdown gepollt wird (`countdown_deadline()`/`tick_countdown()`) |
+| src/modes/interactive/components/thinking-selector.ts | 75 | src/modes/interactive/components/thinking_selector.rs | verifiziert | Klasse 1: `Record<ThinkingLevel, string>` → `match`; Vererbung von `Container` → Komposition |
+| src/modes/interactive/components/theme-selector.ts | 67 | src/modes/interactive/components/theme_selector.rs | verifiziert | Klasse 1: Vererbung → Komposition |
+| src/modes/interactive/components/show-images-selector.ts | 50 | src/modes/interactive/components/show_images_selector.rs | verifiziert | Klasse 1: Vererbung → Komposition |
+| src/modes/interactive/components/user-message-selector.ts | 155 | src/modes/interactive/components/user_message_selector.rs | verifiziert | Klasse 1: Vererbung → Komposition; das `setTimeout(onCancel, 100)` für die leere Liste wird zu `is_empty()`, das der Aufrufer abfragt (Timer rufen nie zurück) |
+| src/modes/interactive/components/approval-selector.ts | 84 | — | offen | braucht `core/permissions/request.ts` (Workstream C, nativ nachzubauen) — A-9 |
+| src/modes/interactive/components/trust-selector.ts | 134 | — | offen | braucht `core/trust-manager.ts` (Workstream C) — A-9 |
+| src/modes/interactive/components/first-time-setup.ts | 145 | — | offen | portierbar, in dieser Sitzung nicht mehr erreicht — A-9 |
+| src/modes/interactive/components/session-selector-search.ts | 194 | — | offen | portierbar, in dieser Sitzung nicht mehr erreicht — A-9 |
+| src/modes/interactive/components/tree-selector.ts | 1 437 | — | offen | portierbar (`SessionTreeNode` liegt auf main), in dieser Sitzung nicht mehr erreicht — A-9 |
+| src/modes/interactive/components/oauth-selector.ts | 206 | — | offen | portierbar (`ApiKeyAuth`/`AuthCheck`/`OAuthAuth` liegen auf main), in dieser Sitzung nicht mehr erreicht — A-9 |
+| src/modes/interactive/components/session-selector.ts | 1 031 | — | offen | braucht `core/keybindings.ts` — A-7 |
+| src/modes/interactive/components/model-selector.ts | 364 | — | offen | braucht `core/model-runtime.ts` und `modes/interactive/model-search.ts` — A-9 |
+| src/modes/interactive/components/scoped-models-selector.ts | 403 | — | offen | braucht `modes/interactive/model-search.ts` — A-9 |
+| src/modes/interactive/components/settings-selector.ts | 881 | — | offen | braucht `core/http-dispatcher.ts` — A-9 |
+| src/modes/interactive/components/config-selector.ts | 942 | — | offen | braucht `core/package-manager.ts` (Workstream C, Task 14) — A-9 |
+| src/modes/interactive/components/login-dialog.ts | 233 | — | offen | braucht `utils/open-browser.ts` — A-9 |
+| — (neu) | — | tests/selectors.rs | verifiziert | 8 Tests für die fünf portierten Selektoren (Cursor, Wrap-Around, Timeout-Countdown, Vorauswahl, Preview-Callback, leere Liste), die die TS-Suite nicht abdeckt |
 
 ## Ausschlüsse
 

@@ -15,9 +15,14 @@ pub mod custom_message;
 pub mod diff;
 pub mod dynamic_border;
 pub mod keybinding_hints;
+pub mod list_selector;
 pub mod markdown_transform;
+pub mod show_images_selector;
 pub mod status_indicator;
+pub mod theme_selector;
+pub mod thinking_selector;
 pub mod user_message;
+pub mod user_message_selector;
 pub mod visual_truncate;
 
 /// `Number.prototype.toLocaleString()` for the token counts the message

@@ -253,6 +253,33 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: offen (wartet auf C)
 
 
+### A-9 Batch 3 angefangen — Zuschnitt der restlichen Selektoren
+- **Von / An**: A → C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/`
+- **Geliefert**: `list_selector` (der umbenannte `extension-selector`, wie in C-5 vorgeschlagen),
+  `thinking_selector`, `theme_selector`, `show_images_selector`, `user_message_selector` —
+  mit 8 Tests.
+- **Sofort portierbar, aber in dieser Sitzung nicht mehr erreicht** (alle Abhängigkeiten
+  liegen auf main): `tree-selector.ts` (1 437), `oauth-selector.ts` (206),
+  `session-selector-search.ts` (194), `first-time-setup.ts` (145). Das ist der nächste Block,
+  den ich nehme.
+- **Blockiert, geordnet nach dem, was mir am meisten aufschließt**:
+  | Komponente | LOC | fehlende Abhängigkeit |
+  |---|---|---|
+  | `settings-selector.ts` | 881 | `core/http-dispatcher.ts` (`formatHttpIdleTimeoutMs`, `HTTP_IDLE_TIMEOUT_CHOICES`) |
+  | `session-selector.ts` | 1 031 | `core/keybindings.ts` (siehe A-7) |
+  | `config-selector.ts` | 942 | `core/package-manager.ts` (`PathMetadata`, `ResolvedPaths`, `ResolvedResource`, `PackageSource`) |
+  | `scoped-models-selector.ts` | 403 | `modes/interactive/model-search.ts` |
+  | `model-selector.ts` | 364 | `core/model-runtime.ts` + `model-search.ts` |
+  | `login-dialog.ts` | 233 | `utils/open-browser.ts` |
+  | `trust-selector.ts` | 134 | `core/trust-manager.ts` |
+  | `approval-selector.ts` | 84 | `core/permissions/request.ts` (nativer Nachbau) |
+  `modes/interactive/model-search.ts` schließt allein 767 LOC auf — falls du dort einen
+  günstigen Einstieg suchst.
+- **Status**: offen
+
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)
