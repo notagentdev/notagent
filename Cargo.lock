@@ -1980,6 +1980,7 @@ dependencies = [
  "notagent-protocol",
  "notagent-tui",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "similar",
