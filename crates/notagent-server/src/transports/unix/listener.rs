@@ -273,6 +273,15 @@ pub struct UnixByteConnection {
 }
 
 impl UnixByteConnection {
+    /// Exported only for transport-level verification (TS: `@internal`).
+    pub fn from_stream(
+        stream: UnixStream,
+        graceful_close_timeout_ms: u64,
+        max_pending_bytes: u64,
+    ) -> Self {
+        Self::new(stream, graceful_close_timeout_ms, max_pending_bytes)
+    }
+
     fn new(stream: UnixStream, graceful_close_timeout_ms: u64, max_pending_bytes: u64) -> Self {
         let (reader, writer) = stream.into_split();
         Self {

@@ -29,15 +29,20 @@ impl ServerSnapshotPublisher {
         *self.revision.lock().expect("revision mutex")
     }
 
+    /// TS builds the snapshot as an object literal: `revision: this.revision` is
+    /// evaluated *before* the awaited `listSessions()`/`listModels()` calls, so a
+    /// concurrent broadcast during those awaits cannot change it. Callers
+    /// therefore capture the revision first and pass it in.
     pub(crate) fn build(
         &self,
+        revision: u64,
         sessions: Vec<SessionMetadata>,
         models: Vec<ModelMetadata>,
     ) -> ServerSnapshot {
         ServerSnapshot {
             server_id: self.server_id.clone(),
             protocol_version: ProtocolVersionTag,
-            revision: self.current_revision(),
+            revision,
             sessions,
             models,
         }

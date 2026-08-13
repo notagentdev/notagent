@@ -10,6 +10,7 @@ pub mod protocol;
 pub mod server;
 mod sessions;
 mod snapshots;
+pub mod testing;
 pub mod transports;
 pub mod types;
 

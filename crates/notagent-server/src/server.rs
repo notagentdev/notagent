@@ -40,6 +40,7 @@ pub(crate) struct PiServerInner {
     snapshots: ServerSnapshotPublisher,
     closing: AtomicBool,
     started: AtomicBool,
+    starting: AtomicBool,
 }
 
 pub struct PiServer {
@@ -67,6 +68,7 @@ impl PiServer {
             snapshots: ServerSnapshotPublisher::new(id),
             closing: AtomicBool::new(false),
             started: AtomicBool::new(false),
+            starting: AtomicBool::new(false),
         });
         Ok(Self { inner })
     }
@@ -87,6 +89,12 @@ impl PiServer {
         self.inner.start().await
     }
 
+    /// Accepts an already established byte connection. Transports call this
+    /// through the acceptor; tests call it directly.
+    pub fn accept(&self, connection: Arc<dyn ByteConnection>) -> Arc<dyn ByteConnectionHandler> {
+        self.inner.accept(connection)
+    }
+
     pub async fn close(&self) -> Result<(), ServerError> {
         self.inner.close().await
     }
@@ -101,9 +109,13 @@ impl PiServerInner {
         if self.started.load(Ordering::SeqCst) {
             return Err(ServerError::other("PiServer is already started"));
         }
+        if self.starting.load(Ordering::SeqCst) {
+            return Err(ServerError::other("PiServer is already starting"));
+        }
         if self.is_closing() {
             return Err(ServerError::other("PiServer is closing or closed"));
         }
+        self.starting.store(true, Ordering::SeqCst);
         let mut started: Vec<SharedListener> = Vec::new();
         for listener in &self.listeners {
             let server = Arc::clone(self);
@@ -117,11 +129,13 @@ impl PiServerInner {
                         let _ = listener.close().await;
                     }
                     self.close_server_state().await;
+                    self.starting.store(false, Ordering::SeqCst);
                     return Err(error);
                 }
             }
         }
         self.started.store(true, Ordering::SeqCst);
+        self.starting.store(false, Ordering::SeqCst);
         Ok(())
     }
 
@@ -549,9 +563,10 @@ impl PiServerInner {
     }
 
     async fn server_snapshot(self: &Arc<Self>) -> Result<ServerSnapshot, ServerError> {
+        let revision = self.snapshots.current_revision();
         let sessions = self.sessions.list_metadata().await?;
         let models = self.service.list_models().await?;
-        Ok(self.snapshots.build(sessions, models))
+        Ok(self.snapshots.build(revision, sessions, models))
     }
 
     pub(crate) fn broadcast_server_snapshot(self: &Arc<Self>) {
@@ -574,10 +589,7 @@ impl PiServerInner {
         let revision = self.snapshots.next_revision();
         let models = self.service.list_models().await?;
         let sessions = self.sessions.list_metadata().await?;
-        let snapshot = ServerSnapshot {
-            revision,
-            ..self.snapshots.build(sessions, models)
-        };
+        let snapshot = self.snapshots.build(revision, sessions, models);
         let envelope = ServerSnapshotPublisher::envelope(snapshot);
         for connection in ready {
             self.send_event(&connection, envelope.clone()).await;
