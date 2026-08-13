@@ -103,6 +103,15 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/ai/src/api/cloudflare.ts` | 15 | 10 |
 | 2026-08-13 | `packages/ai/src/api/cloudflare-gateway-binding.ts` | 192 | 10 |
 | 2026-08-13 | `packages/ai/test/cloudflare-gateway-binding.test.ts` | 332 | 10 |
+| 2026-08-13 | `packages/ai/src/api/openrouter-images.ts` | 196 | 10 |
+| 2026-08-13 | `packages/ai/src/images.ts` | 21 | 10 |
+| 2026-08-13 | `packages/ai/src/images-api-registry.ts` | 53 | 10 |
+| 2026-08-13 | `packages/ai/src/images-models.ts` | 275 | 10 |
+| 2026-08-13 | `packages/ai/src/image-models.generated.ts` | 639 | 10 |
+| 2026-08-13 | `packages/ai/src/providers/images/register-builtins.ts` | 50 | 10 |
+| 2026-08-13 | `packages/ai/src/providers/openrouter-images.ts` | 22 | 10 |
+| 2026-08-13 | `packages/ai/test/openrouter-images.test.ts` | 140 | 10 |
+| 2026-08-13 | `packages/ai/test/images-models.test.ts` | 209 | 10 |
 | 2026-08-13 | `packages/ai/src/models.generated.ts` | 124 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/all.ts` | 155 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/data/` (39 Dateien + Manifest) | ~592 KB | 5 |
@@ -170,6 +179,13 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/api/pi-messages.ts` | 433 | `api/pi_messages.rs` | verifiziert (Task 10) | Der Backend-Stream liefert bereits serialisierte Assistant-Events; der Konverter baut nur die `partial`-Nachricht mit. Klasse 1: `{ ...event, partial }` schleift im JS auch Felder durch, die der deklarierte `AssistantMessageEvent`-Typ nicht kennt (`contentSignature`, `redacted`, `id`, `toolName`, `usage`, `rewrite`) — kein typisierter Konsument liest sie, die Daten erreichen ihn über `partial.content`; das typisierte Rust-Enum trägt nur die deklarierten Felder. Klasse 1: JS-Fehler tragen einen Stack, Rust-Fehler nicht. 20 Request-Bodies inkl. URL und Headern sowie 20 Event-Sequenzen stimmen exakt |
 | `src/api/cloudflare.ts` | 15 | `api/cloudflare.rs` | verifiziert (Task 10) | reine Konstanten |
 | `src/api/cloudflare-gateway-binding.ts` | 192 | `api/cloudflare_gateway_binding.rs` | verifiziert (Task 10) | Klasse 3: Das Workers-Binding lebt in der JS-Laufzeit — der Port dreht die Abhängigkeit um und nimmt eine `AiGatewayBinding`-Implementierung des Aufrufers entgegen. Klasse 1: `FetchRequest` trägt immer eine konkrete Methode, URL, Headerliste und einen Byte-Body; die TS-Zweige, die ein `Request`-Objekt mit `RequestInit` abgleichen (Header-Ersetzung, `body: null`, `signal: null`, One-Shot-Streams), haben keine Entsprechung — das beobachtbare Ergebnis ist identisch. Prefix-Prüfung und Provider/Endpoint-Split laufen wie in TS auf der URL-normalisierten Form |
+| `src/api/openrouter-images.ts` | 196 | `api/openrouter_images.rs` | verifiziert (Task 10) | Klasse 3: Der `openai`-SDK-Client wird durch einen direkten POST auf `<baseUrl>/chat/completions` ersetzt — genau die Anfrage, die das SDK stellt |
+| `src/images.ts` | 21 | `images.rs` | verifiziert (Task 10) | Klasse 4: Der dynamische `import()` des Built-in-Moduls entfällt (Rust linkt statisch) |
+| `src/images-api-registry.ts` | 53 | `images_api_registry.rs` | verifiziert (Task 10) | Klasse 1: Registry hinter `Mutex`; der `api`-Abgleich von `wrapGenerateImages` bleibt erhalten |
+| `src/images-models.ts` | 275 | `images_models.rs` | verifiziert (Task 10) | Provider-Registry, Auth-Auflösung mit Feld-Merge (explizite Optionen gewinnen, Header/Env pro Schlüssel), Refresh mit `ModelsError("model_source")`, Fehler als `AssistantImages` mit `stopReason: "error"` |
+| `src/image-models.generated.ts` | 639 | `data/image-models.json` + `images::built_in_image_models` | verifiziert (Task 10) | Klasse 1: Der Katalog liegt wie die Chat-Modelle als Datei-Snapshot (42 Modelle, aus der TS-Quelle extrahiert) statt als generierter Quelltext |
+| `src/providers/images/register-builtins.ts` | 50 | `images.rs::register_built_in_images_api_providers` | verifiziert (Task 10) | Klasse 4: Lazy-Import entfällt |
+| `src/providers/openrouter-images.ts` | 22 | `images_models.rs::openrouter_images_provider` | verifiziert (Task 10) | — |
 | — | — | `tests/subscription_plans.rs` | verifiziert (Task 10) | Ende-zu-Ende-Nachweis der beiden Abo-Pfade: gespeicherte OAuth-Credential → `resolveProviderAuth` → Adapter → ausgehender Request. Claude-Plan (Bearer statt x-api-key, Claude-Code-Identität, gemappte Tool-Namen) und Codex-Plan (Account-ID aus dem JWT, zstd-Body, `instructions` statt System-Nachricht) |
 | `src/api/azure-openai-responses.ts` | 330 | `api/azure_openai_responses.rs` | verifiziert (Task 9) | Deployment-Namen (Option, `AZURE_OPENAI_DEPLOYMENT_NAME_MAP`, Modell-ID), Base-URL-Normalisierung über die `url`-Crate (WHATWG, wie `new URL()`) und `api-key`-Auth. Bug-compat: Eine Base-URL mit Query verschluckt den Pfad in den Query-String, weil das SDK vor dem Parsen konkateniert. 33 Payloads und Request-URLs aus dem TS-Original stimmen exakt |
 | `src/api/openai-responses-shared.ts` | 792 | `api/openai_responses_shared.rs` | verifiziert (Task 9) | `convertResponsesMessages`, `convertResponsesTools` und die Slot-Zustandsmaschine (`output_index` → Content-Block). Klasse 1: `normalizeToolCallId` bekommt die Quell-Nachricht; dafür nimmt `NormalizeToolCallId` jetzt `(id, source)` statt nur `id` |
@@ -201,5 +217,6 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/compat.ts` (298) | Master-Plan, Scope-Tabelle: im Code als Legacy markiert („wird mit ModelManager-Migration gelöscht") |
 | `src/legacy-api-aliases.ts` (108) | wie oben |
 | `src/api/*.lazy.ts` (9 Wrapper) | Master-Plan Task 10: Bundler-Wrapper; Rust linkt statisch |
+| `scripts/generate-image-models.ts` und `test/image-model-data.test.ts` | Generator-Skript wie `scripts/generate-models.ts` (Workstream-Plan Task 5): der Datei-Snapshot ist die Quelle, Aktualisierungen passieren im TS-Repo; der Test prüft ausschließlich den Generator |
 | `src/auth/oauth/load.ts` (68) | Klasse 4: verzögert einen dynamischen `import()`, damit Bundler die Flows abtrennen können; Rust linkt statisch |
 | `scripts/generate-models.ts` | WS-B-Plan Task 5: der JSON-Snapshot ist die Quelle; Aktualisierung bleibt im TS-Repo |
