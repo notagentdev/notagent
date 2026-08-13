@@ -54,6 +54,26 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/ai/src/api/lazy.ts` | 98 | 4 |
 | 2026-08-13 | `packages/ai/test/models-runtime.test.ts` | 1159 | 4 |
 | 2026-08-13 | `packages/ai/src/model-catalog.ts` | 27 | 5 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/pkce.ts` | 34 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/device-code.ts` | 98 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/oauth-page.ts` | 109 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/load.ts` | 68 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/anthropic.ts` | 364 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/openai-codex.ts` | 544 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/github-copilot.ts` | 417 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/openrouter.ts` | 311 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/kimi-coding.ts` | 310 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/xai.ts` | 239 | 7 |
+| 2026-08-13 | `packages/ai/src/auth/oauth/radius.ts` | 403 | 7 |
+| 2026-08-13 | `packages/ai/test/oauth.ts` | 85 | 7 |
+| 2026-08-13 | `packages/ai/test/oauth-device-code.test.ts` | 145 | 7 |
+| 2026-08-13 | `packages/ai/test/anthropic-oauth.test.ts` | 144 | 7 |
+| 2026-08-13 | `packages/ai/test/openai-codex-oauth.test.ts` | 486 | 7 |
+| 2026-08-13 | `packages/ai/test/github-copilot-oauth.test.ts` | 570 | 7 |
+| 2026-08-13 | `packages/ai/test/openrouter-oauth.test.ts` | 322 | 7 |
+| 2026-08-13 | `packages/ai/test/kimi-coding-oauth.test.ts` | 270 | 7 |
+| 2026-08-13 | `packages/ai/test/xai-oauth.test.ts` | 335 | 7 |
+| 2026-08-13 | `packages/ai/test/radius-oauth.test.ts` | 129 | 7 |
 | 2026-08-13 | `packages/ai/src/models.generated.ts` | 124 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/all.ts` | 155 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/data/` (39 Dateien + Manifest) | ~592 KB | 5 |
@@ -109,6 +129,18 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/auth/credential-store.ts` | 67 | `auth/credential_store.rs` | verifiziert (Task 6) | Klasse 1: Serialisierung je Provider-ID über einen async-Mutex statt einer Promise-Kette |
 | `src/auth/resolve.ts` | 205 | `auth/resolve.rs` | verifiziert (Task 6) | Klasse 3: `AbortSignal.any([signal, timeout])` → `child_token` plus Timeout-Task |
 | `src/auth/context.ts` | 45 | `auth/context.rs` | portiert (Task 6) | Klasse 1: Die Browser-Guards (dynamischer `import`, fehlendes `process.env`) entfallen |
+| `src/auth/oauth/pkce.ts` | 34 | `auth/oauth/pkce.rs` | verifiziert (Task 7) | Klasse 3: WebCrypto → sha2 plus Zufallsquelle; gegen den RFC-7636-Testvektor geprüft |
+| `src/auth/oauth/device-code.ts` | 98 | `auth/oauth/device_code.rs` | verifiziert (Task 7) | RFC 8628 inkl. `slow_down` mit 5-s-Increment, Vorrang eines Server-Intervalls und beider Timeout-Meldungen |
+| `src/auth/oauth/oauth-page.ts` | 109 | `auth/oauth/oauth_page.rs` | verifiziert (Task 7) | Markup, Styles und Escaping wörtlich übernommen |
+| `src/auth/oauth/anthropic.ts` | 364 | `auth/oauth/anthropic.rs` | verifiziert (Task 7) | Klasse 3: `node:http`-Callback-Server → tokio-Listener (`auth/oauth/callback_server.rs`); Klasse 1: das Rennen zwischen Callback und manueller Eingabe ist ein `tokio::select!` |
+| `src/auth/oauth/openai-codex.ts` | 544 | `auth/oauth/openai_codex.rs` | verifiziert (Task 7) | Browser- und Device-Code-Flow; `accountId` aus dem JWT-Claim (Payload base64url-dekodiert, keine Signaturprüfung — wie TS) |
+| `src/auth/oauth/github-copilot.ts` | 417 | `auth/oauth/github_copilot.rs` | verifiziert (Task 7) | Device-Flow, Copilot-Token-Exchange, Enterprise-Domains, Modell-Enablement über `availableModelIds` |
+| `src/auth/oauth/openrouter.ts` | 311 | `auth/oauth/openrouter.rs` | verifiziert (Task 7) | Permanenter Key: `refresh` gibt die Credential unverändert zurück |
+| `src/auth/oauth/kimi-coding.ts` | 310 | `auth/oauth/kimi_coding.rs` | verifiziert (Task 7) | Authentifizierung über den `Authorization`-Header statt eines API-Keys; Refresh-Retries |
+| `src/auth/oauth/xai.ts` | 239 | `auth/oauth/xai.rs` | verifiziert (Task 7) | Device-Flow; https-Pflicht für die Verification-URI |
+| `src/auth/oauth/radius.ts` | 403 | `auth/oauth/radius.rs` | verifiziert (Task 7) | Discovery nur für den Authorization-Endpunkt; Browser- und Device-Flow |
+| — | — | `auth/oauth/callback_server.rs` | portiert (Task 7) | Klasse 3 (Hilfsmodul ohne TS-Pendant): Ein-Routen-HTTP-Server auf tokio als Ersatz für `node:http.createServer` in anthropic/codex/radius |
+| — | — | `auth/oauth/http.rs` | portiert (Task 7) | Klasse 1 (Hilfsmodul ohne TS-Pendant): die in allen Flows wiederholten Form-POST- und Feldprüf-Bausteine, Fehlermeldungen wörtlich wie TS |
 | `src/auth/helpers.ts` | 59 | `auth/helpers.rs` | portiert (Task 6) | Klasse 4: `lazyOAuth` entfällt — es verzögert einen dynamischen `import()` für Bundler; Rust linkt statisch |
 | `src/env-api-keys.ts` | 188 | `env_api_keys.rs` | verifiziert (Task 6) | Klasse 1: Die verzögerte Node-Modul-Ladung entfällt; der ADC-Cache bleibt |
 | `src/utils/typebox-helpers.ts` | 24 | — | ausgeschlossen (Task 3) | `StringEnum` erzeugt ein TypeBox-Schema; in Rust ist das ein JSON-Literal `{"type":"string","enum":[…]}` (Substitution Klasse 3) |
@@ -123,4 +155,5 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/compat.ts` (298) | Master-Plan, Scope-Tabelle: im Code als Legacy markiert („wird mit ModelManager-Migration gelöscht") |
 | `src/legacy-api-aliases.ts` (108) | wie oben |
 | `src/api/*.lazy.ts` (9 Wrapper) | Master-Plan Task 10: Bundler-Wrapper; Rust linkt statisch |
+| `src/auth/oauth/load.ts` (68) | Klasse 4: verzögert einen dynamischen `import()`, damit Bundler die Flows abtrennen können; Rust linkt statisch |
 | `scripts/generate-models.ts` | WS-B-Plan Task 5: der JSON-Snapshot ist die Quelle; Aktualisierung bleibt im TS-Repo |
