@@ -482,7 +482,10 @@ fn should_convert_a_single_high_byte_to_an_escape_prefixed_sequence() {
 fn should_handle_very_long_sequences() {
     let mut buffer = new_buffer();
     let long_seq = format!("\x1b[{}H", "1;".repeat(50));
-    assert_eq!(data_events(&buffer.process(&long_seq)), [long_seq.clone()]);
+    assert_eq!(
+        data_events(&buffer.process(&long_seq)),
+        std::slice::from_ref(&long_seq)
+    );
 }
 
 // describe("Flush")
