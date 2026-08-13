@@ -5,7 +5,7 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (68 856 LOC
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 8 läuft.** `config.ts`, `core/settings-manager.ts` (inkl. aller
+**Stand: Task 8 abgeschlossen.** `config.ts`, `core/settings-manager.ts` (inkl. aller
 typisierten Zugriffsmethoden), `migrations.ts`, `core/resolve-config-value.ts`,
 `core/auth-storage.ts` und die Utilities (`utils/paths.ts`, `utils/shell.ts`,
 `utils/abort.ts` + Lockfile-Ersatz) sind portiert und testbelegt. Offen bleibt nur, was
