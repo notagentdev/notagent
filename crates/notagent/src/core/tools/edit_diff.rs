@@ -545,7 +545,7 @@ pub fn generate_diff_string(
         let has_trailing_change = next_part_is_change;
         let raw = &part.lines;
 
-        let mut push_context =
+        let push_context =
             |line: &str, old: &mut usize, new: &mut usize, output: &mut Vec<String>| {
                 output.push(format!(" {:>line_number_width$} {line}", *old));
                 *old += 1;
