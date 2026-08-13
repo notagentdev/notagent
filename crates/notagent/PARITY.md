@@ -13,8 +13,9 @@ laut Plan zu späteren Tasks gehört: `utils/shell.ts` liefert erst mit Task 8 d
 Bash-Ausführung nach, die keybindings.json-Migration folgt mit Task 13. Task 6
 (`core/session-manager.ts`) ist portiert und mit den TS-Fixtures roundtrip-getestet;
 offen bleibt daraus `resolveSessionPath`, das in `src/main.ts` sitzt und zu Task 12 gehört.
-Task 7 hat mit `tools/truncate.ts`, `tools/path-utils.ts` und `tools/file-mutation-queue.ts`
-begonnen.
+Task 7 ist bis auf zwei Dateien portiert: `tools/render-utils.ts` braucht das Theme aus
+A-Batch 0 (Interface-Request C-5) und `tools/index.ts` ist die Registry über alle 16 Tools,
+also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen geführt.
 
 ## Lektüre-Protokoll
 
@@ -68,10 +69,13 @@ begonnen.
 | src/core/extensions/types.ts (`ToolDefinition`) + src/core/tools/tool-definition-wrapper.ts | 59 + Auszug | src/core/tools/tool_definition.rs | portiert | Klasse 2: `ExtensionContext` → `ToolContext` mit genau den Feldern, die Built-ins lesen (Session-ID/-Datei, Thinking-Level, Modell). Klasse 1: `description`/`parameters` sind Borrow-Getter statt JS-Gettern; `renderCall`/`renderResult` gehören zur TUI-Schicht und folgen mit Task 13 |
 | src/core/tools/read.ts | 358 | src/core/tools/read.rs | portiert (Tool-Hälfte) | Bild-Pipeline, offset/limit, Fortsetzungs-Notizen und alle Fehlertexte portiert. **Offen:** `renderCall`/`renderResult` inkl. Kompakt-Klassifikation (docs/resource/skill) — Task 13 |
 | src/core/tools/write.ts | 274 | src/core/tools/write.rs | portiert (Tool-Hälfte) | bug-compat: die Byte-Angabe der Erfolgsmeldung ist wie in JS die UTF-16-Länge. **Offen:** Renderer inkl. Syntax-Highlight-Cache — Task 13 |
+| src/core/tools/output-accumulator.ts | 222 | src/core/tools/output_accumulator.rs | portiert | Klasse 1: `TextDecoder({stream:true})` ist als eigener Streaming-UTF-8-Decoder nachgebaut (unvollständige Zeichen warten auf den nächsten Chunk, ungültige Bytes werden zu U+FFFD); der Schreib-Stream ist eine `std::fs::File` |
 | src/core/tools/find.ts | 380 | src/core/tools/find.rs | portiert (Tool-Hälfte) | fd-Aufruf inkl. Git-Repo-Erkennung, `--full-path`-Regel für Pfad-Muster, Ergebnis-Relativierung und Limit-Hinweise. **Offen:** Renderer — Task 13 |
 | src/core/tools/grep.ts | 390 | src/core/tools/grep.rs | portiert (Tool-Hälfte) | rg `--json`-Streaming, Kill beim Match-Limit, Kontext-Blöcke mit Datei-Cache, Zeilenkürzung auf 500 Zeichen und alle Hinweise. **Offen:** Renderer — Task 13 |
 | src/utils/tools-manager.ts | 371 | src/utils/tools_manager.rs | portiert | Klasse 3: `fetch` → `reqwest`; Entpacken weiterhin über `tar`/`unzip`/PowerShell wie in TS |
 | src/utils/management-http.ts | 68 | src/utils/management_http.rs | portiert | Klasse 3: `AbortSignal.timeout` → Deadline pro Versuch; die Anfrage wird je Versuch neu gebaut |
+| src/core/tools/render-utils.ts | 85 | — | offen | braucht `Theme` (A-Batch 0 aus Interface-Request C-5) und die TUI-Capabilities — Task 13 |
+| src/core/tools/index.ts | 380 | — | offen | Registry über alle 16 Tools; vollständig baubar erst nach den Tasks 8-10 |
 | src/core/tools/ls.ts | 230 | src/core/tools/ls.rs | portiert (Tool-Hälfte) | Klasse 1: Sortierung über `to_lowercase()`-Ordnung statt `localeCompare` (unterschiedlich nur bei akzentabhängiger Locale-Sortierung). **Offen:** Renderer — Task 13 |
 | src/core/experimental.ts | 9 | src/core/experimental.rs | portiert | nur die beiden von den Tools genutzten Funktionen; der Rest der Datei existiert nicht |
 | src/utils/mime.ts | 116 | src/utils/mime.rs | portiert | vollständig, inkl. APNG-/BMP-Plausibilitätsprüfungen |
