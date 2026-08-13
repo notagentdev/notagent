@@ -12,6 +12,8 @@ pub mod fuzzy;
 pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
+pub mod latex;
+pub mod latex_tables;
 pub mod layout;
 pub mod layout_node;
 pub mod native_modifiers;
