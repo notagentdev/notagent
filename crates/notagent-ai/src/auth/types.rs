@@ -52,6 +52,8 @@ pub struct OAuthCredential {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Credential {
     ApiKey(ApiKeyCredential),
+    /// `type: "oauth"` — `rename_all` would produce `o_auth`.
+    #[serde(rename = "oauth")]
     OAuth(OAuthCredential),
 }
 
@@ -91,6 +93,8 @@ pub struct CredentialInfo {
 #[serde(rename_all = "snake_case")]
 pub enum AuthType {
     ApiKey,
+    /// `"oauth"` — `rename_all` would produce `o_auth`.
+    #[serde(rename = "oauth")]
     OAuth,
 }
 

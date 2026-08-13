@@ -4,6 +4,7 @@
 //! Oracle sind die Feldnamen aus `packages/ai/src/types.ts` und die von der TS-App
 //! geschriebenen Session-Dateien.
 
+use notagent_ai::auth::types::{AuthType, Credential, OAuthCredential};
 use notagent_ai::types::*;
 use serde_json::json;
 
@@ -490,4 +491,49 @@ fn usage_without_total_tokens_roundtrips_unchanged() {
     let usage: Usage = serde_json::from_value(original.clone()).unwrap();
     assert_eq!(usage.total_tokens, None);
     assert_eq!(serde_json::to_value(usage).unwrap(), original);
+}
+
+/// The wire format of `auth.json` (interface request C-4): `Credential` and
+/// `AuthType` serialize OAuth as `"oauth"`, exactly like
+/// `packages/ai/src/auth/types.ts:33` and `:114`.
+#[test]
+fn credentials_use_the_typescript_oauth_tag() {
+    let credential = Credential::OAuth(OAuthCredential {
+        refresh: "refresh-token".to_string(),
+        access: "access-token".to_string(),
+        expires: 1_700_000_000_000,
+        extra: serde_json::Map::new(),
+    });
+    assert_eq!(
+        serde_json::to_value(&credential).unwrap(),
+        serde_json::json!({
+            "type": "oauth",
+            "refresh": "refresh-token",
+            "access": "access-token",
+            "expires": 1_700_000_000_000_i64,
+        })
+    );
+
+    // A file written by the TypeScript app has to parse.
+    let parsed: Credential = serde_json::from_value(serde_json::json!({
+        "type": "oauth",
+        "refresh": "refresh-token",
+        "access": "access-token",
+        "expires": 1_700_000_000_000_i64,
+    }))
+    .expect("oauth credential parses");
+    assert_eq!(parsed, credential);
+
+    assert_eq!(
+        serde_json::to_value(AuthType::OAuth).unwrap(),
+        serde_json::json!("oauth")
+    );
+    assert_eq!(
+        serde_json::to_value(AuthType::ApiKey).unwrap(),
+        serde_json::json!("api_key")
+    );
+    assert_eq!(
+        serde_json::from_value::<AuthType>(serde_json::json!("oauth")).unwrap(),
+        AuthType::OAuth
+    );
 }

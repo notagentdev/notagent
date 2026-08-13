@@ -245,7 +245,12 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `returns_oauth_credentials_unchanged` und
   `translates_a_credential_store_refresh_failure_and_allows_a_later_retry` sind mit
   TS-Wire-Format geschrieben und bis zur Umsetzung `#[ignore]`.
-- **Status**: offen
+- **Status**: erledigt (B, 2026-08-13) — beide `OAuth`-Varianten tragen jetzt
+  `#[serde(rename = "oauth")]` (`crates/notagent-ai/src/auth/types.rs`), `api_key` bleibt über
+  `rename_all` korrekt. Der Wire-Format-Test `credentials_use_the_typescript_oauth_tag` in
+  `crates/notagent-ai/tests/types_serde.rs` pinnt beide Richtungen (Serialisieren und Lesen
+  einer von der TS-App geschriebenen `auth.json`). C kann die beiden `#[ignore]` entfernen.
+
 
 ### C-5 Komponenten-Zuteilung für A-Task 15 (Theme + Interactive-Komponenten)
 - **Von / An**: C → A
