@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use notagent_agent::ThinkingLevel;
 use notagent_tui::components::markdown::{HighlightCodeFn, StyleFn};
@@ -1855,11 +1855,76 @@ struct ThemeWatcherState {
     reload_generation: u64,
     /// Whether a reload timer is pending.
     reload_pending: bool,
+    /// Runtime the debounce timer runs on. `notify` delivers events on its own
+    /// thread, which is not a tokio worker, so the handle is captured when the
+    /// watcher starts.
+    runtime: Option<tokio::runtime::Handle>,
+    /// Set by the `error` handler of `watchWithErrorHandler`: the watcher stops
+    /// delivering events. The backend is dropped by the next start/stop, never
+    /// from inside its own callback (that would join the callback's thread).
+    failed: bool,
 }
 
 fn theme_watcher() -> &'static RwLock<ThemeWatcherState> {
     static WATCHER: OnceLock<RwLock<ThemeWatcherState>> = OnceLock::new();
     WATCHER.get_or_init(|| RwLock::new(ThemeWatcherState::default()))
+}
+
+/// The OS-level directory watch; `FSWatcher` of `utils/fs-watch.ts`.
+///
+/// Kept out of [`ThemeWatcherState`] so it can be dropped without holding that
+/// lock — `Drop` joins the backend thread, which may be inside an event.
+fn theme_watcher_backend() -> &'static Mutex<Option<notify::RecommendedWatcher>> {
+    static BACKEND: OnceLock<Mutex<Option<notify::RecommendedWatcher>>> = OnceLock::new();
+    BACKEND.get_or_init(|| Mutex::new(None))
+}
+
+/// `closeWatcher(watcher)` — close errors are ignored.
+fn close_theme_watcher_backend() {
+    let watcher = theme_watcher_backend()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    drop(watcher);
+}
+
+/// `watchWithErrorHandler(dir, listener, onError)`.
+fn watch_custom_themes_dir(directory: &Path) {
+    use notify::Watcher as _;
+
+    let handler = |event: notify::Result<notify::Event>| match event {
+        Ok(event) => {
+            if event.paths.is_empty() {
+                // No name reported — TypeScript schedules a reload as well.
+                notify_theme_directory_event(None);
+                return;
+            }
+            for path in &event.paths {
+                notify_theme_directory_event(path.file_name().and_then(|name| name.to_str()));
+            }
+        }
+        Err(_) => {
+            // `watcher.on("error", onError)`: stop delivering events.
+            theme_watcher()
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .failed = true;
+        }
+    };
+
+    let Ok(mut watcher) = notify::recommended_watcher(handler) else {
+        // `watch()` threw: onError, no watcher.
+        return;
+    };
+    if watcher
+        .watch(directory, notify::RecursiveMode::NonRecursive)
+        .is_err()
+    {
+        return;
+    }
+    *theme_watcher_backend()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(watcher);
 }
 
 /// Debounce of the live reload, as in `setTimeout(..., 100)`.
@@ -1890,11 +1955,11 @@ fn start_theme_watcher() {
         let mut state = theme_watcher().write().unwrap();
         state.watched_theme_name = Some(watched_theme_name);
         state.watched_file = Some(theme_file);
+        state.failed = false;
+        state.runtime = tokio::runtime::Handle::try_current().ok();
     }
 
-    // The OS-level directory watch is attached by `notify_theme_directory_event`
-    // once the filesystem watcher backend lands (interface request A-5); the
-    // debounce, staleness and reload logic below is complete and tested.
+    watch_custom_themes_dir(&custom_themes_dir);
 }
 
 /// Handle one directory event of the watched custom themes directory.
@@ -1903,10 +1968,15 @@ fn start_theme_watcher() {
 /// schedules a reload as well.
 pub fn notify_theme_directory_event(filename: Option<&str>) {
     let (watched_theme_name, watched_file_name) = {
-        let state = theme_watcher().read().unwrap();
+        let state = theme_watcher()
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let Some(name) = state.watched_theme_name.clone() else {
             return;
         };
+        if state.failed {
+            return;
+        }
         (name.clone(), format!("{name}.json"))
     };
     if current_theme_name().read().unwrap().as_deref() != Some(watched_theme_name.as_str()) {
@@ -1920,13 +1990,15 @@ pub fn notify_theme_directory_event(filename: Option<&str>) {
 }
 
 fn schedule_theme_reload() {
-    let generation = {
-        let mut state = theme_watcher().write().unwrap();
+    let (generation, runtime) = {
+        let mut state = theme_watcher()
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         state.reload_generation += 1;
         state.reload_pending = true;
-        state.reload_generation
+        (state.reload_generation, state.runtime.clone())
     };
-    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+    let Some(handle) = tokio::runtime::Handle::try_current().ok().or(runtime) else {
         // Without a runtime (unit tests, non-interactive modes) the reload is
         // driven by `run_scheduled_theme_reload`.
         return;
@@ -1984,11 +2056,18 @@ fn run_scheduled_theme_reload(generation: u64) {
 
 /// Stop the live-reload watcher and cancel a pending reload.
 pub fn stop_theme_watcher() {
-    let mut state = theme_watcher().write().unwrap();
-    state.reload_generation += 1;
-    state.reload_pending = false;
-    state.watched_theme_name = None;
-    state.watched_file = None;
+    {
+        let mut state = theme_watcher()
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.reload_generation += 1;
+        state.reload_pending = false;
+        state.watched_theme_name = None;
+        state.watched_file = None;
+        state.failed = false;
+        state.runtime = None;
+    }
+    close_theme_watcher_backend();
 }
 
 // ============================================================================

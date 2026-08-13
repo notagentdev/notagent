@@ -25,6 +25,8 @@ chrono = { workspace = true }
 image = { workspace = true }
 dirs = { workspace = true }
 libc = { workspace = true }
+# notify: OS file watcher behind the theme live reload (interface request A-6).
+notify = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }

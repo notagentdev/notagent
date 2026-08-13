@@ -151,13 +151,13 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Wunsch 2 — `src/core/source-info.ts` (40 LOC)**: Sobald `SourceInfo` existiert, trage ich
   `pub source_info: Option<SourceInfo>` an `Theme` nach (Feld wird von deinem Resource-Loader
   gesetzt). Bis dahin fehlt das Feld; niemand konsumiert es bisher.
-- **Wunsch 3 — `src/utils/fs-watch.ts` (30 LOC)**: siehe A-6 (braucht zuerst die Dependency).
+- **Wunsch 3 — `src/utils/fs-watch.ts` (30 LOC)**: erledigt (A, 2026-08-13) — die Datei geht in `theme.rs` auf, siehe A-12. Du brauchst sie nicht zu portieren.
 - **Angefasste Dateien außerhalb meiner Ownership** (minimal und additiv, damit du es weißt):
   `crates/notagent/src/lib.rs` (+ `pub mod modes;`), neu `src/modes.rs` und
   `src/modes/interactive.rs` (deklarieren vorerst nur meine Submodule — trag deine
   `interactive_mode`-Module einfach daneben ein), sowie `crates/notagent/Cargo.toml`
   `[dev-dependencies]` (+ `futures`, `notagent-tui`, `tokio` für die portierten Theme-Suiten).
-- **Status**: offen (wartet auf C: syntax-highlight und source-info)
+- **Status**: offen (wartet auf C: syntax-highlight und source-info; fs-watch ist mit A-12 erledigt)
 
 ### A-6 `notify` als Workspace-Dependency (Datei-Watcher für den Theme-Live-Reload)
 - **Von / An**: A → C (Owner der Root-`Cargo.toml`)
@@ -176,7 +176,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   Change-Callback sind portiert und getestet
   (`crates/notagent/tests/theme_runtime.rs`, Einstieg `notify_theme_directory_event`).
   Es fehlt ausschließlich die OS-Registrierung, die diesen Einstieg aufruft — die trage ich
-  nach, sobald die Dependency da ist.
+  nach, sobald die Dependency da ist. (Nachgetragen am 2026-08-13, siehe A-12.)
 - **Status**: umgesetzt (Orchestrator, O-2) — `notify = "6"` in `[workspace.dependencies]`;
   Version 6 statt 8, weil sie in der lokalen Rust-Referenz erprobt ist (Cargo.lock 6.1.1)
   und damit offline-sicher auflöst. Upgrade auf 8 steht A frei, wenn ein Feature fehlt.
@@ -545,6 +545,26 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   (`modes/interactive/model-search.ts`, `core/model-runtime.ts`), login-dialog
   (`utils/open-browser.ts`), trust-selector (`core/trust-manager.ts`), approval-selector
   (`core/permissions/request.ts`).
+- **Status**: umgesetzt
+
+### A-12 Theme-Live-Reload ist verdrahtet — `utils/fs-watch.ts` ist damit erledigt
+- **Von / An**: A -> C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/modes/interactive/theme/theme.rs`, `crates/notagent/Cargo.toml`
+- **Beleg**: A-6 (notify als Workspace-Dependency, mit O-2 auf main); `theme.ts:939-978`
+  (`startThemeWatcher`), `utils/fs-watch.ts:17-30` (`watchWithErrorHandler`).
+- **Umgesetzt**: `start_theme_watcher` registriert jetzt einen `notify`-Watcher auf dem
+  Custom-Themes-Verzeichnis; `stop_theme_watcher` verwirft ihn. Der Debounce (100 ms), die
+  Staleness-Pruefung, das Verhalten bei kurzzeitig fehlender Datei und die
+  Registry-Aktualisierung waren schon da. Neuer Test
+  `crates/notagent/tests/theme_runtime.rs::reloads_from_a_real_filesystem_event` faehrt den
+  echten OS-Event (Datei aendern, ohne `notify_theme_directory_event` von Hand zu rufen).
+- **Fuer dich**: `utils/fs-watch.ts` brauchst du nicht mehr zu portieren — Wunsch 3 aus A-5
+  ist damit erledigt. Sollte ein zweiter Live-Reload-Pfad die Datei brauchen, sag Bescheid,
+  dann hebe ich die beiden Funktionen nach `crates/notagent/src/utils/fs_watch.rs`.
+  Offen aus A-5 bleiben nur noch `utils/syntax-highlight.ts` und `core/source-info.ts`.
+- **Eine Zeile in deiner Datei**: `crates/notagent/Cargo.toml` `[dependencies]` +
+  `notify = { workspace = true }`.
 - **Status**: umgesetzt
 
 ## Sektion Orchestrator

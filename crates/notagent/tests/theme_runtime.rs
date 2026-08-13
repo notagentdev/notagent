@@ -278,6 +278,45 @@ fn notifies_the_change_callback_on_every_switch() {
 }
 
 // --- live reload ---------------------------------------------------------------
+// The guard serialises against the other tests in this binary, which run on
+// their own threads; the await points below never contend for it.
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn reloads_from_a_real_filesystem_event() {
+    let _guard = global_lock();
+    let agent_dir = AgentDir::new();
+    let mut custom = dark_theme();
+    custom["name"] = serde_json::json!("watched");
+    custom["colors"]["accent"] = serde_json::json!("#010203");
+    agent_dir.write_theme("watched", &custom);
+
+    init_theme(Some("watched"), true);
+    assert_eq!(theme().get_fg_ansi(ThemeColor::Accent), "\x1b[38;2;1;2;3m");
+
+    // No `notify_theme_directory_event` call here: the OS watcher registered by
+    // `start_theme_watcher` has to deliver the event on its own.
+    custom["colors"]["accent"] = serde_json::json!("#0a0b0c");
+    agent_dir.write_theme("watched", &custom);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while theme().get_fg_ansi(ThemeColor::Accent) != "\x1b[38;2;10;11;12m" {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the watcher never reloaded the theme"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    // An unrelated file in the same directory does not switch the theme.
+    agent_dir.write_theme("unrelated", &dark_theme());
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert_eq!(
+        theme().get_fg_ansi(ThemeColor::Accent),
+        "\x1b[38;2;10;11;12m"
+    );
+
+    stop_theme_watcher();
+}
 
 // The guard serialises against the other tests in this binary, which run on
 // their own threads; the await points below never contend for it.
