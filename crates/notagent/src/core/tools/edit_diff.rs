@@ -430,6 +430,205 @@ pub fn apply_edits_to_normalized_content(
     })
 }
 
+// =============================================================================
+// Diff rendering
+// =============================================================================
+
+/// One run of consecutive lines with the same diff tag, mirroring the parts that
+/// `Diff.diffLines` returns.
+struct DiffPart {
+    lines: Vec<String>,
+    added: bool,
+    removed: bool,
+}
+
+/// Tech substitution (class 3): the `diff` npm package becomes the `similar`
+/// crate; both compute a line-level LCS diff.
+fn diff_parts(old_content: &str, new_content: &str) -> Vec<DiffPart> {
+    use similar::{ChangeTag, TextDiff};
+
+    let diff = TextDiff::from_lines(old_content, new_content);
+    let mut parts: Vec<DiffPart> = Vec::new();
+    for change in diff.iter_all_changes() {
+        let (added, removed) = match change.tag() {
+            ChangeTag::Insert => (true, false),
+            ChangeTag::Delete => (false, true),
+            ChangeTag::Equal => (false, false),
+        };
+        let line = change
+            .value()
+            .strip_suffix('\n')
+            .unwrap_or(change.value())
+            .to_owned();
+        match parts.last_mut() {
+            Some(part) if part.added == added && part.removed == removed => part.lines.push(line),
+            _ => parts.push(DiffPart {
+                lines: vec![line],
+                added,
+                removed,
+            }),
+        }
+    }
+    parts
+}
+
+/// Generate a standard unified patch.
+pub fn generate_unified_patch(
+    path: &str,
+    old_content: &str,
+    new_content: &str,
+    context_lines: usize,
+) -> String {
+    use similar::TextDiff;
+
+    let diff = TextDiff::from_lines(old_content, new_content);
+    let mut patch = diff
+        .unified_diff()
+        .context_radius(context_lines)
+        .header(path, path)
+        .to_string();
+    if !patch.is_empty() && !patch.ends_with('\n') {
+        patch.push('\n');
+    }
+    patch
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffString {
+    pub diff: String,
+    /// The first changed line, counted in the new file.
+    pub first_changed_line: Option<usize>,
+}
+
+/// Generate a display-oriented diff with line numbers and bounded context.
+pub fn generate_diff_string(
+    old_content: &str,
+    new_content: &str,
+    context_lines: usize,
+) -> DiffString {
+    let parts = diff_parts(old_content, new_content);
+    let mut output: Vec<String> = Vec::new();
+
+    let old_lines = old_content.split('\n').count();
+    let new_lines = new_content.split('\n').count();
+    let line_number_width = old_lines.max(new_lines).to_string().len();
+
+    let mut old_line_number = 1usize;
+    let mut new_line_number = 1usize;
+    let mut last_was_change = false;
+    let mut first_changed_line: Option<usize> = None;
+
+    for index in 0..parts.len() {
+        let part = &parts[index];
+        if part.added || part.removed {
+            if first_changed_line.is_none() {
+                first_changed_line = Some(new_line_number);
+            }
+            for line in &part.lines {
+                if part.added {
+                    output.push(format!("+{new_line_number:>line_number_width$} {line}"));
+                    new_line_number += 1;
+                } else {
+                    output.push(format!("-{old_line_number:>line_number_width$} {line}"));
+                    old_line_number += 1;
+                }
+            }
+            last_was_change = true;
+            continue;
+        }
+
+        // Context lines are only shown around changes.
+        let next_part_is_change = parts
+            .get(index + 1)
+            .is_some_and(|next| next.added || next.removed);
+        let has_leading_change = last_was_change;
+        let has_trailing_change = next_part_is_change;
+        let raw = &part.lines;
+
+        let mut push_context =
+            |line: &str, old: &mut usize, new: &mut usize, output: &mut Vec<String>| {
+                output.push(format!(" {:>line_number_width$} {line}", *old));
+                *old += 1;
+                *new += 1;
+            };
+
+        if has_leading_change && has_trailing_change {
+            if raw.len() <= context_lines * 2 {
+                for line in raw {
+                    push_context(
+                        line,
+                        &mut old_line_number,
+                        &mut new_line_number,
+                        &mut output,
+                    );
+                }
+            } else {
+                let skipped = raw.len() - context_lines * 2;
+                for line in &raw[..context_lines] {
+                    push_context(
+                        line,
+                        &mut old_line_number,
+                        &mut new_line_number,
+                        &mut output,
+                    );
+                }
+                output.push(format!(" {:>line_number_width$} ...", ""));
+                old_line_number += skipped;
+                new_line_number += skipped;
+                for line in &raw[raw.len() - context_lines..] {
+                    push_context(
+                        line,
+                        &mut old_line_number,
+                        &mut new_line_number,
+                        &mut output,
+                    );
+                }
+            }
+        } else if has_leading_change {
+            let shown = raw.len().min(context_lines);
+            let skipped = raw.len() - shown;
+            for line in &raw[..shown] {
+                push_context(
+                    line,
+                    &mut old_line_number,
+                    &mut new_line_number,
+                    &mut output,
+                );
+            }
+            if skipped > 0 {
+                output.push(format!(" {:>line_number_width$} ...", ""));
+                old_line_number += skipped;
+                new_line_number += skipped;
+            }
+        } else if has_trailing_change {
+            let skipped = raw.len().saturating_sub(context_lines);
+            if skipped > 0 {
+                output.push(format!(" {:>line_number_width$} ...", ""));
+                old_line_number += skipped;
+                new_line_number += skipped;
+            }
+            for line in &raw[skipped..] {
+                push_context(
+                    line,
+                    &mut old_line_number,
+                    &mut new_line_number,
+                    &mut output,
+                );
+            }
+        } else {
+            // Context far away from any change is skipped entirely.
+            old_line_number += raw.len();
+            new_line_number += raw.len();
+        }
+        last_was_change = false;
+    }
+
+    DiffString {
+        diff: output.join("\n"),
+        first_changed_line,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -621,6 +820,124 @@ mod tests {
         let error = apply_replacements_preserving_unchanged_lines("a\nb\n", "a\n", &[&replacement])
             .expect_err("line count");
         assert!(error.contains("different line count"), "{error}");
+    }
+
+    #[test]
+    fn renders_a_display_diff_with_line_numbers() {
+        let old_content = "one\ntwo\nthree\n";
+        let new_content = "one\nTWO\nthree\n";
+        let result = generate_diff_string(old_content, new_content, 4);
+        assert_eq!(result.first_changed_line, Some(2));
+        assert_eq!(result.diff, " 1 one\n-2 two\n+2 TWO\n 3 three");
+    }
+
+    #[test]
+    fn the_display_diff_elides_far_away_context() {
+        let old_content: String = (1..=30).map(|index| format!("line {index}\n")).collect();
+        let new_content = old_content.replace("line 15\n", "changed 15\n");
+        let result = generate_diff_string(&old_content, &new_content, 2);
+        let lines: Vec<&str> = result.diff.lines().collect();
+        assert_eq!(result.first_changed_line, Some(15));
+        // Leading context is elided, then two lines of context on each side.
+        assert_eq!(lines[0], "    ...");
+        assert_eq!(lines[1], " 13 line 13");
+        assert_eq!(lines[2], " 14 line 14");
+        assert_eq!(lines[3], "-15 line 15");
+        assert_eq!(lines[4], "+15 changed 15");
+        assert_eq!(lines[5], " 16 line 16");
+        assert_eq!(lines[6], " 17 line 17");
+        assert_eq!(lines[7], "    ...");
+        assert_eq!(lines.len(), 8);
+    }
+
+    #[test]
+    fn the_display_diff_keeps_short_context_between_two_changes() {
+        let old_content = "a\nb\nc\nd\ne\n";
+        let new_content = "A\nb\nc\nd\nE\n";
+        let result = generate_diff_string(old_content, new_content, 4);
+        let lines: Vec<&str> = result.diff.lines().collect();
+        assert_eq!(lines[0], "-1 a");
+        assert_eq!(lines[1], "+1 A");
+        assert_eq!(lines[2], " 2 b");
+        assert_eq!(lines[3], " 3 c");
+        assert_eq!(lines[4], " 4 d");
+        assert_eq!(lines[5], "-5 e");
+        assert_eq!(lines[6], "+5 E");
+        assert_eq!(lines.len(), 7);
+    }
+
+    #[test]
+    fn generates_a_unified_patch_that_applies_cleanly() {
+        let old_content = "Hello, world!";
+        let new_content = "Hello, testing!";
+        let patch = generate_unified_patch("file.txt", old_content, new_content, 4);
+        assert!(patch.contains("--- file.txt"), "{patch}");
+        assert!(patch.contains("+++ file.txt"), "{patch}");
+        assert!(patch.contains("@@"), "{patch}");
+        assert!(patch.contains("-Hello, world!"), "{patch}");
+        assert!(patch.contains("+Hello, testing!"), "{patch}");
+        assert_eq!(
+            apply_patch(old_content, &patch),
+            Some(new_content.to_owned())
+        );
+    }
+
+    #[test]
+    fn a_multi_hunk_patch_applies_cleanly() {
+        let old_content: String = (1..=40).map(|index| format!("line {index}\n")).collect();
+        let new_content = old_content
+            .replace("line 5\n", "five\n")
+            .replace("line 35\n", "thirty-five\n");
+        let patch = generate_unified_patch("file.txt", &old_content, &new_content, 4);
+        assert_eq!(patch.matches("@@").count(), 4, "two hunks");
+        assert_eq!(apply_patch(&old_content, &patch), Some(new_content));
+    }
+
+    /// Minimal unified-patch applier, matching what the TS suite checks with
+    /// `applyPatch` from the `diff` package.
+    fn apply_patch(original: &str, patch: &str) -> Option<String> {
+        let original_lines: Vec<&str> = original.split('\n').collect();
+        let mut result: Vec<String> = Vec::new();
+        let mut cursor = 0usize;
+        let mut lines = patch.lines().peekable();
+        while let Some(line) = lines.next() {
+            if !line.starts_with("@@") {
+                continue;
+            }
+            let old_start: usize = line
+                .split(['-', ',', ' '])
+                .find(|part| {
+                    part.chars().all(|character| character.is_ascii_digit()) && !part.is_empty()
+                })?
+                .parse()
+                .ok()?;
+            let hunk_start = old_start.saturating_sub(1);
+            while cursor < hunk_start {
+                result.push((*original_lines.get(cursor)?).to_owned());
+                cursor += 1;
+            }
+            while let Some(hunk_line) = lines.peek() {
+                if hunk_line.starts_with("@@") {
+                    break;
+                }
+                let hunk_line = lines.next().expect("peeked");
+                match hunk_line.chars().next() {
+                    Some(' ') => {
+                        result.push((*original_lines.get(cursor)?).to_owned());
+                        cursor += 1;
+                    }
+                    Some('-') => cursor += 1,
+                    Some('+') => result.push(hunk_line[1..].to_owned()),
+                    Some('\\') => {}
+                    _ => {}
+                }
+            }
+        }
+        while cursor < original_lines.len() {
+            result.push((*original_lines.get(cursor)?).to_owned());
+            cursor += 1;
+        }
+        Some(result.join("\n"))
     }
 
     #[test]
