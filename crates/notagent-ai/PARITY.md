@@ -87,6 +87,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/ai/test/openai-completions-thinking-token-budget.test.ts` | 124 | 9 |
 | 2026-08-13 | `packages/ai/test/openai-completions-reasoning-details.test.ts` | 118 | 9 |
 | 2026-08-13 | `packages/ai/test/openai-completions-raw-stop-reason.test.ts` | 79 | 9 |
+| 2026-08-13 | `packages/ai/src/api/openai-responses-shared.ts` | 792 | 9 |
+| 2026-08-13 | `packages/ai/src/api/openai-responses.ts` | 372 | 9 |
 | 2026-08-13 | `packages/ai/src/models.generated.ts` | 124 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/all.ts` | 155 | 5 |
 | 2026-08-13 | `packages/ai/src/providers/data/` (39 Dateien + Manifest) | ~592 KB | 5 |
@@ -144,6 +146,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/auth/context.ts` | 45 | `auth/context.rs` | portiert (Task 6) | Klasse 1: Die Browser-Guards (dynamischer `import`, fehlendes `process.env`) entfallen |
 | `src/api/openai-completions.ts` (Request) | 1577 | `api/openai_completions_params.rs` | verifiziert (Task 9) | `buildParams`, `convertMessages`, `convertTools`, `cache_control`-Platzierung und Chat-Template-Auflösung; 102 Payloads aus dem TS-Original werden byte-identisch reproduziert. Klasse 1: Die Feldreihenfolge von `openRouterRouting`/`vercelGatewayRouting` folgt der Interface-Deklaration statt der Schlüsselreihenfolge der Modelldatei (typisierte Structs statt offener Objekte) |
 | `src/api/openai-completions.ts` (Stream) | — | `api/openai_completions.rs` | verifiziert (Task 9) | Klasse 3: Der SDK-Iterator wird zum eigenen SSE-Modul; die SDK-`APIError`-Form (Status, `error`-Feld des Bodys, `makeMessage`) ist nachgebaut, damit `formatProviderError` denselben Text liefert. Klasse 1: Der Text eines nicht parsbaren Chunks stammt von serde statt von V8. Die Scratch-Puffer liegen im Streaming-State statt an den Blöcken (Master-Plan, Architektur) |
+| `src/api/openai-responses-shared.ts` | 792 | `api/openai_responses_shared.rs` | verifiziert (Task 9) | `convertResponsesMessages`, `convertResponsesTools` und die Slot-Zustandsmaschine (`output_index` → Content-Block). Klasse 1: `normalizeToolCallId` bekommt die Quell-Nachricht; dafür nimmt `NormalizeToolCallId` jetzt `(id, source)` statt nur `id` |
+| `src/api/openai-responses.ts` | 372 | `api/openai_responses.rs` | verifiziert (Task 9) | Compat-Auflösung, `buildParams`, Session-Affinity-Header, Service-Tier-Preisfaktor und der Transport. 51 Payloads und 33 Event-Sequenzen aus dem TS-Original werden exakt reproduziert |
 | `src/api/openai-prompt-cache.ts` | 8 | `api/openai_prompt_cache.rs` | verifiziert (Task 9) | 64 Code-Punkte, nicht Bytes (`Array.from`) |
 | `src/auth/oauth/pkce.ts` | 34 | `auth/oauth/pkce.rs` | verifiziert (Task 7) | Klasse 3: WebCrypto → sha2 plus Zufallsquelle; gegen den RFC-7636-Testvektor geprüft |
 | `src/auth/oauth/device-code.ts` | 98 | `auth/oauth/device_code.rs` | verifiziert (Task 7) | RFC 8628 inkl. `slow_down` mit 5-s-Increment, Vorrang eines Server-Intervalls und beider Timeout-Meldungen |

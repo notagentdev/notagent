@@ -453,7 +453,9 @@ pub fn convert_messages(
     let transformed_messages = transform_messages(
         &context.messages,
         model,
-        Some(&|id: &str| normalize_tool_call_id(model, id)),
+        Some(&|id: &str, _source: &crate::types::AssistantMessage| {
+            normalize_tool_call_id(model, id)
+        }),
         timestamp,
     );
 

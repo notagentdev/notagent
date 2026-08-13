@@ -334,7 +334,8 @@ fn normalizes_tool_call_ids_across_models_and_rewrites_results() {
         }),
     ];
 
-    let normalize = |id: &str| id.replace(['|', ':'], "_");
+    let normalize =
+        |id: &str, _source: &notagent_ai::types::AssistantMessage| id.replace(['|', ':'], "_");
     let transformed = transform_messages(&messages, &model, Some(&normalize), 0);
     let Message::Assistant(assistant) = &transformed[0] else {
         panic!("assistant")

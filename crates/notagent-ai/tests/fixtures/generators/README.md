@@ -27,3 +27,8 @@ second records the event sequence for scripted SSE bodies through a fake `fetch`
 |---|---|---|
 | `openai-completions-payloads.mts` | `openai-completions-payloads.jsonl` | `node --experimental-strip-types openai-completions-payloads.mts > ../openai-completions-payloads.jsonl` |
 | `openai-completions-stream.mts` | `openai-completions-stream.jsonl` | `node --experimental-strip-types openai-completions-stream.mts > ../openai-completions-stream.jsonl` |
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `openai-responses-payloads.mts` | `openai-responses-payloads.jsonl` | `node --experimental-strip-types openai-responses-payloads.mts > ../openai-responses-payloads.jsonl` |
+| `openai-responses-stream.mts` | `openai-responses-stream.jsonl` | `node --experimental-strip-types openai-responses-stream.mts > ../openai-responses-stream.jsonl` |

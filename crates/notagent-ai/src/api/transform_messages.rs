@@ -3,8 +3,8 @@
 //! 1:1 port of `packages/ai/src/api/transform-messages.ts` (223 LOC).
 
 use crate::types::{
-    AssistantContent, ImageContent, Message, Model, TextContent, TextOrImageContent, ToolCall,
-    ToolResultMessage, UserContent,
+    AssistantContent, AssistantMessage, ImageContent, Message, Model, TextContent,
+    TextOrImageContent, ToolCall, ToolResultMessage, UserContent,
 };
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER: &str = "(image omitted: model does not support images)";
@@ -12,7 +12,9 @@ const NON_VISION_TOOL_IMAGE_PLACEHOLDER: &str =
     "(tool image omitted: model does not support images)";
 
 /// Normalizer for tool-call ids, e.g. Anthropic's `^[a-zA-Z0-9_-]{1,64}$`.
-pub type NormalizeToolCallId<'a> = &'a dyn Fn(&str) -> String;
+/// `normalizeToolCallId(id, model, source)` — the model is the one being called, so
+/// only the id and the assistant message the call came from are passed on.
+pub type NormalizeToolCallId<'a> = &'a dyn Fn(&str, &AssistantMessage) -> String;
 
 /// `replaceImagesWithPlaceholder(content, placeholder)` — collapses runs of images.
 fn replace_images_with_placeholder(
@@ -98,6 +100,8 @@ pub fn transform_messages(
                 transformed.push(Message::ToolResult(message));
             }
             Message::Assistant(mut assistant) => {
+                // The normalizer inspects the message the call came from.
+                let assistant_source = assistant.clone();
                 let is_same_model = assistant.provider == model.provider
                     && assistant.api == model.api
                     && assistant.model == model.id;
@@ -152,7 +156,7 @@ pub fn transform_messages(
                                 normalized.thought_signature = None;
                             }
                             if !is_same_model && let Some(normalize) = normalize_tool_call_id {
-                                let normalized_id = normalize(&tool_call.id);
+                                let normalized_id = normalize(&tool_call.id, &assistant_source);
                                 if normalized_id != tool_call.id {
                                     tool_call_id_map
                                         .insert(tool_call.id.clone(), normalized_id.clone());

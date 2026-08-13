@@ -625,7 +625,7 @@ pub fn build_params(
     let transformed_messages = transform_messages(
         &context.messages,
         model,
-        Some(&|id: &str| normalize_tool_call_id(id)),
+        Some(&|id: &str, _source: &crate::types::AssistantMessage| normalize_tool_call_id(id)),
         timestamp,
     );
 
