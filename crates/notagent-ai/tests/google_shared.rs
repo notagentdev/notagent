@@ -461,3 +461,53 @@ fn a_signature_survives_deltas_that_omit_it() {
         Some("sig-2")
     );
 }
+
+// ---------------------------------------------------------------------------
+// Raw finish reasons
+//
+// Port of `packages/ai/test/google-raw-stop-reason.test.ts` (106). Both adapters share
+// `GoogleStreamState`, so one state machine covers the Generative AI and the Vertex case.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn raw_gemini_finish_reasons_survive_into_the_error() {
+    use notagent_ai::api::google_generative_ai::GoogleStreamState;
+
+    for (api, provider, model_id, finish_reason) in [
+        (
+            "google-generative-ai",
+            "google",
+            "gemini-2.5-flash",
+            "MALFORMED_FUNCTION_CALL",
+        ),
+        (
+            "google-vertex",
+            "google-vertex",
+            "gemini-3-flash-preview",
+            "SAFETY",
+        ),
+    ] {
+        let target = model(api, provider, model_id);
+        let mut state = GoogleStreamState::new_with_api(&target, api, 1);
+        state.process_chunk(
+            &json!({ "candidates": [{ "finishReason": finish_reason, "content": { "parts": [] } }] }),
+            1,
+        );
+        let (_, result) = state.finish();
+
+        assert_eq!(
+            state.output.stop_reason,
+            StopReason::Error,
+            "{finish_reason}"
+        );
+        assert_eq!(
+            state.output.raw_stop_reason.as_deref(),
+            Some(finish_reason),
+            "{finish_reason}"
+        );
+        assert_eq!(
+            result.expect_err("an error").to_string(),
+            format!("Provider stopped with: {finish_reason}")
+        );
+    }
+}

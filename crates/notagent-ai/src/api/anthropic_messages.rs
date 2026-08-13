@@ -671,13 +671,20 @@ async fn run_request(
         request.headers.as_ref(),
     )?;
 
+    // Copilot wants request-shape headers (`X-Initiator`, `Openai-Intent`, vision).
+    let copilot_dynamic_headers = (model.provider == "github-copilot").then(|| {
+        crate::api::github_copilot_headers::build_copilot_dynamic_headers(
+            &context.messages,
+            crate::api::github_copilot_headers::has_copilot_vision_input(&context.messages),
+        )
+    });
     let (headers, is_oauth) = build_default_headers(
         model,
         request.api_key.as_deref(),
         options.interleaved_thinking.unwrap_or(true),
         should_use_fine_grained_tool_streaming_beta(model, context),
         request.headers.as_ref(),
-        None,
+        copilot_dynamic_headers.as_ref(),
         cache_session_id(options),
     );
 

@@ -945,3 +945,114 @@ async fn threads_the_env_tokens_through_models_into_the_request() {
         Some("Bearer explicit-token")
     );
 }
+
+// ---------------------------------------------------------------------------
+// GitHub Copilot through the Anthropic Messages API
+//
+// Port of `packages/ai/test/github-copilot-anthropic.test.ts` (127).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn copilot_claude_models_carry_the_effort_overrides() {
+    use notagent_ai::models::get_supported_thinking_levels;
+
+    for (model_id, expects_xhigh) in [("claude-opus-4.7", true), ("claude-opus-5", true)] {
+        let model = get_builtin_model("github-copilot", model_id).expect(model_id);
+        let levels = serde_json::to_value(model.thinking_level_map.clone()).unwrap();
+        assert_eq!(levels["minimal"], json!("low"), "{model_id}");
+        assert_eq!(levels["xhigh"], json!("xhigh"), "{model_id}");
+        assert_eq!(levels["max"], json!("max"), "{model_id}");
+        let supported = get_supported_thinking_levels(&model);
+        assert_eq!(
+            supported.contains(&ModelThinkingLevel::Xhigh),
+            expects_xhigh,
+            "{model_id}"
+        );
+        assert!(supported.contains(&ModelThinkingLevel::Max), "{model_id}");
+        if model_id == "claude-opus-5" {
+            assert_eq!(model.api, "anthropic-messages");
+            assert_eq!(model.context_window, 1_000_000);
+        }
+    }
+
+    let sonnet = get_builtin_model("github-copilot", "claude-sonnet-4.6").expect("sonnet");
+    let levels = serde_json::to_value(sonnet.thinking_level_map.clone()).unwrap();
+    assert_eq!(levels["minimal"], json!("low"));
+    assert_eq!(levels["max"], json!("max"));
+    let supported = get_supported_thinking_levels(&sonnet);
+    assert!(supported.contains(&ModelThinkingLevel::Max));
+    assert!(!supported.contains(&ModelThinkingLevel::Xhigh));
+}
+
+#[tokio::test]
+async fn copilot_uses_bearer_auth_its_headers_and_a_valid_payload() {
+    let model = get_builtin_model("github-copilot", "claude-sonnet-4.6").expect("model");
+    assert_eq!(model.api, "anthropic-messages");
+
+    let seen = Arc::new(Mutex::new(None));
+    let mut request = request_options(&seen, "");
+    request.api_key = Some("tid_copilot_session_test_token".to_string());
+    stream(
+        model.clone(),
+        system_context(),
+        request,
+        AnthropicOptions::default(),
+    )
+    .result()
+    .await;
+    let request = seen.lock().expect("poisoned").take().expect("a request");
+
+    // Bearer auth instead of the `x-api-key` header.
+    assert_eq!(
+        header(&request, "authorization").as_deref(),
+        Some("Bearer tid_copilot_session_test_token")
+    );
+    assert_eq!(header(&request, "x-api-key"), None);
+    // Static Copilot headers off the model plus the dynamic ones.
+    assert!(
+        header(&request, "user-agent")
+            .unwrap_or_default()
+            .contains("GitHubCopilotChat")
+    );
+    assert_eq!(
+        header(&request, "copilot-integration-id").as_deref(),
+        Some("vscode-chat")
+    );
+    assert_eq!(header(&request, "x-initiator").as_deref(), Some("user"));
+    assert_eq!(
+        header(&request, "openai-intent").as_deref(),
+        Some("conversation-edits")
+    );
+    // Copilot supports neither the fine-grained tool streaming beta …
+    let beta = header(&request, "anthropic-beta").unwrap_or_default();
+    assert!(!beta.contains("fine-grained-tool-streaming"), "{beta}");
+
+    let body = body_json(&request);
+    assert_eq!(body["model"], json!("claude-sonnet-4.6"));
+    assert_eq!(body["stream"], json!(true));
+    assert_eq!(body["max_tokens"], json!(model.max_tokens));
+    assert!(body["messages"].is_array());
+}
+
+#[tokio::test]
+async fn copilot_adaptive_models_omit_the_interleaved_thinking_beta() {
+    let model = get_builtin_model("github-copilot", "claude-sonnet-4.6").expect("model");
+    let seen = Arc::new(Mutex::new(None));
+    let mut request = request_options(&seen, "");
+    request.api_key = Some("tid_copilot_session_test_token".to_string());
+    stream(
+        model,
+        system_context(),
+        request,
+        AnthropicOptions {
+            interleaved_thinking: Some(true),
+            ..Default::default()
+        },
+    )
+    .result()
+    .await;
+
+    let request = seen.lock().expect("poisoned").take().expect("a request");
+    let beta = header(&request, "anthropic-beta").unwrap_or_default();
+    assert!(!beta.contains("interleaved-thinking-2025-05-14"), "{beta}");
+}

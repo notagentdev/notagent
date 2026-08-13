@@ -170,6 +170,13 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/ai/test/error-body.test.ts` | 226 | 13 |
 | 2026-08-13 | `packages/ai/test/max-thinking.test.ts` | 89 | 13 |
 | 2026-08-13 | `packages/ai/test/compat-env.test.ts` | 74 | 13 |
+| 2026-08-13 | `packages/ai/test/openai-responses-empty-tool-result.test.ts` | 58 | 13 |
+| 2026-08-13 | `packages/ai/test/openai-responses-message-id.test.ts` | 48 | 13 |
+| 2026-08-13 | `packages/ai/test/openai-responses-foreign-toolcall-id.test.ts` | 66 | 13 |
+| 2026-08-13 | `packages/ai/test/provider-error-body-regression.test.ts` | 213 | 13 |
+| 2026-08-13 | `packages/ai/test/provider-error-body-passthrough.test.ts` | 78 | 13 |
+| 2026-08-13 | `packages/ai/test/github-copilot-anthropic.test.ts` | 127 | 13 |
+| 2026-08-13 | `packages/ai/test/google-raw-stop-reason.test.ts` | 106 | 13 |
 | 2026-08-13 | `packages/ai/test/cloudflare-stream.test.ts` | 64 | 11 |
 | 2026-08-13 | `packages/ai/src/api/openai-completions.ts` (Struktur + Compat-Matrix) | 1577 (Compat 134 vollständig) | 9 (laufend) |
 | 2026-08-13 | `packages/ai/test/anthropic-sse-parsing.test.ts` | 424 | 8 (laufend) |
@@ -216,7 +223,10 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/api/*.lazy.ts` (11 Wrapper) | 216 | `api/streams.rs` | verifiziert (Task 11) | Klasse 4: die Wrapper existieren, damit ein Bundler das dynamisch importierte Modul aus Browser-Builds schneiden kann; Rust linkt statisch, also bleibt je Wrapper eine Unit-Struct, die in ihr Modul weiterleitet. `setBedrockProviderModule`/`registerBundledOAuthFlowLoaders` (Bun-Binary-Registrierung) entfallen aus demselben Grund |
 | `test/xiaomi-models.test.ts`, `openrouter-cache-control-models.test.ts`, `together-models.test.ts`, `baseten-models.test.ts`, `qwen-token-plan-models.test.ts`, `fireworks-models.test.ts`, offline-Teil von `bedrock-models.test.ts` | 955 | `tests/model_data.rs` | portiert (Task 13) | Klasse 1: die TS-Suites lesen über das ausgeschlossene `compat.ts` (`getModel`/`getModels`) — der Port liest dieselben Daten über `model_catalog`. Klasse 1: Payload-Zusicherungen erfassen den serialisierten Request-Body über ein injiziertes `fetch` statt über `onPayload` + geworfenen Fehler (dasselbe Objekt). Die key-gated Bedrock-Modellläufe (`BEDROCK_EXTENSIVE_MODEL_TEST`) sind wie in TS nicht Teil des Standardlaufs |
 | `test/bedrock-endpoint-resolution.test.ts`, `bedrock-credentials.test.ts`, `bedrock-custom-headers.test.ts`, `bedrock-raw-stop-reason.test.ts` | 607 | `tests/bedrock_converse_stream.rs` (Anbau) | portiert (Task 13) | Klasse 1: die TS-Suites lesen die Konfiguration des gemockten SDK-Clients — hier ist `build_client_config` genau diese Konfiguration. Fälle, die `process.env` pro Test stubben, laufen über das provider-scoped `env` (ein Rust-Testprozess teilt sich eine Prozessumgebung über alle Threads). Die Header-Middleware ist als `applicable_custom_headers` prüfbar; ihre Registrierung im Interceptor-Stack ist ohne echten SDK-Aufruf nicht beobachtbar |
-| `test/google-shared-gemini3-unsigned-tool-call.test.ts`, `google-shared-signed-empty-blocks.test.ts`, `google-shared-image-tool-result-routing.test.ts`, `google-thinking-signature.test.ts` | 424 | `tests/google_shared.rs` | portiert (Task 13) | — |
+| `test/google-shared-gemini3-unsigned-tool-call.test.ts`, `google-shared-signed-empty-blocks.test.ts`, `google-shared-image-tool-result-routing.test.ts`, `google-thinking-signature.test.ts`, `google-raw-stop-reason.test.ts` | 530 | `tests/google_shared.rs` | portiert (Task 13) | Klasse 1: beide Adapter teilen sich `GoogleStreamState`, also deckt eine Zustandsmaschine den Generative-AI- und den Vertex-Fall ab |
+| `test/openai-responses-empty-tool-result.test.ts`, `openai-responses-message-id.test.ts`, `openai-responses-foreign-toolcall-id.test.ts` | 172 | `tests/openai_responses_convert.rs` | portiert (Task 13) | — |
+| `test/provider-error-body-regression.test.ts`, `provider-error-body-passthrough.test.ts` | 291 | `tests/provider_error_body.rs` | portiert (Task 13) | Klasse 3: statt eines SDK-Mocks antwortet das injizierte `fetch` mit genau der Nicht-2xx-Antwort, deren Body die SDK-Meldung verdeckt. Der Bedrock-Teil deckt `tests/bedrock_converse_stream.rs` über `format_bedrock_error` ab; der Bild-Teil liegt in `tests/images.rs` |
+| `test/github-copilot-anthropic.test.ts` | 127 | `tests/anthropic_compat.rs` (Anbau) | portiert (Task 13) | Dabei aufgedeckt und behoben: der Anthropic-Adapter setzte die dynamischen Copilot-Header (`X-Initiator`, `Openai-Intent`, Vision) nicht — `openai-completions` und `openai-responses` taten es bereits |
 | Katalog-Hälfte von `test/max-thinking.test.ts` | 89 | `tests/model_data.rs` (Anbau) | portiert (Task 13) | Der Codex-Payload-Fall (`reasoning: { effort: "max" }`) liegt in `tests/openai_codex_responses.rs` |
 | `test/error-body.test.ts` | 226 | `tests/error_body.rs` | portiert (Task 13) | Klasse 3: die vier SDK-Fehlerformen werden zu dem `RawProviderError`, den die HTTP-Schicht daraus bauen würde; die Abwehrfälle gegen serialisierte SDK-Interna (Node-Streams, Wrapper-Klassen) kollabieren zu „die Schicht liefert keinen Body" — genau das, was sie zusichern |
 | `test/lax-message-content.test.ts` | 67 | `tests/types_serde.rs` (Anbau) | portiert (Task 13) | Klasse 1 + bug-compat: TS normalisiert `null`/fehlendes `content` erst in `transformMessages`, weil unsauber gebaute Historien und alte Session-Dateien es enthalten (#6259, #6276). In Rust ist dieser Zustand nicht darstellbar, also greift dieselbe Nachsicht beim Deserialisieren (`lax_content`) — das Ergebnis ist derselbe Zustand, den TS vor dem Request erreicht |
@@ -314,12 +324,10 @@ sie nach, sobald die Loop-nahen Suiten stehen): `abort`, `anthropic-eager-tool-i
 `xiaomi-token-plan-ams-anthropic-empty-signature-smoke`, `zen`.
 
 **Noch offen — offline**: `bedrock-convert-messages`, `bedrock-error-metadata`,
-`deferred-tools`, `github-copilot-anthropic`, `google-raw-stop-reason`,
-`lazy-module-load`, `openai-responses-empty-tool-result`,
-`openai-responses-foreign-toolcall-id`, `openai-responses-message-id`,
+`deferred-tools`, `lazy-module-load`,
 `openai-responses-namespace`, `openai-responses-partial-json-cleanup`,
-`provider-error-body-passthrough`, `provider-error-body-regression`, `sampling-options`,
-`telemetry-options`, `transform-messages-copilot-openai-to-anthropic`, `xai-responses`.
+`sampling-options`, `telemetry-options`,
+`transform-messages-copilot-openai-to-anthropic`, `xai-responses`.
 Ihre Kernpfade sind über die Differential-Fixtures bereits abgedeckt; offen sind die
 spezifischen Randfälle.
 
