@@ -9,6 +9,7 @@ pub mod constrained_sampling;
 pub mod github_copilot_headers;
 pub mod google_generative_ai;
 pub mod google_shared;
+pub mod google_vertex;
 pub mod lazy;
 pub mod openai_codex_responses;
 pub mod openai_completions;

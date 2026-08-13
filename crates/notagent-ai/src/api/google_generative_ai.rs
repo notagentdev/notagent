@@ -69,7 +69,8 @@ pub struct GoogleError {
 }
 
 impl GoogleError {
-    fn message(message: impl Into<String>) -> Self {
+    /// Named `from_message` rather than `message`, which is the accessor's name.
+    pub fn from_message(message: impl Into<String>) -> Self {
         GoogleError {
             message: message.into(),
             ..Default::default()
@@ -236,7 +237,7 @@ pub fn build_request_body(
             options.tool_choice.as_deref(),
             supports_strict_mode,
         )
-        .map_err(|error| GoogleError::message(error.to_string()))?
+        .map_err(|error| GoogleError::from_message(error.to_string()))?
     };
 
     let mut body = Map::new();
@@ -254,7 +255,7 @@ pub fn build_request_body(
     }
     if !tools.is_empty()
         && let Some(converted) = convert_tools(tools, false, supports_strict_mode)
-            .map_err(|error| GoogleError::message(error.to_string()))?
+            .map_err(|error| GoogleError::from_message(error.to_string()))?
     {
         body.insert("tools".to_string(), converted);
     }
@@ -339,11 +340,16 @@ pub struct GoogleStreamState {
 
 impl GoogleStreamState {
     pub fn new(model: &Model, timestamp: i64) -> Self {
+        Self::new_with_api(model, "google-generative-ai", timestamp)
+    }
+
+    /// Same, with the api literal the caller pins on the message.
+    pub fn new_with_api(model: &Model, api: &str, timestamp: i64) -> Self {
         GoogleStreamState {
             output: AssistantMessage {
                 content: Vec::new(),
                 // TS pins the api to the literal, independent of `model.api`.
-                api: "google-generative-ai".to_string(),
+                api: api.to_string(),
                 provider: model.provider.clone(),
                 model: model.id.clone(),
                 response_model: None,
@@ -591,7 +597,7 @@ impl GoogleStreamState {
         if self.output.stop_reason == StopReason::Pending {
             return (
                 emitted,
-                Err(GoogleError::message(
+                Err(GoogleError::from_message(
                     "Google stream ended without a finish reason",
                 )),
             );
@@ -603,7 +609,7 @@ impl GoogleStreamState {
                 Some(reason) if !reason.is_empty() => format!("Provider stopped with: {reason}"),
                 _ => "An unknown error occurred".to_string(),
             };
-            return (emitted, Err(GoogleError::message(message)));
+            return (emitted, Err(GoogleError::from_message(message)));
         }
         let reason = match self.output.stop_reason {
             StopReason::Length => DoneReason::Length,
@@ -690,7 +696,7 @@ async fn run_request(
     timestamp: i64,
 ) -> Result<DoneReason, GoogleError> {
     let Some(api_key) = request.api_key.as_deref().filter(|key| !key.is_empty()) else {
-        return Err(GoogleError::message(format!(
+        return Err(GoogleError::from_message(format!(
             "No API key for provider: {}",
             model.provider
         )));
@@ -717,7 +723,7 @@ async fn run_request(
         .unwrap_or_else(|| Arc::new(ReqwestFetch::default()));
     let url = build_request_url(model);
     let payload =
-        serde_json::to_vec(&body).map_err(|error| GoogleError::message(error.to_string()))?;
+        serde_json::to_vec(&body).map_err(|error| GoogleError::from_message(error.to_string()))?;
 
     let response = retry_provider_request(
         || {
@@ -734,7 +740,7 @@ async fn run_request(
                         body: Some(payload),
                     })
                     .await
-                    .map_err(|error| GoogleError::message(error.to_string()))?;
+                    .map_err(|error| GoogleError::from_message(error.to_string()))?;
                 if response.status < 200 || response.status >= 300 {
                     let status = response.status;
                     let headers = response.headers.clone();
@@ -758,8 +764,8 @@ async fn run_request(
     .await
     .map_err(|error| match error {
         ProviderRetryError::Request(error) => error,
-        ProviderRetryError::RetryDelayTooLong(message) => GoogleError::message(message),
-        ProviderRetryError::Aborted => GoogleError::message("Request aborted"),
+        ProviderRetryError::RetryDelayTooLong(message) => GoogleError::from_message(message),
+        ProviderRetryError::Aborted => GoogleError::from_message("Request aborted"),
     })?;
 
     if let Some(on_response) = &request.on_response {
@@ -803,9 +809,9 @@ async fn run_request(
                     .as_ref()
                     .is_some_and(|signal| signal.is_cancelled())
                 {
-                    return Err(GoogleError::message("Request was aborted"));
+                    return Err(GoogleError::from_message("Request was aborted"));
                 }
-                let chunk = chunk.map_err(|error| GoogleError::message(error.to_string()))?;
+                let chunk = chunk.map_err(|error| GoogleError::from_message(error.to_string()))?;
                 feed(&String::from_utf8_lossy(&chunk), state);
             }
         }
@@ -830,7 +836,7 @@ async fn run_request(
         .as_ref()
         .is_some_and(|signal| signal.is_cancelled())
     {
-        return Err(GoogleError::message("Request was aborted"));
+        return Err(GoogleError::from_message("Request was aborted"));
     }
     outcome
 }
@@ -862,7 +868,7 @@ pub fn stream_simple(
         .as_deref()
         .filter(|key| !key.is_empty())
     else {
-        return Err(GoogleError::message(format!(
+        return Err(GoogleError::from_message(format!(
             "No API key for provider: {}",
             model.provider
         )));
