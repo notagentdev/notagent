@@ -6,8 +6,8 @@ Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
 **Stand: Task 4 läuft.** Fundament (Schema, Migrationen, SQL-Komposition, Datenbank-Adapter,
-Session-Typoberfläche) ist portiert und testbelegt; Storage-Module, Repository, Branch-Cache und
-Suche stehen aus.
+Session-Typoberfläche), alle zehn Storage-Module und der Branch-Cache sind portiert; Repository
+(`repo.ts`), Suche (`search-backend.ts`), die `Session`-Klasse und die neun Testsuiten stehen aus.
 
 ## Lektüre-Protokoll
 
@@ -36,8 +36,17 @@ Suche stehen aus.
 | src/sqlite/migrations.ts | 49 | src/sqlite/migrations.rs | verifiziert | Klasse 4: die Migrations-SQL ist eingebettet (`include_str!`) statt zur Laufzeit gelesen |
 | src/sqlite/migrations/001_initial.sql | 122 | src/sqlite/migrations/001_initial.sql | verifiziert | unverändert übernommen |
 | (agent) src/harness/session/types.ts | 393 | src/session_types.rs | portiert | Klasse 1: TS-Unions → Rust-Enums mit `#[serde(tag)]`; `ProvisionedEntry` ist ein eigenes Enum statt eines gemappten Typs; Query-Objekte werden Structs mit `Option`-Feldern |
-| src/sqlite/storage/*.ts | 842 | — | offen | Task 4 |
-| src/sqlite/branch-cache.ts | 101 | — | offen | Task 4 |
+| src/sqlite/storage/sessions.ts | 131 | src/sqlite/storage/sessions.rs | portiert | Klasse 1: `assertJsonSerializable` entfällt (`serde_json::Value` ist per Konstruktion serialisierbar) |
+| src/sqlite/storage/session-sequences.ts | 29 | src/sqlite/storage/session_sequences.rs | portiert | — |
+| src/sqlite/storage/session-stats.ts | 54 | src/sqlite/storage/session_stats.rs | portiert | Klasse 1: `usage.totalTokens` ist optional (B-Kontrakt), `unwrap_or(0)` entspricht dem TS-Verhalten |
+| src/sqlite/storage/writer-leases.ts | 58 | src/sqlite/storage/writer_leases.rs | portiert | — |
+| src/sqlite/storage/entries.ts | 78 | src/sqlite/storage/entries.rs | portiert | — |
+| src/sqlite/storage/facts.ts | 64 | src/sqlite/storage/facts.rs | portiert | — |
+| src/sqlite/storage/branch-tips.ts | 35 | src/sqlite/storage/branch_tips.rs | portiert | — |
+| src/sqlite/storage/lanes.ts | 124 | src/sqlite/storage/lanes.rs | portiert | — |
+| src/sqlite/storage/records.ts | 95 | src/sqlite/storage/records.rs | portiert | — |
+| src/sqlite/storage/branch-entries.ts | 174 | src/sqlite/storage/branch_entries.rs | portiert | — |
+| src/sqlite/branch-cache.ts | 101 | src/sqlite/branch_cache.rs | portiert | — |
 | src/sqlite/search-backend.ts | 188 | — | offen | Task 4 |
 | src/sqlite/repo.ts | 953 | — | teilweise gelesen | Task 4 |
 | (agent) src/harness/session/session.ts | 299 | — | offen | Task 4 (SessionRepo liefert `Session`) |
