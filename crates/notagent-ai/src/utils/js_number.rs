@@ -11,6 +11,7 @@
 //! `0.0` als `0` erscheint.
 
 use serde::{Deserialize, Deserializer, Serializer};
+use serde_json::{Number, Value};
 
 /// Größte ganze Zahl, die als f64 exakt darstellbar ist (`Number.MAX_SAFE_INTEGER + 1`).
 const MAX_EXACT_INTEGER: f64 = 9_007_199_254_740_992.0;
@@ -72,6 +73,39 @@ pub fn to_js_string(value: f64) -> String {
     };
 
     format!("{sign}{formatted}")
+}
+
+/// Normalizes every number of a JSON value the way JavaScript would hold it.
+///
+/// JavaScript knows exactly one number type (f64), so `JSON.parse` turns `1e3` into
+/// `1000` and loses precision above 2^53 (`12345678901234567890` becomes
+/// `12345678901234567000`). serde_json instead keeps `u64`/`i64` precision and the
+/// float-ness of the literal. Tool-call arguments are parsed from provider streams and
+/// re-serialized into the next request, so they must round-trip like the TS original.
+pub fn normalize_json_numbers(value: &mut Value) {
+    match value {
+        Value::Number(number) => {
+            let Some(as_f64) = number.as_f64() else {
+                return;
+            };
+            *number = f64_to_js_number(as_f64);
+        }
+        Value::Array(items) => items.iter_mut().for_each(normalize_json_numbers),
+        Value::Object(entries) => entries
+            .iter_mut()
+            .for_each(|(_, item)| normalize_json_numbers(item)),
+        _ => {}
+    }
+}
+
+/// Maps an f64 to the JSON number JavaScript would print for it.
+///
+/// Going through [`to_js_string`] keeps the JS behaviour for magnitudes beyond 2^53,
+/// where the shortest round-tripping decimal is padded with zeros
+/// (`12345678901234567890` -> `12345678901234567000`).
+fn f64_to_js_number(value: f64) -> Number {
+    serde_json::from_str::<Number>(&to_js_string(value))
+        .unwrap_or_else(|_| Number::from_f64(value).unwrap_or_else(|| Number::from(0)))
 }
 
 /// Serialisiert ganzzahlige Werte als JSON-Integer (`0` statt `0.0`), alles andere als f64.
