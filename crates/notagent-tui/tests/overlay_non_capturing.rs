@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{
-    Component, ComponentRef, Focusable, OverlayHandle, OverlayOptions, OverlayUnfocusOptions,
-    TuiStopOptions, component_ref,
+    Component, ComponentRef, Container, Focusable, OverlayHandle, OverlayOptions,
+    OverlayUnfocusOptions, TuiStopOptions, component_ref,
 };
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
@@ -549,5 +549,804 @@ async fn unfocus_target_releases_a_blocked_overlay_while_replacement_remains_foc
     assert_eq!(replacement.inputs(), ["\r".to_string()]);
     assert!(fallback.inputs().is_empty());
     assert_eq!(target.inputs(), ["x".to_string()]);
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn handle_input_restores_focus_to_a_visible_focused_overlay_after_base_focus_steal() {
+    let (terminal, mut tui, editor, editor_component) = setup();
+    let (_replacement, replacement_component) = focusable("REPLACEMENT");
+    let (overlay, overlay_component) = focusable("OVERLAY");
+
+    tui.core().show_overlay(overlay_component, None);
+    assert!(overlay.focused());
+    tui.core().set_focus(Some(replacement_component));
+    tui.core().set_focus(Some(editor_component));
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(overlay.inputs(), ["x".to_string()]);
+    assert!(editor.inputs().is_empty());
+    assert!(overlay.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn handle_input_restores_focus_to_explicitly_focused_raw_sub_overlay_after_base_focus_steal()
+{
+    let (terminal, mut tui, editor, editor_component) = setup();
+    let (controller, controller_component) = focusable("CONTROLLER");
+    let (sub_overlay, sub_component) = focusable("SUB");
+
+    tui.core().show_overlay(controller_component, None);
+    let sub_handle = tui.core().show_overlay(sub_component, non_capturing());
+    sub_handle.focus();
+    tui.core().set_focus(Some(editor_component));
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(sub_overlay.inputs(), ["x".to_string()]);
+    assert!(controller.inputs().is_empty());
+    assert!(editor.inputs().is_empty());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn passive_non_capturing_overlay_does_not_regain_input_after_base_focus() {
+    let (terminal, mut tui, editor, _) = setup();
+    let (passive, passive_component) = focusable("PASSIVE");
+
+    tui.core().show_overlay(passive_component, non_capturing());
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(editor.inputs(), ["x".to_string()]);
+    assert!(passive.inputs().is_empty());
+    assert!(editor.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn explicitly_focused_non_capturing_overlay_regains_input_after_base_focus_steal() {
+    let (terminal, mut tui, editor, editor_component) = setup();
+    let (overlay, overlay_component) = focusable("NC");
+
+    let handle = tui.core().show_overlay(overlay_component, non_capturing());
+    handle.focus();
+    tui.core().set_focus(Some(editor_component));
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(overlay.inputs(), ["x".to_string()]);
+    assert!(editor.inputs().is_empty());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn unfocus_prevents_visible_overlay_from_regaining_input() {
+    let (terminal, mut tui, editor, _) = setup();
+    let (overlay, overlay_component) = focusable("OVERLAY");
+
+    let handle = tui.core().show_overlay(overlay_component, None);
+    handle.unfocus();
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(editor.inputs(), ["x".to_string()]);
+    assert!(overlay.inputs().is_empty());
+    assert!(editor.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn set_focus_null_explicitly_clears_visible_overlay_restore() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (overlay, overlay_component) = focusable("OVERLAY");
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    tui.core().show_overlay(overlay_component, None);
+    tui.core().set_focus(None);
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert!(overlay.inputs().is_empty());
+    assert!(!overlay.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn blocked_replacement_set_focus_null_resumes_the_visible_overlay() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let core = tui.core().clone();
+
+    let (replacement, replacement_component) = {
+        let core = core.clone();
+        reactive(
+            "REPLACEMENT",
+            Box::new(move |data| {
+                if data == "\r" {
+                    core.set_focus(None);
+                }
+            }),
+        )
+    };
+    let (overlay, overlay_component) = {
+        let core = core.clone();
+        let replacement_component = replacement_component.clone();
+        reactive(
+            "OVERLAY",
+            Box::new(move |data| {
+                if data == "b" {
+                    core.set_focus(Some(replacement_component.clone()));
+                }
+            }),
+        )
+    };
+
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+    tui.core().show_overlay(overlay_component, None);
+
+    terminal.send_input("b");
+    render_and_flush(&mut tui).await;
+    terminal.send_input("\r");
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(replacement.inputs(), ["\r".to_string()]);
+    assert_eq!(overlay.inputs(), ["b".to_string(), "x".to_string()]);
+    assert!(overlay.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn temporarily_invisible_focused_overlay_falls_back_without_losing_restore_eligibility() {
+    let (terminal, mut tui, editor, editor_component) = setup();
+    let (overlay, overlay_component) = focusable("OVERLAY");
+    let visible = Rc::new(RefCell::new(true));
+
+    tui.core()
+        .show_overlay(overlay_component, visible_when(Rc::clone(&visible)));
+    tui.core().set_focus(Some(editor_component));
+    *visible.borrow_mut() = false;
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(editor.inputs(), ["x".to_string()]);
+    assert!(overlay.inputs().is_empty());
+
+    *visible.borrow_mut() = true;
+    terminal.send_input("y");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(editor.inputs(), ["x".to_string()]);
+    assert_eq!(overlay.inputs(), ["y".to_string()]);
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn temporarily_invisible_focused_overlay_with_null_pre_focus_restores_when_visible_again() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (overlay, overlay_component) = focusable("OVERLAY");
+    let visible = Rc::new(RefCell::new(true));
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    tui.core()
+        .show_overlay(overlay_component, visible_when(Rc::clone(&visible)));
+    *visible.borrow_mut() = false;
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+    assert!(overlay.inputs().is_empty());
+
+    *visible.borrow_mut() = true;
+    terminal.send_input("y");
+    render_and_flush(&mut tui).await;
+    assert_eq!(overlay.inputs(), ["y".to_string()]);
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn cyclic_overlay_pre_focus_ancestry_does_not_hang_focus_changes() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (editor, editor_component) = focusable("EDITOR");
+    let (overlay, overlay_component) = focusable("OVERLAY");
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.core().set_focus(Some(overlay_component.clone()));
+    tui.start();
+
+    let handle = tui.core().show_overlay(overlay_component, non_capturing());
+    handle.focus();
+    tui.core().set_focus(Some(editor_component));
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(editor.inputs(), ["x".to_string()]);
+    assert!(overlay.inputs().is_empty());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn handle_input_restores_the_focus_order_top_overlay_after_base_focus_steal() {
+    let (terminal, mut tui, editor, editor_component) = setup();
+    let (lower, lower_component) = focusable("LOWER");
+    let (upper, upper_component) = focusable("UPPER");
+
+    let lower_handle = tui.core().show_overlay(lower_component, None);
+    tui.core().show_overlay(upper_component, None);
+    lower_handle.focus();
+    tui.core().set_focus(Some(editor_component));
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(lower.inputs(), ["x".to_string()]);
+    assert!(upper.inputs().is_empty());
+    assert!(editor.inputs().is_empty());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn hide_overlay_does_not_reassign_focus_when_topmost_overlay_is_non_capturing() {
+    let (_terminal, mut tui, _editor, _) = setup();
+    let (capturing, capturing_component) = focusable("CAP");
+    let (_nc, nc_component) = focusable("NC");
+
+    tui.core().show_overlay(capturing_component, None);
+    tui.core().show_overlay(nc_component, non_capturing());
+    assert!(capturing.focused());
+
+    tui.core().hide_overlay();
+    render_and_flush(&mut tui).await;
+    assert!(capturing.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn multiple_capturing_and_non_capturing_overlays_restore_focus_through_removals() {
+    let (_terminal, mut tui, editor, _) = setup();
+    let (c1, c1_component) = focusable("C1");
+    let (_n1, n1_component) = focusable("N1");
+    let (c2, c2_component) = focusable("C2");
+    let (_n2, n2_component) = focusable("N2");
+
+    let c1_handle = tui.core().show_overlay(c1_component, None);
+    tui.core().show_overlay(n1_component, non_capturing());
+    let c2_handle = tui.core().show_overlay(c2_component, None);
+    tui.core().show_overlay(n2_component, non_capturing());
+    assert!(c2.focused());
+
+    c2_handle.hide();
+    render_and_flush(&mut tui).await;
+    assert!(c1.focused());
+
+    c1_handle.hide();
+    render_and_flush(&mut tui).await;
+    assert!(editor.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn capturing_overlay_unfocus_on_topmost_capturing_overlay_falls_back_to_pre_focus() {
+    let (_terminal, mut tui, editor, _) = setup();
+    let (capturing, capturing_component) = focusable("CAP");
+
+    let handle = tui.core().show_overlay(capturing_component, None);
+    assert!(capturing.focused());
+    handle.unfocus();
+    render_and_flush(&mut tui).await;
+
+    assert!(editor.focused());
+    assert!(!capturing.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+// describe("no-op guards")
+
+#[tokio::test]
+async fn focus_on_hidden_overlay_is_a_no_op() {
+    let (_terminal, mut tui, editor, _) = setup();
+    let (_overlay, overlay_component) = focusable("OVERLAY");
+
+    let handle = tui.core().show_overlay(overlay_component, non_capturing());
+    handle.set_hidden(true);
+    handle.focus();
+    render_and_flush(&mut tui).await;
+
+    assert!(editor.focused());
+    assert!(!handle.is_focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn focus_after_hide_is_a_no_op() {
+    let (_terminal, mut tui, editor, _) = setup();
+    let (_overlay, overlay_component) = focusable("OVERLAY");
+
+    let handle = tui.core().show_overlay(overlay_component, non_capturing());
+    handle.hide();
+    handle.focus();
+    render_and_flush(&mut tui).await;
+
+    assert!(editor.focused());
+    assert!(!handle.is_focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn unfocus_when_overlay_does_not_have_focus_is_a_no_op() {
+    let (_terminal, mut tui, editor, _) = setup();
+    let (overlay, overlay_component) = focusable("OVERLAY");
+
+    let handle = tui.core().show_overlay(overlay_component, non_capturing());
+    handle.unfocus();
+    render_and_flush(&mut tui).await;
+
+    assert!(editor.focused());
+    assert!(!overlay.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn unfocus_with_null_pre_focus_clears_focus_and_does_not_route_input_back() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (overlay, overlay_component) = focusable("OVERLAY");
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    let handle = tui.core().show_overlay(overlay_component, None);
+    assert!(overlay.focused());
+    handle.unfocus();
+    assert!(!overlay.focused());
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert!(overlay.inputs().is_empty());
+    assert!(!handle.is_focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+// describe("focus cycle prevention")
+
+#[tokio::test]
+async fn toggle_focus_between_non_capturing_overlays_then_unfocus_returns_to_editor() {
+    let (_terminal, mut tui, editor, _) = setup();
+    let (a, a_component) = focusable("A");
+    let (b, b_component) = focusable("B");
+
+    let a_handle = tui.core().show_overlay(a_component, non_capturing());
+    let b_handle = tui.core().show_overlay(b_component, non_capturing());
+    a_handle.focus();
+    b_handle.focus();
+    a_handle.focus();
+    a_handle.unfocus();
+    render_and_flush(&mut tui).await;
+
+    assert!(editor.focused());
+    assert!(!a.focused());
+    assert!(!b.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn explicit_unfocus_target_supports_cycling_between_three_overlays_and_editor() {
+    let (terminal, mut tui, editor, editor_component) = setup();
+    let (a, a_component) = focusable("A");
+    let (b, b_component) = focusable("B");
+    let (c, c_component) = focusable("C");
+
+    let a_handle = tui.core().show_overlay(a_component, None);
+    let b_handle = tui.core().show_overlay(b_component, None);
+    let c_handle = tui.core().show_overlay(c_component, None);
+
+    a_handle.focus();
+    terminal.send_input("a");
+    render_and_flush(&mut tui).await;
+    b_handle.focus();
+    terminal.send_input("b");
+    render_and_flush(&mut tui).await;
+    c_handle.focus();
+    terminal.send_input("c");
+    render_and_flush(&mut tui).await;
+    c_handle.unfocus_to(OverlayUnfocusOptions {
+        target: Some(editor_component.clone()),
+    });
+    terminal.send_input("e");
+    render_and_flush(&mut tui).await;
+    a_handle.focus();
+    terminal.send_input("A");
+    render_and_flush(&mut tui).await;
+    a_handle.unfocus_to(OverlayUnfocusOptions {
+        target: Some(editor_component),
+    });
+    terminal.send_input("E");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(a.inputs(), ["a".to_string(), "A".to_string()]);
+    assert_eq!(b.inputs(), ["b".to_string()]);
+    assert_eq!(c.inputs(), ["c".to_string()]);
+    assert_eq!(editor.inputs(), ["e".to_string(), "E".to_string()]);
+    assert!(editor.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn explicit_null_unfocus_target_clears_focus_without_restoring_overlays() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (overlay, overlay_component) = focusable("OVERLAY");
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    let handle = tui.core().show_overlay(overlay_component, None);
+    handle.unfocus_to(OverlayUnfocusOptions { target: None });
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert!(overlay.inputs().is_empty());
+    assert!(!handle.is_focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn hiding_focused_overlay_falls_back_to_next_visual_frontmost_overlay() {
+    let (terminal, mut tui, _editor, _) = setup();
+    let (a, a_component) = focusable("A");
+    let (b, b_component) = focusable("B");
+    let (c, c_component) = focusable("C");
+
+    let a_handle = tui.core().show_overlay(a_component, None);
+    let b_handle = tui.core().show_overlay(b_component, None);
+    tui.core().show_overlay(c_component, None);
+    a_handle.focus();
+    b_handle.focus();
+    b_handle.set_hidden(true);
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(a.inputs(), ["x".to_string()]);
+    assert!(c.inputs().is_empty());
+    assert!(a.focused());
+    let _ = b;
+    tui.stop(TuiStopOptions::default());
+}
+
+// describe("rendering order")
+
+/// `class StaticOverlay` of the TS suite.
+struct StaticOverlay(Vec<String>);
+
+impl Component for StaticOverlay {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.0.clone()
+    }
+    fn invalidate(&mut self) {}
+}
+
+fn corner_overlay(non_capturing: bool) -> Option<OverlayOptions> {
+    Some(OverlayOptions {
+        row: Some(notagent_tui::tui::SizeValue::Cells(0)),
+        col: Some(notagent_tui::tui::SizeValue::Cells(0)),
+        width: Some(notagent_tui::tui::SizeValue::Cells(1)),
+        non_capturing,
+        ..OverlayOptions::default()
+    })
+}
+
+fn first_char(terminal: &VirtualTerminal) -> Option<char> {
+    terminal.get_viewport().first()?.chars().next()
+}
+
+#[tokio::test]
+async fn focus_on_already_focused_overlay_bumps_visual_order() {
+    let terminal = VirtualTerminal::new(20, 6);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (_editor, editor_component) = focusable("EDITOR");
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.core().set_focus(Some(editor_component));
+    tui.start();
+
+    let a_handle = tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["A".to_string()])),
+        corner_overlay(true),
+    );
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["B".to_string()])),
+        corner_overlay(true),
+    );
+    a_handle.focus();
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["C".to_string()])),
+        corner_overlay(true),
+    );
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('C'));
+
+    a_handle.focus();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('A'));
+    assert!(a_handle.is_focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn default_rendering_order_for_overlapping_overlays_follows_creation_order() {
+    let terminal = VirtualTerminal::new(20, 6);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["A".to_string()])),
+        corner_overlay(true),
+    );
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["B".to_string()])),
+        corner_overlay(true),
+    );
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('B'));
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn focus_on_lower_overlay_renders_it_on_top() {
+    let terminal = VirtualTerminal::new(20, 6);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    let lower = tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["A".to_string()])),
+        corner_overlay(true),
+    );
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["B".to_string()])),
+        corner_overlay(true),
+    );
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('B'));
+
+    lower.focus();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('A'));
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn focusing_middle_overlay_places_it_on_top_while_preserving_relative_order() {
+    let terminal = VirtualTerminal::new(20, 6);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["A".to_string()])),
+        corner_overlay(true),
+    );
+    let middle = tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["B".to_string()])),
+        corner_overlay(true),
+    );
+    let top = tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["C".to_string()])),
+        corner_overlay(true),
+    );
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('C'));
+
+    middle.focus();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('B'));
+
+    middle.hide();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('C'));
+
+    top.hide();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('A'));
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn capturing_overlay_hidden_and_shown_again_renders_on_top_after_unhide() {
+    let terminal = VirtualTerminal::new(20, 6);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.start();
+
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["A".to_string()])),
+        corner_overlay(true),
+    );
+    let capturing = tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["B".to_string()])),
+        corner_overlay(false),
+    );
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('B'));
+
+    capturing.set_hidden(true);
+    tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["C".to_string()])),
+        corner_overlay(true),
+    );
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('C'));
+
+    capturing.set_hidden(false);
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('B'));
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn unfocus_does_not_change_visual_order_until_another_overlay_is_focused() {
+    let terminal = VirtualTerminal::new(20, 6);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (_editor, editor_component) = focusable("EDITOR");
+    tui.core().add_child(component_ref(EmptyContent));
+    tui.core().set_focus(Some(editor_component));
+    tui.start();
+
+    let a = tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["A".to_string()])),
+        corner_overlay(true),
+    );
+    let b = tui.core().show_overlay(
+        component_ref(StaticOverlay(vec!["B".to_string()])),
+        corner_overlay(true),
+    );
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('B'));
+
+    a.focus();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('A'));
+
+    a.unfocus();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('A'));
+
+    b.focus();
+    render_and_flush(&mut tui).await;
+    assert_eq!(first_char(&terminal), Some('B'));
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn blocked_replacement_can_move_focus_internally_before_overlay_restore() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let core = tui.core().clone();
+
+    let base: Rc<RefCell<Container>> = Rc::new(RefCell::new(Container::new()));
+    let (_editor, editor_component) = focusable("EDITOR");
+
+    let (second, second_component) = {
+        let core = core.clone();
+        let base = Rc::clone(&base);
+        let editor_component = editor_component.clone();
+        reactive(
+            "SECOND",
+            Box::new(move |data| {
+                if data == "\r" {
+                    base.borrow_mut().clear();
+                    base.borrow_mut().add_child(editor_component.clone());
+                    core.set_focus(Some(editor_component.clone()));
+                }
+            }),
+        )
+    };
+    let (first, first_component) = {
+        let core = core.clone();
+        let second_component = second_component.clone();
+        reactive(
+            "FIRST",
+            Box::new(move |data| {
+                if data == "n" {
+                    core.set_focus(Some(second_component.clone()));
+                }
+            }),
+        )
+    };
+    let (overlay, overlay_component) = {
+        let core = core.clone();
+        let first_component = first_component.clone();
+        reactive(
+            "OVERLAY",
+            Box::new(move |data| {
+                if data == "b" {
+                    core.set_focus(Some(first_component.clone()));
+                }
+            }),
+        )
+    };
+
+    base.borrow_mut().add_child(editor_component.clone());
+    base.borrow_mut().add_child(first_component);
+    base.borrow_mut().add_child(second_component);
+    tui.core().add_child(base.clone() as ComponentRef);
+    tui.core().set_focus(Some(editor_component));
+    tui.start();
+
+    tui.core().show_overlay(overlay_component, None);
+    terminal.send_input("b");
+    render_and_flush(&mut tui).await;
+    terminal.send_input("n");
+    render_and_flush(&mut tui).await;
+    terminal.send_input("2");
+    terminal.send_input("\r");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(overlay.inputs(), ["b".to_string()]);
+    assert_eq!(first.inputs(), ["n".to_string()]);
+    assert_eq!(second.inputs(), ["2".to_string(), "\r".to_string()]);
+    assert!(overlay.focused());
+    tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn removed_replacement_restores_overlay_even_when_pre_focus_differs_from_next_focus() {
+    let terminal = VirtualTerminal::new(80, 24);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let core = tui.core().clone();
+
+    let base: Rc<RefCell<Container>> = Rc::new(RefCell::new(Container::new()));
+    let (editor, editor_component) = focusable("EDITOR");
+    let (_palette, palette_component) = focusable("PALETTE");
+
+    let (replacement, replacement_component) = {
+        let core = core.clone();
+        let base = Rc::clone(&base);
+        let editor_component = editor_component.clone();
+        reactive(
+            "REPLACEMENT",
+            Box::new(move |data| {
+                if data == "\r" {
+                    base.borrow_mut().clear();
+                    base.borrow_mut().add_child(editor_component.clone());
+                    core.set_focus(Some(editor_component.clone()));
+                }
+            }),
+        )
+    };
+    let (overlay, overlay_component) = {
+        let core = core.clone();
+        let replacement_component = replacement_component.clone();
+        reactive(
+            "OVERLAY",
+            Box::new(move |data| {
+                if data == "b" {
+                    core.set_focus(Some(replacement_component.clone()));
+                }
+            }),
+        )
+    };
+
+    base.borrow_mut().add_child(editor_component);
+    base.borrow_mut().add_child(palette_component.clone());
+    base.borrow_mut().add_child(replacement_component);
+    tui.core().add_child(base.clone() as ComponentRef);
+    tui.core().set_focus(Some(palette_component));
+    tui.start();
+
+    tui.core().show_overlay(overlay_component, None);
+    terminal.send_input("b");
+    render_and_flush(&mut tui).await;
+    terminal.send_input("\r");
+    terminal.send_input("x");
+    render_and_flush(&mut tui).await;
+
+    assert_eq!(overlay.inputs(), ["b".to_string(), "x".to_string()]);
+    assert_eq!(replacement.inputs(), ["\r".to_string()]);
+    assert!(editor.inputs().is_empty());
+    assert!(overlay.focused());
     tui.stop(TuiStopOptions::default());
 }
