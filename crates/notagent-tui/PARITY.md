@@ -166,6 +166,10 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `node_modules/get-east-asian-width/{index,lookup,lookup-data,utilities}.js` | 213 | Task 2 (Referenz für `eastAsianWidth`) |
 | `src/autocomplete.ts` | 786 | `src/autocomplete.rs` | Task 13 (vorgezogen, weil `editor.ts` aus Task 10 den Provider braucht) |
 | `test/autocomplete.test.ts` | 542 | `tests/autocomplete.rs` | Task 13 (vorgezogen) |
+| `src/components/editor.ts` | 2363 | `src/components/editor.rs` | Task 10 |
+| `src/editor-component.ts` | 74 | `src/editor_component.rs` | Task 10 |
+| `test/editor.test.ts` | 4152 | `tests/editor.rs` | Task 10 |
+| `test/editor-history-keybindings.test.ts` | 43 | `tests/editor_history_keybindings.rs` | Task 10 |
 
 ## Ledger
 
@@ -214,6 +218,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/utils.ts` | 1326 | `src/utils.rs` (+ generiertes `src/unicode_tables.rs`) | verifiziert | Klasse 3: `Intl.Segmenter` → `unicode-segmentation`; `get-east-asian-width` und die `\p{…}`-Klassen (inkl. `\p{RGI_Emoji}`) als generierte Tabellen aus derselben Node-/Datenquelle (Rusts `regex` kennt weder `\p{RGI_Emoji}` noch `[A--[B]]`). Klasse 1: gepoolter `AnsiCodeTracker` in `extractSegments` → lokale Instanz (kein globaler Zustand, `clear()` beim Eintritt macht das verhaltensgleich); Width-Cache als `thread_local` mit identischer FIFO-Eviktion (512); Default-Parameter `truncateToWidth(text, w)` → zusätzliche Funktion `truncate_to_width_opts` |
 | `src/autocomplete.ts` | `src/autocomplete.rs` | vollständig portiert (Slash-Commands, Datei-Pfad-Vervollständigung, Fuzzy-`@`-Suche über `fd`, Quoting, `applyCompletion`) | Klasse 3: `Intl`/Node-`path` → `src/node_path.rs` (POSIX-Algorithmen von Node nachgebildet, gegen Node verifiziert); Klasse 1: `AbortSignal` → eigener `AbortController`/`AbortSignal` auf `Rc<Cell<bool>>` (Single-Thread-Design des Crates), Abbruch wird gepollt statt per Listener; Klasse 1: `Awaitable<T>` → `Pin<Box<dyn Future>>` |
 | — (Hilfsmodul) | `src/node_path.rs` | Node-`path.posix`-Semantik (join/dirname/basename/normalize) und `os.homedir()`; Referenzwerte aus Node im Unit-Test hinterlegt | Klasse 3 |
+| `src/components/editor.ts` | `src/components/editor.rs` | vollständig portiert (wordWrapLine mit TextChunk-Mapping, Visual-Line-Navigation mit Sticky-Column-Tabelle, Paste-Marker als atomare Segmente inkl. Registry-Renumbering, History, Kill-Ring, Undo-Coalescing, Autocomplete-Integration, Zeichen-Jump, CURSOR_MARKER bei Fokus) | Klasse 1: `cursorCol` und alle String-Indizes sind Byte-Offsets statt UTF-16-Einheiten (jeder Slice liegt auf Graphem-Grenzen); Klasse 1: `onSubmit`/`onChange` → `take_submitted()`/`take_changes()`; Klasse 1: Autocomplete-Debounce (`setTimeout`) und die Promise-Kette der Anfrage → `autocomplete_deadline()` + `pump_autocomplete().await` (ein Callback bräuchte `&mut` auf den Editor); Klasse 3: `Intl.Segmenter` → `unicode-segmentation` (CJK-Wortgrenzen wie dokumentiert) |
+| `src/editor-component.ts` | `src/editor_component.rs` | vollständig portiert | Klasse 1: optionale Interface-Member → Trait-Methoden mit Default-Implementierung; Callback-Felder → gepollte Queues |
 
 ## Portierte Testdateien
 
@@ -249,6 +255,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | — (zusätzlich) | — | `tests/keys_oracle.rs` + `tests/fixtures/keys-oracle.json` | Differenztest gegen die TS-Implementierung: 1611 Eingabesequenzen × 637 KeyIds × beide Kitty-Zustände (≈ 2 Mio. `matchesKey`-Vergleiche) plus `parseKey`, `isKeyRelease`, `isKeyRepeat`, `decodeKittyPrintable`, `decodePrintableKey` — alle identisch |
 | — (zusätzlich) | — | `tests/utils_oracle.rs` + `tests/fixtures/utils-oracle.json` | Differenztest gegen die TS-Implementierung: 2695 Korpusfälle × {visibleWidth, wrapTextWithAnsi ×5 Breiten, truncateToWidth ×5 (auch mit `…`+Padding), sliceWithWidth ×5 Konfigurationen, extractSegments ×4} — alle identisch. Erzeugt von `tools/gen-utils-oracle.mjs` (Master-Plan, Risiko 1) |
 | `test/autocomplete.test.ts` | 542 | `tests/autocomplete.rs` (25 Fälle) | alle Fälle portiert; die 14 `fd`-Fälle überspringen sich wie in TS (`skip: !isFdInstalled`), wenn `fd` nicht installiert ist — auf dieser Maschine ist `fd` nicht vorhanden, sodass sie in beiden Suiten nicht laufen |
+| `test/editor.test.ts` | 4152 | `tests/editor.rs` (184 Fälle) | 184 der 185 TS-Fälle portiert; nicht portierbar: "ignores invalid slash command argument completion results" — der Fall erzwingt in TS per `as unknown as` einen Rückgabewert falschen Typs (String statt Array), was Rusts Typsystem statisch ausschließt (die `Array.isArray`-Prüfung hat kein Gegenstück). Zwei CJK-Wortnavigationsfälle halten das dokumentierte Restverhalten von `unicode-segmentation` fest; "aborts active @ autocomplete" erzeugt den In-Flight-Zustand durch Verwerfen des Pump-Futures |
+| `test/editor-history-keybindings.test.ts` | 43 | `tests/editor_history_keybindings.rs` (1 Fall) | eigenes Testbinary wegen des globalen Keybindings-Managers |
 
 ## Werkzeuge
 
@@ -273,7 +281,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 7 Layout-Engine + ScrollView | fertig (Text/VStack/HStack aus Task 9 vorgezogen; Testsuite vollständig) |
 | 8 Alt-Screen-Renderer | fertig (`tui-alt-screen.ts` und `alt-screen-search.ts` vollständig portiert, Testsuite vollständig) |
 | 9 Basis-Komponenten | fertig portiert (spacer, truncated-text, box, alt-screen-flash, loader, cancellable-loader, select-list, settings-list, input, image); offene Testfälle: 14 der 35 input-Fälle |
-| 10 Editor | teilweise: kill-ring, undo-stack, word-navigation portiert; editor.ts offen |
+| 10 Editor | fertig (`editor.ts` + `editor-component.ts` portiert, Testsuite vollständig bis auf einen in Rust nicht ausdrückbaren Fall) |
 | 11 Markdown + LaTeX | offen |
 | 12 Terminal-Bilder | Modul vollständig portiert; Testsuite (632 LOC) offen |
 | 13 Autocomplete/Fuzzy/Keybindings/native | fertig (autocomplete vorgezogen, weil Task 10 den Provider braucht) |
