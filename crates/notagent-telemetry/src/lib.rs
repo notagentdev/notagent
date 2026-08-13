@@ -6,9 +6,17 @@
 //! Siehe `crates/notagent-telemetry/PARITY.md`.
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+
+pub mod memory;
+pub mod noop;
+pub mod testing;
+
+pub use memory::{InMemoryTelemetryContext, RecordedTelemetryEvent, RecordedTelemetrySpan};
+pub use noop::noop_telemetry_context;
 
 /// `AttributeValue = string | number | boolean | readonly string[] | readonly number[] | readonly boolean[]`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -153,6 +161,50 @@ pub trait TelemetrySpan: TelemetryContext {
     fn set_status(&self, status: SpanStatus);
     /// Schließt den Span ab. Aufrufe nach dem Settlement sind wirkungslos.
     fn settle(&self, outcome: SpanOutcome);
+}
+
+/// `context.startSpan(options, callback)` für Callbacks, die nicht fehlschlagen.
+///
+/// Der Span wird abgeschlossen, sobald der Callback zurückkehrt — wie in TS, wo das
+/// zurückgegebene Promise das Settlement auslöst.
+pub async fn start_span<C, F, Fut, T>(context: &C, options: SpanOptions, callback: F) -> T
+where
+    C: TelemetryContext + ?Sized,
+    F: FnOnce(Arc<dyn TelemetrySpan>) -> Fut,
+    Fut: Future<Output = T>,
+{
+    let span = context.begin_span(options);
+    let result = callback(Arc::clone(&span)).await;
+    span.settle(SpanOutcome::Completed);
+    result
+}
+
+/// Wie [`start_span`], aber für fehlbare Callbacks: `Err` entspricht dem geworfenen
+/// Fehler in TS und setzt ohne expliziten Status automatisch einen Error-Status.
+pub async fn try_start_span<C, F, Fut, T, E>(
+    context: &C,
+    options: SpanOptions,
+    callback: F,
+) -> Result<T, E>
+where
+    C: TelemetryContext + ?Sized,
+    F: FnOnce(Arc<dyn TelemetrySpan>) -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let span = context.begin_span(options);
+    match callback(Arc::clone(&span)).await {
+        Ok(value) => {
+            span.settle(SpanOutcome::Completed);
+            Ok(value)
+        }
+        Err(error) => {
+            span.settle(SpanOutcome::Failed(Some(memory::automatic_error_status(
+                &error,
+            ))));
+            Err(error)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
