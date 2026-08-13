@@ -9,8 +9,10 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 SQL-Komposition, Datenbank-Adapter, Session-Typoberfläche, alle zehn Storage-Module, Branch-Cache,
 FTS5-Suche und das Repository inklusive Writer-Lease mit Heartbeat, serialisierten Writes,
 Fork nach Branch/Tree und Delete) — ebenso die `Session`-Wrapper-Klasse aus dem agent-Paket.
-**Offen** sind 24 der 31 Fälle der Backend-Konformanzsuite aus dem agent-Paket
-(`session/testing/conformance.ts`); die übrigen Suiten des Pakets sind vollständig portiert.
+Alle Suiten des Pakets sind portiert, einschließlich der Backend-Konformanzsuite aus dem
+agent-Paket (29 der 31 Fälle; die beiden „rejects non-JSON …"-Fälle sind nicht darstellbar,
+weil `serde_json::Value` weder `undefined`/`bigint`/`NaN` noch Zyklen aufnehmen kann).
+Gesamt: 71 Tests grün.
 
 ## Lektüre-Protokoll
 
@@ -62,7 +64,7 @@ Fork nach Branch/Tree und Delete) — ebenso die `Session`-Wrapper-Klasse aus de
 | test/search.test.ts | 314 | tests/search.rs | verifiziert | 9 Tests: Trigram-Treffer, gelöschter Name, Quoting, Rebuild beim ersten Init, Entry-Type-Filter, Limits, Trigger beim Löschen |
 | test/writer-leases.test.ts | 217 | tests/writer_leases.rs | verifiziert | 7 Tests. Der Heartbeat-Test nutzt kurze reale Intervalle statt Fake-Timern (Abweichung Klasse 1) |
 | test/adapter.test.ts | 35 | tests/adapter.rs | verifiziert | 4 Tests; „rejects asynchronous transaction callbacks" ist nicht darstellbar (`with_transaction` nimmt eine synchrone Closure) |
-| test/conformance.test.ts + (agent) session/testing/conformance.ts | 51 + 1 038 | tests/conformance.rs | teilweise portiert | 7 von 31 Fällen: Sequenz-/Parent-Zuweisung, Records und Lane-Moves, doppelte IDs, Lane-Isolation, ungültige Queries, gefilterte/cursor-basierte Queries, permanente Lane-Namen. Die Fixture-Factory entfällt (ein Backend, Klasse 1) |
+| test/conformance.test.ts + (agent) session/testing/conformance.ts | 51 + 1 038 | tests/conformance.rs | verifiziert | 29 von 31 Fällen aller fünf Gruppen (entries and lanes, records and log, queries and facts, validation and immutability, repository and forks). Die Fixture-Factory entfällt (ein Backend, Klasse 1). Nicht darstellbar: „rejects non-JSON entries/records before storage mutation" (`undefined`, `bigint`, `NaN`, Zyklen). Der Fall „ledger statistics across lanes" weicht in den Token-Erwartungen ab, weil `Usage` u64 zählt (Interface-Request C-2) |
 
 ## Ausschlüsse
 

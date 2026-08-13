@@ -1464,3 +1464,447 @@ async fn persists_tool_result_termination_decisions() {
     );
     fixture.repo.close().await;
 }
+
+/// TS feeds `undefined` and `bigint` payloads; neither is representable in
+/// `serde_json::Value`, so the case checks the surviving invariant: a rejected
+/// record leaves no trace and the next valid record still gets sequence 1.
+#[tokio::test]
+async fn rejects_invalid_records_before_storage_mutation() {
+    let (fixture, session) = fixture("session").await;
+    let error = session
+        .append_record(operation_started("run", "missing-lane"))
+        .await
+        .expect_err("rejects");
+    assert_eq!(error.code, SessionErrorCode::InvalidLane);
+
+    assert!(
+        session
+            .find_records(&RecordQuery::default())
+            .expect("records")
+            .is_empty()
+    );
+    assert!(
+        session
+            .get_log(&Default::default())
+            .expect("log")
+            .is_empty()
+    );
+    assert_eq!(
+        session
+            .append_record(operation_started("valid-record", "main"))
+            .await
+            .expect("appends")
+            .seq(),
+        1
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn linearizes_concurrent_writes_across_two_lanes() {
+    let (fixture, session) = fixture("session").await;
+    session
+        .append_entry(message("root", "root"), "main")
+        .await
+        .expect("appends");
+    session
+        .create_lane("thread", Some("root"))
+        .await
+        .expect("creates lane");
+
+    let (main_1, thread_1, main_2, thread_2) = tokio::join!(
+        session.append_entry(custom("main-1", "note", None), "main"),
+        session.append_entry(custom("thread-1", "note", None), "thread"),
+        session.append_entry(custom("main-2", "note", None), "main"),
+        session.append_entry(custom("thread-2", "note", None), "thread"),
+    );
+    let entries = [
+        main_1.expect("appends"),
+        thread_1.expect("appends"),
+        main_2.expect("appends"),
+        thread_2.expect("appends"),
+    ];
+
+    let mut sequences: Vec<i64> = entries.iter().map(Entry::seq).collect();
+    sequences.sort_unstable();
+    sequences.dedup();
+    assert_eq!(
+        sequences.len(),
+        entries.len(),
+        "every write gets its own sequence"
+    );
+
+    let log = session.get_log(&Default::default()).expect("log");
+    let log_sequences: Vec<i64> = log_kinds(&log).iter().map(|(_, seq)| *seq).collect();
+    let mut sorted = log_sequences.clone();
+    sorted.sort_unstable();
+    assert_eq!(log_sequences, sorted, "the log stays in sequence order");
+    fixture.repo.close().await;
+}
+
+// --- repository and forks ----------------------------------------------------
+
+#[tokio::test]
+async fn creates_lists_and_opens_sessions() {
+    let (fixture, session) = fixture("one").await;
+    let entry_id = session
+        .append_message(user_message("persisted"))
+        .await
+        .expect("appends");
+    let metadata = session.get_metadata().expect("metadata");
+
+    let listed = fixture.repo.list(&Default::default()).await.expect("lists");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, metadata.id);
+    assert_eq!(listed[0].created_at, metadata.created_at);
+    assert_eq!(listed[0].parent_session_id, metadata.parent_session_id);
+
+    let reopened = Session::new(fixture.repo.open(&metadata).await.expect("opens"));
+    assert_eq!(
+        entry_ids(
+            &reopened
+                .find_entries(&EntryQuery::default())
+                .expect("finds")
+        ),
+        vec![entry_id]
+    );
+
+    let error = fixture
+        .repo
+        .create(SqliteSessionCreateOptions {
+            id: Some("one".to_owned()),
+            cwd: metadata.cwd.clone(),
+            ..SqliteSessionCreateOptions::default()
+        })
+        .await
+        .expect_err("rejects");
+    assert_eq!(error.code, SessionErrorCode::AlreadyExists);
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn deletes_sessions_idempotently() {
+    let (fixture, session) = fixture("one").await;
+    let metadata = session.get_metadata().expect("metadata");
+
+    fixture.repo.delete(&metadata).await.expect("deletes");
+    let error = fixture.repo.open(&metadata).await.expect_err("rejects");
+    assert_eq!(error.code, SessionErrorCode::NotFound);
+    fixture.repo.delete(&metadata).await.expect("deletes again");
+    fixture.repo.close().await;
+}
+
+fn fork_options(
+    scope: ForkScopeArg,
+    entry_id: Option<&str>,
+    position: Option<ForkPositionArg>,
+) -> ForkOptionsArg {
+    ForkOptionsArg {
+        scope,
+        entry_id: entry_id.map(str::to_owned),
+        position,
+    }
+}
+
+type ForkOptionsArg = notagent_session_sqlite::session_types::ForkOptions;
+type ForkScopeArg = notagent_session_sqlite::session_types::ForkScope;
+type ForkPositionArg = notagent_session_sqlite::session_types::ForkPosition;
+
+#[tokio::test]
+async fn forks_one_branch_with_selected_facts_and_no_records() {
+    let (fixture, source) = fixture("source").await;
+    let cwd = source.get_metadata().expect("metadata").cwd;
+    let root = source
+        .append_message(user_message("root"))
+        .await
+        .expect("appends");
+    let shared = source
+        .append_message(user_message("shared"))
+        .await
+        .expect("appends");
+    source
+        .create_lane("thread", Some(&shared))
+        .await
+        .expect("creates lane");
+    let thread_child = source
+        .append_message_in_lane("thread", user_message("thread"))
+        .await
+        .expect("appends");
+    let main_child = source
+        .append_message(user_message("main"))
+        .await
+        .expect("appends");
+    source.set_name(Some("Source")).await.expect("sets name");
+    source
+        .set_label(&shared, Some("copied"))
+        .await
+        .expect("sets label");
+    source
+        .set_label(&thread_child, Some("excluded"))
+        .await
+        .expect("sets label");
+    source
+        .append_record(operation_started("run", "main"))
+        .await
+        .expect("appends");
+
+    let fork = Session::new(
+        fixture
+            .repo
+            .fork(
+                &source.get_metadata().expect("metadata"),
+                &fork_options(
+                    ForkScopeArg::Branch,
+                    Some(&main_child),
+                    Some(ForkPositionArg::At),
+                ),
+                SqliteSessionCreateOptions {
+                    id: Some("branch-fork".to_owned()),
+                    cwd: cwd.clone(),
+                    ..SqliteSessionCreateOptions::default()
+                },
+            )
+            .await
+            .expect("forks"),
+    );
+
+    let oldest_first = EntryQuery {
+        order: Some(EntryOrder::OldestFirst),
+        ..EntryQuery::default()
+    };
+    assert_eq!(
+        entry_ids(&fork.find_entries(&oldest_first).expect("finds")),
+        vec![root, shared.clone(), main_child.clone()]
+    );
+    let lanes = fork.get_lanes().expect("lanes");
+    assert_eq!(lanes.len(), 1);
+    assert_eq!(
+        (lanes[0].lane.as_str(), lanes[0].leaf_id.as_deref()),
+        ("main", Some(main_child.as_str()))
+    );
+    assert_eq!(fork.get_name().expect("name"), Some("Source".to_owned()));
+    assert_eq!(
+        fork.get_label(&shared).expect("label"),
+        Some("copied".to_owned())
+    );
+    assert_eq!(fork.get_label(&thread_child).expect("label"), None);
+    assert!(
+        fork.find_records(&RecordQuery::default())
+            .expect("records")
+            .is_empty()
+    );
+    let stats = fork.get_stats().expect("stats");
+    assert_eq!(stats.message_count, 3);
+    assert_eq!(stats.total_tokens, 0.0);
+    fork.append_message(user_message("after fork"))
+        .await
+        .expect("appends");
+    assert_eq!(fork.get_stats().expect("stats").message_count, 4);
+    let metadata = fork.get_metadata().expect("metadata");
+    assert_eq!(
+        (metadata.id.as_str(), metadata.parent_session_id.as_deref()),
+        ("branch-fork", Some("source"))
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn forks_a_complete_tree_with_lanes_and_facts() {
+    let (fixture, source) = fixture("source").await;
+    let cwd = source.get_metadata().expect("metadata").cwd;
+    let root = source
+        .append_message(user_message("root"))
+        .await
+        .expect("appends");
+    source
+        .create_lane("thread", Some(&root))
+        .await
+        .expect("creates lane");
+    let main_child = source
+        .append_message(user_message("main"))
+        .await
+        .expect("appends");
+    let thread_child = source
+        .append_message_in_lane("thread", user_message("thread"))
+        .await
+        .expect("appends");
+    source
+        .set_label(&thread_child, Some("thread-tip"))
+        .await
+        .expect("sets label");
+
+    let fork = Session::new(
+        fixture
+            .repo
+            .fork(
+                &source.get_metadata().expect("metadata"),
+                &fork_options(ForkScopeArg::Tree, None, None),
+                SqliteSessionCreateOptions {
+                    id: Some("tree-fork".to_owned()),
+                    cwd,
+                    ..SqliteSessionCreateOptions::default()
+                },
+            )
+            .await
+            .expect("forks"),
+    );
+
+    let oldest_first = EntryQuery {
+        order: Some(EntryOrder::OldestFirst),
+        ..EntryQuery::default()
+    };
+    assert_eq!(
+        entry_ids(&fork.find_entries(&oldest_first).expect("finds")),
+        vec![root, main_child.clone(), thread_child.clone()]
+    );
+    let lanes = fork.get_lanes().expect("lanes");
+    assert_eq!(
+        lanes
+            .iter()
+            .map(|lane| (lane.lane.as_str(), lane.leaf_id.as_deref()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("main", Some(main_child.as_str())),
+            ("thread", Some(thread_child.as_str()))
+        ]
+    );
+    assert_eq!(
+        fork.get_label(&thread_child).expect("label"),
+        Some("thread-tip".to_owned())
+    );
+    assert_eq!(fork.get_stats().expect("stats").message_count, 3);
+    let lane_items: Vec<(i64, String, Option<String>)> = fork
+        .get_log(&Default::default())
+        .expect("log")
+        .into_iter()
+        .filter_map(|item| match item {
+            LogItem::Lane { seq, lane, leaf_id } => Some((seq, lane, leaf_id)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        lane_items,
+        vec![
+            (4, "main".to_owned(), Some(main_child)),
+            (5, "thread".to_owned(), Some(thread_child)),
+        ]
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn forks_before_an_entry_without_modifying_the_source() {
+    let (fixture, source) = fixture("source").await;
+    let cwd = source.get_metadata().expect("metadata").cwd;
+    let root = source
+        .append_message(user_message("root"))
+        .await
+        .expect("appends");
+    let tail = source
+        .append_message(user_message("tail"))
+        .await
+        .expect("appends");
+    let metadata = source.get_metadata().expect("metadata");
+    let options = |id: &str| SqliteSessionCreateOptions {
+        id: Some(id.to_owned()),
+        cwd: cwd.clone(),
+        ..SqliteSessionCreateOptions::default()
+    };
+    let oldest_first = EntryQuery {
+        order: Some(EntryOrder::OldestFirst),
+        ..EntryQuery::default()
+    };
+
+    let fork = Session::new(
+        fixture
+            .repo
+            .fork(
+                &metadata,
+                &fork_options(ForkScopeArg::Branch, Some(&tail), None),
+                options("fork"),
+            )
+            .await
+            .expect("forks"),
+    );
+    assert_eq!(
+        entry_ids(&fork.find_entries(&oldest_first).expect("finds")),
+        vec![root.clone()]
+    );
+    assert_eq!(fork.get_leaf_id().expect("leaf"), Some(root.clone()));
+    assert_eq!(source.get_leaf_id().expect("leaf"), Some(tail.clone()));
+
+    let before_default = Session::new(
+        fixture
+            .repo
+            .fork(
+                &metadata,
+                &fork_options(ForkScopeArg::Branch, None, Some(ForkPositionArg::Before)),
+                options("before-default-target"),
+            )
+            .await
+            .expect("forks"),
+    );
+    assert_eq!(
+        entry_ids(&before_default.find_entries(&oldest_first).expect("finds")),
+        vec![root.clone()]
+    );
+    assert_eq!(
+        before_default.get_leaf_id().expect("leaf"),
+        Some(root.clone())
+    );
+
+    let at_default = Session::new(
+        fixture
+            .repo
+            .fork(
+                &metadata,
+                &fork_options(ForkScopeArg::Branch, None, Some(ForkPositionArg::At)),
+                options("at-default-target"),
+            )
+            .await
+            .expect("forks"),
+    );
+    assert_eq!(
+        entry_ids(&at_default.find_entries(&oldest_first).expect("finds")),
+        vec![root, tail.clone()]
+    );
+    assert_eq!(at_default.get_leaf_id().expect("leaf"), Some(tail));
+
+    let error = fixture
+        .repo
+        .fork(
+            &metadata,
+            &fork_options(ForkScopeArg::Branch, Some("missing"), None),
+            options("missing-fork"),
+        )
+        .await
+        .expect_err("rejects");
+    assert_eq!(error.code, SessionErrorCode::InvalidForkTarget);
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn validates_the_default_fork_target() {
+    let (fixture, source) = fixture("source-with-custom-leaf").await;
+    let cwd = source.get_metadata().expect("metadata").cwd;
+    source
+        .append_custom_entry("not-a-message", None)
+        .await
+        .expect("appends");
+
+    let error = fixture
+        .repo
+        .fork(
+            &source.get_metadata().expect("metadata"),
+            &fork_options(ForkScopeArg::Branch, None, None),
+            SqliteSessionCreateOptions {
+                id: Some("fork".to_owned()),
+                cwd,
+                ..SqliteSessionCreateOptions::default()
+            },
+        )
+        .await
+        .expect_err("rejects");
+    assert_eq!(error.code, SessionErrorCode::InvalidForkTarget);
+    fixture.repo.close().await;
+}
