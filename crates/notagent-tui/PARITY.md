@@ -34,13 +34,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
 | `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
 | `src/components/input.ts` | 447 | `src/components/input.rs` | verifiziert (21 von 35 Testfällen) | Klasse 1: Cursor als Byte-Offset statt UTF-16-Index (intern konsistent) |
+| `src/components/image.ts` | 127 | `src/components/image.rs` | portiert | — |
 | `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/settings-list.ts` | 249 | `src/components/settings_list.rs` | verifiziert | Klasse 1: Submenu-Callback → `close_submenu`, weil die TS-Closure die Liste selbst mutiert |
 | `src/components/cancellable-loader.ts` | 40 | `src/components/cancellable_loader.rs` | portiert | Klasse 3: `AbortController` → `CancellationToken` |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
 | `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
-| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
+| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | portiert (Capability-Detection, Zellmaße, Kitty-/iTerm2-Encoder, Bild-ID-Vergabe, PNG/JPEG/GIF/WebP-Header, `renderImage`, `imageFallback`, `hyperlink`, Kitty-Metadaten/Crop/Delete); Tests folgen | Klasse 3: `execSync("tmux …")` → `std::process::Command`; `Buffer`-Base64 → eigene Kodierung/Dekodierung; `pathToFileURL` → `file://`-Präfix |
 | `src/terminal-colors.ts` | 73 | `src/terminal_colors.rs` | verifiziert (Parser); die TUI-Query-Fälle folgen mit Task 6 | Klasse 1: `undefined` → `Option`; `TerminalColorScheme` als Enum statt String-Union |
 | `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) |
 | `native/darwin/src/darwin-modifiers.c` | 76 | `src/native_modifiers.rs` (darwin) | portiert | Klasse 3 |
@@ -90,13 +91,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
 | `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
 | `src/components/input.ts` | 447 | `src/components/input.rs` | verifiziert (21 von 35 Testfällen) | Klasse 1: Cursor als Byte-Offset statt UTF-16-Index (intern konsistent) |
+| `src/components/image.ts` | 127 | `src/components/image.rs` | portiert | — |
 | `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/settings-list.ts` | 249 | `src/components/settings_list.rs` | verifiziert | Klasse 1: Submenu-Callback → `close_submenu`, weil die TS-Closure die Liste selbst mutiert |
 | `src/components/cancellable-loader.ts` | 40 | `src/components/cancellable_loader.rs` | portiert | Klasse 3: `AbortController` → `CancellationToken` |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
 | `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
-| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
+| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | portiert (Capability-Detection, Zellmaße, Kitty-/iTerm2-Encoder, Bild-ID-Vergabe, PNG/JPEG/GIF/WebP-Header, `renderImage`, `imageFallback`, `hyperlink`, Kitty-Metadaten/Crop/Delete); Tests folgen | Klasse 3: `execSync("tmux …")` → `std::process::Command`; `Buffer`-Base64 → eigene Kodierung/Dekodierung; `pathToFileURL` → `file://`-Präfix |
 | `src/terminal-colors.ts` | 73 | Task 5 (vorgezogen aus Task 12) |
 | 2026-08-13 | `test/terminal-colors.test.ts` | 252 | Task 5 |
 | 2026-08-13 | `src/tui-main-screen.ts` | 586 | Task 6 |
@@ -176,13 +178,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
 | `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
 | `src/components/input.ts` | 447 | `src/components/input.rs` | verifiziert (21 von 35 Testfällen) | Klasse 1: Cursor als Byte-Offset statt UTF-16-Index (intern konsistent) |
+| `src/components/image.ts` | 127 | `src/components/image.rs` | portiert | — |
 | `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/settings-list.ts` | 249 | `src/components/settings_list.rs` | verifiziert | Klasse 1: Submenu-Callback → `close_submenu`, weil die TS-Closure die Liste selbst mutiert |
 | `src/components/cancellable-loader.ts` | 40 | `src/components/cancellable_loader.rs` | portiert | Klasse 3: `AbortController` → `CancellationToken` |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
 | `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
-| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | teilweise portiert (Capability-Detection, Zellmaße, `is_image_line`, `delete_kitty_image`); Rest mit Task 12 | Klasse 3: `execSync("tmux …")` → `std::process::Command` |
+| `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | portiert (Capability-Detection, Zellmaße, Kitty-/iTerm2-Encoder, Bild-ID-Vergabe, PNG/JPEG/GIF/WebP-Header, `renderImage`, `imageFallback`, `hyperlink`, Kitty-Metadaten/Crop/Delete); Tests folgen | Klasse 3: `execSync("tmux …")` → `std::process::Command`; `Buffer`-Base64 → eigene Kodierung/Dekodierung; `pathToFileURL` → `file://`-Präfix |
 | `src/terminal-colors.ts` | 73 | `src/terminal_colors.rs` | verifiziert (Parser); die TUI-Query-Fälle folgen mit Task 6 | Klasse 1: `undefined` → `Option`; `TerminalColorScheme` als Enum statt String-Union |
 | `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) |
 | `native/darwin/src/darwin-modifiers.c` | 76 | `src/native_modifiers.rs` (darwin) | portiert | Klasse 3 |
@@ -243,10 +246,10 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 6 Main-Screen-Renderer | fertig (7 Kitty-Bild-Testfälle offen, brauchen Task 9/12) |
 | 7 Layout-Engine + ScrollView | fertig (Text/VStack/HStack aus Task 9 vorgezogen) |
 | 8 Alt-Screen-Renderer | offen |
-| 9 Basis-Komponenten | teilweise: spacer, truncated-text, box, alt-screen-flash, loader, select-list, input portiert; offen: settings-list, image, cancellable-loader |
+| 9 Basis-Komponenten | fertig portiert (spacer, truncated-text, box, alt-screen-flash, loader, cancellable-loader, select-list, settings-list, input, image); offene Testfälle: input 14, truncated-text-Suite |
 | 10 Editor | teilweise: kill-ring, undo-stack, word-navigation portiert; editor.ts offen |
 | 11 Markdown + LaTeX | offen |
-| 12 Terminal-Bilder | teilweise: Capability-Detection, Zellmaße, `is_image_line`, Kitty-Metadaten/Crop/Delete portiert; Protokoll-Encoder und Header-Parser offen |
+| 12 Terminal-Bilder | Modul vollständig portiert; Testsuite (632 LOC) offen |
 | 13 Autocomplete/Fuzzy/Keybindings/native | teilweise: fuzzy, keybindings, native-modifiers portiert; autocomplete offen |
 | 14 Öffentliche API + Ledger-Abschluss | offen |
 | 15 App-TUI-Schicht (ab G2) | offen |

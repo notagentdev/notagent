@@ -217,6 +217,24 @@ pub fn delete_kitty_image(image_id: u32) -> String {
     format!("\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\")
 }
 
+/// Pixel dimensions of an image.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageDimensions {
+    /// Width in pixels.
+    pub width_px: u32,
+    /// Height in pixels.
+    pub height_px: u32,
+}
+
+/// Size of an image in terminal cells.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageCellSize {
+    /// Width in columns.
+    pub columns: usize,
+    /// Height in rows.
+    pub rows: usize,
+}
+
 /// Metadata of a transmitted Kitty image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KittyImageMetadata {
@@ -308,4 +326,460 @@ pub fn crop_kitty_image_line(line: &str, hidden_rows: usize, visible_rows: usize
         controls.join(","),
         &line[controls_end + 1..]
     )
+}
+
+const KITTY_CHUNK_SIZE: usize = 4096;
+
+/// Random Kitty image id in `[1, 0xffffffff]`, avoiding collisions between
+/// module instances.
+pub fn allocate_image_id() -> u32 {
+    // `Math.floor(Math.random() * 0xfffffffe) + 1`
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(1);
+    let counter = {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    };
+    (nanos.wrapping_mul(2_654_435_761).wrapping_add(counter) % 0xffff_fffe) + 1
+}
+
+/// Options of [`encode_kitty`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EncodeKittyOptions {
+    /// Placement width in cells.
+    pub columns: Option<usize>,
+    /// Placement height in cells.
+    pub rows: Option<usize>,
+    /// Kitty image id.
+    pub image_id: Option<u32>,
+    /// Whether Kitty applies its default cursor movement (default: true).
+    pub move_cursor: Option<bool>,
+}
+
+/// Encode base64 image data as a Kitty graphics placement.
+pub fn encode_kitty(base64_data: &str, options: EncodeKittyOptions) -> String {
+    let mut params: Vec<String> = vec!["a=T".into(), "f=100".into(), "q=2".into()];
+    if options.move_cursor == Some(false) {
+        params.push("C=1".into());
+    }
+    if let Some(columns) = options.columns {
+        params.push(format!("c={columns}"));
+    }
+    if let Some(rows) = options.rows {
+        params.push(format!("r={rows}"));
+    }
+    if let Some(image_id) = options.image_id {
+        params.push(format!("i={image_id}"));
+    }
+
+    if base64_data.len() <= KITTY_CHUNK_SIZE {
+        return format!("\x1b_G{};{base64_data}\x1b\\", params.join(","));
+    }
+
+    let mut chunks = String::new();
+    let mut offset = 0;
+    let mut is_first = true;
+    while offset < base64_data.len() {
+        let end = (offset + KITTY_CHUNK_SIZE).min(base64_data.len());
+        let chunk = &base64_data[offset..end];
+        let is_last = end >= base64_data.len();
+        if is_first {
+            chunks.push_str(&format!("\x1b_G{},m=1;{chunk}\x1b\\", params.join(",")));
+            is_first = false;
+        } else if is_last {
+            chunks.push_str(&format!("\x1b_Gm=0;{chunk}\x1b\\"));
+        } else {
+            chunks.push_str(&format!("\x1b_Gm=1;{chunk}\x1b\\"));
+        }
+        offset = end;
+    }
+    chunks
+}
+
+/// Delete all visible Kitty images (frees the image data too).
+pub fn delete_all_kitty_images() -> String {
+    "\x1b_Ga=d,d=A,q=2\x1b\\".to_string()
+}
+
+/// Delete all visible Kitty placements, keeping the uploaded image data.
+pub fn delete_all_kitty_placements() -> String {
+    "\x1b_Ga=d,d=a,q=2\x1b\\".to_string()
+}
+
+/// Options of [`encode_iterm2`].
+#[derive(Debug, Clone, Default)]
+pub struct EncodeITerm2Options {
+    /// Width parameter (cells or `"auto"`).
+    pub width: Option<String>,
+    /// Height parameter (cells or `"auto"`).
+    pub height: Option<String>,
+    /// File name shown by the terminal.
+    pub name: Option<String>,
+    /// Whether the aspect ratio is preserved (default: true).
+    pub preserve_aspect_ratio: Option<bool>,
+    /// Whether the image is inline (default: true).
+    pub inline: Option<bool>,
+}
+
+/// Encode base64 image data as an iTerm2 inline image.
+pub fn encode_iterm2(base64_data: &str, options: EncodeITerm2Options) -> String {
+    let inline = usize::from(options.inline != Some(false));
+    let decoded_size = base64_decoded_len(base64_data);
+    let mut params = vec![format!("inline={inline}"), format!("size={decoded_size}")];
+    if let Some(width) = &options.width {
+        params.push(format!("width={width}"));
+    }
+    if let Some(height) = &options.height {
+        params.push(format!("height={height}"));
+    }
+    if let Some(name) = &options.name {
+        params.push(format!("name={}", base64_encode(name.as_bytes())));
+    }
+    if options.preserve_aspect_ratio == Some(false) {
+        params.push("preserveAspectRatio=0".to_string());
+    }
+    format!("\x1b]1337;File={}:{base64_data}\x07", params.join(";"))
+}
+
+/// `Buffer.byteLength(data, "base64")`.
+fn base64_decoded_len(base64_data: &str) -> usize {
+    let trimmed = base64_data.trim_end_matches('=');
+    trimmed.len() * 3 / 4
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[(triple >> 18) as usize & 0x3f] as char);
+        out.push(ALPHABET[(triple >> 12) as usize & 0x3f] as char);
+        out.push(if chunk.len() > 1 {
+            ALPHABET[(triple >> 6) as usize & 0x3f] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[triple as usize & 0x3f] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+fn base64_decode(base64_data: &str) -> Option<Vec<u8>> {
+    const INVALID: u8 = 0xff;
+    let mut table = [INVALID; 256];
+    for (index, byte) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        .iter()
+        .enumerate()
+    {
+        table[*byte as usize] = index as u8;
+    }
+    let mut out = Vec::new();
+    let mut buffer = 0u32;
+    let mut bits = 0u32;
+    for byte in base64_data.bytes() {
+        if byte == b'=' || byte.is_ascii_whitespace() {
+            continue;
+        }
+        let value = table[byte as usize];
+        if value == INVALID {
+            return None;
+        }
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
+/// Cell size an image occupies at the given constraints.
+pub fn calculate_image_cell_size(
+    image_dimensions: ImageDimensions,
+    max_width_cells: usize,
+    max_height_cells: Option<usize>,
+    cell_dimensions: CellDimensions,
+) -> ImageCellSize {
+    let max_width = max_width_cells.max(1);
+    let max_height = max_height_cells.map(|height| height.max(1));
+    let image_width = f64::from(image_dimensions.width_px.max(1));
+    let image_height = f64::from(image_dimensions.height_px.max(1));
+
+    let width_scale = (max_width as f64 * f64::from(cell_dimensions.width_px)) / image_width;
+    let height_scale = max_height.map_or(width_scale, |height| {
+        (height as f64 * f64::from(cell_dimensions.height_px)) / image_height
+    });
+    let scale = width_scale.min(height_scale);
+
+    let scaled_width_px = image_width * scale;
+    let scaled_height_px = image_height * scale;
+    let columns = (scaled_width_px / f64::from(cell_dimensions.width_px)).ceil() as usize;
+    let rows = (scaled_height_px / f64::from(cell_dimensions.height_px)).ceil() as usize;
+
+    ImageCellSize {
+        columns: columns.min(max_width).max(1),
+        rows: max_height.map_or(rows, |height| rows.min(height)).max(1),
+    }
+}
+
+/// Rows an image occupies at a target width.
+pub fn calculate_image_rows(
+    image_dimensions: ImageDimensions,
+    target_width_cells: usize,
+    cell_dimensions: CellDimensions,
+) -> usize {
+    calculate_image_cell_size(image_dimensions, target_width_cells, None, cell_dimensions).rows
+}
+
+/// PNG dimensions from base64 data.
+pub fn get_png_dimensions(base64_data: &str) -> Option<ImageDimensions> {
+    let buffer = base64_decode(base64_data)?;
+    if buffer.len() < 24 || buffer[0..4] != [0x89, 0x50, 0x4e, 0x47] {
+        return None;
+    }
+    Some(ImageDimensions {
+        width_px: u32::from_be_bytes([buffer[16], buffer[17], buffer[18], buffer[19]]),
+        height_px: u32::from_be_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]),
+    })
+}
+
+/// JPEG dimensions from base64 data.
+pub fn get_jpeg_dimensions(base64_data: &str) -> Option<ImageDimensions> {
+    let buffer = base64_decode(base64_data)?;
+    if buffer.len() < 2 || buffer[0] != 0xff || buffer[1] != 0xd8 {
+        return None;
+    }
+    let mut offset = 2;
+    while offset + 9 < buffer.len() {
+        if buffer[offset] != 0xff {
+            offset += 1;
+            continue;
+        }
+        let marker = buffer[offset + 1];
+        if (0xc0..=0xc2).contains(&marker) {
+            return Some(ImageDimensions {
+                height_px: u32::from(u16::from_be_bytes([buffer[offset + 5], buffer[offset + 6]])),
+                width_px: u32::from(u16::from_be_bytes([buffer[offset + 7], buffer[offset + 8]])),
+            });
+        }
+        if offset + 3 >= buffer.len() {
+            return None;
+        }
+        let length = u16::from_be_bytes([buffer[offset + 2], buffer[offset + 3]]);
+        if length < 2 {
+            return None;
+        }
+        offset += 2 + usize::from(length);
+    }
+    None
+}
+
+/// GIF dimensions from base64 data.
+pub fn get_gif_dimensions(base64_data: &str) -> Option<ImageDimensions> {
+    let buffer = base64_decode(base64_data)?;
+    if buffer.len() < 10 {
+        return None;
+    }
+    let signature = std::str::from_utf8(&buffer[0..6]).ok()?;
+    if signature != "GIF87a" && signature != "GIF89a" {
+        return None;
+    }
+    Some(ImageDimensions {
+        width_px: u32::from(u16::from_le_bytes([buffer[6], buffer[7]])),
+        height_px: u32::from(u16::from_le_bytes([buffer[8], buffer[9]])),
+    })
+}
+
+/// WebP dimensions from base64 data.
+pub fn get_webp_dimensions(base64_data: &str) -> Option<ImageDimensions> {
+    let buffer = base64_decode(base64_data)?;
+    if buffer.len() < 30 {
+        return None;
+    }
+    if std::str::from_utf8(&buffer[0..4]).ok()? != "RIFF"
+        || std::str::from_utf8(&buffer[8..12]).ok()? != "WEBP"
+    {
+        return None;
+    }
+    match std::str::from_utf8(&buffer[12..16]).ok()? {
+        "VP8 " => Some(ImageDimensions {
+            width_px: u32::from(u16::from_le_bytes([buffer[26], buffer[27]]) & 0x3fff),
+            height_px: u32::from(u16::from_le_bytes([buffer[28], buffer[29]]) & 0x3fff),
+        }),
+        "VP8L" => {
+            let bits = u32::from_le_bytes([buffer[21], buffer[22], buffer[23], buffer[24]]);
+            Some(ImageDimensions {
+                width_px: (bits & 0x3fff) + 1,
+                height_px: ((bits >> 14) & 0x3fff) + 1,
+            })
+        }
+        "VP8X" => Some(ImageDimensions {
+            width_px: (u32::from(buffer[24])
+                | (u32::from(buffer[25]) << 8)
+                | (u32::from(buffer[26]) << 16))
+                + 1,
+            height_px: (u32::from(buffer[27])
+                | (u32::from(buffer[28]) << 8)
+                | (u32::from(buffer[29]) << 16))
+                + 1,
+        }),
+        _ => None,
+    }
+}
+
+/// Dimensions for a supported mime type.
+pub fn get_image_dimensions(base64_data: &str, mime_type: &str) -> Option<ImageDimensions> {
+    match mime_type {
+        "image/png" => get_png_dimensions(base64_data),
+        "image/jpeg" => get_jpeg_dimensions(base64_data),
+        "image/gif" => get_gif_dimensions(base64_data),
+        "image/webp" => get_webp_dimensions(base64_data),
+        _ => None,
+    }
+}
+
+/// Options of [`render_image`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ImageRenderOptions {
+    /// Maximum width in cells (default 80).
+    pub max_width_cells: Option<usize>,
+    /// Maximum height in cells.
+    pub max_height_cells: Option<usize>,
+    /// Whether the aspect ratio is preserved.
+    pub preserve_aspect_ratio: Option<bool>,
+    /// Kitty image id to reuse.
+    pub image_id: Option<u32>,
+    /// Whether Kitty applies its default cursor movement.
+    pub move_cursor: Option<bool>,
+}
+
+/// A rendered inline image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedImage {
+    /// Escape sequence drawing the image.
+    pub sequence: String,
+    /// Width in cells.
+    pub columns: usize,
+    /// Height in cells.
+    pub rows: usize,
+    /// Kitty image id, when one was used.
+    pub image_id: Option<u32>,
+}
+
+/// Render an image with the terminal's protocol, or `None` without support.
+pub fn render_image(
+    base64_data: &str,
+    image_dimensions: ImageDimensions,
+    options: ImageRenderOptions,
+) -> Option<RenderedImage> {
+    let capabilities = get_capabilities();
+    let protocol = capabilities.images?;
+
+    let max_width = options.max_width_cells.unwrap_or(80);
+    let size = calculate_image_cell_size(
+        image_dimensions,
+        max_width,
+        options.max_height_cells,
+        get_cell_dimensions(),
+    );
+
+    match protocol {
+        ImageProtocol::Kitty => {
+            if let Some(image_id) = options.image_id {
+                register_kitty_image_metadata(KittyImageMetadata {
+                    image_id,
+                    columns: size.columns,
+                    rows: size.rows,
+                    width_px: image_dimensions.width_px,
+                    height_px: image_dimensions.height_px,
+                });
+            }
+            let sequence = encode_kitty(
+                base64_data,
+                EncodeKittyOptions {
+                    columns: Some(size.columns),
+                    rows: Some(size.rows),
+                    image_id: options.image_id,
+                    move_cursor: options.move_cursor,
+                },
+            );
+            Some(RenderedImage {
+                sequence,
+                columns: size.columns,
+                rows: size.rows,
+                image_id: options.image_id,
+            })
+        }
+        ImageProtocol::ITerm2 => {
+            let sequence = encode_iterm2(
+                base64_data,
+                EncodeITerm2Options {
+                    width: Some(size.columns.to_string()),
+                    height: Some("auto".to_string()),
+                    preserve_aspect_ratio: Some(options.preserve_aspect_ratio.unwrap_or(true)),
+                    ..EncodeITerm2Options::default()
+                },
+            );
+            Some(RenderedImage {
+                sequence,
+                columns: size.columns,
+                rows: size.rows,
+                image_id: None,
+            })
+        }
+    }
+}
+
+/// Wrap text in an OSC 8 hyperlink sequence.
+pub fn hyperlink(text: &str, url: &str) -> String {
+    format!("\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\")
+}
+
+/// Shorten home-prefixed absolute paths to `~/…`.
+fn shorten_image_path(filename: &str) -> String {
+    let Ok(home) = std::env::var("HOME") else {
+        return filename.to_string();
+    };
+    if home.is_empty() {
+        return filename.to_string();
+    }
+    if filename == home
+        || filename.starts_with(&format!("{home}/"))
+        || filename.starts_with(&format!("{home}\\"))
+    {
+        return format!("~{}", &filename[home.len()..]);
+    }
+    filename.to_string()
+}
+
+/// Text fallback when the terminal cannot render inline images.
+pub fn image_fallback(
+    mime_type: &str,
+    dimensions: Option<ImageDimensions>,
+    filename: Option<&str>,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(filename) = filename {
+        let display = shorten_image_path(filename);
+        if get_capabilities().hyperlinks && std::path::Path::new(filename).is_absolute() {
+            parts.push(hyperlink(&display, &format!("file://{filename}")));
+        } else {
+            parts.push(display);
+        }
+    }
+    parts.push(format!("[{mime_type}]"));
+    if let Some(dimensions) = dimensions {
+        parts.push(format!("{}x{}", dimensions.width_px, dimensions.height_px));
+    }
+    format!("[Image: {}]", parts.join(" "))
 }
