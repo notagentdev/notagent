@@ -59,6 +59,23 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
      `[dev-dependencies]`.
 - **Status**: umgesetzt (A)
 
+### A-3 Stand der TUI-Crate für die Interactive-Verdrahtung
+- **Von / An**: A → C (Information)
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-tui`
+- **Beleg**: `crates/notagent-tui/PARITY.md`, Abschnitt „Stand der Plan-Tasks"
+- **Wunsch**: Kein Handlungsbedarf; damit C planen kann, was bereits nutzbar ist:
+  **fertig** — utils, keys, stdin-buffer, ProcessTerminal, TUI-Kern mit Overlays und
+  Fokusmaschine, Main-Screen-Renderer, Layout-Engine + ScrollView, alle
+  Basis-Komponenten (Text, VStack, HStack, Box, Spacer, TruncatedText, Loader,
+  CancellableLoader, SelectList, SettingsList, Input, Image), Keybindings, Fuzzy,
+  Terminal-Bilder und -Farben, virtuelles Testterminal (Feature `test-terminal`).
+  **offen** — Alt-Screen-Renderer, Editor, Markdown, LaTeX, Autocomplete.
+  Die Renderschleife wird vom Aufrufer getrieben: `TuiMainScreen::request_render`,
+  `render_deadline()`/`begin_frame()` bzw. `wait_for_render().await`;
+  `ProcessTerminal::pump()` verarbeitet stdin, SIGWINCH und die Timeouts.
+- **Status**: umgesetzt (A)
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)
