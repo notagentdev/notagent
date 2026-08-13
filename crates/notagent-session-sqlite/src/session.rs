@@ -97,6 +97,54 @@ impl Session {
         self.leaf_id_for_lane("main")
     }
 
+    /// TS: `session.view(lane).getLeafId()`.
+    pub fn get_leaf_id_in_lane(&self, lane: &str) -> Result<Option<String>, SessionError> {
+        self.leaf_id_for_lane(lane)
+    }
+
+    /// TS: `session.view(lane).findEntriesOnBranch(query)`.
+    pub fn find_entries_on_branch_in_lane(
+        &self,
+        lane: &str,
+        query: &EntryQuery,
+        bounds: &BranchBounds,
+    ) -> Result<Vec<Entry>, SessionError> {
+        self.query_branch_entries(lane, query, bounds, query.limit)
+    }
+
+    /// TS: `session.view(lane).findEntryOnBranch(query)`.
+    pub fn find_entry_on_branch_in_lane(
+        &self,
+        lane: &str,
+        query: &EntryQuery,
+        bounds: &BranchBounds,
+    ) -> Result<Option<Entry>, SessionError> {
+        Ok(self
+            .query_branch_entries(lane, query, bounds, Some(1))?
+            .into_iter()
+            .next())
+    }
+
+    /// TS: `session.view(lane).appendMessage(message)`.
+    pub async fn append_message_in_lane(
+        &self,
+        lane: &str,
+        message: AgentMessage,
+    ) -> Result<String, SessionError> {
+        self.append_message_to_lane(lane, message).await
+    }
+
+    /// TS: `session.view(lane).appendCustomEntry(customType, data)`.
+    pub async fn append_custom_entry_in_lane(
+        &self,
+        lane: &str,
+        custom_type: &str,
+        data: Option<Value>,
+    ) -> Result<String, SessionError> {
+        self.append_custom_entry_to_lane(lane, custom_type, data)
+            .await
+    }
+
     pub fn get_entry(&self, id: &str) -> Result<Option<Entry>, SessionError> {
         self.storage.get_entry(id)
     }
