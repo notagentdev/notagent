@@ -127,6 +127,27 @@ fn get_parent_path(path: &str) -> String {
     )
 }
 
+/// Runs a write transaction and preserves the original `SessionError` code:
+/// `with_transaction` only carries a message, TS propagates the error itself.
+fn in_transaction<T>(
+    db: &dyn SqliteDatabase,
+    body: impl FnOnce() -> Result<T, SessionError>,
+) -> Result<T, SessionError> {
+    let captured: std::cell::RefCell<Option<SessionError>> = std::cell::RefCell::new(None);
+    let result = with_transaction(db, || {
+        body().map_err(|error| {
+            *captured.borrow_mut() = Some(error.clone());
+            SqliteError(error.message)
+        })
+    });
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => Err(captured
+            .into_inner()
+            .unwrap_or_else(|| SessionError::storage(error.0))),
+    }
+}
+
 fn require_session_row(
     db: &dyn SqliteDatabase,
     session_id: &str,
@@ -347,7 +368,7 @@ impl SqliteSessionStorage {
         if let Some(error) = self.lease_error.lock().expect("storage mutex").clone() {
             return Err(error);
         }
-        let result = with_transaction(self.db.as_ref(), || {
+        in_transaction(self.db.as_ref(), || {
             let now = now_ms();
             let renewed = {
                 let mut lease = self.lease.lock().expect("storage mutex");
@@ -357,8 +378,7 @@ impl SqliteSessionStorage {
                     &mut lease,
                     now,
                     now + self.lease_options.ttl_ms as i64,
-                )
-                .map_err(|error| SqliteError(error.message))?
+                )?
             };
             if !renewed {
                 let error = lost_writer_error(&self.metadata.id);
@@ -366,16 +386,9 @@ impl SqliteSessionStorage {
                 if let Some(handle) = self.heartbeat.lock().expect("storage mutex").take() {
                     handle.abort();
                 }
-                return Err(SqliteError(error.message));
+                return Err(error);
             }
-            operation().map_err(|error| SqliteError(error.message))
-        });
-        result.map_err(|error| {
-            self.lease_error
-                .lock()
-                .expect("storage mutex")
-                .clone()
-                .unwrap_or_else(|| SessionError::storage(error.0))
+            operation()
         })
     }
 
@@ -1126,21 +1139,20 @@ impl SqliteSessionRepository {
         let db = self.get_database().await?;
         let lease_options = self.inner.lease_options;
         let session_id = metadata.id.clone();
-        with_transaction(db.as_ref(), || {
-            let wrap = |error: SessionError| SqliteError(error.message);
-            if !session_exists(db.as_ref(), &session_id).map_err(wrap)? {
-                return delete_writer_lease(db.as_ref(), &session_id).map_err(wrap);
+        in_transaction(db.as_ref(), || {
+            if !session_exists(db.as_ref(), &session_id)? {
+                return delete_writer_lease(db.as_ref(), &session_id);
             }
-            claim_writer_lease(db.as_ref(), &session_id, lease_options).map_err(wrap)?;
-            delete_branch_cache(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_fact_rows(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_lane_rows(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_record_rows(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_entry_rows(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_writer_lease(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_stats(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_sequence(db.as_ref(), &session_id).map_err(wrap)?;
-            delete_session_row(db.as_ref(), &session_id).map_err(wrap)
+            claim_writer_lease(db.as_ref(), &session_id, lease_options)?;
+            delete_branch_cache(db.as_ref(), &session_id)?;
+            delete_fact_rows(db.as_ref(), &session_id)?;
+            delete_lane_rows(db.as_ref(), &session_id)?;
+            delete_record_rows(db.as_ref(), &session_id)?;
+            delete_entry_rows(db.as_ref(), &session_id)?;
+            delete_writer_lease(db.as_ref(), &session_id)?;
+            delete_stats(db.as_ref(), &session_id)?;
+            delete_sequence(db.as_ref(), &session_id)?;
+            delete_session_row(db.as_ref(), &session_id)
         })?;
         Ok(())
     }
@@ -1254,8 +1266,7 @@ impl SqliteSessionRepository {
             .clone()
             .or_else(|| Some(source.id.clone()));
 
-        let lease = with_transaction(db.as_ref(), || {
-            let wrap = |error: SessionError| SqliteError(error.message);
+        let lease = in_transaction(db.as_ref(), || {
             insert_session_row(
                 db.as_ref(),
                 &NewSessionRow {
@@ -1265,9 +1276,8 @@ impl SqliteSessionRepository {
                     parent_session_id: parent_session_id.clone(),
                     metadata: metadata.clone(),
                 },
-            )
-            .map_err(wrap)?;
-            create_sequence(db.as_ref(), &id, 1).map_err(wrap)?;
+            )?;
+            create_sequence(db.as_ref(), &id, 1)?;
             create_stats(
                 db.as_ref(),
                 &id,
@@ -1275,8 +1285,7 @@ impl SqliteSessionRepository {
                     .iter()
                     .filter(|entry| entry.entry_type == "message")
                     .count() as i64,
-            )
-            .map_err(wrap)?;
+            )?;
 
             let mut next_seq = 1i64;
             for entry in &entries {
@@ -1289,44 +1298,40 @@ impl SqliteSessionRepository {
                         seq,
                         id: entry.id.clone(),
                         parent_id: entry.parent_id.clone(),
-                        entry_type: entry_type_from_str(&entry.entry_type).map_err(wrap)?,
+                        entry_type: entry_type_from_str(&entry.entry_type)?,
                         timestamp: entry.timestamp,
                         payload: entry.payload.clone(),
                     },
-                )
-                .map_err(wrap)?;
+                )?;
             }
 
             if scope == ForkScope::Tree {
                 for (lane, leaf_id) in &lanes {
                     let seq = next_seq;
                     next_seq += 1;
-                    create_lane(db.as_ref(), &id, seq, lane, leaf_id.as_deref()).map_err(wrap)?;
+                    create_lane(db.as_ref(), &id, seq, lane, leaf_id.as_deref())?;
                 }
             } else {
-                create_initial_lane(db.as_ref(), &id, "main", branch_fork_target_id.as_deref())
-                    .map_err(wrap)?;
+                create_initial_lane(db.as_ref(), &id, "main", branch_fork_target_id.as_deref())?;
             }
 
             if let Some(name) = latest_name.as_ref().and_then(|fact| fact.value.as_ref()) {
                 let seq = next_seq;
                 next_seq += 1;
-                append_fact(db.as_ref(), &id, seq, "name", None, Some(name)).map_err(wrap)?;
+                append_fact(db.as_ref(), &id, seq, "name", None, Some(name))?;
             }
             for (key, value) in &labels_to_copy {
                 let seq = next_seq;
                 next_seq += 1;
-                append_fact(db.as_ref(), &id, seq, "label", Some(key), Some(value))
-                    .map_err(wrap)?;
+                append_fact(db.as_ref(), &id, seq, "label", Some(key), Some(value))?;
             }
 
-            set_next_sequence(db.as_ref(), &id, next_seq).map_err(wrap)?;
+            set_next_sequence(db.as_ref(), &id, next_seq)?;
             for tip in &branch_tips {
-                build_cached_branch(db.as_ref(), &id, tip).map_err(wrap)?;
+                build_cached_branch(db.as_ref(), &id, tip)?;
             }
-            claim_writer_lease(db.as_ref(), &id, lease_options).map_err(wrap)
-        })
-        .map_err(|error| SessionError::storage(error.0))?;
+            claim_writer_lease(db.as_ref(), &id, lease_options)
+        })?;
 
         let row = require_session_row(db.as_ref(), &id)?;
         let decoded = decode_session_metadata(&row, &path)?;

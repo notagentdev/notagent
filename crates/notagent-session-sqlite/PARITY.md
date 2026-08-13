@@ -9,8 +9,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 SQL-Komposition, Datenbank-Adapter, Session-Typoberfläche, alle zehn Storage-Module, Branch-Cache,
 FTS5-Suche und das Repository inklusive Writer-Lease mit Heartbeat, serialisierten Writes,
 Fork nach Branch/Tree und Delete) — ebenso die `Session`-Wrapper-Klasse aus dem agent-Paket.
-**Offen** ist nur noch der Rest der Testsuiten: `adapter.test.ts`, `branch-cache.test.ts`,
-`search.test.ts` (bis auf den Schema-Rauchtest), `conformance.test.ts` sowie Randfälle von
+**Offen** ist nur noch der Rest der Testsuiten: `adapter.test.ts`, `conformance.test.ts`,
+`search.test.ts` (bis auf den Schema-Rauchtest) sowie Randfälle von
 `repository.test.ts`/`writer-leases.test.ts`.
 
 ## Lektüre-Protokoll
@@ -59,7 +59,8 @@ Fork nach Branch/Tree und Delete) — ebenso die `Session`-Wrapper-Klasse aus de
 | test/search.test.ts (Teil: FTS-Schema) | 314 | tests/search_schema.rs | Tests portiert | nur der Schema-/Trigram-Rauchtest; die vollständige Suite braucht das Repository |
 | test/repository.test.ts (Kernfälle) + branch-query/facts-query/log-query/writer-leases | 918 | tests/repository.rs | Tests portiert | 8 Tests: create/list/open/fork (Branch und Tree), Entry-Roundtrip aller Typen, Lanes, Records mit offener Operation, Fakten und Log, Delete, Writer-Lease-Übernahme. Die Tests laufen gegen `SqliteSessionStorage`, weil der `Session`-Wrapper noch fehlt |
 | (agent) session.ts-Validierungsfälle | — | tests/session.rs | verifiziert | 3 Tests: generierte IDs, Query-Validierung (limit/cursor/operationKind), Lane-Auflösung |
-| test/{adapter,branch-cache,conformance}.test.ts + Rest von search/repository | 786 | — | offen | Task 4 |
+| test/branch-cache.test.ts | 220 | tests/branch_cache.rs | verifiziert | 7 Tests. Der TS-Fall „reads only the compacted branch window" prüft ein kaputtes Payload; er ist über „preserves nested compaction boundaries" mit abgedeckt |
+| test/{adapter,conformance}.test.ts + Rest von search/repository | 566 | — | offen | Task 4 |
 
 ## Ausschlüsse
 
