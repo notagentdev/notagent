@@ -221,13 +221,12 @@ pub struct MigrationResult {
 }
 
 /// Run all migrations. Called once on startup.
-///
-/// The keybindings.json migration follows with `core/keybindings.rs` (WS-C task 13).
 pub fn run_migrations(cwd: &Path) -> MigrationResult {
     let agent_dir = get_agent_dir();
     let migrated_auth_providers = migrate_auth_to_auth_json_in(&agent_dir);
     migrate_sessions_from_agent_root_in(&agent_dir);
     migrate_tools_to_bin(&agent_dir, &get_bin_dir());
+    crate::core::keybindings::migrate_keybindings_config_file(&agent_dir);
     migrate_commands_to_prompts(&agent_dir, "Global");
     migrate_commands_to_prompts(&cwd.join(crate::config::CONFIG_DIR_NAME), "Project");
     MigrationResult {

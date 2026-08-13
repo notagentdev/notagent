@@ -56,6 +56,7 @@ futures = { workspace = true }
 dirs = { workspace = true }
 # Needed by the ported theme suites in tests/ (workstream A, plan task 15).
 futures = { workspace = true }
-notagent-tui = { workspace = true }
+# test-terminal: VirtualTerminal for the ported custom-editor suite.
+notagent-tui = { workspace = true, features = ["test-terminal"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }

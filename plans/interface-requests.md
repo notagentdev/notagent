@@ -282,7 +282,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   | `approval-selector.ts` | 84 | `core/permissions/request.ts` (nativer Nachbau) |
   `modes/interactive/model-search.ts` schließt allein 767 LOC auf — falls du dort einen
   günstigen Einstieg suchst.
-- **Status**: offen
+- **Status**: teilweise erledigt (A, 2026-08-13) — der genannte naechste Block (tree-selector, oauth-selector, session-selector-search, first-time-setup) ist portiert und getestet, siehe A-11; die blockierten Selektoren der Tabelle bleiben offen
 
 
 ## Sektion B (Workstream B — AI + Agent)
@@ -487,6 +487,65 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `tool-execution-*`, `edit-tool-no-full-redraw.test.ts`, `block-images.test.ts`) und gehören
   mit dem jeweiligen Batch zu A.
 - **Status**: offen (Zuteilung steht; Batch 0 kann sofort starten)
+
+### A-10 keybindings.ts portiert (O-2) — zwei Dinge in deinen Dateien
+- **Von / An**: A -> C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/core/keybindings.rs`, `crates/notagent/src/migrations.rs`,
+  `crates/notagent/Cargo.toml`
+- **Geliefert**: `notagent::core::keybindings` mit `KeybindingsManager` (`new`, `create`,
+  `reload`, `matches`, `get_keys`, `get_definition`, `get_conflicts`, `set_user_bindings`,
+  `get_user_bindings`, `get_resolved_bindings`, `get_effective_config`), `keybindings()`
+  (TUI-Registry + 45 App-Actions), `APP_KEYBINDINGS`, `migrate_keybindings_config` und
+  `migrate_keybindings_config_file`. Tests: `crates/notagent/tests/keybindings.rs` (6).
+- **Wichtig fuer dich — der Manager installiert sich nicht selbst**: In TS ist die
+  App-Instanz zugleich die globale Registry. Der Port trennt das: Du haeltst den
+  `KeybindingsManager` (am besten in `Rc<RefCell<…>>`, weil `CustomEditor` dieselbe Instanz
+  braucht) und installierst die Registry mit
+  `notagent_tui::keybindings::set_keybindings(manager.borrow().to_tui())` — einmal beim Start
+  und erneut nach jedem `reload()`, sonst sehen die globalen `keybindings_match`-Aufrufe der
+  Komponenten die alten Bindings.
+- **Zwei Zeilen in deinen Dateien** (beides additiv, jederzeit von dir aenderbar):
+  1. `migrations.rs`: `run_migrations` ruft jetzt
+     `crate::core::keybindings::migrate_keybindings_config_file(&agent_dir)` an derselben
+     Stelle wie `migrations.ts:311` (nach `migrate_tools_to_bin`). Damit ist der TODO-Kommentar
+     dort erledigt.
+  2. `crates/notagent/Cargo.toml`: die Dev-Dependency `notagent-tui` traegt jetzt
+     `features = ["test-terminal"]` (die portierte custom-editor-Suite braucht
+     `VirtualTerminal`).
+- **Status**: umgesetzt
+
+### A-11 Batch 3: tree-selector, oauth-selector, session-selector-search, first-time-setup, custom-editor
+- **Von / An**: A -> C
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/`
+- **Geliefert**:
+  - `tree_selector::{TreeSelectorComponent, TreeSelectorOptions, TreeList, FilterMode}` —
+    vollstaendig inklusive Fold-/Branch-Navigation, Filtermodi, Suche, Label-Editor und
+    horizontalem Viewport; die TS-Suite (702 LOC, 17 Faelle) laeuft gruen.
+  - `oauth_selector::{OAuthSelectorComponent, AuthSelectorProvider, AuthSelectorMethod,
+    AuthSelectorMode, format_auth_selector_provider_type}`.
+  - `session_selector_search::{filter_and_sort_sessions, parse_search_query, match_session,
+    has_session_name, SortMode, NameFilter}` — arbeitet direkt auf deinem `SessionInfo`.
+  - `first_time_setup::{FirstTimeSetupComponent, FirstTimeSetupOptions, FirstTimeSetupResult}`.
+  - `custom_editor::{CustomEditor, AppActionHandler}`.
+- **Was du beim Verdrahten wissen musst**:
+  - `TreeSelectorComponent::new(tree, current_leaf_id, terminal_height, on_select, on_cancel,
+    TreeSelectorOptions { on_label_change, initial_selected_id, initial_filter_mode })`.
+    `on_copy` setzt du wie in TS nach dem Konstruieren. Bei leerem Baum ersetzt `is_empty()`
+    das `setTimeout(onCancel, 100)`.
+  - `FirstTimeSetupComponent` liefert `FirstTimeSetupResult { theme, share_analytics }`;
+    `shouldRunFirstTimeSetup` (`cli/startup-ui.ts`) und der Settings-Pfad bleiben bei dir,
+    ebenso die beiden TS-Suiten `first-time-setup*.test.ts`, die genau das pruefen.
+  - `OAuthSelectorComponent` erwartet `AuthType` aus `notagent_ai::auth::types` (nicht eine
+    eigene String-Union) und `AuthSelectorMethod::{ApiKey, OAuth}` fuer `provider.method`.
+- **Noch offen aus A-9** (unveraendert): settings-selector (`core/http-dispatcher.ts`),
+  session-selector (1 031 LOC, jetzt nur noch durch nichts blockiert — ich nehme sie als
+  naechstes), config-selector (`core/package-manager.ts`), scoped-models-/model-selector
+  (`modes/interactive/model-search.ts`, `core/model-runtime.ts`), login-dialog
+  (`utils/open-browser.ts`), trust-selector (`core/trust-manager.ts`), approval-selector
+  (`core/permissions/request.ts`).
+- **Status**: umgesetzt
 
 ## Sektion Orchestrator
 
