@@ -46,3 +46,10 @@ client sends, because both are built inside the SDK rather than by the adapter.
 
 `openai-codex-responses.mts` forces `transport: "sse"`; the WebSocket transport needs a
 real socket and is covered by a local server in `tests/openai_codex_responses.rs`.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `google-generative-ai.mts` | `google-generative-ai.jsonl` | `node --experimental-strip-types google-generative-ai.mts > ../google-generative-ai.jsonl` |
+
+`google-generative-ai.mts` swaps `globalThis.fetch`, because the `@google/genai` SDK
+takes no fetch option; it records the URL, headers and the body the SDK serializes.
