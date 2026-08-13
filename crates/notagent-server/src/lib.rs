@@ -6,6 +6,7 @@
 pub mod connection;
 pub mod errors;
 pub mod listener;
+pub mod protocol;
 pub mod server;
 mod sessions;
 mod snapshots;
