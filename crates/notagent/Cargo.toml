@@ -20,6 +20,7 @@ notagent-ai = { workspace = true }
 notagent-client = { workspace = true }
 notagent-protocol = { workspace = true }
 notagent-tui = { workspace = true }
+chrono = { workspace = true }
 dirs = { workspace = true }
 libc = { workspace = true }
 regex = { workspace = true }

@@ -1569,6 +1569,7 @@ dependencies = [
 name = "notagent"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "dirs",
  "futures",
  "libc",
