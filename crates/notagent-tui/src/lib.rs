@@ -5,6 +5,7 @@
 //! (autocomplete, editor, markdown, latex, alt screen) are marked in the ledger.
 
 pub mod alt_screen_search;
+pub mod autocomplete;
 pub mod components;
 pub mod fuzzy;
 pub mod keybindings;
@@ -13,6 +14,7 @@ pub mod kill_ring;
 pub mod layout;
 pub mod layout_node;
 pub mod native_modifiers;
+pub mod node_path;
 pub mod stdin_buffer;
 pub mod terminal;
 pub mod terminal_colors;

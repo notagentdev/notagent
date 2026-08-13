@@ -164,6 +164,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `src/tui.ts:1-120` (Kontraktbereich) | 120 von 1257 | Master-Plan Task 2 (Kontrakt-Commit) |
 | 2026-08-13 | `src/terminal.ts:1-140` (Kontraktbereich) | 140 von 559 | Master-Plan Task 2 (Kontrakt-Commit) |
 | 2026-08-13 | `node_modules/get-east-asian-width/{index,lookup,lookup-data,utilities}.js` | 213 | Task 2 (Referenz für `eastAsianWidth`) |
+| `src/autocomplete.ts` | 786 | `src/autocomplete.rs` | Task 13 (vorgezogen, weil `editor.ts` aus Task 10 den Provider braucht) |
+| `test/autocomplete.test.ts` | 542 | `tests/autocomplete.rs` | Task 13 (vorgezogen) |
 
 ## Ledger
 
@@ -210,6 +212,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `native/darwin/src/darwin-modifiers.c` | 76 | `src/native_modifiers.rs` (darwin) | portiert | Klasse 3 |
 | `native/win32/src/win32-console-mode.c` | 135 | `src/native_modifiers.rs` (win32) + `terminal.rs::enable_windows_vt_input` | portiert | Klasse 3 |
 | `src/utils.ts` | 1326 | `src/utils.rs` (+ generiertes `src/unicode_tables.rs`) | verifiziert | Klasse 3: `Intl.Segmenter` → `unicode-segmentation`; `get-east-asian-width` und die `\p{…}`-Klassen (inkl. `\p{RGI_Emoji}`) als generierte Tabellen aus derselben Node-/Datenquelle (Rusts `regex` kennt weder `\p{RGI_Emoji}` noch `[A--[B]]`). Klasse 1: gepoolter `AnsiCodeTracker` in `extractSegments` → lokale Instanz (kein globaler Zustand, `clear()` beim Eintritt macht das verhaltensgleich); Width-Cache als `thread_local` mit identischer FIFO-Eviktion (512); Default-Parameter `truncateToWidth(text, w)` → zusätzliche Funktion `truncate_to_width_opts` |
+| `src/autocomplete.ts` | `src/autocomplete.rs` | vollständig portiert (Slash-Commands, Datei-Pfad-Vervollständigung, Fuzzy-`@`-Suche über `fd`, Quoting, `applyCompletion`) | Klasse 3: `Intl`/Node-`path` → `src/node_path.rs` (POSIX-Algorithmen von Node nachgebildet, gegen Node verifiziert); Klasse 1: `AbortSignal` → eigener `AbortController`/`AbortSignal` auf `Rc<Cell<bool>>` (Single-Thread-Design des Crates), Abbruch wird gepollt statt per Listener; Klasse 1: `Awaitable<T>` → `Pin<Box<dyn Future>>` |
+| — (Hilfsmodul) | `src/node_path.rs` | Node-`path.posix`-Semantik (join/dirname/basename/normalize) und `os.homedir()`; Referenzwerte aus Node im Unit-Test hinterlegt | Klasse 3 |
 
 ## Portierte Testdateien
 
@@ -244,6 +248,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/keys.test.ts` | 633 | `tests/keys.rs` (57 Fälle) | verifiziert |
 | — (zusätzlich) | — | `tests/keys_oracle.rs` + `tests/fixtures/keys-oracle.json` | Differenztest gegen die TS-Implementierung: 1611 Eingabesequenzen × 637 KeyIds × beide Kitty-Zustände (≈ 2 Mio. `matchesKey`-Vergleiche) plus `parseKey`, `isKeyRelease`, `isKeyRepeat`, `decodeKittyPrintable`, `decodePrintableKey` — alle identisch |
 | — (zusätzlich) | — | `tests/utils_oracle.rs` + `tests/fixtures/utils-oracle.json` | Differenztest gegen die TS-Implementierung: 2695 Korpusfälle × {visibleWidth, wrapTextWithAnsi ×5 Breiten, truncateToWidth ×5 (auch mit `…`+Padding), sliceWithWidth ×5 Konfigurationen, extractSegments ×4} — alle identisch. Erzeugt von `tools/gen-utils-oracle.mjs` (Master-Plan, Risiko 1) |
+| `test/autocomplete.test.ts` | 542 | `tests/autocomplete.rs` (25 Fälle) | alle Fälle portiert; die 14 `fd`-Fälle überspringen sich wie in TS (`skip: !isFdInstalled`), wenn `fd` nicht installiert ist — auf dieser Maschine ist `fd` nicht vorhanden, sodass sie in beiden Suiten nicht laufen |
 
 ## Werkzeuge
 
@@ -271,7 +276,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 10 Editor | teilweise: kill-ring, undo-stack, word-navigation portiert; editor.ts offen |
 | 11 Markdown + LaTeX | offen |
 | 12 Terminal-Bilder | Modul vollständig portiert; Testsuite (632 LOC) offen |
-| 13 Autocomplete/Fuzzy/Keybindings/native | teilweise: fuzzy, keybindings, native-modifiers portiert; autocomplete offen |
+| 13 Autocomplete/Fuzzy/Keybindings/native | fertig (autocomplete vorgezogen, weil Task 10 den Provider braucht) |
 | 14 Öffentliche API + Ledger-Abschluss | teilweise: `lib.rs` spiegelt das Export-Set der portierten Module; Abschluss nach Tasks 8/10/11/13 |
 | 15 App-TUI-Schicht (ab G2) | offen |
 
