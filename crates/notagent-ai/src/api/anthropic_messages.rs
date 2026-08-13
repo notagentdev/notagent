@@ -95,8 +95,10 @@ impl AnthropicStreamState {
             .position(|scratch| scratch.index == index)
     }
 
-    /// `fromClaudeCodeName(name, tools)` — case-insensitive match against the caller's tools.
-    fn from_claude_code_name(&self, name: &str) -> String {
+    /// `fromClaudeCodeName(name, tools)` — case-insensitive match against the caller's
+    /// tools. Named for what it does rather than `from_*`, which Rust reserves for
+    /// constructors.
+    fn caller_tool_name(&self, name: &str) -> String {
         if !self.is_oauth {
             return name.to_string();
         }
@@ -233,7 +235,7 @@ impl AnthropicStreamState {
                                     .and_then(Value::as_str)
                                     .unwrap_or_default()
                                     .to_string(),
-                                name: self.from_claude_code_name(name),
+                                name: self.caller_tool_name(name),
                                 arguments,
                                 thought_signature: None,
                                 namespace: None,
