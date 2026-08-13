@@ -880,3 +880,16 @@ impl From<crate::sqlite::types::SqliteError> for SessionError {
         Self::storage(error.0)
     }
 }
+
+// --- Search (agent-core `SessionSearch`) -------------------------------------
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SessionSearchOptions {
+    pub limit: Option<i64>,
+    pub entry_types: Option<Vec<EntryType>>,
+}
+
+pub trait SessionSearchHit {
+    fn session_id(&self) -> &str;
+    fn entry_id(&self) -> &str;
+}

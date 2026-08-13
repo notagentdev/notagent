@@ -3,6 +3,7 @@
 pub mod branch_cache;
 pub mod database;
 pub mod migrations;
+pub mod search_backend;
 pub mod sql;
 pub mod storage;
 pub mod types;

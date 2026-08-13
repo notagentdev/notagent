@@ -39,7 +39,7 @@ fn integer_column(row: &Row, name: &str) -> i64 {
         .unwrap_or_default()
 }
 
-fn session_row(row: &Row) -> SessionRow {
+pub fn session_row_from(row: &Row) -> SessionRow {
     SessionRow {
         id: text_column(row, "id").unwrap_or_default(),
         created_at: integer_column(row, "created_at"),
@@ -139,7 +139,7 @@ pub fn read_session_row(
         text("WHERE s.id = "),
         param(session_id)
     ])?;
-    Ok(row.as_ref().map(session_row))
+    Ok(row.as_ref().map(session_row_from))
 }
 
 pub fn read_session_rows(
@@ -155,7 +155,7 @@ pub fn read_session_rows(
         fragment(where_clause),
         text("\n\t\tORDER BY s.created_at DESC"),
     ])?;
-    Ok(rows.iter().map(session_row).collect())
+    Ok(rows.iter().map(session_row_from).collect())
 }
 
 pub fn delete_session_row(db: &dyn SqliteDatabase, session_id: &str) -> Result<(), SessionError> {

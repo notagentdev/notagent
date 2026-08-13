@@ -6,8 +6,10 @@ Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
 **Stand: Task 4 läuft.** Fundament (Schema, Migrationen, SQL-Komposition, Datenbank-Adapter,
-Session-Typoberfläche), alle zehn Storage-Module und der Branch-Cache sind portiert; Repository
-(`repo.ts`), Suche (`search-backend.ts`), die `Session`-Klasse und die neun Testsuiten stehen aus.
+Session-Typoberfläche), alle zehn Storage-Module, der Branch-Cache und die FTS5-Suche sind
+portiert; **offen** sind `repo.ts` (SqliteSessionRepository inkl. Writer-Lease-Heartbeat,
+SerialOperationQueue, Fork/Delete), die `Session`-Klasse aus dem agent-Paket und die neun
+Testsuiten (1 704 LOC).
 
 ## Lektüre-Protokoll
 
@@ -47,11 +49,12 @@ Session-Typoberfläche), alle zehn Storage-Module und der Branch-Cache sind port
 | src/sqlite/storage/records.ts | 95 | src/sqlite/storage/records.rs | portiert | — |
 | src/sqlite/storage/branch-entries.ts | 174 | src/sqlite/storage/branch_entries.rs | portiert | — |
 | src/sqlite/branch-cache.ts | 101 | src/sqlite/branch_cache.rs | portiert | — |
-| src/sqlite/search-backend.ts | 188 | — | offen | Task 4 |
+| src/sqlite/search-backend.ts | 188 | src/sqlite/search_backend.rs | portiert | Klasse 1: die agent-core-`FileSystem`-Abstraktion wird zu `std::fs`; `search()` liefert einen Vec statt eines AsyncIterable (die DB wird ohnehin am Ende geschlossen); `AbortSignal` → `CancellationToken` |
 | src/sqlite/repo.ts | 953 | — | teilweise gelesen | Task 4 |
 | (agent) src/harness/session/session.ts | 299 | — | offen | Task 4 (SessionRepo liefert `Session`) |
 | test/sql.test.ts | 39 | tests/sql.rs | verifiziert | — (2 Tests) |
 | test/migrations.test.ts | 61 | tests/migrations.rs | verifiziert | — (1 Test) |
+| test/search.test.ts (Teil: FTS-Schema) | 314 | tests/search_schema.rs | Tests portiert | nur der Schema-/Trigram-Rauchtest; die vollständige Suite braucht das Repository |
 | test/{adapter,branch-cache,branch-query,conformance,facts-query,log-query,repository,search,writer-leases}.test.ts | 1 704 | — | offen | Task 4 |
 
 ## Ausschlüsse
