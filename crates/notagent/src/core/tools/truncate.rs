@@ -9,13 +9,15 @@ pub const DEFAULT_MAX_BYTES: usize = 50 * 1024;
 /// Max chars per grep match line.
 pub const GREP_MAX_LINE_LENGTH: usize = 500;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TruncatedBy {
     Lines,
     Bytes,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TruncationResult {
     pub content: String,
     pub truncated: bool,
