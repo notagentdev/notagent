@@ -5,10 +5,10 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (68 856 LOC
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 5 läuft.** `config.ts`, der Kern von `settings-manager.ts` und `migrations.ts`
-sind portiert. **Offen:** `auth-storage.ts` — es hängt an `core/resolve-config-value.ts`
-(`!command`-Ausführung, `$VAR`-Interpolation, Shell-Auflösung), das laut WS-C-Plan zu Task 14
-gehört; diese Abhängigkeit wird zuerst portiert. Ebenfalls offen sind die ~45 typisierten
+**Stand: Task 5 läuft.** `config.ts`, der Kern von `settings-manager.ts`, `migrations.ts`,
+`core/resolve-config-value.ts` und die dafür nötigen Utilities (`utils/paths.ts`,
+`utils/shell.ts`, `utils/abort.ts` + Lockfile-Ersatz) sind portiert. **Offen:**
+`auth-storage.ts` (baut auf resolve-config-value + Lockfile auf) sowie die ~45 typisierten
 Settings-Zugriffsmethoden (`getTheme`/`setTheme`/…), die derzeit über
 `set_global_field`/`set_project_field` mit den Wire-Namen abgedeckt sind.
 
@@ -21,6 +21,12 @@ Settings-Zugriffsmethoden (`getTheme`/`setTheme`/…), die derzeit über
 | 2026-08-13 | packages/coding-agent/test/config.test.ts (Kopf) | 60 | C-Task 5 |
 | 2026-08-13 | packages/coding-agent/test/settings-manager.test.ts (Kopf) | 120 | C-Task 5 |
 | 2026-08-13 | packages/coding-agent/src/migrations.ts | 314 | C-Task 5 |
+| 2026-08-13 | packages/coding-agent/src/core/resolve-config-value.ts | 287 | C-Task 5 |
+| 2026-08-13 | packages/coding-agent/src/utils/shell.ts | 259 | C-Task 5 |
+| 2026-08-13 | packages/coding-agent/src/utils/paths.ts | 137 | C-Task 5 |
+| 2026-08-13 | packages/coding-agent/src/utils/abort.ts | 46 | C-Task 5 |
+| 2026-08-13 | packages/coding-agent/test/paths.test.ts | 184 | C-Task 5 |
+| 2026-08-13 | packages/coding-agent/src/core/auth-storage.ts | 507 | C-Task 5 |
 
 ## Ledger
 
@@ -31,8 +37,13 @@ Settings-Zugriffsmethoden (`getTheme`/`setTheme`/…), die derzeit über
 | test/settings-manager.test.ts (Kernfälle) | 587 | tests/settings_manager.rs | Tests portiert | 9 Tests: externe Änderungen bleiben erhalten, In-Memory gewinnt bei Konflikten, Projekt-über-Global-Merge inkl. verschachtelter Objekte, Trust-Gate, Load-Fehler ohne Dateiverlust, verschachtelte Felder, Migrationen, In-Memory-Storage |
 | src/migrations.ts | 314 | src/migrations.rs | portiert | Klasse 2: `checkDeprecatedExtensionDirs`/`showDeprecationWarnings` entfallen — sie verwiesen ausschließlich auf das Extension-System (extension-boundary §6); `commands/` → `prompts/` bleibt. Die keybindings.json-Migration folgt mit `core/keybindings.rs` (Task 13). Klasse 1: verzeichnis-parametrisierte Varianten für Tests |
 | — (neu) | — | tests/migrations.rs | verifiziert | 5 Tests: auth.json-Migration inkl. apiKeys-Entfernung und 0600-Rechten, Überspringen bei vorhandener auth.json, Session-Umzug mit cwd-Kodierung, vorhandene Zieldatei bleibt |
-| src/core/auth-storage.ts | 507 | — | gelesen | Task 5 — wartet auf `core/resolve-config-value.ts` |
-| src/core/resolve-config-value.ts | 261 | — | offen | Task 5/14 (Voraussetzung für auth-storage) |
+| src/core/resolve-config-value.ts | 287 | src/core/resolve_config_value.rs | portiert | Klasse 1: `parseConfigValueTemplate` arbeitet auf Byte-Indizes statt auf JS-Regex-Gruppen (gleiche Fälle: `$VAR`, `${VAR}`, `$$`→`$`, `$!`→`!`, ungültige Namen bleiben literal); der Prozess-Cache ist ein `LazyLock<Mutex<HashMap>>`. Klasse 3: `execSync(timeout: 10_000)` → `spawn` + Deadline-Poll mit `kill`; die Windows-Sonderroute (`executeWithConfiguredShell`) ist `#[cfg(any(windows, test))]`, damit sie auch auf Unix getestet wird |
+| src/utils/shell.ts | 259 | src/utils/shell.rs | portiert (genutzte Teile) | `getShellConfig`/`getShellEnv`/`sanitizeBinaryOutput`/Prozessbaum-Signale portiert. Klasse 1: Lone-Surrogate-Filter entfällt (Rust-`str` ist immer gültiges UTF-8); `process.kill(-pid)` → `libc::kill(-pid)` mit Fallback auf den Einzelprozess. Offen (Task 7, Bash-Tool): `spawnShellCommand` und die Exit-Handler-Registrierung |
+| src/utils/paths.ts | 137 | src/utils/paths.rs | portiert | Klasse 1: `normalizePath` gibt `Result` zurück, weil `fileURLToPath` wirft; `path.resolve`/`path.relative`/`fileURLToPath`/`pathToFileURL` sind als Node-Semantik nachgebaut (Rusts `Path` normalisiert Punkt-Segmente nicht) |
+| test/paths.test.ts | 184 | src/utils/paths.rs (Testmodul) | Tests portiert | 13 Tests: canonicalize inkl. Symlinks/danglings, cwd-relative Pfade, Tilde-Regeln, file:-URLs inkl. Fehlerfällen, Windows-Shell-Pfade, isLocalPath |
+| src/utils/abort.ts | 46 | src/utils/abort.rs | portiert | Klasse 3: `AbortSignal` → `CancellationToken`; `raceWithAbortSignal` verlangt, dass abgebrochene Arbeit vom Aufrufer am Leben gehalten wird (Task/Shared-Future), weil ein fallengelassenes Rust-Future abbricht |
+| — (neu) | — | src/utils/lockfile.rs | neu (Tech-Substitution) | Klasse 3: `proper-lockfile` → `<datei>.lock`-Verzeichnis mit identischer Semantik: atomares `mkdir`, `ELOCKED`, Stale-Übernahme, Heartbeat-Thread der die mtime auffrischt, `onCompromised` |
+| src/core/auth-storage.ts | 507 | — | gelesen | Task 5 — folgt als nächstes |
 | test/config.test.ts | 446 | — | offen | Task 5 (Distributionsmechanik; die darstellbaren Fälle folgen mit den restlichen Settings-Zugriffen) |
 | test/auth-storage.test.ts | 535 | — | offen | Task 5 |
 

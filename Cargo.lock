@@ -883,16 +883,20 @@ name = "notagent"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "futures",
+ "libc",
  "notagent-agent",
  "notagent-ai",
  "notagent-client",
  "notagent-protocol",
  "notagent-tui",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
