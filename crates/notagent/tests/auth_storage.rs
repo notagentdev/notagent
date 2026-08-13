@@ -176,7 +176,6 @@ async fn resolves_command_backed_api_key_credentials() {
 }
 
 #[tokio::test]
-#[ignore = "blocked on interface request C-4: notagent-ai serializes OAuth as o_auth"]
 async fn returns_oauth_credentials_unchanged() {
     let _guard = global_lock();
     let credential = Credential::OAuth(OAuthCredential {
@@ -1235,7 +1234,6 @@ impl notagent_ai::models::Provider for OAuthProvider {
 }
 
 #[tokio::test]
-#[ignore = "blocked on interface request C-4: notagent-ai serializes OAuth as o_auth"]
 async fn translates_a_credential_store_refresh_failure_and_allows_a_later_retry() {
     let _guard = global_lock();
     let provider_id = "oauth-provider";

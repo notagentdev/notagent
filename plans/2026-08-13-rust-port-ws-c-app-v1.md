@@ -20,8 +20,8 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (und die vi
 > Migrationen, alle typisierten Zugriffsmethoden), `migrations.ts`, `core/auth-storage.ts`
 > und die dafür nötigen Utilities (`utils/paths.ts`, `utils/shell.ts`, `utils/abort.ts`,
 > `core/resolve-config-value.ts` sowie ein Lockfile-Modul als Ersatz für proper-lockfile).
-> Testsuiten: config (15), settings-manager (27), migrations (4), auth-storage (26, davon
-> 2 blockiert durch Interface-Request C-4), paths/shell/abort/lockfile/resolve-config-value
+> Testsuiten: config (15), settings-manager (27), migrations (4), auth-storage (26, alle grün;
+> die 2 OAuth-Fälle seit Umsetzung von Interface-Request C-4 entsperrt), paths/shell/abort/lockfile/resolve-config-value
 > als Unit-Tests im Modul.
 
 - [x] 6. Session-Manager portieren: `src/core/session-manager.ts` (1 714 LOC) vollständig lesen und portieren — JSONL v3 mit Header und allen 9 Entry-Typen als Baum (id/parentId, 8-Hex-IDs mit Kollisionsprüfung, uuidv7-Session-IDs mit Validierung), Speicherorte mit cwd-Encoding, verzögerte Datei-Anlage bis zur ersten Assistant-Message (wx-open, danach append), Header-Scan mit 1-MiB-Grenze und Vollast-Fallback, v1→v2→v3-Migrationen mit Datei-Rewrite, continueRecent/inMemory/forkFrom (neue Datei mit parentSession), list/listAll mit paralleler Info-Ladung (max 10), Branching (branch, branchWithSummary, createBranchedSession mit Pfad-Extraktion und Label-Neuanlage, getTree mit Timestamp-Sortierung und Orphan-Roots), Kontextaufbau (buildContextEntries mit letzter Compaction, sessionEntryToContextMessages, buildSessionContext mit thinkingLevel/model-Ableitung), resolveSessionPath-Auflösungslogik. Session-Fixtures aus dem TS-Repo als Roundtrip-Tests (TS-Datei öffnen → fortsetzen → forken → re-serialisieren). Rationale: Datenformat-Kompatibilität mit bestehenden Nutzer-Sessions.
