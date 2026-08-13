@@ -338,7 +338,136 @@ fn make_command(
     }
 }
 
+/// `{ root, prefix }` of an npm install inferred from the package path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InferredNpmInstall {
+    root: PathBuf,
+    prefix: PathBuf,
+}
+
+/// Node's `path.basename`; `windows` also splits on backslashes.
+fn base_name(path: &str, windows: bool) -> &str {
+    let separators: &[char] = if windows { &['/', '\\'] } else { &['/'] };
+    let trimmed = path.trim_end_matches(separators);
+    match trimmed.rfind(separators) {
+        Some(index) => &trimmed[index + 1..],
+        None => trimmed,
+    }
+}
+
+/// Node's `path.dirname`; `windows` also splits on backslashes.
+fn dir_name(path: &str, windows: bool) -> &str {
+    let separators: &[char] = if windows { &['/', '\\'] } else { &['/'] };
+    let trimmed = path.trim_end_matches(separators);
+    match trimmed.rfind(separators) {
+        Some(0) => &trimmed[..1],
+        Some(index) => &trimmed[..index],
+        None => ".",
+    }
+}
+
+/// Port of `getInferredNpmInstall`: recognize `<prefix>/lib/node_modules/[@scope/]pkg`.
+fn get_inferred_npm_install(package_dir: &Path) -> Option<InferredNpmInstall> {
+    let package_dir = package_dir.to_string_lossy();
+    let windows = cfg!(windows) || package_dir.contains('\\');
+    let parent = dir_name(&package_dir, windows);
+    let root = if base_name(parent, windows).starts_with('@')
+        && base_name(dir_name(parent, windows), windows) == "node_modules"
+    {
+        dir_name(parent, windows)
+    } else if base_name(parent, windows) == "node_modules" {
+        parent
+    } else {
+        return None;
+    };
+    let root_parent = dir_name(root, windows);
+    // Windows global npm prefixes use `<prefix>\node_modules`, which is
+    // indistinguishable from local project installs by path shape alone. Do not
+    // infer unsupported Windows custom prefixes without `npm root -g` evidence.
+    if base_name(root_parent, windows) != "lib" {
+        return None;
+    }
+    Some(InferredNpmInstall {
+        root: PathBuf::from(root),
+        prefix: PathBuf::from(dir_name(root_parent, windows)),
+    })
+}
+
+/// Port of `readCommandOutput`.
+fn read_command_output(
+    command: &str,
+    args: &[String],
+    require_success: bool,
+) -> Result<Option<String>, String> {
+    let failure = |reason: String| {
+        format!(
+            "Failed to run {}: {reason}",
+            std::iter::once(command.to_owned())
+                .chain(args.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+    };
+    let output = match std::process::Command::new(command)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            if require_success {
+                return Err(failure(error.to_string()));
+            }
+            return Ok(None);
+        }
+    };
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        return Ok((!stdout.is_empty()).then_some(stdout));
+    }
+    if require_success {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let reason = if stderr.is_empty() {
+            match output.status.code() {
+                Some(code) => format!("exit code {code}"),
+                None => "exit code unknown".to_owned(),
+            }
+        } else {
+            stderr
+        };
+        return Err(failure(reason));
+    }
+    Ok(None)
+}
+
+static PNPM_GLOBAL_DIR: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"^(.*[\\/]global[\\/][^\\/]+)[\\/]\.pnpm[\\/]").expect("pnpm global regex")
+});
+
+/// The `--config.global-bin-dir` pnpm needs when `pnpm root -g` cannot answer.
+fn pnpm_bin_dir_args(package_dir: &Path) -> Vec<String> {
+    if read_command_output("pnpm", &["root".to_owned(), "-g".to_owned()], false)
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return Vec::new();
+    }
+    let package_dir = package_dir.to_string_lossy();
+    let Some(captures) = PNPM_GLOBAL_DIR.captures(&package_dir) else {
+        return Vec::new();
+    };
+    let global_dir = &captures[1];
+    let windows = cfg!(windows) || global_dir.contains('\\');
+    let bin_dir = match std::env::var("PNPM_HOME") {
+        Ok(home) if !home.is_empty() => home,
+        _ => dir_name(dir_name(global_dir, windows), windows).to_owned(),
+    };
+    vec![format!("--config.global-bin-dir={bin_dir}")]
+}
+
 pub fn get_self_update_command_for_method(
+    env: &InstallEnv,
     method: InstallMethod,
     installed_package_name: &str,
     target: &SelfUpdatePackageTarget,
@@ -347,19 +476,26 @@ pub fn get_self_update_command_for_method(
     let uninstall_needed = target.package_name != installed_package_name;
     match method {
         InstallMethod::Binary | InstallMethod::Unknown => None,
-        InstallMethod::Pnpm => Some(make_command(
-            make_step(
-                "pnpm",
-                &[
-                    "install",
-                    "-g",
-                    "--ignore-scripts",
-                    "--config.minimumReleaseAge=0",
-                    &target.install_spec,
-                ],
-            ),
-            uninstall_needed.then(|| make_step("pnpm", &["remove", "-g", installed_package_name])),
-        )),
+        InstallMethod::Pnpm => {
+            let bin_dir_args = pnpm_bin_dir_args(&env.package_dir);
+            let mut install_args = vec![
+                "install",
+                "-g",
+                "--ignore-scripts",
+                "--config.minimumReleaseAge=0",
+            ];
+            install_args.extend(bin_dir_args.iter().map(String::as_str));
+            install_args.push(&target.install_spec);
+            Some(make_command(
+                make_step("pnpm", &install_args),
+                uninstall_needed.then(|| {
+                    let mut args = vec!["remove", "-g"];
+                    args.extend(bin_dir_args.iter().map(String::as_str));
+                    args.push(installed_package_name);
+                    make_step("pnpm", &args)
+                }),
+            ))
+        }
         InstallMethod::Yarn => Some(make_command(
             make_step(
                 "yarn",
@@ -387,7 +523,16 @@ pub fn get_self_update_command_for_method(
                 Some([first, rest @ ..]) => (first.clone(), rest.to_vec()),
                 _ => ("npm".to_owned(), Vec::new()),
             };
-            let mut install_args: Vec<&str> = npm_args.iter().map(String::as_str).collect();
+            let inferred = match npm_command {
+                Some(npm_command) if !npm_command.is_empty() => None,
+                _ => get_inferred_npm_install(&env.package_dir),
+            };
+            let prefix = inferred.map(|inferred| inferred.prefix.to_string_lossy().into_owned());
+            let mut prefix_args: Vec<&str> = npm_args.iter().map(String::as_str).collect();
+            if let Some(prefix) = &prefix {
+                prefix_args.extend(["--prefix", prefix]);
+            }
+            let mut install_args = prefix_args.clone();
             install_args.extend([
                 "install",
                 "-g",
@@ -397,7 +542,7 @@ pub fn get_self_update_command_for_method(
             ]);
             let install = make_step(&command, &install_args);
             let uninstall = uninstall_needed.then(|| {
-                let mut args: Vec<&str> = npm_args.iter().map(String::as_str).collect();
+                let mut args = prefix_args.clone();
                 args.extend(["uninstall", "-g", installed_package_name]);
                 make_step(&command, &args)
             });
@@ -406,28 +551,216 @@ pub fn get_self_update_command_for_method(
     }
 }
 
-/// TS additionally verifies that a global package manager manages the install
-/// path and that the path is writable. The Rust binary carries no package
-/// directory to verify, so only the writability check remains.
+/// Port of `getGlobalPackageRoots`.
+fn get_global_package_roots(
+    env: &InstallEnv,
+    method: InstallMethod,
+    npm_command: Option<&[String]>,
+) -> Result<Vec<PathBuf>, String> {
+    let bun_roots = |bun_bin: Option<String>| {
+        let mut roots = vec![
+            home_dir()
+                .join(".bun")
+                .join("install")
+                .join("global")
+                .join("node_modules"),
+        ];
+        if let Some(bun_bin) = bun_bin {
+            let windows = cfg!(windows) || bun_bin.contains('\\');
+            roots.push(
+                PathBuf::from(dir_name(&bun_bin, windows))
+                    .join("install")
+                    .join("global")
+                    .join("node_modules"),
+            );
+        }
+        roots
+    };
+    match method {
+        InstallMethod::Npm => {
+            let configured = npm_command.is_some_and(|command| !command.is_empty());
+            let (command, npm_args): (String, Vec<String>) = match npm_command {
+                Some([first, rest @ ..]) => (first.clone(), rest.to_vec()),
+                _ => ("npm".to_owned(), Vec::new()),
+            };
+            if configured && command == "bun" {
+                let mut args = npm_args.clone();
+                args.extend(["pm".to_owned(), "bin".to_owned(), "-g".to_owned()]);
+                return Ok(bun_roots(read_command_output(&command, &args, true)?));
+            }
+            let mut args = npm_args;
+            args.extend(["root".to_owned(), "-g".to_owned()]);
+            let root = read_command_output(&command, &args, configured)?;
+            let inferred = if configured {
+                None
+            } else {
+                get_inferred_npm_install(&env.package_dir)
+            };
+            Ok(root
+                .map(PathBuf::from)
+                .into_iter()
+                .chain(inferred.map(|inferred| inferred.root))
+                .collect())
+        }
+        InstallMethod::Pnpm => {
+            if let Some(root) =
+                read_command_output("pnpm", &["root".to_owned(), "-g".to_owned()], false)?
+            {
+                let windows = cfg!(windows) || root.contains('\\');
+                return Ok(vec![
+                    PathBuf::from(&root),
+                    PathBuf::from(dir_name(&root, windows)),
+                ]);
+            }
+            let package_dir = env.package_dir.to_string_lossy().into_owned();
+            Ok(PNPM_GLOBAL_DIR
+                .captures(&package_dir)
+                .map(|captures| vec![PathBuf::from(&captures[1])])
+                .unwrap_or_default())
+        }
+        InstallMethod::Yarn => {
+            let dir = read_command_output("yarn", &["global".to_owned(), "dir".to_owned()], false)?;
+            Ok(dir
+                .map(|dir| {
+                    vec![
+                        PathBuf::from(&dir),
+                        PathBuf::from(&dir).join("node_modules"),
+                    ]
+                })
+                .unwrap_or_default())
+        }
+        InstallMethod::Bun => Ok(bun_roots(read_command_output(
+            "bun",
+            &["pm".to_owned(), "bin".to_owned(), "-g".to_owned()],
+            false,
+        )?)),
+        InstallMethod::Binary | InstallMethod::Unknown => Ok(Vec::new()),
+    }
+}
+
+/// Port of `normalizeExistingPathForComparison`.
+fn normalize_existing_path_for_comparison(path: &Path, resolve_symlinks: bool) -> Option<String> {
+    let resolved = crate::utils::paths::resolve_path_default(
+        &path.to_string_lossy(),
+        &std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy(),
+    )
+    .ok()?;
+    if !Path::new(&resolved).exists() {
+        return None;
+    }
+    let normalized = if resolve_symlinks {
+        let canonical = crate::utils::paths::canonicalize_path(&resolved);
+        if !Path::new(&canonical).exists() {
+            return None;
+        }
+        canonical
+    } else {
+        resolved
+    };
+    Some(if cfg!(windows) {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    })
+}
+
+fn path_comparison_candidates(path: &Path) -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    for resolve_symlinks in [false, true] {
+        if let Some(candidate) = normalize_existing_path_for_comparison(path, resolve_symlinks)
+            && !candidates.contains(&candidate)
+        {
+            candidates.push(candidate);
+        }
+    }
+    candidates
+}
+
+/// Port of `getEntrypointPackageDir`: the nearest ancestor with a package.json.
+fn get_entrypoint_package_dir(entrypoint: Option<&Path>) -> Option<PathBuf> {
+    let entrypoint = entrypoint?;
+    let mut directory = entrypoint.parent()?.to_path_buf();
+    loop {
+        if directory.join("package.json").exists() {
+            return Some(directory);
+        }
+        let parent = directory.parent()?.to_path_buf();
+        if parent == directory {
+            return None;
+        }
+        directory = parent;
+    }
+}
+
+/// Port of `isManagedByGlobalPackageManager`.
+fn is_managed_by_global_package_manager(
+    env: &InstallEnv,
+    method: InstallMethod,
+    npm_command: Option<&[String]>,
+) -> Result<bool, String> {
+    let package_dirs: Vec<PathBuf> = std::iter::once(env.package_dir.clone())
+        .chain(get_entrypoint_package_dir(env.entrypoint.as_deref()))
+        .collect();
+    let package_dir_candidates: Vec<String> = package_dirs
+        .iter()
+        .flat_map(|dir| path_comparison_candidates(dir))
+        .collect();
+    let separator = if cfg!(windows) { '\\' } else { '/' };
+    Ok(get_global_package_roots(env, method, npm_command)?
+        .iter()
+        .any(|root| {
+            path_comparison_candidates(root).iter().any(|root| {
+                let root_prefix = if root.ends_with(separator) {
+                    root.clone()
+                } else {
+                    format!("{root}{separator}")
+                };
+                package_dir_candidates
+                    .iter()
+                    .any(|package_dir| package_dir.starts_with(&root_prefix))
+            })
+        }))
+}
+
 pub fn get_self_update_command(
     env: &InstallEnv,
     package_name: &str,
     npm_command: Option<&[String]>,
     target: &SelfUpdatePackageTarget,
-) -> Option<SelfUpdateCommand> {
+) -> Result<Option<SelfUpdateCommand>, String> {
     let method = detect_install_method(env);
-    let command = get_self_update_command_for_method(method, package_name, target, npm_command)?;
-    if !is_self_update_path_writable(env) {
-        return None;
+    let Some(command) =
+        get_self_update_command_for_method(env, method, package_name, target, npm_command)
+    else {
+        return Ok(None);
+    };
+    if !is_managed_by_global_package_manager(env, method, npm_command)?
+        || !is_self_update_path_writable(env)
+    {
+        return Ok(None);
     }
-    Some(command)
+    Ok(Some(command))
 }
 
+/// `accessSync(path, W_OK)` for the package directory and its parent.
 fn is_self_update_path_writable(env: &InstallEnv) -> bool {
     let writable = |path: &Path| {
-        std::fs::metadata(path)
-            .map(|metadata| !metadata.permissions().readonly())
-            .unwrap_or(false)
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+                return false;
+            };
+            unsafe { libc::access(path.as_ptr(), libc::W_OK) == 0 }
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::metadata(path)
+                .map(|metadata| !metadata.permissions().readonly())
+                .unwrap_or(false)
+        }
     };
     writable(&env.package_dir) && env.package_dir.parent().is_some_and(writable)
 }
@@ -437,37 +770,41 @@ pub fn get_self_update_unavailable_instruction(
     package_name: &str,
     npm_command: Option<&[String]>,
     target: &SelfUpdatePackageTarget,
-) -> String {
+) -> Result<String, String> {
     let method = detect_install_method(env);
     if method == InstallMethod::Binary {
-        return "Download from: https://github.com/notagentdev/notagent/releases/latest".to_owned();
+        return Ok(
+            "Download from: https://github.com/notagentdev/notagent/releases/latest".to_owned(),
+        );
     }
-    match get_self_update_command_for_method(method, package_name, target, npm_command) {
+    match get_self_update_command_for_method(env, method, package_name, target, npm_command) {
         Some(command) => {
-            if !is_self_update_path_writable(env) {
-                return format!(
+            if is_managed_by_global_package_manager(env, method, npm_command)?
+                && !is_self_update_path_writable(env)
+            {
+                return Ok(format!(
                     "This installation is managed by a global {} install, but the install path is not writable. Update it yourself with: {}",
                     method.as_str(),
                     command.display
-                );
+                ));
             }
-            format!(
+            Ok(format!(
                 "This installation is not managed by a global {} install. Update it with the package manager, wrapper, or source checkout that provides it.",
                 method.as_str()
-            )
+            ))
         }
-        None => format!(
+        None => Ok(format!(
             "Update {} using the package manager, wrapper, or source checkout that provides this installation.",
             target.install_spec
-        ),
+        )),
     }
 }
 
-pub fn get_update_instruction(env: &InstallEnv, package_name: &str) -> String {
+pub fn get_update_instruction(env: &InstallEnv, package_name: &str) -> Result<String, String> {
     let method = detect_install_method(env);
     let target = SelfUpdatePackageTarget::new(package_name);
-    match get_self_update_command_for_method(method, package_name, &target, None) {
-        Some(command) => format!("Run: {}", command.display),
+    match get_self_update_command_for_method(env, method, package_name, &target, None) {
+        Some(command) => Ok(format!("Run: {}", command.display)),
         None => get_self_update_unavailable_instruction(env, package_name, None, &target),
     }
 }
