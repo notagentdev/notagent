@@ -162,3 +162,19 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: umgesetzt (B: `crates/notagent-ai/src/models.rs`); `to_protocol_model_metadata`
   in `crates/notagent-server/src/protocol.rs` nutzt sie und ist testbelegt.
 
+### C-2 Hinweis: `Usage`-Token-Zähler als u64 schließen negative Korrekturen aus
+- **Von / An**: C → B (Information, kein Änderungswunsch)
+- **Datum**: 2026-08-13
+- **Betrifft**: `crates/notagent-ai/src/types.rs` (`Usage`)
+- **Beleg**: `packages/agent/src/harness/session/testing/conformance.ts:600-615` — der Fall
+  „keeps latest-value facts and computes ledger statistics across lanes" schreibt einen
+  `usage`-Record mit `cause: "adjustment"` und `input: -2`, `totalTokens: -2`,
+  `cost.total: -0.5` (Provider-Korrektur). In TS ist `Usage.input` eine `number` und darf
+  negativ sein; im Port sind die Token-Zähler `u64`.
+- **Wirkung**: Negative Token-Korrekturen sind im Port nicht darstellbar (die Kosten schon,
+  die sind `f64`). Der Laufzeitpfad der App ist nicht betroffen — der `adjustment`-Cause
+  gehört zum Harness, der laut Master-Plan ausgeschlossen ist. Der portierte
+  Konformanzfall dokumentiert die Abweichung in seinen Erwartungswerten.
+- **Status**: offen (nur zur Kenntnis; eine Änderung auf `i64` wäre eine Kontraktänderung
+  und sollte, wenn überhaupt, von B entschieden werden)
+

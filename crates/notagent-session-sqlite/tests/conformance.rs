@@ -1047,3 +1047,420 @@ async fn returns_immutable_open_operation_records() {
     assert_eq!(LaneRecord::OperationStarted(reread[0].clone()), committed);
     fixture.repo.close().await;
 }
+
+/// The TS case feeds a negative adjustment (`input: -2`, `totalTokens: -2`).
+/// `notagent_ai::Usage` counts tokens as `u64` (B's contract), so negative
+/// token counts are not representable — only the negative cost survives. The
+/// expectations below therefore differ from TS in the token totals; see
+/// interface request C-2.
+fn usage(
+    input: i64,
+    output: i64,
+    cache_read: i64,
+    cache_write: i64,
+    total_tokens: i64,
+    cost_total: f64,
+) -> notagent_ai::Usage {
+    notagent_ai::Usage {
+        input: input.max(0) as u64,
+        output: output.max(0) as u64,
+        cache_read: cache_read.max(0) as u64,
+        cache_write: cache_write.max(0) as u64,
+        cache_write1h: None,
+        reasoning: None,
+        total_tokens: Some(total_tokens.max(0) as u64),
+        cost: notagent_ai::UsageCost {
+            input: 0.0,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_write: 0.0,
+            total: cost_total,
+        },
+    }
+}
+
+#[tokio::test]
+async fn keeps_latest_value_facts_and_computes_ledger_statistics_across_lanes() {
+    let (fixture, session) = fixture("session").await;
+    let assistant_usage = usage(10, 5, 3, 2, 20, 10.0);
+    session
+        .append_entry(message("user", "question"), "main")
+        .await
+        .expect("appends");
+    session
+        .append_entry(message("assistant", "answer"), "main")
+        .await
+        .expect("appends");
+    session
+        .append_record(LaneRecord::Usage(
+            notagent_session_sqlite::session_types::UsageRecord {
+                id: "assistant-usage".to_owned(),
+                seq: 0,
+                lane: "main".to_owned(),
+                timestamp: 0,
+                usage: assistant_usage,
+                cause: notagent_session_sqlite::session_types::UsageCause::Assistant,
+                run_id: Some("run".to_owned()),
+                entry_id: Some("assistant".to_owned()),
+                attempt: Some(1),
+                stop_reason: Some(notagent_session_sqlite::session_types::SessionStopReason::Stop),
+                tool_call_id: None,
+                details: None,
+            },
+        ))
+        .await
+        .expect("appends");
+    session
+        .append_record(LaneRecord::Usage(
+            notagent_session_sqlite::session_types::UsageRecord {
+                id: "deferred-usage".to_owned(),
+                seq: 0,
+                lane: "main".to_owned(),
+                timestamp: 0,
+                usage: usage(0, 0, 0, 0, 0, 0.0),
+                cause: notagent_session_sqlite::session_types::UsageCause::DeferredFetch,
+                run_id: Some("run".to_owned()),
+                entry_id: Some("deferred-result".to_owned()),
+                attempt: Some(1),
+                stop_reason: Some(
+                    notagent_session_sqlite::session_types::SessionStopReason::Deferred,
+                ),
+                tool_call_id: None,
+                details: None,
+            },
+        ))
+        .await
+        .expect("appends");
+    session
+        .create_lane("thread", Some("assistant"))
+        .await
+        .expect("creates lane");
+    session
+        .append_record(LaneRecord::Usage(
+            notagent_session_sqlite::session_types::UsageRecord {
+                id: "correction".to_owned(),
+                seq: 0,
+                lane: "thread".to_owned(),
+                timestamp: 0,
+                usage: usage(0, 0, 0, 0, 0, -0.5),
+                cause: notagent_session_sqlite::session_types::UsageCause::Adjustment,
+                run_id: None,
+                entry_id: None,
+                attempt: None,
+                stop_reason: None,
+                tool_call_id: None,
+                details: Some(serde_json::json!({ "reason": "provider correction" })),
+            },
+        ))
+        .await
+        .expect("appends");
+    session.set_name(Some("First")).await.expect("sets name");
+    session.set_name(Some("Second")).await.expect("sets name");
+    session
+        .set_label("user", Some("keep"))
+        .await
+        .expect("sets label");
+    session.set_label("user", None).await.expect("clears label");
+    let error = session
+        .set_label("missing", Some("checkpoint"))
+        .await
+        .expect_err("rejects");
+    assert_eq!(error.code, SessionErrorCode::NotFound);
+
+    assert_eq!(session.get_name().expect("name"), Some("Second".to_owned()));
+    assert_eq!(session.get_label("user").expect("label"), None);
+    let usage_records = session
+        .find_records(&RecordQuery {
+            record_type: Some(RecordType::Usage),
+            order: Some(EntryOrder::OldestFirst),
+            ..RecordQuery::default()
+        })
+        .expect("records");
+    let causes: Vec<_> = usage_records
+        .iter()
+        .map(|record| match record {
+            LaneRecord::Usage(usage) => usage.cause,
+            _ => panic!("expected usage record"),
+        })
+        .collect();
+    assert_eq!(
+        causes,
+        vec![
+            notagent_session_sqlite::session_types::UsageCause::Assistant,
+            notagent_session_sqlite::session_types::UsageCause::DeferredFetch,
+            notagent_session_sqlite::session_types::UsageCause::Adjustment,
+        ]
+    );
+    let stats = session.get_stats().expect("stats");
+    assert_eq!(stats.message_count, 2);
+    assert_eq!(stats.cached_tokens, 3.0);
+    assert_eq!(stats.uncached_tokens, 12.0);
+    assert_eq!(stats.total_tokens, 20.0);
+    assert!(
+        (stats.cost_total - 9.5).abs() < 1e-9,
+        "cost_total: {}",
+        stats.cost_total
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn clears_session_names_durably() {
+    let (fixture, session) = fixture("session").await;
+    session
+        .set_name(Some("Temporary"))
+        .await
+        .expect("sets name");
+    session.set_name(None).await.expect("clears name");
+
+    assert_eq!(session.get_name().expect("name"), None);
+    let expected_log = vec![
+        LogItem::Fact(notagent_session_sqlite::session_types::LogFact::Name {
+            seq: 1,
+            name: Some("Temporary".to_owned()),
+        }),
+        LogItem::Fact(notagent_session_sqlite::session_types::LogFact::Name { seq: 2, name: None }),
+    ];
+    assert_eq!(
+        session.get_log(&Default::default()).expect("log"),
+        expected_log
+    );
+
+    let metadata = session.get_metadata().expect("metadata");
+    let reopened = Session::new(fixture.repo.open(&metadata).await.expect("opens"));
+    assert_eq!(reopened.get_name().expect("name"), None);
+    assert_eq!(
+        reopened.get_log(&Default::default()).expect("log"),
+        expected_log
+    );
+
+    let fork = Session::new(
+        fixture
+            .repo
+            .fork(
+                &metadata,
+                &notagent_session_sqlite::session_types::ForkOptions::default(),
+                SqliteSessionCreateOptions {
+                    id: Some("fork".to_owned()),
+                    cwd: metadata.cwd.clone(),
+                    ..SqliteSessionCreateOptions::default()
+                },
+            )
+            .await
+            .expect("forks"),
+    );
+    assert_eq!(fork.get_name().expect("name"), None);
+    fixture.repo.close().await;
+}
+
+/// TS mutates the values it read to prove the storage keeps its own copies;
+/// Rust returns owned values, so a mutation cannot reach the storage.
+#[tokio::test]
+async fn returns_immutable_copies_from_reads() {
+    let (fixture, session) = fixture("immutable").await;
+    let metadata = session.get_metadata().expect("metadata");
+    session
+        .append_entry(
+            custom(
+                "custom",
+                "note",
+                Some(serde_json::json!({ "nested": { "value": 1 } })),
+            ),
+            "main",
+        )
+        .await
+        .expect("appends");
+
+    let read = session
+        .get_entry("custom")
+        .expect("entry")
+        .expect("custom entry");
+    assert_eq!(session.get_metadata().expect("metadata"), metadata);
+    let Entry::Custom(custom_entry) = &read else {
+        panic!("expected a custom entry")
+    };
+    assert_eq!(
+        custom_entry.data,
+        Some(serde_json::json!({ "nested": { "value": 1 } }))
+    );
+    assert_eq!(custom_entry.parent_id, None);
+    assert_eq!(custom_entry.seq, 1);
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn validates_lane_lifecycle_and_targets() {
+    let (fixture, session) = fixture("session").await;
+    assert_eq!(
+        session
+            .create_lane("main", None)
+            .await
+            .expect_err("rejects")
+            .code,
+        SessionErrorCode::AlreadyExists
+    );
+    assert_eq!(
+        session
+            .create_lane("thread", Some("missing"))
+            .await
+            .expect_err("rejects")
+            .code,
+        SessionErrorCode::NotFound
+    );
+    assert_eq!(
+        session
+            .move_lane("missing", None)
+            .await
+            .expect_err("rejects")
+            .code,
+        SessionErrorCode::InvalidLane
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn binds_lane_views_without_caching_leaves() {
+    let (fixture, session) = fixture("session").await;
+    let root = session
+        .append_message(user_message("root"))
+        .await
+        .expect("appends");
+    session
+        .create_lane("thread", Some(&root))
+        .await
+        .expect("creates lane");
+    let main_child = session
+        .append_message(user_message("main"))
+        .await
+        .expect("appends");
+    let thread_child = session
+        .append_message_in_lane("thread", user_message("thread"))
+        .await
+        .expect("appends");
+
+    assert_eq!(
+        session.get_leaf_id().expect("leaf"),
+        Some(main_child.clone())
+    );
+    assert_eq!(
+        session.get_leaf_id_in_lane("thread").expect("leaf"),
+        Some(thread_child.clone())
+    );
+    let oldest_first = EntryQuery {
+        order: Some(EntryOrder::OldestFirst),
+        ..EntryQuery::default()
+    };
+    assert_eq!(
+        entry_ids(
+            &session
+                .find_entries_on_branch(&oldest_first, &BranchBounds::default())
+                .expect("branch")
+        ),
+        vec![root.clone(), main_child]
+    );
+    assert_eq!(
+        entry_ids(
+            &session
+                .find_entries_on_branch_in_lane("thread", &oldest_first, &BranchBounds::default())
+                .expect("branch")
+        ),
+        vec![root, thread_child]
+    );
+
+    let empty = Session::new(
+        fixture
+            .repo
+            .create(SqliteSessionCreateOptions {
+                id: Some("empty".to_owned()),
+                cwd: session.get_metadata().expect("metadata").cwd,
+                ..SqliteSessionCreateOptions::default()
+            })
+            .await
+            .expect("creates"),
+    );
+    assert!(
+        empty
+            .find_entries_on_branch(&EntryQuery::default(), &BranchBounds::default())
+            .expect("branch")
+            .is_empty()
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn appends_provisioned_entries_with_their_existing_ids() {
+    let (fixture, session) = fixture("session").await;
+    let entry = session
+        .append_entry(
+            custom(
+                "provisioned",
+                "note",
+                Some(serde_json::json!({ "value": 1 })),
+            ),
+            "main",
+        )
+        .await
+        .expect("appends");
+
+    assert_eq!(entry.custom_type(), Some("note"));
+    assert_eq!(
+        (entry.id(), entry.parent_id(), entry.seq()),
+        ("provisioned", None, 1)
+    );
+    assert_eq!(
+        session.get_leaf_id().expect("leaf"),
+        Some("provisioned".to_owned())
+    );
+    fixture.repo.close().await;
+}
+
+#[tokio::test]
+async fn persists_tool_result_termination_decisions() {
+    let (fixture, session) = fixture("session").await;
+    let tool_result = AgentMessage::ToolResult(notagent_ai::ToolResultMessage {
+        tool_call_id: "call-1".to_owned(),
+        tool_name: "example".to_owned(),
+        content: vec![TextOrImageContent::Text(TextContent::new("done"))],
+        details: None,
+        usage: None,
+        added_tool_names: None,
+        is_error: false,
+        timestamp: 1,
+    });
+    let entry = session
+        .append_entry(
+            ProvisionedEntry::Message {
+                id: "tool-result".to_owned(),
+                message: tool_result,
+                terminate: Some(true),
+            },
+            "main",
+        )
+        .await
+        .expect("appends");
+
+    let Entry::Message(message_entry) = &entry else {
+        panic!("expected a message entry")
+    };
+    assert_eq!(message_entry.terminate, Some(true));
+    let stored = session
+        .get_entry(entry.id())
+        .expect("entry")
+        .expect("stored");
+    let Entry::Message(stored_message) = &stored else {
+        panic!("expected a message entry")
+    };
+    assert_eq!(stored_message.terminate, Some(true));
+    assert_eq!(
+        session.find_entries(&EntryQuery::default()).expect("finds"),
+        vec![entry.clone()]
+    );
+    assert_eq!(
+        session.get_log(&Default::default()).expect("log"),
+        vec![LogItem::Entry {
+            seq: entry.seq(),
+            entry
+        }]
+    );
+    fixture.repo.close().await;
+}
