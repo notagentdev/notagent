@@ -123,6 +123,6 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   öffentlich exportieren (1:1-Port: `off` bei `reasoning == false`; sonst
   `EXTENDED_THINKING_LEVELS` gefiltert — `null` im `thinking_level_map` schließt aus,
   `xhigh`/`max` brauchen einen gesetzten Eintrag).
-- **Status**: offen — `to_protocol_model_metadata` in `crates/notagent-server/src/protocol.rs`
-  bleibt bis dahin offen (im PARITY-Ledger vermerkt).
+- **Status**: umgesetzt (B: `crates/notagent-ai/src/models.rs`); `to_protocol_model_metadata`
+  in `crates/notagent-server/src/protocol.rs` nutzt sie und ist testbelegt.
 

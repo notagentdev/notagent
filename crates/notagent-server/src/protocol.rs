@@ -7,18 +7,20 @@
 //! struct literals below take that role: a new ai field or content variant
 //! breaks this module at compile time as well (deviation class 1).
 
+use notagent_ai::models::get_supported_thinking_levels;
 use notagent_ai::{
-    AssistantContent, AssistantMessage, StopReason, TextOrImageContent, ToolCall,
-    ToolResultMessage, Usage as AiUsage, UserContent, UserMessage,
+    AssistantContent, AssistantMessage, Modality, Model, ModelThinkingLevel, StopReason,
+    TextOrImageContent, ToolCall, ToolResultMessage, Usage as AiUsage, UserContent, UserMessage,
 };
 use notagent_protocol::{
     AbortedAssistantTranscriptItem, AbortedTag, AssistantStopReason, AssistantTag,
     AssistantTranscriptItem, CompleteAssistantTranscriptItem, CompleteTag,
     CompleteToolTranscriptItem, ErrorAssistantTranscriptItem, ErrorTag, ErrorToolTranscriptItem,
-    FalseTag, ImageContent, ImageTag, JsonValue, RunningTag, StreamingAssistantTranscriptItem,
-    StreamingTag, TextContent, TextTag, ThinkingContent, ThinkingTag, ToolCallContent, ToolCallTag,
-    ToolContent, ToolTag, ToolTranscriptItem, TrueTag, Usage, UsageCost,
-    UserContent as ProtocolUserContent, UserTag, UserTranscriptItem,
+    FalseTag, ImageContent, ImageTag, JsonValue, ModelCost, ModelInput, ModelMetadata, RunningTag,
+    StreamingAssistantTranscriptItem, StreamingTag, TextContent, TextTag, ThinkingContent,
+    ThinkingLevel, ThinkingTag, ToolCallContent, ToolCallTag, ToolContent, ToolTag,
+    ToolTranscriptItem, TrueTag, Usage, UsageCost, UserContent as ProtocolUserContent, UserTag,
+    UserTranscriptItem,
 };
 
 use crate::errors::ServerError;
@@ -363,5 +365,50 @@ pub fn to_protocol_running_tool_call(
     ))
 }
 
-// `to_protocol_model_metadata` requires `get_supported_thinking_levels` from
-// notagent-ai (interface request C-1) and follows once B has ported it.
+pub fn to_protocol_model_metadata(
+    model: &Model,
+    authenticated: bool,
+) -> Result<ModelMetadata, ServerError> {
+    Ok(ModelMetadata {
+        provider: identifier(&model.provider, "Model provider")?,
+        id: identifier(&model.id, "Model id")?,
+        name: identifier(&model.name, "Model name")?,
+        api: identifier(&model.api, "Model API")?,
+        reasoning: model.reasoning,
+        input: model
+            .input
+            .iter()
+            .map(|modality| match modality {
+                Modality::Text => ModelInput::Text,
+                Modality::Image => ModelInput::Image,
+            })
+            .collect(),
+        // TS floors and clamps to at least 1; the Rust counters are already
+        // non-negative integers (deviation class 1).
+        context_window: model.context_window.max(1),
+        max_tokens: model.max_tokens.max(1),
+        cost: ModelCost {
+            input: non_negative_number(model.cost.input),
+            output: non_negative_number(model.cost.output),
+            cache_read: non_negative_number(model.cost.cache_read),
+            cache_write: non_negative_number(model.cost.cache_write),
+        },
+        supported_thinking_levels: get_supported_thinking_levels(model)
+            .into_iter()
+            .map(model_thinking_level_to_protocol)
+            .collect(),
+        authenticated,
+    })
+}
+
+fn model_thinking_level_to_protocol(level: ModelThinkingLevel) -> ThinkingLevel {
+    match level {
+        ModelThinkingLevel::Off => ThinkingLevel::Off,
+        ModelThinkingLevel::Minimal => ThinkingLevel::Minimal,
+        ModelThinkingLevel::Low => ThinkingLevel::Low,
+        ModelThinkingLevel::Medium => ThinkingLevel::Medium,
+        ModelThinkingLevel::High => ThinkingLevel::High,
+        ModelThinkingLevel::Xhigh => ThinkingLevel::Xhigh,
+        ModelThinkingLevel::Max => ThinkingLevel::Max,
+    }
+}
