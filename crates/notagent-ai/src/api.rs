@@ -2,6 +2,7 @@
 //!
 //! 1:1 port of `packages/ai/src/api/`.
 
+pub mod anthropic_messages;
 pub mod lazy;
 pub mod simple_options;
 pub mod sse;
