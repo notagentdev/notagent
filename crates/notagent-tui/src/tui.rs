@@ -426,6 +426,9 @@ struct TuiState {
     color_scheme_notifications_enabled: bool,
     pending_osc11_queries: VecDeque<PendingOsc11Query>,
     cell_size_dirty: bool,
+    /// Focus flags that could not be written because the component was busy
+    /// handling input; applied as soon as its borrow is released.
+    pending_focus_flags: Vec<(ComponentRef, bool)>,
 }
 
 /// Shared TUI state — the port of `TuiBase`.
@@ -482,6 +485,7 @@ impl TuiCore {
             color_scheme_notifications_enabled: false,
             pending_osc11_queries: VecDeque::new(),
             cell_size_dirty: false,
+            pending_focus_flags: Vec::new(),
         })))
     }
 
@@ -661,18 +665,14 @@ impl TuiCore {
             }
         }
 
-        if let Some(previous) = &previous_focus
-            && let Some(focusable) = previous.borrow_mut().as_focusable()
-        {
-            focusable.set_focused(false);
+        if let Some(previous) = &previous_focus {
+            self.write_focus_flag(previous, false);
         }
 
         self.0.borrow_mut().focused = next_focus.clone();
 
-        if let Some(next) = &next_focus
-            && let Some(focusable) = next.borrow_mut().as_focusable()
-        {
-            focusable.set_focused(true);
+        if let Some(next) = &next_focus {
+            self.write_focus_flag(next, true);
         }
 
         if let Some(next) = &next_focus
@@ -680,6 +680,44 @@ impl TuiCore {
         {
             self.0.borrow_mut().overlay_focus_restore =
                 OverlayFocusRestoreState::Eligible { overlay };
+        }
+    }
+
+    /// Write a component's focus flag.
+    ///
+    /// A component can call `set_focus` from inside its own `handle_input`; it
+    /// is then mutably borrowed and the flag is queued instead (deviation class
+    /// 1 — TS has no borrow rules, so the write is applied as soon as the
+    /// component returns, before anything can observe it).
+    fn write_focus_flag(&self, component: &ComponentRef, focused: bool) {
+        match component.try_borrow_mut() {
+            Ok(mut borrowed) => {
+                if let Some(focusable) = borrowed.as_focusable() {
+                    focusable.set_focused(focused);
+                }
+            }
+            Err(_) => self
+                .0
+                .borrow_mut()
+                .pending_focus_flags
+                .push((component.clone(), focused)),
+        }
+    }
+
+    /// Apply focus flags queued while a component was handling input.
+    fn flush_pending_focus_flags(&self) {
+        loop {
+            let pending = std::mem::take(&mut self.0.borrow_mut().pending_focus_flags);
+            if pending.is_empty() {
+                return;
+            }
+            for (component, focused) in pending {
+                if let Ok(mut borrowed) = component.try_borrow_mut()
+                    && let Some(focusable) = borrowed.as_focusable()
+                {
+                    focusable.set_focused(focused);
+                }
+            }
         }
     }
 
@@ -1197,6 +1235,7 @@ impl TuiCore {
                 return;
             }
             focused.borrow_mut().handle_input(&data);
+            self.flush_pending_focus_flags();
             // Keyboard input is latency sensitive: skip the throttled path.
             self.request_immediate_render();
         }
@@ -1626,7 +1665,12 @@ fn contains_component(root: &ComponentRef, target: &ComponentRef) -> bool {
     if Rc::ptr_eq(root, target) {
         return true;
     }
-    let borrowed = root.borrow();
+    // A component that is currently handling input is mutably borrowed; it is
+    // not the target (checked above) and cannot be walked into, so treat it as
+    // a leaf.
+    let Ok(borrowed) = root.try_borrow() else {
+        return false;
+    };
     let Some(container) = borrowed.as_container() else {
         return false;
     };
