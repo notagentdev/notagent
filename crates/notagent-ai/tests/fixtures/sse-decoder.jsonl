@@ -1,0 +1,355 @@
+{"chunks":["event: message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["e","vent: message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["ev","ent: message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["eve","nt: message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["even","t: message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event",": message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event:"," message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: ","message_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: m","essage_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: me","ssage_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: mes","sage_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: mess","age_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: messa","ge_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: messag","e_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message","_start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_","start\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_s","tart\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_st","art\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_sta","rt\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_star","t\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start","\ndata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\n","data: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\nd","ata: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\nda","ta: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndat","a: {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata",": {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata:"," {\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: ","{\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {","\"a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {\"","a\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {\"a","\":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {\"a\"",":1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {\"a\":","1}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {\"a\":1","}\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {\"a\":1}","\n\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["event: message_start\ndata: {\"a\":1}\n","\n"],"events":[{"event":"message_start","data":"{\"a\":1}","raw":["event: message_start","data: {\"a\":1}"]}]}
+{"chunks":["data: one\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["d","ata: one\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["da","ta: one\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["dat","a: one\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data",": one\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data:"," one\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: ","one\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: o","ne\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: on","e\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one","\ndata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\n","data: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\nd","ata: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\nda","ta: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndat","a: two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndata",": two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndata:"," two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndata: ","two\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndata: t","wo\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndata: tw","o\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndata: two","\n\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":["data: one\ndata: two\n","\n"],"events":[{"event":null,"data":"one\ntwo","raw":["data: one","data: two"]}]}
+{"chunks":[": comment\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[":"," comment\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": ","comment\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": c","omment\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": co","mment\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": com","ment\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comm","ent\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comme","nt\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": commen","t\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment","\ndata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\n","data: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\nd","ata: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\nda","ta: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\ndat","a: v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\ndata",": v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\ndata:"," v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\ndata: ","v\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\ndata: v","\n\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": comment\ndata: v\n","\n"],"events":[{"event":null,"data":"v","raw":[": comment","data: v"]}]}
+{"chunks":[": only-comment\n\n"],"events":[]}
+{"chunks":[":"," only-comment\n\n"],"events":[]}
+{"chunks":[": ","only-comment\n\n"],"events":[]}
+{"chunks":[": o","nly-comment\n\n"],"events":[]}
+{"chunks":[": on","ly-comment\n\n"],"events":[]}
+{"chunks":[": onl","y-comment\n\n"],"events":[]}
+{"chunks":[": only","-comment\n\n"],"events":[]}
+{"chunks":[": only-","comment\n\n"],"events":[]}
+{"chunks":[": only-c","omment\n\n"],"events":[]}
+{"chunks":[": only-co","mment\n\n"],"events":[]}
+{"chunks":[": only-com","ment\n\n"],"events":[]}
+{"chunks":[": only-comm","ent\n\n"],"events":[]}
+{"chunks":[": only-comme","nt\n\n"],"events":[]}
+{"chunks":[": only-commen","t\n\n"],"events":[]}
+{"chunks":[": only-comment","\n\n"],"events":[]}
+{"chunks":[": only-comment\n","\n"],"events":[]}
+{"chunks":["data:  leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["d","ata:  leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["da","ta:  leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["dat","a:  leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data",":  leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:","  leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data: "," leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  ","leading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  l","eading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  le","ading-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  lea","ding-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  lead","ing-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leadi","ng-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leadin","g-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading","-space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading-","space\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading-s","pace\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading-sp","ace\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading-spa","ce\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading-spac","e\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading-space","\n\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data:  leading-space\n","\n"],"events":[{"event":null,"data":" leading-space","raw":["data:  leading-space"]}]}
+{"chunks":["data\nevent\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["d","ata\nevent\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["da","ta\nevent\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["dat","a\nevent\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data","\nevent\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data\n","event\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data\ne","vent\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data\nev","ent\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data\neve","nt\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data\neven","t\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data\nevent","\n\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["data\nevent\n","\n"],"events":[{"event":"","data":"","raw":["data","event"]}]}
+{"chunks":["event: done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["e","vent: done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["ev","ent: done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["eve","nt: done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["even","t: done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event",": done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event:"," done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: ","done\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: d","one\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: do","ne\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: don","e\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done","\ndata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\n","data: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\nd","ata: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\nda","ta: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\ndat","a: {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\ndata",": {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\ndata:"," {}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\ndata: ","{}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: done\ndata: {","}"],"events":[{"event":"done","data":"{}","raw":["event: done","data: {}"]}]}
+{"chunks":["event: a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["e","vent: a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["ev","ent: a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["eve","nt: a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["even","t: a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event",": a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event:"," a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: ","a\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a","\rdata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r","data: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rd","ata: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rda","ta: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rdat","a: b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rdata",": b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rdata:"," b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rdata: ","b\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rdata: b","\r\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\rdata: b\r","\r"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["e","vent: a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["ev","ent: a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["eve","nt: a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["even","t: a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event",": a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event:"," a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: ","a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a","\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r","\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"","raw":["event: a"]},{"event":null,"data":"b","raw":["data: b"]}]}
+{"chunks":["event: a\r\n","data: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\nd","ata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\nda","ta: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndat","a: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata",": b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata:"," b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata: ","b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata: b","\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata: b\r","\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata: b\r\n","\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["event: a\r\ndata: b\r\n\r","\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
+{"chunks":["\n\n\n"],"events":[]}
+{"chunks":["\n","\n\n"],"events":[]}
+{"chunks":["\n\n","\n"],"events":[]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["e","vent: e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["ev","ent: e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["eve","nt: e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["even","t: e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event",": e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event:"," e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: ","e1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e","1\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1","\ndata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\n","data: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\nd","ata: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\nda","ta: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndat","a: d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata",": d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata:"," d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: ","d1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d","1\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1","\n\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n","\nevent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\n","event: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\ne","vent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nev","ent: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\neve","nt: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\neven","t: e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent",": e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent:"," e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: ","e2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e","2\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2","\ndata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\n","data: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\nd","ata: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\nda","ta: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndat","a: d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndata",": d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndata:"," d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndata: ","d2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndata: d","2\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndata: d2","\n\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["event: e1\ndata: d1\n\nevent: e2\ndata: d2\n","\n"],"events":[{"event":"e1","data":"d1","raw":["event: e1","data: d1"]},{"event":"e2","data":"d2","raw":["event: e2","data: d2"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["i","d: 1\nretry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id",": 1\nretry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id:"," 1\nretry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: ","1\nretry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1","\nretry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\n","retry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nr","etry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nre","try: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nret","ry: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretr","y: 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry",": 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry:"," 500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: ","500\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 5","00\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 50","0\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500","\nevent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\n","event: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\ne","vent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nev","ent: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\neve","nt: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\neven","t: e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent",": e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent:"," e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: ","e\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e","\ndata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\n","data: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\nd","ata: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\nda","ta: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\ndat","a: d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\ndata",": d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\ndata:"," d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\ndata: ","d\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\ndata: d","\n\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["id: 1\nretry: 500\nevent: e\ndata: d\n","\n"],"events":[{"event":"e","data":"d","raw":["id: 1","retry: 500","event: e","data: d"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["d","ata: {\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["da","ta: {\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["dat","a: {\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data",": {\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data:"," {\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: ","{\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {","\"text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"","text\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"t","ext\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"te","xt\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"tex","t\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text","\":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\"",":\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":","\"h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"","h\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h","\\u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\","u00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u","00e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u0","0e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00","e9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e","9llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9","llo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9l","lo\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9ll","o\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9llo","\"}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9llo\"","}\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9llo\"}","\n\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["data: {\"text\":\"h\\u00e9llo\"}\n","\n"],"events":[{"event":null,"data":"{\"text\":\"h\\u00e9llo\"}","raw":["data: {\"text\":\"h\\u00e9llo\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["e","vent: error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["ev","ent: error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["eve","nt: error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["even","t: error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event",": error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event:"," error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: ","error\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: e","rror\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: er","ror\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: err","or\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: erro","r\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error","\ndata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\n","data: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\nd","ata: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\nda","ta: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndat","a: {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata",": {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata:"," {\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: ","{\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {","\"type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"","type\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"t","ype\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"ty","pe\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"typ","e\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type","\":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\"",":\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":","\"error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"","error\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"e","rror\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"er","ror\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"err","or\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"erro","r\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"error","\"}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"error\"","}\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"error\"}","\n\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["event: error\ndata: {\"type\":\"error\"}\n","\n"],"events":[{"event":"error","data":"{\"type\":\"error\"}","raw":["event: error","data: {\"type\":\"error\"}"]}]}
+{"chunks":["data: trailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["d","ata: trailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["da","ta: trailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["dat","a: trailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data",": trailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data:"," trailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: ","trailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: t","railing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: tr","ailing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: tra","iling-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trai","ling-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trail","ing-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: traili","ng-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailin","g-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing","-no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-","no-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-n","o-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no","-newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no-","newline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no-n","ewline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no-ne","wline"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no-new","line"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no-newl","ine"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no-newli","ne"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":["data: trailing-no-newlin","e"],"events":[{"event":null,"data":"trailing-no-newline","raw":["data: trailing-no-newline"]}]}
+{"chunks":[""],"events":[]}
