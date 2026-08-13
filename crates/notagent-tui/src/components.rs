@@ -5,6 +5,7 @@
 pub mod alt_screen_flash;
 pub mod box_component;
 pub mod h_stack;
+pub mod input;
 pub mod loader;
 pub mod scroll_view;
 pub mod select_list;

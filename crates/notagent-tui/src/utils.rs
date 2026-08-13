@@ -20,7 +20,7 @@ use crate::unicode_tables::{
 
 /// Graphem-Cluster eines Strings (entspricht `Intl.Segmenter` mit
 /// `granularity: "grapheme"`; UAX #29 erweiterte Cluster).
-pub(crate) fn graphemes(text: &str) -> impl Iterator<Item = &str> {
+pub fn graphemes(text: &str) -> impl DoubleEndedIterator<Item = &str> {
     UnicodeSegmentation::graphemes(text, true)
 }
 

@@ -33,6 +33,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/components/box.ts` | 137 | `src/components/box_component.rs` | portiert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist |
 | `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
 | `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
+| `src/components/input.ts` | 447 | `src/components/input.rs` | verifiziert (21 von 35 Testfällen) | Klasse 1: Cursor als Byte-Offset statt UTF-16-Index (intern konsistent) |
 | `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
@@ -57,6 +58,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/word-navigation.test.ts` | 191 | `tests/word_navigation.rs` (17 Fälle) | verifiziert; der CJK-Rückwärtsfall hält die oben dokumentierte Segmentierungsdifferenz fest |
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
@@ -84,6 +86,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/components/box.ts` | 137 | `src/components/box_component.rs` | portiert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist |
 | `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
 | `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
+| `src/components/input.ts` | 447 | `src/components/input.rs` | verifiziert (21 von 35 Testfällen) | Klasse 1: Cursor als Byte-Offset statt UTF-16-Index (intern konsistent) |
 | `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
@@ -95,6 +98,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `test/word-navigation.test.ts` | 191 | `tests/word_navigation.rs` (17 Fälle) | verifiziert; der CJK-Rückwärtsfall hält die oben dokumentierte Segmentierungsdifferenz fest |
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
@@ -113,6 +117,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `test/word-navigation.test.ts` | 191 | `tests/word_navigation.rs` (17 Fälle) | verifiziert; der CJK-Rückwärtsfall hält die oben dokumentierte Segmentierungsdifferenz fest |
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | Task 7 |
 | 2026-08-13 | `test/stdin-buffer.test.ts` | 526 | `tests/stdin_buffer.rs` (48 Fälle) | verifiziert |
@@ -121,6 +126,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/word-navigation.test.ts` | 191 | `tests/word_navigation.rs` (17 Fälle) | verifiziert; der CJK-Rückwärtsfall hält die oben dokumentierte Segmentierungsdifferenz fest |
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
@@ -161,6 +167,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/components/box.ts` | 137 | `src/components/box_component.rs` | portiert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist |
 | `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
 | `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
+| `src/components/input.ts` | 447 | `src/components/input.rs` | verifiziert (21 von 35 Testfällen) | Klasse 1: Cursor als Byte-Offset statt UTF-16-Index (intern konsistent) |
 | `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
@@ -188,6 +195,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/word-navigation.test.ts` | 191 | `tests/word_navigation.rs` (17 Fälle) | verifiziert; der CJK-Rückwärtsfall hält die oben dokumentierte Segmentierungsdifferenz fest |
 | `test/fuzzy.test.ts` | 112 | `tests/fuzzy.rs` (14 Fälle) | verifiziert |
 | `test/keybindings.test.ts` | 81 | `tests/keybindings.rs` (7 Fälle) | verifiziert |
+| `test/input.test.ts` | 647 | `tests/input.rs` (21 von 35 Fällen) | verifiziert; offen: die beiden CJK-Wortgrenzen-Fälle (Segmentierungsdifferenz, siehe word-navigation), der Horizontal-Scroll-Renderfall und elf weitere Undo-Fälle |
 | `test/select-list.test.ts` | 116 | `tests/select_list.rs` (5 Fälle) | verifiziert |
 | `test/layout.test.ts` | 306 | `tests/layout.rs` (13 von 14 Fällen) | verifiziert; der Kitty-Crop-Fall braucht `encodeKitty` → Task 12 |
 | `test/overlay-non-capturing.test.ts` | 1203 | `tests/overlay_non_capturing.rs` (44 Fälle) | verifiziert — komplette Fokus-Zustandsmaschine, No-op-Guards, Fokuszyklen und Renderreihenfolge |
