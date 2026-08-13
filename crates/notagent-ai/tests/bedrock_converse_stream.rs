@@ -992,3 +992,251 @@ fn an_unknown_content_block_is_rejected_rather_than_dropped() {
     let error = to_converse_stream_request(&client, &json!({})).expect_err("rejected");
     assert_eq!(error.to_string(), "Command input without modelId");
 }
+
+// ---------------------------------------------------------------------------
+// Port of `packages/ai/test/bedrock-endpoint-resolution.test.ts` (208),
+// `bedrock-credentials.test.ts` (115), `bedrock-custom-headers.test.ts` (202) and
+// `bedrock-raw-stop-reason.test.ts` (82).
+//
+// The TS suites read the mocked SDK client's constructor config; here
+// `build_client_config` is that config. Cases that stub `process.env` per test are
+// expressed through the scoped provider env, which takes precedence over the ambient
+// process env — a Rust test process shares one environment across its threads
+// (deviation class 1).
+// ---------------------------------------------------------------------------
+
+fn bedrock_catalog_model(model_id: &str) -> Model {
+    notagent_ai::model_catalog::get_builtin_model("amazon-bedrock", model_id).expect(model_id)
+}
+
+fn provider_env(pairs: &[(&str, &str)]) -> ProviderEnv {
+    pairs
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect()
+}
+
+#[test]
+fn builtin_eu_inference_profiles_carry_the_eu_runtime_url() {
+    assert_eq!(
+        bedrock_catalog_model("eu.anthropic.claude-sonnet-4-5-20250929-v1:0").base_url,
+        "https://bedrock-runtime.eu-central-1.amazonaws.com"
+    );
+}
+
+#[test]
+fn the_endpoint_resolution_follows_region_profile_and_arn() {
+    let us = bedrock_catalog_model("us.anthropic.claude-opus-4-8");
+    let eu = bedrock_catalog_model("eu.anthropic.claude-sonnet-4-5-20250929-v1:0");
+
+    // A configured region wins and leaves the standard endpoint unpinned.
+    let config = build_client_config(
+        &us,
+        &BedrockOptions {
+            env: Some(provider_env(&[("AWS_REGION", "us-east-2")])),
+            ..BedrockOptions::default()
+        },
+    );
+    assert_eq!(config.region.as_deref(), Some("us-east-2"));
+    assert_eq!(config.endpoint, None);
+
+    // Without a region or profile the built-in EU endpoint supplies both.
+    let config = build_client_config(&eu, &BedrockOptions::default());
+    assert_eq!(
+        config.endpoint.as_deref(),
+        Some("https://bedrock-runtime.eu-central-1.amazonaws.com")
+    );
+    assert_eq!(config.region.as_deref(), Some("eu-central-1"));
+
+    // An explicit or scoped profile keeps the endpoint-derived region.
+    for options in [
+        BedrockOptions {
+            profile: Some("bedrock-profile".to_string()),
+            ..BedrockOptions::default()
+        },
+        BedrockOptions {
+            env: Some(provider_env(&[("AWS_PROFILE", "scoped-bedrock-profile")])),
+            ..BedrockOptions::default()
+        },
+    ] {
+        let expected_profile = options
+            .profile
+            .clone()
+            .unwrap_or_else(|| "scoped-bedrock-profile".to_string());
+        let config = build_client_config(&eu, &options);
+        assert_eq!(config.profile.as_deref(), Some(expected_profile.as_str()));
+        assert_eq!(
+            config.endpoint.as_deref(),
+            Some("https://bedrock-runtime.eu-central-1.amazonaws.com")
+        );
+        assert_eq!(config.region.as_deref(), Some("eu-central-1"));
+    }
+
+    // A custom endpoint always goes through, together with the configured region.
+    let mut custom = us.clone();
+    custom.base_url = "https://bedrock-vpc.example.com".to_string();
+    let config = build_client_config(
+        &custom,
+        &BedrockOptions {
+            env: Some(provider_env(&[("AWS_REGION", "us-west-2")])),
+            ..BedrockOptions::default()
+        },
+    );
+    assert_eq!(
+        config.endpoint.as_deref(),
+        Some("https://bedrock-vpc.example.com")
+    );
+    assert_eq!(config.region.as_deref(), Some("us-west-2"));
+
+    // An ARN-embedded region beats the configured one, GovCloud partitions included.
+    for (model_id, expected) in [
+        (
+            "arn:aws:bedrock:us-west-2:123456789012:application-inference-profile/abc123",
+            "us-west-2",
+        ),
+        (
+            "arn:aws-us-gov:bedrock:us-gov-west-1:123456789012:application-inference-profile/abc123",
+            "us-gov-west-1",
+        ),
+    ] {
+        let mut arn = us.clone();
+        arn.id = model_id.to_string();
+        let config = build_client_config(
+            &arn,
+            &BedrockOptions {
+                env: Some(provider_env(&[("AWS_REGION", "us-east-1")])),
+                ..BedrockOptions::default()
+            },
+        );
+        assert_eq!(config.region.as_deref(), Some(expected), "{model_id}");
+    }
+}
+
+#[test]
+fn the_generic_api_key_option_becomes_the_bedrock_bearer_token() {
+    let config = build_client_config(
+        &bedrock_catalog_model("us.anthropic.claude-opus-4-8"),
+        &BedrockOptions {
+            api_key: Some("bedrock-api-key".to_string()),
+            ..BedrockOptions::default()
+        },
+    );
+    assert_eq!(config.bearer_token.as_deref(), Some("bedrock-api-key"));
+
+    // Ambient AWS auth for a custom model id must not turn into a bearer token.
+    let mut arn = bedrock_catalog_model("us.anthropic.claude-opus-4-8");
+    arn.id =
+        "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/example".to_string();
+    let config = build_client_config(
+        &arn,
+        &BedrockOptions {
+            env: Some(provider_env(&[("AWS_PROFILE", "bedrock-profile")])),
+            ..BedrockOptions::default()
+        },
+    );
+    assert_eq!(config.profile.as_deref(), Some("bedrock-profile"));
+    assert_eq!(config.bearer_token, None);
+}
+
+#[test]
+fn explicit_and_scoped_profiles_beat_ambient_access_keys() {
+    let model = bedrock_catalog_model("us.anthropic.claude-opus-4-8");
+    let keys = provider_env(&[
+        ("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE"),
+        ("AWS_SECRET_ACCESS_KEY", "secretexample"),
+    ]);
+
+    for options in [
+        BedrockOptions {
+            profile: Some("explicit-profile".to_string()),
+            env: Some(keys.clone()),
+            ..BedrockOptions::default()
+        },
+        BedrockOptions {
+            env: Some({
+                let mut env = keys.clone();
+                env.insert("AWS_PROFILE".to_string(), "scoped-profile".to_string());
+                env
+            }),
+            ..BedrockOptions::default()
+        },
+    ] {
+        let expected = options
+            .profile
+            .clone()
+            .unwrap_or_else(|| "scoped-profile".to_string());
+        let config = build_client_config(&model, &options);
+        assert_eq!(config.profile.as_deref(), Some(expected.as_str()));
+        assert_eq!(config.credentials, None);
+    }
+
+    // Without any profile the scoped access keys are used.
+    let config = build_client_config(
+        &model,
+        &BedrockOptions {
+            env: Some(keys),
+            ..BedrockOptions::default()
+        },
+    );
+    assert_eq!(config.profile, None);
+    let credentials = config.credentials.expect("credentials");
+    assert_eq!(credentials.access_key_id, "AKIAEXAMPLE");
+    assert_eq!(credentials.secret_access_key, "secretexample");
+    assert_eq!(credentials.session_token, None);
+}
+
+#[test]
+fn custom_headers_skip_the_reserved_ones_case_insensitively() {
+    use notagent_ai::api::bedrock_converse_stream::applicable_custom_headers;
+
+    let headers: BTreeMap<String, String> = [
+        ("authorization", "evil"),
+        ("x-amz-date", "evil"),
+        ("x-allowed", "ok"),
+        ("Authorization", "evil2"),
+        ("X-Amz-Date", "evil2"),
+        ("HOST", "evil3"),
+        ("x-custom", "v"),
+    ]
+    .into_iter()
+    .map(|(key, value)| (key.to_string(), value.to_string()))
+    .collect();
+
+    let mut applied = applicable_custom_headers(&headers);
+    applied.sort();
+    assert_eq!(
+        applied,
+        vec![
+            ("x-allowed".to_string(), "ok".to_string()),
+            ("x-custom".to_string(), "v".to_string()),
+        ]
+    );
+    assert!(applicable_custom_headers(&BTreeMap::new()).is_empty());
+}
+
+#[test]
+fn raw_stop_reasons_survive_both_successful_and_failing_stops() {
+    let model = bedrock_catalog_model("us.anthropic.claude-opus-4-8");
+
+    let mut state = BedrockStreamState::new(&model, 1);
+    state
+        .process_item(&json!({ "messageStop": { "stopReason": "end_turn" } }))
+        .expect("processed");
+    assert_eq!(state.output.stop_reason, StopReason::Stop);
+    assert_eq!(state.output.raw_stop_reason.as_deref(), Some("end_turn"));
+    assert_eq!(state.output.error_message, None);
+
+    let mut state = BedrockStreamState::new(&model, 1);
+    state
+        .process_item(&json!({ "messageStop": { "stopReason": "guardrail_intervened" } }))
+        .expect("processed");
+    assert_eq!(state.output.stop_reason, StopReason::Error);
+    assert_eq!(
+        state.output.raw_stop_reason.as_deref(),
+        Some("guardrail_intervened")
+    );
+    assert_eq!(
+        state.output.error_message.as_deref(),
+        Some("Provider stopped with: guardrail_intervened")
+    );
+}

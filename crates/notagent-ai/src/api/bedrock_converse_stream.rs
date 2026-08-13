@@ -1768,6 +1768,16 @@ impl aws_smithy_runtime_api::client::http::HttpConnector for ReqwestHttpClient {
     }
 }
 
+/// The caller headers the middleware actually applies: reserved SigV4/auth headers are
+/// silently skipped, everything else overrides the existing value.
+pub fn applicable_custom_headers(headers: &BTreeMap<String, String>) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter(|(key, _)| !is_reserved_header(key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
 /// `addCustomHeadersMiddleware(client, headers)` — the TS middleware runs in the `build`
 /// step, after serialization and before signing; `modify_before_signing` is that point.
 #[derive(Debug)]
@@ -1787,10 +1797,8 @@ impl aws_smithy_runtime_api::client::interceptors::Intercept for CustomHeadersIn
         _cfg: &mut aws_smithy_types::config_bag::ConfigBag,
     ) -> Result<(), aws_smithy_runtime_api::box_error::BoxError> {
         let headers = context.request_mut().headers_mut();
-        for (key, value) in &self.headers {
-            if !is_reserved_header(key) {
-                headers.try_insert(key.clone(), value.clone())?;
-            }
+        for (key, value) in applicable_custom_headers(&self.headers) {
+            headers.try_insert(key, value)?;
         }
         Ok(())
     }

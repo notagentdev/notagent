@@ -752,3 +752,29 @@ async fn aborts_the_backoff_sleep_and_returns_an_aborted_message() {
         [(false, 1, Some("terminated".to_string()))]
     );
 }
+
+/// Port of `packages/ai/src/utils/typebox-helpers.ts` (24) — `index.ts` exports it, so the
+/// shape it produces is part of the public surface.
+#[test]
+fn string_enum_builds_a_plain_json_schema() {
+    use notagent_ai::utils::typebox_helpers::string_enum;
+    use serde_json::json;
+
+    assert_eq!(
+        string_enum(["add", "subtract"], None, None),
+        json!({ "type": "string", "enum": ["add", "subtract"] })
+    );
+    assert_eq!(
+        string_enum(
+            ["add", "subtract"],
+            Some("The operation to perform"),
+            Some("add")
+        ),
+        json!({
+            "type": "string",
+            "enum": ["add", "subtract"],
+            "description": "The operation to perform",
+            "default": "add",
+        })
+    );
+}
