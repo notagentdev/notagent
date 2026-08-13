@@ -861,3 +861,94 @@ async fn native_anthropic_models_keep_cache_control_and_eager_tool_input() {
     );
     assert_eq!(tools[0]["eager_input_streaming"], json!(true));
 }
+
+// ---------------------------------------------------------------------------
+// Thinking levels
+//
+// Port of the catalog half of `packages/ai/test/max-thinking.test.ts` (89): `max` stays
+// opt-in, and the Codex models that support it advertise both `xhigh` and `max`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn max_thinking_is_opt_in_and_codex_models_advertise_it() {
+    use notagent_ai::models::{clamp_thinking_level, get_supported_thinking_levels};
+
+    let ordinary = Model {
+        reasoning: true,
+        ..test_catalog_model("ordinary-reasoning")
+    };
+    assert_eq!(
+        get_supported_thinking_levels(&ordinary),
+        vec![
+            ModelThinkingLevel::Off,
+            ModelThinkingLevel::Minimal,
+            ModelThinkingLevel::Low,
+            ModelThinkingLevel::Medium,
+            ModelThinkingLevel::High,
+        ]
+    );
+    assert_eq!(
+        clamp_thinking_level(&ordinary, ModelThinkingLevel::Max),
+        ModelThinkingLevel::High
+    );
+
+    for model_id in ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"] {
+        let model = get_builtin_model("openai-codex", model_id).expect(model_id);
+        let levels = serde_json::to_value(model.thinking_level_map.clone()).unwrap();
+        assert_eq!(levels["xhigh"], json!("xhigh"), "{model_id}");
+        assert_eq!(levels["max"], json!("max"), "{model_id}");
+        assert_eq!(
+            get_supported_thinking_levels(&model),
+            vec![
+                ModelThinkingLevel::Off,
+                ModelThinkingLevel::Minimal,
+                ModelThinkingLevel::Low,
+                ModelThinkingLevel::Medium,
+                ModelThinkingLevel::High,
+                ModelThinkingLevel::Xhigh,
+                ModelThinkingLevel::Max,
+            ],
+            "{model_id}"
+        );
+    }
+
+    // A hole between `high` and `max` is allowed.
+    let mut holed = test_catalog_model("high-and-max");
+    holed.reasoning = true;
+    holed.thinking_level_map =
+        Some(serde_json::from_value(json!({ "xhigh": null, "max": "max" })).expect("levels"));
+    assert_eq!(
+        get_supported_thinking_levels(&holed),
+        vec![
+            ModelThinkingLevel::Off,
+            ModelThinkingLevel::Minimal,
+            ModelThinkingLevel::Low,
+            ModelThinkingLevel::Medium,
+            ModelThinkingLevel::High,
+            ModelThinkingLevel::Max,
+        ]
+    );
+    assert_eq!(
+        clamp_thinking_level(&holed, ModelThinkingLevel::Xhigh),
+        ModelThinkingLevel::Max
+    );
+}
+
+fn test_catalog_model(id: &str) -> Model {
+    Model {
+        id: id.to_string(),
+        name: id.to_string(),
+        api: "openai-completions".to_string(),
+        provider: "test".to_string(),
+        base_url: "https://example.com/v1".to_string(),
+        reasoning: false,
+        thinking_level_map: None,
+        input: vec![Modality::Text],
+        cost: ModelCost::default(),
+        context_window: 128_000,
+        max_tokens: 4096,
+        sampling_params: None,
+        headers: None,
+        compat: None,
+    }
+}

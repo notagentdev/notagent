@@ -735,9 +735,23 @@ pub struct DeferredHandle {
 // Nachrichten
 // ---------------------------------------------------------------------------
 
+/// `transformMessages` normalizes `null`/missing `content` to an empty array before every
+/// provider request, because hand-built histories, custom tools and old session files
+/// violate the type (issues #6259, #6276). The Rust types make that state
+/// unrepresentable, so the same leniency lives at deserialization: the message ends up in
+/// exactly the state TS reaches at the choke point (bug-compat).
+fn lax_content<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// `UserMessage { role: "user", content, timestamp }`
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct UserMessage {
+    #[serde(default, deserialize_with = "lax_content")]
     pub content: UserContent,
     /// Unix-Zeitstempel in Millisekunden.
     pub timestamp: i64,
@@ -747,6 +761,7 @@ pub struct UserMessage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistantMessage {
+    #[serde(default, deserialize_with = "lax_content")]
     pub content: Vec<AssistantContent>,
     pub api: Api,
     pub provider: ProviderId,
@@ -781,6 +796,7 @@ pub struct AssistantMessage {
 pub struct ToolResultMessage {
     pub tool_call_id: String,
     pub tool_name: String,
+    #[serde(default, deserialize_with = "lax_content")]
     pub content: Vec<TextOrImageContent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,

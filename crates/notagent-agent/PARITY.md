@@ -28,7 +28,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/agent.ts` | 592 | `agent.rs` | portiert (Task 12) | Klasse 1: Getter/Setter mit Kopiersemantik werden Methoden; `state()` liefert einen Snapshot. Listener sind `Arc<dyn Fn>` und werden weiterhin sequentiell in Subscription-Reihenfolge abgewartet. `waitForIdle` über `tokio::sync::Notify`. Klasse 1: `prepareNextTurn`/`prepareNextTurnWithContext` sind ein Callback (die kontextlose Variante ist eine Teilmenge) |
 | `src/stream-fn.ts` | 20 | `stream_fn.rs` | portiert (Task 1, Tests in Task 12) | Klasse 1: `throw` → `Result<_, NoDefaultStreamFn>` mit wortgleicher Meldung |
 | `src/harness/messages.ts` | 168 | `harness/messages.rs` | portiert (Task 1, Tests in Task 12) | Klasse 1: `timestamp: string \| number` → `i64`; die String-Variante wandelt der Aufrufer (App) um |
-| `src/index.ts` | 145 | `lib.rs` | teilweise (Task 1) | vollständige Oberfläche in Task 13; Harness-Re-Exports entfallen laut Ausschlusstabelle |
+| `src/index.ts` | 145 | `lib.rs` | verifiziert (Task 13) | Klasse 1: Rust-Module sind öffentlich; `lib.rs` re-exportiert zusätzlich `agent`, `agent_loop`, `types`, `harness::messages`, `stream_fn`, `uuidv7` und die Telemetrie-Typen flach wie `index.ts`. Die Harness-Re-Exports (agent-harness, compaction, prompt-templates, result, session, tools, skills) entfallen laut Ausschlusstabelle; die TS-Typinferenz-Exporte von `@notagent/telemetry` haben laut Faktenbericht §5 keine Laufzeitentsprechung |
 
 ## Ausschlüsse
 

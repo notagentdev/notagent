@@ -161,6 +161,15 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/ai/src/index.ts` | 47 | 13 |
 | 2026-08-13 | `packages/ai/src/utils/typebox-helpers.ts` | 24 | 13 |
 | 2026-08-13 | `packages/ai/src/compat/extension-oauth-types.ts` | 45 | 13 |
+| 2026-08-13 | `packages/ai/test/lax-message-content.test.ts` | 67 | 13 |
+| 2026-08-13 | `packages/ai/test/fetch-option.test.ts` | 178 | 13 |
+| 2026-08-13 | `packages/ai/test/mistral-reasoning-mode.test.ts` | 97 | 13 |
+| 2026-08-13 | `packages/ai/test/mistral-tool-schema.test.ts` | 63 | 13 |
+| 2026-08-13 | `packages/ai/test/mistral-raw-stop-reason.test.ts` | 61 | 13 |
+| 2026-08-13 | `packages/ai/test/mistral-http-transport.test.ts` | 427 | 13 |
+| 2026-08-13 | `packages/ai/test/error-body.test.ts` | 226 | 13 |
+| 2026-08-13 | `packages/ai/test/max-thinking.test.ts` | 89 | 13 |
+| 2026-08-13 | `packages/ai/test/compat-env.test.ts` | 74 | 13 |
 | 2026-08-13 | `packages/ai/test/cloudflare-stream.test.ts` | 64 | 11 |
 | 2026-08-13 | `packages/ai/src/api/openai-completions.ts` (Struktur + Compat-Matrix) | 1577 (Compat 134 vollständig) | 9 (laufend) |
 | 2026-08-13 | `packages/ai/test/anthropic-sse-parsing.test.ts` | 424 | 8 (laufend) |
@@ -208,6 +217,11 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/xiaomi-models.test.ts`, `openrouter-cache-control-models.test.ts`, `together-models.test.ts`, `baseten-models.test.ts`, `qwen-token-plan-models.test.ts`, `fireworks-models.test.ts`, offline-Teil von `bedrock-models.test.ts` | 955 | `tests/model_data.rs` | portiert (Task 13) | Klasse 1: die TS-Suites lesen über das ausgeschlossene `compat.ts` (`getModel`/`getModels`) — der Port liest dieselben Daten über `model_catalog`. Klasse 1: Payload-Zusicherungen erfassen den serialisierten Request-Body über ein injiziertes `fetch` statt über `onPayload` + geworfenen Fehler (dasselbe Objekt). Die key-gated Bedrock-Modellläufe (`BEDROCK_EXTENSIVE_MODEL_TEST`) sind wie in TS nicht Teil des Standardlaufs |
 | `test/bedrock-endpoint-resolution.test.ts`, `bedrock-credentials.test.ts`, `bedrock-custom-headers.test.ts`, `bedrock-raw-stop-reason.test.ts` | 607 | `tests/bedrock_converse_stream.rs` (Anbau) | portiert (Task 13) | Klasse 1: die TS-Suites lesen die Konfiguration des gemockten SDK-Clients — hier ist `build_client_config` genau diese Konfiguration. Fälle, die `process.env` pro Test stubben, laufen über das provider-scoped `env` (ein Rust-Testprozess teilt sich eine Prozessumgebung über alle Threads). Die Header-Middleware ist als `applicable_custom_headers` prüfbar; ihre Registrierung im Interceptor-Stack ist ohne echten SDK-Aufruf nicht beobachtbar |
 | `test/google-shared-gemini3-unsigned-tool-call.test.ts`, `google-shared-signed-empty-blocks.test.ts`, `google-shared-image-tool-result-routing.test.ts`, `google-thinking-signature.test.ts` | 424 | `tests/google_shared.rs` | portiert (Task 13) | — |
+| Katalog-Hälfte von `test/max-thinking.test.ts` | 89 | `tests/model_data.rs` (Anbau) | portiert (Task 13) | Der Codex-Payload-Fall (`reasoning: { effort: "max" }`) liegt in `tests/openai_codex_responses.rs` |
+| `test/error-body.test.ts` | 226 | `tests/error_body.rs` | portiert (Task 13) | Klasse 3: die vier SDK-Fehlerformen werden zu dem `RawProviderError`, den die HTTP-Schicht daraus bauen würde; die Abwehrfälle gegen serialisierte SDK-Interna (Node-Streams, Wrapper-Klassen) kollabieren zu „die Schicht liefert keinen Body" — genau das, was sie zusichern |
+| `test/lax-message-content.test.ts` | 67 | `tests/types_serde.rs` (Anbau) | portiert (Task 13) | Klasse 1 + bug-compat: TS normalisiert `null`/fehlendes `content` erst in `transformMessages`, weil unsauber gebaute Historien und alte Session-Dateien es enthalten (#6259, #6276). In Rust ist dieser Zustand nicht darstellbar, also greift dieselbe Nachsicht beim Deserialisieren (`lax_content`) — das Ergebnis ist derselbe Zustand, den TS vor dem Request erreicht |
+| `test/mistral-reasoning-mode.test.ts`, `mistral-tool-schema.test.ts`, `mistral-raw-stop-reason.test.ts`, `mistral-http-transport.test.ts` | 648 | `tests/mistral_conversations.rs` | abgedeckt (Task 13) | Die 46 Fälle der Differential-Fixture enthalten `prompt-mode-reasoning`, `reasoning-effort`, `prompt-cache(-disabled/-explicit-affinity)`, `tools-strict`, `tool-call-id-normalization`, die Finish-Reason-Matrix und beide HTTP-Fehlerformen — dieselben Zusicherungen aus dem TS-Original, gegen aufgezeichnete Request-Bodies und Event-Folgen |
+| `test/fetch-option.test.ts` | 178 | `tests/*` (adapterweise) | teilweise abgedeckt (Task 13) | Alle portierten Adapter nehmen ihr `fetch` über `ProviderRequestOptions` entgegen — jede Fixture-Suite fährt ausschließlich darüber, ein ambientes `fetch` gibt es im Port nicht. Klasse 3: die beiden Google-Fälle prüfen, dass der Adapter ein eigenes `fetch` ABLEHNT — das gilt nur, weil das `@google/genai`-SDK keines annimmt; der Port baut die Requests selbst und unterstützt es, weshalb diese zwei Fälle keine Entsprechung haben |
 | `test/google-shared-retry.test.ts` | 40 | `tests/event_stream_and_provider_retry.rs` | abgedeckt (Task 13) | Klasse 3: `retryGoogleRequest` existiert in TS nur, um SDK-Fehlern ohne `headers` eine retry-fähige Form zu geben; in Rust liefert `ProviderErrorInfo` den Status direkt, die Google-Adapter rufen `retry_provider_request` unmittelbar auf. Die drei Fälle (Retry bei 429 mit `maxRetries`, kein Retry ohne, kein Retry bei 400) prüft die Retry-Suite |
 | `test/anthropic-adaptive-thinking-models.test.ts`, `anthropic-temperature-compat.test.ts`, `anthropic-force-adaptive-thinking.test.ts`, `anthropic-empty-thinking-signature-compat.test.ts`, `anthropic-eager-tool-input-compat.test.ts`, `anthropic-cache-write-1h-cost.test.ts`, `anthropic-auth-token.test.ts` | 813 | `tests/anthropic_compat.rs` | portiert (Task 13) | Klasse 1: statt lokalem HTTP-Server bzw. SDK-Konstruktor-Mock beobachtet ein injiziertes `fetch` denselben Request (Header und Body). Dabei aufgedeckt und behoben: `sessionId` erreichte die Anthropic-Optionen nicht, wodurch der `x-session-affinity`-Header fehlte |
 | `src/utils/typebox-helpers.ts` | 24 | `utils/typebox_helpers.rs` | verifiziert (Task 13) | Klasse 3: TypeBox-Schemas sind `serde_json::Value`, also entfällt der `TUnsafe`-Wrapper; das erzeugte JSON-Schema ist identisch |
@@ -274,6 +288,41 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | — | — | `utils/js_number.rs` | verifiziert (Task 1) | Klasse 1 (Hilfsmodul ohne TS-Pendant): ECMAScript-`Number::toString` für byte-identische JSON-Zahlen |
 | — | — | `utils/fetch.rs` | portiert (Task 1) | Klasse 3: Ersatz für `FetchFunction`; die konkrete Form kann Task 8 (SSE) nachschärfen |
 
+## Testsuiten-Landkarte (Stand Task 13)
+
+Die 131 TS-Suiten unter `packages/ai/test/` verteilen sich so auf den Port:
+
+**Portiert oder durch eine bestehende Rust-Suite abgedeckt** (siehe Ledger-Zeilen oben und
+die gleichnamigen Dateien unter `tests/`): types, models, model-catalog, auth/oauth,
+utils, SSE, anthropic (params/stream/transport/compat/auth-token), openai-completions
+(params/stream/transport), openai-responses (params/stream/compat), azure, codex,
+google (generative-ai/vertex/shared), bedrock, mistral, pi-messages, cloudflare-gateway,
+images, faux, validation, json-parse, event-stream/provider-retry, constrained-sampling,
+simple-options, subscription-plans, providers, model-data, error-body.
+
+**Noch offen — key-gated e2e** (laufen in TS nur mit echten Provider-Keys; der Port zieht
+sie nach, sobald die Loop-nahen Suiten stehen): `abort`, `anthropic-eager-tool-input-e2e`,
+`anthropic-long-cache-retention-e2e`, `anthropic-opus-4-8-smoke`,
+`anthropic-thinking-disable`, `anthropic-tool-name-normalization`,
+`bedrock-thinking-payload`, `cache-retention`, `context-overflow`,
+`cross-provider-handoff`, `empty`, `google-thinking-disable`, `image-tool-result`,
+`interleaved-thinking`, `openai-codex-cache-affinity-e2e`,
+`openai-responses-cache-affinity-e2e`, `openai-responses-reasoning-replay-e2e`,
+`openai-responses-tool-result-images`, `openrouter-cache-write-repro`, `responseid`,
+`stream`, `tokens`, `tool-call-id-normalization`, `tool-call-without-result`,
+`total-tokens`, `unicode-surrogate`, `xhigh`,
+`xiaomi-token-plan-ams-anthropic-empty-signature-smoke`, `zen`.
+
+**Noch offen — offline**: `bedrock-convert-messages`, `bedrock-error-metadata`,
+`deferred-tools`, `github-copilot-anthropic`, `google-raw-stop-reason`,
+`lazy-module-load`, `openai-responses-empty-tool-result`,
+`openai-responses-foreign-toolcall-id`, `openai-responses-message-id`,
+`openai-responses-namespace`, `openai-responses-partial-json-cleanup`,
+`provider-error-body-passthrough`, `provider-error-body-regression`, `sampling-options`,
+`telemetry-options`, `transform-messages-copilot-openai-to-anthropic`, `xai-responses`.
+Ihre Kernpfade sind über die Differential-Fixtures bereits abgedeckt; offen sind die
+spezifischen Randfälle.
+
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |
@@ -285,5 +334,6 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/providers/data-json.d.ts` | reine Typdeklaration für JSON-Importe; ohne Laufzeitanteil |
 | `src/providers/*.models.ts` (39 Dateien, je 8 LOC) | generierte Leser des `data/`-Snapshots (`flattenModelCatalog`); die Factories lesen dieselben Daten über `model_catalog::get_builtin_models` |
 | `scripts/generate-models.ts` | WS-B-Plan Task 5: der JSON-Snapshot ist die Quelle; Aktualisierung bleibt im TS-Repo |
+| `test/compat-env.test.ts` (74) | prüft ausschließlich die Legacy-API-Registry aus `compat.ts`, die laut Master-Plan ausgeschlossen ist |
 | `scripts/model-data.ts` + `test/model-data-validation.test.ts` (177), `scripts/models-dev-reasoning-options.ts` + `test/reasoning-options.test.ts` (36), `test/generate-models-strict.test.ts` (85) | Generator-Werkzeuge und ihre Tests: sie prüfen die Erzeugung des Snapshots im TS-Repo, nicht das Laufzeitverhalten |
 | `test/model-catalog-types.test.ts` (15) | `expectTypeOf`-Zusicherungen über die generierten Literaltypen; die eine Laufzeitzusicherung (Copilot `grok-4.5` → `openai-responses`) deckt `tests/model_catalog.rs` über den Snapshot ab |

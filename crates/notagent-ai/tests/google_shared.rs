@@ -151,12 +151,12 @@ fn gemini3_history_keeps_the_tool_call_ids() {
         let contents = convert_messages(&target, &unsigned_context(&target, None), 1);
         let call_ids: Vec<String> = contents
             .iter()
-            .flat_map(|content| parts(content))
+            .flat_map(parts)
             .filter_map(|part| part["functionCall"]["id"].as_str().map(str::to_string))
             .collect();
         let response_ids: Vec<String> = contents
             .iter()
-            .flat_map(|content| parts(content))
+            .flat_map(parts)
             .filter_map(|part| part["functionResponse"]["id"].as_str().map(str::to_string))
             .collect();
         assert_eq!(call_ids, vec!["call_1", "call_2"], "{}", target.id);

@@ -14,6 +14,17 @@ pub use harness::messages::{
     bash_execution_to_text, convert_to_llm, create_branch_summary_message,
     create_compaction_summary_message, create_custom_message,
 };
+// `index.ts` re-exports the agent surface flat, plus `uuidv7` from `@notagent/ai` and
+// the telemetry types; the latter are re-exported from `notagent_telemetry` here rather
+// than duplicated. The harness re-exports of `index.ts` (agent-harness, compaction,
+// prompt-templates, result, session, tools, skills) are excluded per the master plan —
+// see PARITY.md.
+pub use agent::*;
+pub use agent_loop::*;
 pub use notagent_ai::uuidv7;
+pub use notagent_telemetry::{
+    InMemoryTelemetryContext, SpanAttributes, SpanOptions, SpanStatus, TelemetryContext,
+    TelemetrySpan, noop_telemetry_context,
+};
 pub use stream_fn::{NoDefaultStreamFn, get_default_stream_fn, set_default_stream_fn};
 pub use types::*;

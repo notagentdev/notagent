@@ -537,3 +537,54 @@ fn credentials_use_the_typescript_oauth_tag() {
         AuthType::OAuth
     );
 }
+
+/// Port of `packages/ai/test/lax-message-content.test.ts` (67). TS normalizes `null`
+/// content at the `transformMessages` choke point, because hand-built histories and old
+/// session files carry it (issues #6259, #6276). The Rust types make an absent content
+/// unrepresentable, so the leniency moves to deserialization: `null` and a missing field
+/// both become empty content, which is the state TS reaches before a request.
+#[test]
+fn null_or_missing_message_content_deserializes_as_empty() {
+    use notagent_ai::types::{AssistantContent, Message, TextOrImageContent, UserContent};
+
+    let messages: Vec<Message> = serde_json::from_value(serde_json::json!([
+        { "role": "user", "content": null, "timestamp": 1 },
+        {
+            "role": "assistant",
+            "content": null,
+            "api": "openai-completions",
+            "provider": "openai",
+            "model": "test-model",
+            "usage": {
+                "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0,
+                "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0 },
+            },
+            "stopReason": "stop",
+            "timestamp": 1,
+        },
+        {
+            "role": "toolResult",
+            "toolCallId": "call_1",
+            "toolName": "web_search",
+            "isError": false,
+            "timestamp": 1,
+        },
+    ]))
+    .expect("lax message content");
+
+    assert_eq!(messages.len(), 3);
+    match &messages[0] {
+        Message::User(message) => assert_eq!(message.content, UserContent::Blocks(Vec::new())),
+        other => panic!("unexpected message: {other:?}"),
+    }
+    match &messages[1] {
+        Message::Assistant(message) => assert_eq!(message.content, Vec::<AssistantContent>::new()),
+        other => panic!("unexpected message: {other:?}"),
+    }
+    match &messages[2] {
+        Message::ToolResult(message) => {
+            assert_eq!(message.content, Vec::<TextOrImageContent>::new())
+        }
+        other => panic!("unexpected message: {other:?}"),
+    }
+}
