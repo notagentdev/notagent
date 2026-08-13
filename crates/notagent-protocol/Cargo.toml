@@ -7,3 +7,6 @@ license.workspace = true
 description = "CBOR-Binaerprotokoll fuer Remote-Sessions (Version 1)."
 
 [dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
