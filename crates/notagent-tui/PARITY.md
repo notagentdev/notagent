@@ -305,6 +305,17 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 14 Öffentliche API + Ledger-Abschluss | fertig: `lib.rs` deckungsgleich mit `index.ts`, Ledger-Selbstaudit abgeschlossen (39 src-Dateien, 30 Testdateien, 8 Werkzeuge) |
 | 15 App-TUI-Schicht (ab G2) | offen |
 
+## Verification Criteria
+
+| Kriterium | Stand |
+|---|---|
+| Alle portierten Testsuiten grün | erfüllt: 711 Tests in 43 Binaries, `scripts/check.sh` grün |
+| Virtual-Terminal-Tests assertieren Viewport und Scrollback wie TS | erfüllt (vt100-Emulator, Divergenzen unten dokumentiert) |
+| Byte-Level-Tests belegen identische Sequenz-Klammerung | erfüllt (`tests/tui_render.rs`, `tests/tui_alt_screen*.rs` prüfen Synchronized Output, Erase-Muster, Cursorbewegungen) |
+| Überbreiten-Guard schreibt Crash-Log und bricht ab | erfüllt (`src/tui_main_screen.rs`, Test in `tests/tui_render.rs`) |
+| Manueller Smoke auf zwei realen Emulatoren (Kitty-Protokoll + Legacy) | **offen — nur manuell ausführbar**: `cargo run -p notagent-tui --example input-smoke` in je einem Emulator mit und ohne Kitty-Protokoll starten; das Beispiel gibt Rohbytes, geparste Taste und den Verhandlungszustand aus und aktiviert Maus-Reporting sowie Bracketed Paste |
+| PARITY.md enthält alle 39 src-Dateien, alle Testdateien und die native/-Quellen | erfüllt (Selbstaudit Task 14) |
+
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |
