@@ -4,6 +4,7 @@
 //! Das Export-Set spiegelt `packages/tui/src/index.ts`.
 
 pub mod keys;
+pub mod stdin_buffer;
 pub mod terminal;
 #[cfg(feature = "test-terminal")]
 pub mod test_terminal;
@@ -15,6 +16,7 @@ pub use keys::{
     KeyEventType, decode_kitty_printable, decode_printable_key, is_key_release, is_key_repeat,
     is_kitty_protocol_active, matches_key, parse_key, set_kitty_protocol_active,
 };
+pub use stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
 pub use terminal::{InputHandler, ResizeHandler, Terminal};
 pub use tui::{CURSOR_MARKER, Component, ComponentRef, Focusable};
 pub use utils::{
