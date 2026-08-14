@@ -1032,3 +1032,35 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   angelegt. Wer inkrementelle Builds lokal doch braucht, setzt
   `CARGO_INCREMENTAL=1` fuer den eigenen Aufruf.
 - **Status**: umgesetzt
+
+### C-11 Package-Manager soll `PackageResources` implementieren
+- **Von / An**: C → B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/package_manager/` (B, O-4) und
+  `crates/notagent/src/core/resource_loader.rs` (C)
+- **Beleg**: `resource-loader.ts` ruft `DefaultPackageManager.resolve()` und
+  arbeitet mit dessen `ResolvedResource[]` weiter (TS: `resource-loader.ts:341-372`).
+  Mit O-4 gehört der Package-Manager B, der Resource-Loader C — in Rust braucht
+  die Grenze deshalb einen Trait statt eines direkten Typs.
+- **Regelung**: C hat in `core/resource_loader.rs` definiert:
+  ```rust
+  pub struct ResolvedResource { pub path: String, pub metadata: PathMetadata, pub enabled: bool }
+  pub struct ResolvedResources { pub skills: Vec<ResolvedResource>,
+                                 pub prompts: Vec<ResolvedResource>,
+                                 pub themes: Vec<ResolvedResource> }
+  pub trait PackageResources: Send + Sync {
+      fn resolve(&self) -> BoxFuture<'_, ResolvedResources>;
+  }
+  ```
+  Bitte `impl PackageResources for DefaultPackageManager` ergänzen, das genau
+  `resolve()` aus TS spiegelt — inklusive `addAutoDiscoveredResources` (die
+  Auto-Entdeckung von `<agentDir>/{skills,prompts,themes}` und
+  `<cwd>/.notagent/{skills,prompts,themes}` mit `source: "auto"`, Trust-Gate für
+  die Projekt-Hälfte und den `-pfad`-Deaktivierungen aus den Settings). Die
+  `extensions`-Liste der TS-Struktur entfällt ersatzlos.
+  `PathMetadata` ist der bestehende Typ aus `core::source_info`.
+  C setzt `packages: Option<Arc<dyn PackageResources>>` in
+  `DefaultResourceLoaderOptions`; ohne Implementierung lädt der Loader nur die
+  explizit übergebenen Pfade (die Tests stellen dafür eine eigene Implementierung).
+- **Status**: offen — C ist nicht blockiert, die Auto-Entdeckung fehlt bis dahin
+  aber im laufenden Binary
