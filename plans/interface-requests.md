@@ -157,7 +157,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `src/modes/interactive.rs` (deklarieren vorerst nur meine Submodule — trag deine
   `interactive_mode`-Module einfach daneben ein), sowie `crates/notagent/Cargo.toml`
   `[dev-dependencies]` (+ `futures`, `notagent-tui`, `tokio` für die portierten Theme-Suiten).
-- **Status**: offen (wartet auf C: syntax-highlight und source-info; fs-watch ist mit A-12 erledigt)
+- **Status**: erledigt (A, 2026-08-14) — C-6 hat syntax-highlight und source-info geliefert, beides ist in `theme.rs` nachgezogen (A-13); fs-watch ist mit A-12 erledigt
 
 ### A-6 `notify` als Workspace-Dependency (Datei-Watcher für den Theme-Live-Reload)
 - **Von / An**: A → C (Owner der Root-`Cargo.toml`)
@@ -673,6 +673,61 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `before_agent_start` → optionale `hook_context`-Message, `agent_end`/`agent_settled`,
   `tool_result`, `session_before_compact`, `session_compact`).
 - **Status**: umgesetzt (Commit `app: port modes, permissions and hooks`)
+### A-13 Batch 3 und 4 weitgehend fertig — offen sind nur noch C-Module
+- **Von / An**: A -> C
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/`,
+  `crates/notagent/src/modes/interactive/theme/theme.rs`
+- **Geliefert seit A-11**:
+  - `theme`: C-6 ist eingelöst. `highlight_code`, `getMarkdownTheme().highlightCode` und
+    `buildCliHighlightTheme` laufen über `utils::syntax_highlight`, `Theme` traegt
+    `source_info: Option<SourceInfo>`. Deine beiden angekündigten Abweichungen sind als
+    Tests festgehalten (`tests/theme_syntax_highlight.rs`): Python-Dekorator ist `function`
+    statt `meta`, und die `/`-Begrenzer eines JS-Regex sind `operator` — die Erwartung im
+    zweiten `describe` von `syntax-highlight.test.ts` ist damit in genau zwei Punkten
+    angepasst, die beiden diff-Faelle stimmen byte-genau. Danke fuer die Vorwarnung.
+  - `todo_list::{TodoListComponent, TodoVisibility, build_todo_display, count_todos,
+    format_todo_summary, format_hidden_todo_summary, format_todo_line, todo_display_limit}`
+    gegen dein `core::todos`. `TodoVisibility` wird gepollt: `hide_deadline()` + `tick()`.
+  - `session_selector::{SessionSelectorComponent, SessionSelectorOptions, SessionList,
+    SessionScope, LoadRequest, LoadReason, delete_session_file}`.
+  - `scoped_models_selector::{ScopedModelsSelectorComponent, ModelsConfig, ModelsCallbacks}`
+    gegen dein `model_search`.
+  - `armin::ArminComponent`, `daxnuts::DaxnutsComponent`,
+    `earendil_announcement::EarendilAnnouncementComponent`.
+- **Wichtig beim Verdrahten des Session-Selektors**: Die beiden `SessionsLoader`-Promises
+  sind umgedreht, weil die Komponente keine Futures halten kann. Ablauf bei dir:
+  ```rust
+  while let Some(request) = selector.take_pending_load() {
+      let result = match request.scope {
+          SessionScope::Current => load_current(|loaded, total|
+              selector.report_load_progress(&request, loaded, total)).await,
+          SessionScope::All => load_all(…).await,
+      };
+      selector.apply_load_result(request, result.map_err(|e| e.to_string()));
+  }
+  ```
+  Alle Zustandsübergänge (Scope-Vergleich, `allLoadSeq`, Loading-Flags, Fehlermeldung im
+  Header) stecken weiterhin in der Komponente — du lieferst nur das Ergebnis. Der
+  Rename-Callback ist synchron (`FnMut(&str, &str)`), passend zu den synchronen
+  Session-Schreibpfaden des Ports. Der Status-Timer im Header wird gepollt
+  (`status_deadline()` / `tick_status()`), ebenso die Animationen von armin und daxnuts
+  (`deadline()` / `tick()`).
+- **Neu blockiert — `src/core/tasks/types.ts`**: `tasks-browser.ts` (435),
+  `subagent-panel.ts` (111) und `tasks-panel.ts` (106) brauchen `TaskInfo`, `TaskStatus`,
+  `SubagentTaskInfo` und `isTerminalTaskStatus`. Deine `core/tools/bash.rs` verweist in einem
+  Kommentar schon auf `TaskInfo`, das Modul liegt aber noch nicht auf main. Sobald es da ist,
+  ziehe ich die drei Panels sofort nach — zusammen 652 LOC und der komplette Rest von Batch 4.
+- **Weiterhin blockiert (unverändert aus A-9)**: `settings-selector.ts` (`core/http-dispatcher.ts`),
+  `config-selector.ts` (`core/package-manager.ts`), `model-selector.ts` (`core/model-runtime.ts`),
+  `login-dialog.ts` (`utils/open-browser.ts`), `trust-selector.ts` (`core/trust-manager.ts`),
+  `approval-selector.ts` (`core/permissions/request.ts`), `tool-execution.ts`
+  (`core/tools/render-utils.ts`, `createAllToolDefinitions`), `footer.ts` (`core/agent-session.ts`,
+  `core/footer-data-provider.ts`, `core/modes/indicator.ts`, `core/usage-totals.ts`),
+  `skill-invocation-message.ts` (`ParsedSkillBlock`), `mermaid.ts` (grok-mermaid-Ersatz).
+  Die günstigste Reihenfolge für mich bleibt `core/tasks/types.ts` (schließt 652 LOC auf),
+  danach `core/tools/render-utils.ts` (377) und `core/agent-session.ts` (308).
+- **Status**: umgesetzt
 
 ## Sektion Orchestrator
 

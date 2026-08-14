@@ -5,6 +5,7 @@
 //! appear as their batch is ported (see `crates/notagent/PARITY.md`, section
 //! "A: interactive components").
 
+pub mod armin;
 pub mod assistant_message;
 pub mod bash_execution;
 pub mod bordered_loader;
@@ -13,13 +14,16 @@ pub mod compaction_summary_message;
 pub mod countdown_timer;
 pub mod custom_editor;
 pub mod custom_message;
+pub mod daxnuts;
 pub mod diff;
 pub mod dynamic_border;
+pub mod earendil_announcement;
 pub mod first_time_setup;
 pub mod keybinding_hints;
 pub mod list_selector;
 pub mod markdown_transform;
 pub mod oauth_selector;
+pub mod scoped_models_selector;
 pub mod session_selector;
 pub mod session_selector_search;
 pub mod show_images_selector;

@@ -110,6 +110,16 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-14 | packages/coding-agent/test/session-selector-rename.test.ts | 111 | A-Task 15 (Batch 3) |
 | 2026-08-14 | packages/coding-agent/test/syntax-highlight.test.ts | 76 | A-Task 15 (Batch 0, Nachzug) |
 | 2026-08-14 | packages/coding-agent/src/utils/syntax-highlight.ts (Signaturen, C-6) | 146 | A-Task 15 (Batch 0, Nachzug) |
+| 2026-08-14 | packages/coding-agent/src/modes/interactive/components/scoped-models-selector.ts | 403 | A-Task 15 (Batch 3) |
+| 2026-08-14 | packages/coding-agent/test/suite/regressions/3217-scoped-model-order.test.ts | 104 | A-Task 15 (Batch 3) |
+| 2026-08-14 | packages/coding-agent/test/suite/regressions/6949-unavailable-scoped-model.test.ts | 160 | A-Task 15 (Batch 3) |
+| 2026-08-14 | packages/coding-agent/test/suite/regressions/7153-scoped-models-refresh.test.ts | 107 | A-Task 15 (Batch 3) |
+| 2026-08-14 | packages/coding-agent/src/modes/interactive/components/armin.ts | 382 | A-Task 15 (Batch 4) |
+| 2026-08-14 | packages/coding-agent/src/modes/interactive/components/daxnuts.ts | 164 | A-Task 15 (Batch 4) |
+| 2026-08-14 | packages/coding-agent/src/modes/interactive/components/earendil-announcement.ts | 53 | A-Task 15 (Batch 4) |
+| 2026-08-14 | packages/coding-agent/src/modes/interactive/components/tasks-browser.ts | 435 | A-Task 15 (Batch 4, Abhängigkeitsprüfung) |
+| 2026-08-14 | packages/coding-agent/src/modes/interactive/components/subagent-panel.ts | 111 | A-Task 15 (Batch 4, Abhängigkeitsprüfung) |
+| 2026-08-14 | packages/coding-agent/src/modes/interactive/components/tasks-panel.ts | 106 | A-Task 15 (Batch 4, Abhängigkeitsprüfung) |
 | 2026-08-13 | packages/coding-agent/src/core/tools/bash.ts | 771 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/shell.ts (erneut, Spawn-/Signalteil) | 259 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/child-process.ts | 137 | C-Task 8 |
@@ -367,7 +377,9 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | — (neu) | — | tests/theme_syntax_highlight.rs | verifiziert | 4 Tests: das zweite `describe` von `test/syntax-highlight.test.ts` (die beiden diff-Erwartungen stimmen byte-genau) plus die zwei dokumentierten tree-sitter-Abweichungen und der Rückfall für nicht gebündelte Sprachen |
 
 | src/modes/interactive/components/model-selector.ts | 364 | — | offen | braucht `core/model-runtime.ts` und `modes/interactive/model-search.ts` — A-9 |
-| src/modes/interactive/components/scoped-models-selector.ts | 403 | — | offen | braucht `modes/interactive/model-search.ts` — A-9 |
+| src/modes/interactive/components/scoped-models-selector.ts | 403 | src/modes/interactive/components/scoped_models_selector.rs | verifiziert | Klasse 1: Vererbung von `Container` wird Komposition; `EnabledIds = string[] \| null` wird `Option<Vec<String>>`; die reinen Listenfunktionen (`toggle`, `enableAll`, `clearAll`, `move`, `getSortedIds`) bleiben freie Funktionen mit denselben Kopiersemantiken; `onChange`/`onPersist` sind synchron (in TS `void \| Promise<void>`, und kein Aufrufer wartet) |
+| test/suite/regressions/3217-scoped-model-order.test.ts, 6949-unavailable-scoped-model.test.ts | 264 | tests/scoped_models_selector.rs | verifiziert | Die zwei rein komponentenbezogenen Fälle sind portiert (Reorder meldet die neue Reihenfolge; ein Eintrag ohne Katalogeintrag rendert `[unavailable] ✗` und lässt sich abwählen und speichern). Die übrigen Fälle beider Dateien und `7153-scoped-models-refresh.test.ts` fahren `InteractiveMode` über die Suite-Harness — Workstream C, Gate G3 |
+| — (neu) | — | tests/scoped_models_selector.rs | verifiziert | 6 Tests: die zwei portierten Regressionsfälle plus vier eigene (Start mit „alle aktiviert" und erster Toggle, Provider-Toggle und Clear, Suche mit Ctrl+C-Zweistufigkeit und Escape, leeres Filterergebnis) |
 | src/modes/interactive/components/settings-selector.ts | 881 | — | offen | braucht `core/http-dispatcher.ts` — A-9 |
 | src/modes/interactive/components/config-selector.ts | 942 | — | offen | braucht `core/package-manager.ts` (Workstream C, Task 14) — A-9 |
 | src/modes/interactive/components/login-dialog.ts | 233 | — | offen | braucht `utils/open-browser.ts` — A-9 |
@@ -378,6 +390,13 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | test/oauth-selector.test.ts | 147 | tests/selectors.rs | verifiziert | 5 der 6 Fälle (Status-Anzeige: unkonfiguriert, fremder Auth-Typ, Env-Variable, models.json-Key, models.json-Kommando). Der erste Fall prüft `InteractiveMode.getLoginProviderOptions` — Workstream C |
 | test/session-selector-search.test.ts | 195 | tests/session_selector_search.rs | verifiziert | 9 Tests (TS: 9 `it`-Blöcke), unverändert |
 | test/first-time-setup.test.ts, test/first-time-setup-fork.test.ts | 134 | — | Workstream C | beide Suiten prüfen `cli/startup-ui.ts` (`shouldRunFirstTimeSetup`) und den Settings-Manager, nicht die Dialog-Komponente |
+| src/modes/interactive/components/armin.ts | 382 | src/modes/interactive/components/armin.rs | verifiziert | Klasse 1: `setInterval` wird zur Poll-Schnittstelle (`deadline()`/`tick()`), wie alle Timer des Ports; `effectState: Record<string, unknown>` wird ein Enum; `Math.random()` → `rand`; `Array.prototype.slice` mit negativem Index (Glitch-Verschiebung) ist als Rotation nachgebaut. bug-compat: die Zeile „ARMIN SAYS HI" wird nie gekürzt und überläuft ein Terminal unter 15 Spalten, weil TS nur das rechte Padding klemmt |
+| src/modes/interactive/components/daxnuts.ts | 164 | src/modes/interactive/components/daxnuts.rs | verifiziert | Klasse 1: `setInterval` → `deadline()`/`tick()`; das Hex-Bild ist zur Lesbarkeit auf mehrere `&str` verteilt und wird zur Laufzeit zusammengesetzt; `s.replace(/\x1b\[[0-9;]*m/g,"").length` ist als Zähler nachgebaut (`plain_length`), damit die Zentrierung dieselben Spalten trifft |
+| src/modes/interactive/components/earendil-announcement.ts | 53 | src/modes/interactive/components/earendil_announcement.rs | verifiziert | Klasse 1: Vererbung von `Container` wird Komposition; das Modul-Cache-Paar `cachedImageBase64`/`attemptedImageLoad` wird ein `OnceLock` (gleiche „genau ein Versuch"-Semantik) |
+| src/modes/interactive/components/tasks-browser.ts | 435 | — | offen | braucht `core/tasks/types.ts` (`TaskInfo`, `TaskStatus`, `isTerminalTaskStatus`) — Workstream C, A-13 |
+| src/modes/interactive/components/subagent-panel.ts | 111 | — | offen | braucht `core/tasks/types.ts` (`SubagentTaskInfo`) — A-13 |
+| src/modes/interactive/components/tasks-panel.ts | 106 | — | offen | braucht `core/tasks/types.ts` — A-13 |
+| — (neu) | — | tests/panels.rs | verifiziert | 8 Tests für die drei portierten Panels (Rasterhöhe und Padding, Clipping samt bug-compat der Meldungszeile, Frame-Takt und `dispose`, Scanline-Start und Zentrierung, Ankündigungstext mit Rahmen) |
 | — (neu) | — | tests/selectors.rs | verifiziert | 19 Tests für die portierten Selektoren: 8 für die fünf Batch-3-Selektoren der ersten Runde, 5 portierte OAuth-Fälle plus 3 eigene (Auth-Typ-Label bei gemischten Providern, Suchfilter über die Eingabe, leere Listen je Modus, Abbruch), 3 für den First-Time-Setup-Dialog (Vorauswahl und Preview, Schrittwechsel und Ergebnis, Abbruch) |
 
 ## Ausschlüsse
