@@ -1915,13 +1915,7 @@ fn watch_custom_themes_dir(directory: &Path) {
                 notify_theme_directory_event(path.file_name().and_then(|name| name.to_str()));
             }
         }
-        Err(_) => {
-            // `watcher.on("error", onError)`: stop delivering events.
-            theme_watcher()
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .failed = true;
-        }
+        Err(_) => notify_theme_watcher_error(),
     };
 
     let Ok(mut watcher) = notify::recommended_watcher(handler) else {
@@ -1972,6 +1966,21 @@ fn start_theme_watcher() {
     }
 
     watch_custom_themes_dir(&custom_themes_dir);
+}
+
+/// Handle a failure reported by the directory watcher.
+///
+/// `watchWithErrorHandler(dir, listener, onError)` of `utils/fs-watch.ts`
+/// attaches an `error` listener precisely so an asynchronous OS failure does not
+/// terminate the process (regression #2791); `onError` then stops the live
+/// reload. The `notify` backend reports the same failures as an `Err` event,
+/// which this handles the same way. Public so the regression test can inject the
+/// failure, exactly as `notify_theme_directory_event` injects a change.
+pub fn notify_theme_watcher_error() {
+    theme_watcher()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .failed = true;
 }
 
 /// Handle one directory event of the watched custom themes directory.

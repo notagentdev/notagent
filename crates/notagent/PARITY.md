@@ -137,6 +137,14 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-14 | packages/coding-agent/test/tasks-browser.test.ts | 283 | A-Task 15 (Batch 4) |
 | 2026-08-14 | packages/coding-agent/test/tasks-panel.test.ts | 115 | A-Task 15 (Batch 4) |
 | 2026-08-14 | packages/coding-agent/test/subagent-panel.test.ts | 165 | A-Task 15 (Batch 4) |
+| 2026-08-14 | packages/coding-agent/test/max-thinking.test.ts | 45 | A-Task 15 (Ledger-Selbstaudit) |
+| 2026-08-14 | packages/coding-agent/test/suite/regressions/2791-fswatch-error-crash.test.ts | 106 | A-Task 15 (Ledger-Selbstaudit) |
+| 2026-08-14 | packages/coding-agent/test/suite/regressions/5433-extension-oauth-prompt-input.test.ts | 119 | A-Task 15 (Ledger-Selbstaudit, blockiert) |
+| 2026-08-14 | packages/coding-agent/test/suite/regressions/4167-thinking-toggle-pending-tool-render.test.ts | 182 | A-Task 15 (Ledger-Selbstaudit, blockiert) |
+| 2026-08-14 | packages/coding-agent/test/suite/regressions/5596-missing-theme-export.test.ts | 90 | A-Task 15 (Ledger-Selbstaudit, Zuordnung C/B) |
+| 2026-08-14 | packages/coding-agent/test/session-info-modified-timestamp.test.ts | 83 | A-Task 15 (Ledger-Selbstaudit, Zuordnung C) |
+| 2026-08-14 | packages/coding-agent/src/core/extensions/types.ts (ToolRenderContext/ToolDefinition-Renderhälften, Kontrakt für A-16) | 100 | A-Task 15 (Abhängigkeitsprüfung) |
+| 2026-08-14 | packages/coding-agent/src/core/tools/index.ts (createAllToolDefinitions) | 40 | A-Task 15 (Abhängigkeitsprüfung) |
 | 2026-08-13 | packages/coding-agent/src/core/tools/bash.ts | 771 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/shell.ts (erneut, Spawn-/Signalteil) | 259 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/child-process.ts | 137 | C-Task 8 |
@@ -463,6 +471,17 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | test/subagent-panel.test.ts | 165 | tests/subagent_panel.rs | verifiziert | 17 Tests (TS: 17), unverändert |
 | — (neu) | — | tests/panels.rs | verifiziert | 8 Tests für die drei portierten Panels (Rasterhöhe und Padding, Clipping samt bug-compat der Meldungszeile, Frame-Takt und `dispose`, Scanline-Start und Zentrierung, Ankündigungstext mit Rahmen) |
 | — (neu) | — | tests/selectors.rs | verifiziert | 19 Tests für die portierten Selektoren: 8 für die fünf Batch-3-Selektoren der ersten Runde, 5 portierte OAuth-Fälle plus 3 eigene (Auth-Typ-Label bei gemischten Providern, Suchfilter über die Eingabe, leere Listen je Modus, Abbruch), 3 für den First-Time-Setup-Dialog (Vorauswahl und Preview, Schrittwechsel und Ergebnis, Abbruch) |
+| test/max-thinking.test.ts | 45 | tests/theme_validation.rs | Theme-Hälfte verifiziert, Rest Workstream C | Der Fall „falls back to thinkingXhigh for legacy themes" prüft `loadThemeFromPath` und ist portiert (`falls_back_to_thinking_xhigh_for_legacy_themes`): ein Theme ohne `thinkingMax` liefert für `max` dieselbe Randfarbe wie für `xhigh`. Der erste Fall („is accepted by CLI and settings") prüft `cli/args.ts` und den Settings-Manager und gehört C. |
+| test/suite/regressions/2791-fswatch-error-crash.test.ts | 106 | tests/theme_runtime.rs | verifiziert | 1 Test (`survives_an_error_reported_by_the_theme_watcher`). Klasse 1: Der TS-Fall startet einen Kindprozess, sucht den `FSWatcher` in `process._getActiveHandles()` und emittiert ein synthetisches `error`-Event — ohne Listener beendet `EventEmitter.emit("error")` den Prozess. In Rust gibt es diese Regel nicht: `notify` liefert den Fehler als `Err` an dieselbe Closure. Der Port prüft daher die Wirkung des Fixes statt seines Node-Mechanismus — der Fehler wird verschluckt, das zuletzt geladene Theme bleibt aktiv, weitere Verzeichnis-Events werden verworfen, und ein Neustart des Watchers hebt den Fehlerzustand auf. Dafür ist der `Err`-Zweig als `notify_theme_watcher_error()` öffentlich, genau wie `notify_theme_directory_event` den `Ok`-Zweig injizierbar macht. |
+| test/tool-execution-component.test.ts, test/edit-tool-no-full-redraw.test.ts, test/suite/regressions/4167-thinking-toggle-pending-tool-render.test.ts | 954 | — | offen | Testseite von `tool-execution.ts`; blockiert durch `createAllToolDefinitions` und die `renderCall`/`renderResult`-Hälften (C, Task 13) — A-16. 4167 treibt zusätzlich `InteractiveMode`. |
+| test/footer-width.test.ts | 252 | — | offen | Testseite von `footer.ts`; blockiert durch `core/agent-session.ts` + `core/footer-data-provider.ts` (C) und `core/usage-totals.ts` (B) — A-16 |
+| test/settings-selector.test.ts | 43 | — | offen | Testseite von `settings-selector.ts`; blockiert durch `core/http-dispatcher.ts` (C) — A-16 |
+| test/model-selector.test.ts, test/suite/regressions/7209-model-selector-filter-resets-selection.test.ts | 177 | — | offen | Testseite von `model-selector.ts`; blockiert durch `core/model-runtime.ts` (B) — A-16 |
+| test/mermaid.test.ts | 99 | — | offen | Testseite von `mermaid.ts`; blockiert durch den `grok-mermaid`-Ersatz (C, Task 15) — A-16 |
+| test/suite/regressions/5433-extension-oauth-prompt-input.test.ts | 119 | — | offen | Testseite von `login-dialog.ts` (trotz des Namens kein Extension-Test: die Suite baut den Dialog direkt); blockiert durch `utils/open-browser.ts` (C) — A-16 |
+| test/suite/regressions/7153-scoped-models-refresh.test.ts | 107 | — | Workstream C | prüft den `scoped-models-selector` ausschließlich über `InteractiveMode` und die Test-Harness (`showModelsSelector`, `modelRuntime`-Spies); die Komponentenlogik selbst ist in tests/scoped_models_selector.rs abgedeckt. Gehört zur Verdrahtung. |
+| test/suite/regressions/5596-missing-theme-export.test.ts | 90 | — | Workstream C und B | `initTheme` ist nur Kulisse; geprüft wird der HTML-Export einer `AgentSession` (C) über `core/export-html/` (B, seit O-4) |
+| test/session-info-modified-timestamp.test.ts | 83 | — | Workstream C | prüft den `SessionManager`; `initTheme` ist nur Kulisse |
 
 ## Ausschlüsse
 

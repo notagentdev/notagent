@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use notagent::config::env_agent_dir;
 use notagent::modes::interactive::theme::theme::{
     ColorMode, ThemeBg, ThemeColor, init_theme, is_theme_initialized, load_theme_from_path,
-    notify_theme_directory_event, on_theme_change, set_theme, stop_theme_watcher, theme,
+    notify_theme_directory_event, notify_theme_watcher_error, on_theme_change, set_theme,
+    stop_theme_watcher, theme,
 };
 
 /// The global theme, the registry and `NOTAGENT_CODING_AGENT_DIR` are process
@@ -372,6 +373,65 @@ async fn does_not_reload_after_the_watcher_stopped() {
         theme().get_fg_ansi(ThemeColor::Accent),
         "\x1b[38;2;17;34;51m"
     );
+}
+
+// Port of `test/suite/regressions/2791-fswatch-error-crash.test.ts`. The
+// TypeScript test spawns a child process, digs the `FSWatcher` out of
+// `process._getActiveHandles()` and emits a synthetic `error` on it: without a
+// listener, `EventEmitter.emit("error")` throws and takes the process down.
+// `notify` has no such rule — it hands the failure to the same closure as a
+// change — so the port asserts what the fix is for: the failure is absorbed and
+// the live reload stops instead of running on a broken watch.
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn survives_an_error_reported_by_the_theme_watcher() {
+    let _guard = global_lock();
+    let agent_dir = AgentDir::new();
+    let mut custom = dark_theme();
+    custom["name"] = serde_json::json!("custom-test");
+    custom["colors"]["accent"] = serde_json::json!("#112233");
+    agent_dir.write_theme("custom-test", &custom);
+
+    assert!(set_theme("custom-test", true).success, "theme loads");
+    assert_eq!(
+        theme().get_fg_ansi(ThemeColor::Accent),
+        "\x1b[38;2;17;34;51m"
+    );
+
+    notify_theme_watcher_error();
+
+    // The theme in place at the time of the failure stays active.
+    assert_eq!(
+        theme().get_fg_ansi(ThemeColor::Accent),
+        "\x1b[38;2;17;34;51m"
+    );
+
+    // Events after the failure are dropped: the watch is no longer trustworthy.
+    custom["colors"]["accent"] = serde_json::json!("#445566");
+    agent_dir.write_theme("custom-test", &custom);
+    notify_theme_directory_event(Some("custom-test.json"));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(
+        theme().get_fg_ansi(ThemeColor::Accent),
+        "\x1b[38;2;17;34;51m"
+    );
+
+    // Restarting the watcher clears the failure.
+    assert!(set_theme("custom-test", true).success, "theme loads");
+    assert_eq!(
+        theme().get_fg_ansi(ThemeColor::Accent),
+        "\x1b[38;2;68;85;102m"
+    );
+    custom["colors"]["accent"] = serde_json::json!("#778899");
+    agent_dir.write_theme("custom-test", &custom);
+    notify_theme_directory_event(Some("custom-test.json"));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(
+        theme().get_fg_ansi(ThemeColor::Accent),
+        "\x1b[38;2;119;136;153m"
+    );
+
+    stop_theme_watcher();
 }
 
 #[test]

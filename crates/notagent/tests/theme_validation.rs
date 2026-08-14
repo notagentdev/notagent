@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use notagent::modes::interactive::theme::theme::{ColorMode, load_theme_from_path};
+use notagent_agent::ThinkingLevel;
 
 fn dark_theme() -> serde_json::Value {
     serde_json::from_str(include_str!("../src/modes/interactive/theme/dark.json"))
@@ -281,4 +282,23 @@ fn accepts_unknown_color_keys_and_omitted_optional_slots() {
     colors_mut(&mut theme).remove("thinkingMax");
     let path = write(&theme.to_string());
     assert!(load_theme_from_path(&path, Some(ColorMode::TrueColor)).is_ok());
+}
+
+/// Port of the theme half of `test/max-thinking.test.ts` ("falls back to
+/// thinkingXhigh for legacy themes"); the CLI and settings half belongs to
+/// workstream C. `withThemeColorFallbacks` fills `thinkingMax` from
+/// `thinkingXhigh`, so a theme written before the level existed still paints the
+/// editor border.
+#[test]
+fn falls_back_to_thinking_xhigh_for_legacy_themes() {
+    let mut legacy = dark_theme();
+    legacy["name"] = serde_json::json!("legacy-theme");
+    colors_mut(&mut legacy).remove("thinkingMax");
+    let path = write(&legacy.to_string());
+
+    let theme = load_theme_from_path(&path, Some(ColorMode::TrueColor)).expect("theme loads");
+    assert_eq!(
+        theme.get_thinking_border_color(ThinkingLevel::Max)("border"),
+        theme.get_thinking_border_color(ThinkingLevel::Xhigh)("border")
+    );
 }

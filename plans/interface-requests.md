@@ -863,6 +863,65 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   | grok-mermaid-Ersatz | C (Task 15) | mermaid (+ 1 Suite) | 89 |
 - **Status**: offen (wartet auf C und B)
 
+### A-16 Dependency-Sweep nach Cs Task 10 und O-5: nichts Neues aufgeschlossen, dafuer zwei Ledger-Luecken geschlossen
+- **Von / An**: A -> C und B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/modes/interactive/`, `crates/notagent/PARITY.md`
+- **Sweep-Ergebnis**: Nach dem Merge von `core/tasks/` (deine Task 10) und `render_utils.rs`
+  (O-5) habe ich alle 47 TS-Komponentendateien gegen `main` geprueft. Stand: 34 portiert,
+  4 ausgeschlossen (custom-entry, extension-editor, extension-input, index — Klasse 2),
+  1 umbenannt portiert (extension-selector -> list_selector), 8 blockiert. Von den acht
+  fehlenden Modulen liegt keines auf main: `core/agent-session.rs`,
+  `core/footer_data_provider.rs`, `core/usage_totals.rs`, `core/http_dispatcher.rs`,
+  `core/model_runtime.rs`, `core/package_manager/`, `utils/open_browser.rs`, grok-mermaid-Ersatz.
+  Die Tabelle aus A-15 gilt damit unveraendert weiter.
+- **Ledger-Selbstaudit (das eigentliche Ergebnis dieser Sitzung)**: Der Abgleich aller
+  TS-Testdateien, die `interactive/components`, `interactive/theme`, `core/keybindings` oder
+  `tools/render-utils` importieren (50 Dateien), fand zwei Suiten, die mein Ledger nicht
+  gefuehrt hat und die portierbar waren:
+  - `test/suite/regressions/2791-fswatch-error-crash.test.ts` — der Theme-Watcher darf an
+    einem asynchronen OS-Fehler nicht sterben. Portiert nach `tests/theme_runtime.rs`
+    (`survives_an_error_reported_by_the_theme_watcher`). Klasse 1: der TS-Fall emittiert ein
+    `error`-Event auf dem `FSWatcher` eines Kindprozesses (ohne Listener beendet
+    `EventEmitter.emit("error")` den Prozess); `notify` kennt diese Regel nicht und liefert
+    den Fehler als `Err` an dieselbe Closure, der Port prueft daher die Wirkung des Fixes:
+    Fehler geschluckt, aktives Theme bleibt, weitere Events verworfen, Neustart hebt den
+    Fehlerzustand auf. Der `Err`-Zweig ist dafuer als `notify_theme_watcher_error()`
+    oeffentlich — dasselbe Muster wie `notify_theme_directory_event` fuer den `Ok`-Zweig.
+  - `test/max-thinking.test.ts` — die Theme-Haelfte („falls back to thinkingXhigh for legacy
+    themes") ist nach `tests/theme_validation.rs` portiert. Die CLI-/Settings-Haelfte
+    (`isValidThinkingLevel`, `SettingsManager`) gehoert dir, sie ist im Ledger als solche
+    vermerkt.
+  Zusaetzlich sind jetzt alle Testsuiten der acht blockierten Komponenten mit LOC und Grund
+  im Ledger gefuehrt (1 751 LOC), damit beim Aufschliessen nichts uebersehen wird, und drei
+  Suiten sind als C-/B-Sache zugeordnet (7153, 5596, session-info-modified-timestamp).
+- **Konkreter Kontrakt fuer `tool-execution` (der guenstigste naechste Aufschluss)**: Alle 16
+  `ToolDefinition`-Implementierungen liegen bei dir auf main; es fehlen nur zwei Dinge, dann
+  ziehe ich `tool-execution.ts` (377) plus `tool-execution-component.test.ts` (537),
+  `edit-tool-no-full-redraw.test.ts` (235) nach:
+  1. Die Registry `create_all_tool_definitions(cwd, options) -> BTreeMap<ToolName, Arc<dyn ToolDefinition>>`
+     (`core/tools/index.ts:318-337`).
+  2. Zwei Default-Methoden am `ToolDefinition`-Trait, die 13 der 16 Tool-Dateien ueberschreiben
+     (`extensions/types.ts:489-497`; der Extension-Pfad entfaellt, `tool-execution` liest nur
+     die eingebaute Definition):
+     ```rust
+     fn render_call(&self, args: &Value, theme: &Theme, context: &ToolRenderContext)
+         -> Option<Box<dyn Component>> { None }
+     fn render_result(&self, result: &AgentToolResult, options: &ToolRenderResultOptions,
+                      theme: &Theme, context: &ToolRenderContext) -> Option<Box<dyn Component>> { None }
+     ```
+     `ToolRenderContext` (`extensions/types.ts:419-444`) traegt `args`, `tool_call_id`,
+     `invalidate`, `last_component`, `state`, `cwd`, `execution_started`, `args_complete`,
+     `is_partial`, `expanded`, `show_images`, `is_error`. Wenn du den Typ lieber von mir
+     haettest: sag Bescheid, dann lege ich ihn in `components/tool_execution.rs` an (wie schon
+     `MarkdownTransformer`) und du importierst ihn von dort — dann bleibt in deinen
+     Tool-Dateien nur die Renderlogik.
+- **An B**: unveraendert `core/model_runtime.rs` (schliesst model-selector + 177 LOC Tests auf)
+  und `core/package_manager/` (config-selector, 942). `core/usage_totals.rs` ist ein Drittel
+  der Footer-Abhaengigkeiten.
+- **Status**: offen (wartet auf C und B)
+
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt
