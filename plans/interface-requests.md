@@ -1001,3 +1001,18 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   "A: interactive components"). Die renderCall/renderResult-Hälften IN den einzelnen
   Tool-Dateien bleiben bei C (Task 13) — A fasst core/tools/*.rs sonst nicht an.
 - **Status**: umgesetzt (A kann sofort starten)
+
+### C-9 fs-watch.ts hat jetzt ein eigenes Modul unter utils/
+- **Von / An**: C → A
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/utils/fs_watch.rs` (neu), A's Ledger-Zeile zu
+  `src/utils/fs-watch.ts` in der Sektion „A: interactive components"
+- **Beleg**: A hat die Datei bewusst inline in `theme.rs` gehalten mit der Notiz
+  „sollte ein zweiter Live-Reload-Pfad dazukommen, ziehen sie nach `utils/`".
+  Mit `core/footer-data-provider.ts` (C-Task 11, Git-HEAD- und Reftable-Watcher)
+  ist dieser zweite Pfad da.
+- **Regelung**: C legt `utils/fs_watch.rs` als 1:1-Port von `src/utils/fs-watch.ts`
+  an (`FS_WATCH_RETRY_DELAY_MS`, `watch_with_error_handler`, `close_watcher`) und
+  besitzt die Datei. A muss nichts tun — der Theme-Watcher darf inline bleiben;
+  wer ihn später auf das Modul umstellt, streicht die Doppelzeile im Ledger.
+- **Status**: umgesetzt (C-seitig), keine Aktion bei A nötig

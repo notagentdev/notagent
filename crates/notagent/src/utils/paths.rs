@@ -255,7 +255,7 @@ fn default_home_dir() -> String {
         .into_owned()
 }
 
-fn current_dir() -> String {
+pub(crate) fn current_dir() -> String {
     std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .to_string_lossy()

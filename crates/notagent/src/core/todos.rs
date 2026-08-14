@@ -12,8 +12,8 @@
 //! all completed has done its job, and leaving it standing would carry finished
 //! work into the next thing the user asks for.
 //!
-//! `todos/reminder.ts` belongs to the agent session and follows with task 11.
 
+pub mod reminder;
 pub mod render;
 
 use std::collections::HashMap;

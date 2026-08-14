@@ -22,6 +22,7 @@ notagent-protocol = { workspace = true }
 notagent-tui = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
+ignore = { workspace = true }
 image = { workspace = true }
 dirs = { workspace = true }
 libc = { workspace = true }

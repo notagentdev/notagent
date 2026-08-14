@@ -244,6 +244,28 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-14 | packages/coding-agent/test/delegation-run.test.ts | 335 | C-Task 10 |
 | 2026-08-14 | packages/coding-agent/test/delegation-limits.test.ts | 91 | C-Task 10 |
 | 2026-08-14 | packages/coding-agent/test/bash-background.test.ts | 133 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/agent-session.ts | 3 797 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/agent-session-runtime.ts | 441 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/agent-session-services.ts | 221 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/sdk.ts | 402 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/compaction/compaction.ts | 969 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/compaction/branch-summarization.ts | 376 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/compaction/utils.ts | 161 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/resource-loader.ts | 1 096 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/skills.ts | 487 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/prompt-templates.ts | 285 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/system-prompt.ts | 173 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/slash-commands.ts | 43 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/diagnostics.ts | 16 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/todos/reminder.ts | 89 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/footer-data-provider.ts | 388 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/session-cwd.ts | 59 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/core/defaults.ts | 3 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/src/utils/fs-watch.ts | 30 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/test/skills.test.ts | 432 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/test/prompt-templates.test.ts | 624 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/test/system-prompt.test.ts | 115 | C-Task 11 |
+| 2026-08-14 | packages/coding-agent/test/todos.test.ts (Reminder-Fälle) | 60 | C-Task 11 |
 
 ## Ledger
 
@@ -368,6 +390,17 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | test/delegation-limits.test.ts | 91 | tests/delegation_limits.rs | verifiziert | 12 Tests (TS: 12), unverändert |
 | test/bash-background.test.ts | 133 | tests/bash_background.rs | verifiziert | 11 Tests (TS: 11) gegen den ECHTEN `TaskManager`, wie die TS-Harness. Die mit Task 8 vorgezogenen Fälle in `tests/bash_tool.rs` bleiben daneben stehen: sie prüfen mit einem aufzeichnenden Stub, WAS das Tool registriert (Deadlines, `detached`, `auto_background_on_timeout`) — das sieht man am echten Manager nicht mehr |
 | — (neu) | — | tests/tasks_parallel.rs | verifiziert | 4 Tests ohne TS-Vorlage, die die Kernanforderung des Master-Plans an der Wanduhr messen: acht per `bash` detachte Kommandos (`sleep 0.5`) in unter 1,5 s, acht Subagent-Tasks mit Spitzenparallelität 8, ein Vordergrund-Kommando neben einem Hintergrund-Kommando, und acht Kinder aus EINEM `task`-Aufruf mit Spitzenparallelität 8. Im TS-Original wäre „parallel" verschränktes Warten auf einem Event-Loop |
+| src/core/diagnostics.ts | 16 | src/core/diagnostics.rs | portiert (Ressourcen-Hälfte) | Vorgezogen aus Task 12, weil `skills.ts` und `resource-loader.ts` ohne `ResourceDiagnostic` nicht ladbar sind. Die Startup-Timing-Sicht derselben TS-Datei folgt mit Task 12. Klasse 1: `type` wird `level` (Rust-Schlüsselwort), bleibt über `#[serde(rename)]` derselbe Wire-Name; `resourceType: "extension"` bleibt als Wire-Wert erhalten, obwohl nichts im Port ihn erzeugt |
+| src/core/todos/reminder.ts | 89 | src/core/todos/reminder.rs | verifiziert | Einmal je offener Menge, nur der jüngste Reminder wird geprüft, versteckte Custom-Message. Klasse 1: `Pick<CustomMessage, …>` wird `PendingTodosReminder` (Rolle und Timestamp stempelt die Session, wie in TS); die `details` des Transkripts sind rohes JSON, also wird `contents` beim Vergleich daraus gelesen |
+| src/core/system-prompt.ts | 173 | src/core/system_prompt.rs | verifiziert | Abschnittsfolge, Guideline-Deduplizierung in Einfügereihenfolge, Sichtbarkeit nur mit Snippet, beide Pfade (custom vs. eingebaut) inkl. des unterschiedlichen Zeilenendes hinter „Current working directory". Klasse 1: `toolSnippets` ist ein `Vec<(String, String)>` statt eines Objekts — die Reihenfolge kommt ohnehin aus `selectedTools` |
+| src/core/slash-commands.ts | 43 | src/core/slash_commands.rs | verifiziert | Die 23 eingebauten Kommandos in TS-Reihenfolge; `SlashCommandSource::Extension` bleibt als Wire-Wert (RPC, TS-Transkripte), wird im Port aber nie erzeugt |
+| src/core/skills.ts | 487 | src/core/skills.rs | verifiziert | Discovery-Regeln (SKILL.md schließt den Zweig ab, Symlink-Auflösung, node_modules und Dot-Einträge übersprungen), Validierungsregeln als Warnungen, fehlende Beschreibung als Ausschluss, Kollisions-Diagnostik mit Erst-gewinnt und stiller Symlink-Dedupe. Klasse 3: npm-`ignore` → `ignore`-Crate; da dessen `Gitignore` unveränderlich ist, hält `IgnoreMatcher` die Musterliste in Reihenfolge und übersetzt bei jedem `add` neu — „letzte passende Regel gewinnt" bleibt über verschachtelte Ignore-Dateien erhalten. Klasse 1: Längen zählen UTF-16-Einheiten wie JS-Strings; `readdir` wird sortiert, damit die Reihenfolge unabhängig vom Dateisystem ist (TS' einzige reihenfolgeabhängige Stelle, die SKILL.md-Kurzschließung, scannt vorher die ganze Liste) |
+| test/skills.test.ts | 432 | tests/skills.rs | verifiziert | 29 Tests (TS: 28). Zusätzlich: der ECHTE Kollisionspfad von `loadSkills` (TS simuliert ihn nur mit einer eigenen Map) |
+| src/core/prompt-templates.ts | 285 | src/core/prompt_templates.rs | verifiziert | Substitutionsgrammatik in TS-Alternationsreihenfolge (Defaults, Slices, einfache Referenzen), keine Rekursion in Argument- oder Default-Werten, bash-ähnliche Argumentzerlegung mit Anführungszeichen. Klasse 1: `regex`-Closures expandieren `$` im Ersatz nicht, was genau die Nicht-Rekursion von JS' Funktions-Replacer ist; die 60-Zeichen-Kürzung der abgeleiteten Beschreibung zählt UTF-16-Einheiten |
+| test/prompt-templates.test.ts | 624 | tests/prompt_templates.rs | verifiziert | 54 Tests (TS: 76 `test`-Blöcke, im Port teils zu Fällen mit mehreren Erwartungen zusammengezogen — jede Erwartung des TS-Originals ist enthalten). Zusätzlich: `expandPromptTemplate` lässt Text ohne passendes Template unverändert |
+| test/system-prompt.test.ts | 115 | tests/system_prompt.rs | verifiziert | 8 Tests (TS: 8), unverändert |
+| test/todos.test.ts (Reminder-Fälle) | 60 | src/core/todos/reminder.rs (Testmodul) | verifiziert | 7 Tests (TS: 5). Zusätzlich: nur der jüngste Reminder zählt, und der Renderer lässt erledigte Einträge weg |
+| src/utils/fs-watch.ts | 30 | src/utils/fs_watch.rs | portiert | Der zweite Live-Reload-Pfad (`footer-data-provider.ts`), den A in seiner Zeile zu dieser Datei vorgesehen hat, ist da — deshalb steht die Datei jetzt wie in TS unter `utils/`. A's Theme-Watcher bleibt vorerst inline (siehe Interface-Request C-9). Klasse 3: `node:fs.watch` → `notify`; die Callback-Signatur reicht nur den Dateinamen, das einzige Feld, das ein Aufrufer liest |
 
 ## A: interactive components
 
