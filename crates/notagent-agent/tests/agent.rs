@@ -493,3 +493,82 @@ async fn listeners_are_awaited_in_subscription_order() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Provider wiring (interface request C-8)
+// ---------------------------------------------------------------------------
+
+/// TS keeps `streamFunction`, `getApiKey`, `onPayload`, `onResponse`, `beforeToolCall`,
+/// `afterToolCall`, `thinkingBudgets`, `transport`, `maxRetryDelayMs` and `toolExecution`
+/// as public fields (`agent.ts:180-201`), and `delegation/run.ts:170-203` copies them onto
+/// a child agent. The Rust port exposes the same through `options`/`update_options`.
+#[tokio::test]
+async fn the_provider_wiring_is_readable_and_writable() {
+    let (stream_fn, _) = scripted_stream_fn(vec!["ok"]);
+    let agent = Agent::new(AgentOptions {
+        transport: Some(Transport::Sse),
+        max_retry_delay_ms: Some(1234),
+        ..options(stream_fn)
+    });
+
+    let current = agent.options();
+    assert_eq!(current.transport, Some(Transport::Sse));
+    assert_eq!(current.max_retry_delay_ms, Some(1234));
+    assert!(current.stream_fn.is_some());
+
+    // The runtime assignments TS does (`session.agent.transport = …`).
+    agent.update_options(|options| {
+        options.transport = Some(Transport::Websocket);
+        options.tool_execution = Some(ToolExecutionMode::Sequential);
+    });
+
+    let current = agent.options();
+    assert_eq!(current.transport, Some(Transport::Websocket));
+    assert_eq!(current.tool_execution, Some(ToolExecutionMode::Sequential));
+}
+
+/// `onPayload`/`onResponse` reach the provider through the loop config, as TS forwards
+/// them into `streamSimple` (`agent.ts:452-453`).
+#[tokio::test]
+async fn on_payload_and_on_response_reach_the_stream_options() {
+    let seen = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+    let sink = Arc::clone(&seen);
+    let stream_fn: StreamFn = Arc::new(move |_model, _context, options| {
+        if let Some(options) = options.as_ref() {
+            if options.base.base.on_payload.is_some() {
+                sink.lock().expect("poisoned").push("onPayload");
+            }
+            if options.base.base.on_response.is_some() {
+                sink.lock().expect("poisoned").push("onResponse");
+            }
+        }
+        Box::pin(async move {
+            let stream = create_assistant_message_event_stream();
+            let message = assistant_message("ok");
+            stream.push(AssistantMessageEvent::Done {
+                reason: DoneReason::Stop,
+                message: message.clone(),
+            });
+            stream.end(Some(message));
+            stream
+        })
+    });
+
+    let agent = Agent::new(AgentOptions {
+        on_payload: Some(Arc::new(|payload, _model| {
+            Box::pin(async move { Some(payload) })
+        })),
+        on_response: Some(Arc::new(|_response, _model| Box::pin(async {}))),
+        ..options(stream_fn)
+    });
+
+    agent
+        .prompt(vec![user_message("hi")])
+        .await
+        .expect("prompt");
+
+    assert_eq!(
+        seen.lock().expect("poisoned").clone(),
+        vec!["onPayload", "onResponse"]
+    );
+}

@@ -124,6 +124,9 @@ pub struct AgentOptions {
     pub transform_context: Option<TransformContextFn>,
     pub stream_fn: Option<StreamFn>,
     pub get_api_key: Option<GetApiKeyFn>,
+    /// `onPayload`/`onResponse` — TS forwards them into `streamSimple` (`agent.ts:452`).
+    pub on_payload: Option<notagent_ai::types::OnPayload<Model>>,
+    pub on_response: Option<notagent_ai::types::OnResponse<Model>>,
     pub before_tool_call: Option<BeforeToolCallFn>,
     pub after_tool_call: Option<AfterToolCallFn>,
     pub should_stop_after_turn: Option<ShouldStopAfterTurnFn>,
@@ -264,6 +267,23 @@ impl Agent {
 
     pub fn set_follow_up_mode(&self, mode: QueueMode) {
         self.follow_up_queue.lock().expect("poisoned").mode = mode;
+    }
+
+    /// The current provider wiring. TS keeps `streamFunction`, `getApiKey`, `onPayload`,
+    /// `onResponse`, `beforeToolCall`, `afterToolCall`, `thinkingBudgets`, `transport`,
+    /// `maxRetryDelayMs` and `toolExecution` as public fields on `Agent`
+    /// (`packages/agent/src/agent.ts:180-201`); the Rust port folds them into
+    /// `AgentOptions`, so this hands out the same view as a clone.
+    pub fn options(&self) -> AgentOptions {
+        self.options.lock().expect("poisoned").clone()
+    }
+
+    /// The counterpart of TS's field assignments (`session.agent.transport = …`,
+    /// `agent.beforeToolCall = …`). The next `createLoopConfig` picks the change up, so a
+    /// running turn keeps the wiring it started with — exactly as in TS, where the loop
+    /// captured the field values when the run began.
+    pub fn update_options(&self, update: impl FnOnce(&mut AgentOptions)) {
+        update(&mut self.options.lock().expect("poisoned"));
     }
 
     /// `steer(message)`
@@ -436,6 +456,8 @@ impl Agent {
             ..Default::default()
         };
         base.base.session_id = options.session_id.clone();
+        base.base.base.on_payload = options.on_payload.clone();
+        base.base.base.on_response = options.on_response.clone();
         base.base.transport = Some(options.transport.unwrap_or(Transport::Auto));
         base.base.base.max_retry_delay_ms = options.max_retry_delay_ms;
 

@@ -765,7 +765,16 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   (Tasks-Maschinerie, Store, Notification, `task_list`/`task_output`/`task_stop`,
   Shell-Tasks am echten Manager) und zieht die beiden Dateien nach, sobald die Methoden
   auf main liegen.
-- **Status**: offen
+- **Antwort B (2026-08-14)**: umgesetzt, beides. `Agent::options()` und
+  `Agent::update_options(|options| …)` liegen auf main; TS führt genau diese Felder
+  öffentlich (`packages/agent/src/agent.ts:180-201`), der Wunsch entspricht dem Original.
+  `on_payload`/`on_response` waren im Port tatsächlich nicht vorhanden — sie sind jetzt
+  Felder von `AgentOptions` und wandern wie in TS (`agent.ts:452-453`) über
+  `create_loop_config` in die `SimpleStreamOptions`. `create_child` kann also alle neun
+  Zuweisungen kopieren. Belege: `crates/notagent-agent/tests/agent.rs`
+  (`the_provider_wiring_is_readable_and_writable`,
+  `on_payload_and_on_response_reach_the_stream_options`).
+- **Status**: umgesetzt (B, 2026-08-14)
 
 ## Sektion Orchestrator
 
