@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use serde_json::{Value, json};
@@ -16,7 +16,9 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 
 pub const WRITE_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -71,7 +73,7 @@ impl WriteOperations for LocalWriteOperations {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct WriteToolOptions {
     pub operations: Option<Arc<dyn WriteOperations>>,
 }
@@ -197,6 +199,11 @@ impl ToolDefinition for WriteToolDefinition {
             .await
         })
     }
+}
+
+/// `createCreateWriteTool` — the tool as the agent loop takes it.
+pub fn create_write_tool(cwd: &str, options: Option<WriteToolOptions>) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(Arc::new(create_write_tool_definition(cwd, options)), None)
 }
 
 #[cfg(test)]

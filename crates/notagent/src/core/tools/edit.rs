@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use serde_json::{Map, Value, json};
@@ -16,7 +16,9 @@ use crate::core::tools::edit_diff::{
 };
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 
 pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -115,7 +117,7 @@ fn error_code(error: &std::io::Error) -> String {
     format!("Error code: {code}")
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct EditToolOptions {
     pub operations: Option<Arc<dyn EditOperations>>,
 }
@@ -335,6 +337,11 @@ impl ToolDefinition for EditToolDefinition {
             .await
         })
     }
+}
+
+/// `createCreateEditTool` — the tool as the agent loop takes it.
+pub fn create_edit_tool(cwd: &str, options: Option<EditToolOptions>) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(Arc::new(create_edit_tool_definition(cwd, options)), None)
 }
 
 #[cfg(test)]

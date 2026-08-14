@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use serde_json::{Map, Value, json};
@@ -15,7 +15,9 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::mini_read::minify_for_path;
 use crate::core::tools::path_utils::resolve_read_path;
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncationOptions, truncate_head,
 };
@@ -108,7 +110,7 @@ impl ReadMinifiedOperations for LocalReadMinifiedOperations {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ReadMinifiedToolOptions {
     pub operations: Option<Arc<dyn ReadMinifiedOperations>>,
 }
@@ -285,4 +287,15 @@ impl ToolDefinition for ReadMinifiedToolDefinition {
             })
         })
     }
+}
+
+/// `createCreateReadMinifiedTool` — the tool as the agent loop takes it.
+pub fn create_read_minified_tool(
+    cwd: &str,
+    options: Option<ReadMinifiedToolOptions>,
+) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(
+        Arc::new(create_read_minified_tool_definition(cwd, options)),
+        None,
+    )
 }

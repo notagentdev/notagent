@@ -5,11 +5,19 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (68 856 LOC
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 9 abgeschlossen.** Tasks 5-8 sind portiert und testbelegt; offen bleibt
+**Stand: Task 10 abgeschlossen.** Tasks 5-9 sind portiert und testbelegt; offen bleibt
 daraus nur, was laut Plan zu späteren Tasks gehört: `resolveSessionPath` sitzt in
-`src/main.ts` (Task 12), `tools/render-utils.ts` und die Renderer der Tools gehören zu
-Task 13, und `tools/index.ts` ist bis auf die Namen (`ToolName`, `allToolNames`, mit
-Task 9 nachgezogen) erst nach Task 10 vollständig baubar.
+`src/main.ts` (Task 12), `tools/render-utils.ts` und die `renderCall`/`renderResult`-
+Hälften aller Tools gehören zu Task 13.
+
+Task 10 hat die Tasks-Maschinerie (`core/tasks/`), die Delegation (`core/delegation/`) und
+die vier zugehörigen Tools portiert. Subagenten und Shell-Tasks sind echte
+`tokio::spawn`-Tasks: `tests/tasks_parallel.rs` misst an der Wanduhr, dass acht detachte
+Kommandos und acht Kinder aus einem `task`-Aufruf tatsächlich gleichzeitig laufen. Der
+`BashTaskManager`-Trait aus Task 8 hat damit seine echte Implementierung, und
+`tools/index.ts` ist als Registry über alle 16 Tools geschlossen. Die Delegation braucht
+den Provider-Wiring-Zugriff auf `Agent`, den Workstream B auf Interface-Request C-8
+geliefert hat.
 
 Task 9 hat Modes, Permissions, Hooks und Project-Trust portiert. Die beiden versteckten
 Inline-Extensions sind dabei durch native Einstiegspunkte ersetzt: `PermissionGate` ist
@@ -206,6 +214,24 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-14 | packages/coding-agent/test/hooks-runtime.test.ts | 172 | C-Task 9 |
 | 2026-08-14 | packages/coding-agent/test/hooks-extension.test.ts | 247 | C-Task 9 |
 | 2026-08-14 | packages/coding-agent/test/trust-manager.test.ts | 67 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/tasks/types.ts | 139 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tasks/manager.ts | 616 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tasks/store.ts | 171 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tasks/output.ts | 207 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tasks/shell-task.ts | 101 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tasks/subagent-task.ts | 97 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tasks/notification.ts | 242 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/delegation/limits.ts | 84 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/delegation/run.ts | 324 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tools/task.ts | 394 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tools/task-tools.ts | 282 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/src/core/tools/index.ts | 380 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/test/task-manager.test.ts | 372 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/test/task-tools.test.ts | 343 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/test/task-tool.test.ts | 285 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/test/delegation-run.test.ts | 335 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/test/delegation-limits.test.ts | 91 | C-Task 10 |
+| 2026-08-14 | packages/coding-agent/test/bash-background.test.ts | 133 | C-Task 10 |
 
 ## Ledger
 
@@ -310,6 +336,26 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | test/hooks.test.ts + test/hooks-runner.test.ts + test/hooks-runtime.test.ts | 519 | tests/hooks.rs | Tests portiert | 65 Tests (`#![cfg(unix)]`, weil die Hook-Kommandos `sh` sind) |
 | test/hooks-extension.test.ts | 247 | tests/hook_dispatch.rs | Tests portiert | 19 Tests. Statt `vi.spyOn(runtime, "emit")` laufen echte Hooks, die ihr Payload in ein Log schreiben — dieselben Namen und Felder, geprüft an der Prozessgrenze, die ein Supervisor tatsächlich liest |
 | test/trust-manager.test.ts | 67 | tests/trust_manager.rs + tests/trust_manager_home.rs | Tests portiert | 10 Tests: die zwei TS-Fälle plus acht für die Optionsliste und die Entscheidungswege von `resolveProjectTrusted`, die in TS nur über den Selektor abgedeckt sind. Der `$HOME`-Fall liegt in einer eigenen Testdatei, weil das Ersetzen einer Umgebungsvariable prozessweit wirkt |
+| src/core/tasks/types.ts | 139 | src/core/tasks/types.rs | verifiziert | Klasse 1: das Objekt-Literal `BackgroundTask` wird ein Trait hinter `Arc` (der Manager hält dieselbe Instanz, die der tokio-Task fährt, und liest weiter `to_info` von ihr); `TaskSink` ist eine Struktur mit `append_output`/`settle` statt eines Closure-Bündels; ein TS-`throw` aus `start` wird `Err(String)`, das der Manager exakt wie der TS-`catch` abfängt. Klasse 1: serde schreibt den `kind`-Diskriminator als ERSTEN Schlüssel des Records, `{...base, kind}` als letzten — dieselben Felder, andere Reihenfolge; die Records liest nur diese App |
+| src/core/tasks/manager.ts | 616 | src/core/tasks/manager.rs | verifiziert | Der ganze Lebenszyklus: ID-Schema `prefix-8×base36` aus `randomBytes`, Registrierungs-Cap nur für detached, Auto-Backgrounding statt Kill an der Deadline, dreistufiges Stoppen (Signal → 5 s Gnade → `force_stop`), `coerce_timeout`, Persistenz erst ab Detach, `fire_terminal` nur für Hintergrundarbeit, `reconcile` mit `lost`, `shutdown` mit vorheriger Unterdrückung. Klasse 1 (durchgehend dieselbe Übersetzung): jede JS-Promise, die mehrere Aufrufer awaiten (`lifecycle`, `release`, die `wait`-Waiter), wird ein Flag bzw. ein `watch`-Kanal; `setTimeout` wird ein gespawnter `sleep`, den ein `CancellationToken` wie `clearTimeout` abbricht; der Abbruch-GRUND von `AbortController` hat kein `CancellationToken`-Gegenstück — er steht ohnehin im Record, wo jeder Leser ihn sucht; `register` liefert `Result<_, TaskLimitError>` statt zu werfen; die Task-Map ist ein `Vec` (Registrierungsreihenfolge wie die JS-`Map`, Länge durch `maxRunningTasks` beschränkt); `task.start` läuft als `tokio::spawn` — echte Parallelität statt Event-Loop-Verschränkung |
+| src/core/tasks/store.ts | 171 | src/core/tasks/store.rs | verifiziert | Atomares Schreiben (`.pid.tmp` + rename, 0600/0700), ID-Validierung vor jedem Pfadsegment, sortiertes Listing, byte-adressiertes Log-Fenster. Klasse 3: die ID-Regex ist als Zeichenklassenprüfung nachgebaut (drei Prüfungen statt eines Regex-Compilers auf jedem Pfad). Klasse 1: `normalizeRecord` spreadet in TS das geparste Objekt, unbekannte Schlüssel überleben also einen Roundtrip — serde verwirft sie; diese Records schreibt nur diese App. Wurf bei ungültiger ID → `Result` |
+| src/core/tasks/output.ts | 207 | src/core/tasks/output.rs | verifiziert | Ring von 1 MiB, Ceiling von 16 MiB nur für Shell-Tasks, verzögertes Persistieren mit Nachspülen des Puffers, `discard_pending`. Klasse 1: `Buffer.toString("utf-8")` auf einer beliebigen Byte-Grenze wird `String::from_utf8_lossy` (beide setzen U+FFFD; die Zahl der Ersatzzeichen kann bei zerschnittenen Mehrbytefolgen abweichen). Der Ceiling-Callback läuft nach dem Freigeben der Zustandssperre statt mitten im Append — beobachtbar identisch, weil TS dort ohnehin nur `void this.stop(...)` anstößt |
+| — (neu) | — | src/core/tasks/serial_queue.rs | verifiziert | Neue Datei (Klasse 1): `OutputRetention.writeQueue` und `ManagedTask.recordQueue` sind in TS Promise-Ketten, die zugleich „günstig anhängen" und „auf alles bisher Angehängte warten" leisten. In Rust ist das ein Worker-Task hinter einem Kanal plus ein Ticket, auf das `drained()` wartet |
+| src/core/tasks/shell-task.ts | 101 | src/core/tasks/shell_task.rs | verifiziert | Ausführung über dieselben `BashOperations`, Statuswahl aus Exit-Code und Signal, `force_stop` killt die Prozessgruppe, kein Weiterreichen an den Vordergrund-Callback nach dem Abbruch. Klasse 1: pid und Exit-Code liegen in einem `Arc<Mutex<…>>`, weil `on_spawn` ein `'static`-Callback ist |
+| src/core/tasks/subagent-task.ts | 97 | src/core/tasks/subagent_task.rs | verifiziert | Klasse 1: die bereits laufende Run-Promise wird ein `oneshot::Receiver`; ein fallengelassener Sender entspricht der rejecteten Promise und settelt genauso als `failed`. Der Abort-Listener ist ein gespawnter Watcher, der am Ende von `start` abgebrochen wird (= `removeEventListener`) |
+| src/core/tasks/notification.ts | 242 | src/core/tasks/notification.rs | verifiziert | Renderer, Fortsetzungshinweis, Einmal-Zustellung über `delivered`/`inFlight` plus Transkript-Scan, Streaming → `followUp`, sonst `triggerTurn`, `activeTaskReminder`. Klasse 1: die Serialisierungs-Promise wird ein faires `tokio::sync::Mutex`; `Pick<CustomMessage, …>` wird die Struktur `TaskNotificationMessage` (Timestamp und Rolle füllt die Session, wie in TS) |
+| src/core/delegation/limits.ts | 84 | src/core/delegation/limits.rs | verifiziert | Fingerabdruck (Whitespace-Kollaps, ASCII-Satzzeichen am Ende, Kleinschreibung), Ceiling 8, Duplikat- und Leerprüfung, wortgleiche Fehlertexte. Klasse 3: `\s` und die Satzzeichen-Regex sind als JS-Zeichenklassen nachgebaut (Rusts `char::is_whitespace` schließt U+FEFF aus und U+0085 ein); Wurf → `Result<_, DelegationError>` |
+| src/core/delegation/run.ts | 324 | src/core/delegation/run.rs | verifiziert | Kind als eigener `Agent` mit geerbtem Provider-Wiring (alle neun Felder, dank Interface-Request C-8), eigene sessionId, Tool-Sperrliste, Mode-Block nur beim ersten Prompt, 2-h-Deadline mit Env-Override, 100k-Kürzung, genau ein Expansions-Turn unter 200 Zeichen, Live-Token-Meldung, „rejectet nie". Klasse 1: `run_delegation` gibt `DelegationRun` ohne `Result` zurück (CONVENTIONS §3); Längen und `slice` zählen UTF-16-Einheiten wie JS-Strings; `String(error)` hat in Rust kein „Error: "-Präfix; Signal- und Deadline-Listener sind gespawnte Watcher, die am Ende über ein `CancellationToken` abgeräumt werden |
+| src/core/tools/task.ts | 394 | src/core/tools/task.rs | verifiziert | Mode-Auflösung mit `subagents`-Allowlist, `exceedsParent`, Duplikat- und Ceiling-Prüfung, Fortsetzung per session_id inkl. Modus-Bindung, `run_in_background` nur im Schema wenn beobachtbar, Vorder- und Hintergrundpfad mit `wait_for_foreground_release`, Transkript-Speicher. Klasse 1: die `WeakMap` auf dem Sources-Objekt wird ein `TaskTranscriptStore` IN den Sources — ein Moduswechsel baut das Tool neu, behält aber die Sources, und genau das hält in TS den WeakMap-Eintrag am Leben; `process.cwd()` kommt aus einer Source-Closure; die dynamische `description` wird zwischengespeichert (nur angehängt, nie ersetzt), weil ein Rust-`&str` den Aufruf überleben muss; die Kinder laufen als `tokio::spawn` — echte Parallelität, in `tests/tasks_parallel.rs` an der Wanduhr belegt. `renderCall`/`renderResult` gehören zu Task 13 |
+| src/core/tools/task-tools.ts | 282 | src/core/tools/task_tools.rs | verifiziert | `task_list`/`task_output`/`task_stop` wortgleich inkl. Beschreibungen, 32-KiB-Tail, „wartet nie", Unterdrückung vor dem Stop, `ran_for`/`running_for` mit `Math.round`-Semantik. `renderCall`/`renderResult` gehören zu Task 13 |
+| src/core/tools/index.ts | 380 | src/core/tools.rs | verifiziert | Mit Task 10 geschlossen: `ToolsOptions`, `create_tool_definition`/`create_tool` über alle 16 Namen, die beiden Presets und die Vollkarten; die `createXTool`-Hälften liegen wie in TS in den Einzeldateien. Klasse 1: `Record<ToolName, ToolDef>` wird eine `BTreeMap` — `ToolName` sortiert nach Deklarationsreihenfolge, also genau die Reihenfolge des TS-Objektliterals; die Re-Export-Hälfte der Datei ist in Rust die Modulliste; `skill`/`todo_write` tragen ihre Sources direkt statt in einem Ein-Feld-Wrapper |
+| test/task-manager.test.ts | 372 | tests/task_manager.rs | verifiziert | 25 Tests (TS: 25 `it`-Blöcke), unverändert, mit echten Timern und echtem Store. Der Gnadenfenster-Fall wartet wie in TS reale 5 s |
+| test/task-tools.test.ts | 343 | tests/task_tools.rs | verifiziert | 24 Tests (TS: 24), unverändert. Klasse 1: „reports a running task as not final" wartet 50 ms, weil der Task in Rust auf einem eigenen tokio-Task zu schreiben beginnt statt auf derselben Microtask-Queue |
+| test/task-tool.test.ts | 285 | tests/task_tool.rs | verifiziert | 22 Tests (TS: 22), unverändert |
+| test/delegation-run.test.ts | 335 | tests/delegation_run.rs | verifiziert | 20 Tests (TS: 19). Zusätzlich: der Expansions-Turn wird geprüft (genau zwei Provider-Aufrufe, das Kind behält seine eigene Konversation) — in TS ist er nur implizit über die gepolsterten Antworten abgedeckt |
+| test/delegation-limits.test.ts | 91 | tests/delegation_limits.rs | verifiziert | 12 Tests (TS: 12), unverändert |
+| test/bash-background.test.ts | 133 | tests/bash_background.rs | verifiziert | 11 Tests (TS: 11) gegen den ECHTEN `TaskManager`, wie die TS-Harness. Die mit Task 8 vorgezogenen Fälle in `tests/bash_tool.rs` bleiben daneben stehen: sie prüfen mit einem aufzeichnenden Stub, WAS das Tool registriert (Deadlines, `detached`, `auto_background_on_timeout`) — das sieht man am echten Manager nicht mehr |
+| — (neu) | — | tests/tasks_parallel.rs | verifiziert | 4 Tests ohne TS-Vorlage, die die Kernanforderung des Master-Plans an der Wanduhr messen: acht per `bash` detachte Kommandos (`sleep 0.5`) in unter 1,5 s, acht Subagent-Tasks mit Spitzenparallelität 8, ein Vordergrund-Kommando neben einem Hintergrund-Kommando, und acht Kinder aus EINEM `task`-Aufruf mit Spitzenparallelität 8. Im TS-Original wäre „parallel" verschränktes Warten auf einem Event-Loop |
 
 ## A: interactive components
 

@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use serde_json::{Map, Value, json};
@@ -28,7 +28,9 @@ use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::output_accumulator::{
     OutputAccumulator, OutputAccumulatorOptions, OutputSnapshot,
 };
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, format_size,
 };
@@ -36,6 +38,12 @@ use crate::utils::shell::{
     CommandTransport, ShellConfig, get_shell_config, get_shell_env, kill_process_tree,
     terminate_process_tree, track_detached_child_pid, untrack_detached_child_pid,
 };
+
+/// The task machinery these live in is `core/tasks/`; the shell tool speaks
+/// their language, so they are re-exported here where its API is read.
+pub use crate::core::tasks::manager::RegisterTaskOptions;
+pub use crate::core::tasks::shell_task::{ShellTaskOutputSink, ShellTaskSpec};
+pub use crate::core::tasks::types::{ForegroundRelease, TaskStatus};
 
 const MAX_TIMEOUT_MS: f64 = 2_147_483_647.0;
 const MAX_TIMEOUT_SECONDS: f64 = MAX_TIMEOUT_MS / 1000.0;
@@ -452,58 +460,14 @@ fn resolve_spawn_context(
     }
 }
 
-/// Why a foreground tool call stopped waiting (`core/tasks/types.ts`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ForegroundRelease {
-    Terminal,
-    Detached,
-    TimeoutDetached,
-}
-
-/// Where a task stands (`core/tasks/types.ts`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ManagedTaskStatus {
-    Running,
-    Completed,
-    Failed,
-    TimedOut,
-    Killed,
-    Lost,
-}
-
 /// The slice of `TaskInfo` the shell tool reads back after a foreground run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedTaskSnapshot {
-    pub status: ManagedTaskStatus,
+    pub status: TaskStatus,
     pub stop_reason: Option<String>,
     /// `exitCode` of a shell task; `None` for any other kind, matching the
     /// `info?.kind === "shell" ? info.exitCode : null` of the TS source.
     pub exit_code: Option<i32>,
-}
-
-/// Receives output while a tool call is still watching.
-pub type ShellTaskOutputSink = Arc<dyn Fn(&str) + Send + Sync>;
-
-/// A shell command handed to the task manager (`core/tasks/shell-task.ts`).
-#[derive(Clone)]
-pub struct ShellTaskSpec {
-    pub operations: Arc<dyn BashOperations>,
-    pub command: String,
-    pub cwd: String,
-    pub env: Option<BTreeMap<String, String>>,
-    pub description: String,
-    /// Receives output while a tool call is still watching.
-    pub on_output: Option<ShellTaskOutputSink>,
-}
-
-/// `RegisterTaskOptions` of `core/tasks/manager.ts`.
-#[derive(Clone, Default)]
-pub struct RegisterTaskOptions {
-    pub detached: bool,
-    pub timeout_ms: Option<u64>,
-    pub detach_timeout_ms: Option<u64>,
-    pub auto_background_on_timeout: bool,
-    pub signal: Option<CancellationToken>,
 }
 
 /// The part of `TaskManager` the shell tool uses. Implemented for the real
@@ -924,8 +888,9 @@ pub fn create_bash_tool_definition(
     }
 }
 
-pub fn create_bash_tool(cwd: &str, options: Option<BashToolOptions>) -> Arc<dyn ToolDefinition> {
-    Arc::new(create_bash_tool_definition(cwd, options))
+/// `createBashTool` — the tool as the agent loop takes it.
+pub fn create_bash_tool(cwd: &str, options: Option<BashToolOptions>) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(Arc::new(create_bash_tool_definition(cwd, options)), None)
 }
 
 impl BashToolDefinition {
@@ -1241,13 +1206,13 @@ async fn run_managed(
     let snapshot = pipeline.finish();
     let (output_text, details) = format_output(pipeline, &snapshot, "(no output)");
     if let Some(info) = &info {
-        if info.status == ManagedTaskStatus::TimedOut {
+        if info.status == TaskStatus::TimedOut {
             return Err(ToolExecutionError::new(append_status(
                 &output_text,
                 &format!("Command timed out after {timeout_seconds} seconds"),
             )));
         }
-        if info.status == ManagedTaskStatus::Killed {
+        if info.status == TaskStatus::Killed {
             return Err(ToolExecutionError::new(append_status(
                 &output_text,
                 info.stop_reason.as_deref().unwrap_or("Command aborted"),
@@ -1257,7 +1222,7 @@ async fn run_managed(
     let exit_code = info.as_ref().and_then(|info| info.exit_code);
     if info
         .as_ref()
-        .is_some_and(|info| info.status == ManagedTaskStatus::Failed)
+        .is_some_and(|info| info.status == TaskStatus::Failed)
         && exit_code.is_none()
     {
         return Err(ToolExecutionError::new(append_status(

@@ -24,7 +24,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use serde_json::{Map, Value, json};
@@ -33,7 +33,9 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::modes::indicator::estimate_injected_tokens;
 use crate::core::modes::{Mode, render_mode_injection};
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 
 pub const SKILL_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -289,4 +291,9 @@ impl ToolDefinition for SkillToolDefinition {
             })
         })
     }
+}
+
+/// `createCreateSkillTool` — the tool as the agent loop takes it.
+pub fn create_skill_tool(sources: Option<SkillToolSources>) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(Arc::new(create_skill_tool_definition(sources)), None)
 }

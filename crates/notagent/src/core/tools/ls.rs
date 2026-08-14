@@ -3,14 +3,16 @@
 use std::sync::Arc;
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{TextContent, TextOrImageContent};
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head,
 };
@@ -78,7 +80,7 @@ impl LsOperations for LocalLsOperations {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct LsToolOptions {
     pub operations: Option<Arc<dyn LsOperations>>,
 }
@@ -258,6 +260,11 @@ impl ToolDefinition for LsToolDefinition {
             })
         })
     }
+}
+
+/// `createCreateLsTool` — the tool as the agent loop takes it.
+pub fn create_ls_tool(cwd: &str, options: Option<LsToolOptions>) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(Arc::new(create_ls_tool_definition(cwd, options)), None)
 }
 
 #[cfg(test)]

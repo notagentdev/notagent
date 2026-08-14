@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use serde_json::{Map, Value, json};
@@ -26,7 +26,7 @@ use crate::core::mini_read::apply_minified_edit;
 use crate::core::tools::edit_diff::{generate_diff_string, generate_unified_patch, strip_bom};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::tool_definition::{ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{ToolContext, ToolDefinition, wrap_tool_definition};
 
 fn minified_edit_properties() -> Value {
     json!({
@@ -163,7 +163,7 @@ fn error_code(error: &std::io::Error) -> String {
     format!("Error code: {code}")
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct PatchMinifiedToolOptions {
     pub operations: Option<Arc<dyn PatchMinifiedOperations>>,
 }
@@ -495,4 +495,26 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
             .await
         })
     }
+}
+
+/// `createCreatePatchMinifiedTool` — the tool as the agent loop takes it.
+pub fn create_patch_minified_tool(
+    cwd: &str,
+    options: Option<PatchMinifiedToolOptions>,
+) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(
+        Arc::new(create_patch_minified_tool_definition(cwd, options)),
+        None,
+    )
+}
+
+/// `createCreateMultiPatchMinifiedTool` — the tool as the agent loop takes it.
+pub fn create_multi_patch_minified_tool(
+    cwd: &str,
+    options: Option<PatchMinifiedToolOptions>,
+) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(
+        Arc::new(create_multi_patch_minified_tool_definition(cwd, options)),
+        None,
+    )
 }

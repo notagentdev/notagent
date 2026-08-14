@@ -2,6 +2,7 @@
 
 pub mod auth_storage;
 pub mod bash_executor;
+pub mod delegation;
 pub mod experimental;
 pub mod hooks;
 pub mod keybindings;
@@ -14,6 +15,7 @@ pub mod resolve_config_value;
 pub mod session_manager;
 pub mod settings_manager;
 pub mod source_info;
+pub mod tasks;
 pub mod todos;
 pub mod tools;
 pub mod trust_manager;

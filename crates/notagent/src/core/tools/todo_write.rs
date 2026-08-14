@@ -18,7 +18,7 @@
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use serde_json::{Map, Value, json};
@@ -27,7 +27,9 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::todos::render::render_todos_updated;
 use crate::core::todos::{TODO_STATUSES, Todo, TodoStatus, TodoStore};
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 
 pub const TODO_WRITE_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -241,4 +243,9 @@ impl ToolDefinition for TodoWriteToolDefinition {
             })
         })
     }
+}
+
+/// `createCreateTodoWriteTool` — the tool as the agent loop takes it.
+pub fn create_todo_write_tool(sources: Option<TodoWriteToolSources>) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(Arc::new(create_todo_write_tool_definition(sources)), None)
 }

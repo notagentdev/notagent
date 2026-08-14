@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use notagent_agent::types::{
-    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{
     ConstrainedSampling, ImageContent, Modality, Model, TextContent, TextOrImageContent,
@@ -13,7 +13,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::path_utils::resolve_read_path;
-use crate::core::tools::tool_definition::{SystemPromptContribution, ToolContext, ToolDefinition};
+use crate::core::tools::tool_definition::{
+    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+};
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, TruncationOptions, format_size,
     truncate_head,
@@ -91,6 +93,7 @@ impl ReadOperations for LocalReadOperations {
     }
 }
 
+#[derive(Clone)]
 pub struct ReadToolOptions {
     /// Auto-resize images to 2000×2000. Default: true.
     pub auto_resize_images: bool,
@@ -359,6 +362,11 @@ impl ToolDefinition for ReadToolDefinition {
             })
         })
     }
+}
+
+/// `createCreateReadTool` — the tool as the agent loop takes it.
+pub fn create_read_tool(cwd: &str, options: Option<ReadToolOptions>) -> Arc<dyn AgentTool> {
+    wrap_tool_definition(Arc::new(create_read_tool_definition(cwd, options)), None)
 }
 
 #[cfg(test)]

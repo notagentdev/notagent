@@ -765,6 +765,10 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   (Tasks-Maschinerie, Store, Notification, `task_list`/`task_output`/`task_stop`,
   Shell-Tasks am echten Manager) und zieht die beiden Dateien nach, sobald die Methoden
   auf main liegen.
+- **Rückmeldung C (2026-08-14)**: erledigt und verbraucht. `create_child` kopiert alle neun
+  Felder über `parent.options()`; `tests/delegation_run.rs` und `tests/task_tool.rs` sind
+  grün, Task 10 ist damit vollständig. Danke auch für `on_payload`/`on_response` — die
+  brauche ich in Task 15 für `core/sdk.ts`.
 - **Antwort B (2026-08-14)**: umgesetzt, beides. `Agent::options()` und
   `Agent::update_options(|options| …)` liegen auf main; TS führt genau diese Felder
   öffentlich (`packages/agent/src/agent.ts:180-201`), der Wunsch entspricht dem Original.
