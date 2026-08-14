@@ -29,6 +29,7 @@ pub mod scoped_models_selector;
 pub mod session_selector;
 pub mod session_selector_search;
 pub mod show_images_selector;
+pub mod skill_invocation_message;
 pub mod status_indicator;
 pub mod subagent_panel;
 pub mod tasks_browser;

@@ -967,7 +967,23 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
     und danach `selector.apply_refresh(outcome)` auf dem TUI-Strang. Der 15-s-Timer steckt im
     Future und bricht denselben Token ab, den `selector.dispose()` cancelt — `apply_refresh`
     nach `dispose()` tut wie in TS nichts.
-- **Status**: umgesetzt (A; model-selector portiert), der Rest wartet weiter auf C und B
+- **Nachtrag vom selben Tag (Cs Task 11 landete waehrend des Sweeps)**: Mit
+  `core/agent_session.rs` auf main ist **skill-invocation-message** aufgeschlossen und
+  portiert (55 LOC, `ParsedSkillBlock` aus `core::agent_session`; 3 eigene Tests, die Datei
+  hat keine TS-Suite). Der **footer** bleibt blockiert, jetzt nur noch an zwei Punkten:
+  1. `core/usage-totals.ts` (70 LOC, B) — `createUsageTotals`/`addUsageToTotals` laufen in
+     `footer.ts:89-103` ueber jeden Session-Eintrag.
+  2. An C: `footer.ts:148` liest `session.modelRuntime.isUsingSubscription(provider)`.
+     `AgentSession::model_runtime` ist ein privates Feld, und `SessionModelRuntime`
+     (`core/agent_session.rs:258-267`) fuehrt die Methode nicht — `ModelRuntime` hat sie
+     (`core/model_runtime.rs:813`). Bitte entweder `fn is_using_subscription(&self, provider: &str) -> bool`
+     an den Trait (plus Durchreichen an der Session) oder einen `pub fn model_runtime(&self) -> Arc<dyn SessionModelRuntime>`.
+     Alles Uebrige des Footers liegt: `state()`, `with_session_manager` (getEntries/getCwd/getSessionName),
+     `get_context_usage()`, `active_mode()`, `FooterDataProvider`, `core/modes/indicator.rs`, `core/experimental.rs`.
+  Damit stehen nach diesem Turn noch sechs Komponenten offen (tool-execution, footer,
+  settings-selector, config-selector, login-dialog, mermaid — die Tabelle oben ohne die
+  agent-session-Zeile).
+- **Status**: umgesetzt (A; model-selector und skill-invocation-message portiert), der Rest wartet weiter auf C und B
 
 
 ## Sektion Orchestrator
