@@ -1,7 +1,9 @@
 //! Port of `packages/coding-agent/src/core/`.
 
+pub mod auth_guidance;
 pub mod auth_storage;
 pub mod bash_executor;
+pub mod defaults;
 pub mod delegation;
 pub mod diagnostics;
 pub mod experimental;
@@ -10,12 +12,20 @@ pub mod hooks;
 pub mod keybindings;
 pub mod messages;
 pub mod mini_read;
+pub mod model_config;
+pub mod model_registry;
+pub mod model_resolver;
+pub mod model_runtime;
+pub mod models_store;
 pub mod modes;
 pub mod permissions;
 pub mod project_trust;
 pub mod prompt_templates;
+pub mod provider_composer;
+pub mod remote_catalog_provider;
 pub mod resolve_config_value;
 pub mod resource_loader;
+pub mod runtime_credentials;
 pub mod session_manager;
 pub mod settings_manager;
 pub mod skills;

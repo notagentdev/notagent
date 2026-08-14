@@ -402,3 +402,73 @@ impl ProviderStreams for BedrockConverseStreamApi {
         bedrock_converse_stream::stream_simple(model.clone(), context.clone(), options)
     }
 }
+
+// ---------------------------------------------------------------------------
+// `BUILTIN_APIS` / `getApiProvider(api)` from `packages/ai/src/compat.ts`
+//
+// `compat.ts` itself stays excluded (see PARITY.md): its registry exists so
+// extensions can register or override an api implementation, and the extension
+// system is not ported. The static lookup of the ten built-in api ids is not
+// extension machinery — the coding-agent provider composer needs it whenever a
+// models.json model declares an api its base provider does not implement — so
+// that half is ported here.
+// ---------------------------------------------------------------------------
+
+/// `BUILTIN_APIS` — api id → streaming implementation, in declaration order.
+pub fn builtin_apis() -> Vec<(&'static str, std::sync::Arc<dyn ProviderStreams>)> {
+    vec![
+        (
+            "anthropic-messages",
+            std::sync::Arc::new(AnthropicMessagesApi),
+        ),
+        (
+            "openai-completions",
+            std::sync::Arc::new(OpenAICompletionsApi),
+        ),
+        ("openai-responses", std::sync::Arc::new(OpenAIResponsesApi)),
+        (
+            "openai-codex-responses",
+            std::sync::Arc::new(OpenAICodexResponsesApi),
+        ),
+        (
+            "azure-openai-responses",
+            std::sync::Arc::new(AzureOpenAIResponsesApi),
+        ),
+        (
+            "google-generative-ai",
+            std::sync::Arc::new(GoogleGenerativeAIApi),
+        ),
+        ("google-vertex", std::sync::Arc::new(GoogleVertexApi)),
+        (
+            "mistral-conversations",
+            std::sync::Arc::new(MistralConversationsApi),
+        ),
+        (
+            "bedrock-converse-stream",
+            std::sync::Arc::new(BedrockConverseStreamApi),
+        ),
+        ("pi-messages", std::sync::Arc::new(PiMessagesApi)),
+    ]
+}
+
+/// `getApiProvider(api)` restricted to the built-in implementations.
+pub fn get_api_provider(api: &str) -> Option<std::sync::Arc<dyn ProviderStreams>> {
+    builtin_apis()
+        .into_iter()
+        .find(|(id, _)| *id == api)
+        .map(|(_, streams)| streams)
+}
+
+#[cfg(test)]
+mod builtin_api_tests {
+    use super::*;
+
+    #[test]
+    fn every_builtin_api_id_resolves() {
+        for (api, _) in builtin_apis() {
+            assert!(get_api_provider(api).is_some(), "missing api: {api}");
+        }
+        assert_eq!(builtin_apis().len(), 10);
+        assert!(get_api_provider("faux").is_none());
+    }
+}

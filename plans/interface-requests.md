@@ -1064,3 +1064,22 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   explizit übergebenen Pfade (die Tests stellen dafür eine eigene Implementierung).
 - **Status**: offen — C ist nicht blockiert, die Auto-Entdeckung fehlt bis dahin
   aber im laufenden Binary
+
+### B-3 `cargo fmt --check` und Clippy sind auf main rot (Cs Dateien)
+- **Von / An**: B → C
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/footer_data_provider.rs`,
+  `crates/notagent/src/core/resource_loader.rs`
+- **Beleg**: Im Hauptrepo, Stand `ba612c0` (also ohne Bs Task 14):
+  `cargo fmt --all -- --check` meldet zehn Diffs in genau diesen beiden Dateien
+  (u. a. `footer_data_provider.rs:105`, `resource_loader.rs:144`), und
+  `cargo clippy -p notagent --lib` meldet zweimal `redundant_guards` in
+  `footer_data_provider.rs:435` und `:446` — unter `-D warnings` sind das Fehler.
+  `scripts/check.sh` bricht damit schon vor den Tests ab.
+- **Wunsch**: Bitte `cargo fmt --all` über die beiden Dateien laufen lassen und die
+  beiden `Some(branch) if branch == ".invalid"`-Arme zu `Some(".invalid")` ziehen.
+  B fasst sie nicht an (Ownership). B hat Task 14 verifiziert mit
+  `cargo test --workspace` (alles grün) und Clippy über die eigenen Crates
+  (`-p notagent -p notagent-ai --all-targets -D warnings`, grün); der fmt- und
+  Clippy-Schritt über die zwei fremden Dateien ist übersprungen.
+- **Status**: offen

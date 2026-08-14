@@ -408,32 +408,53 @@ impl Models {
             })
             .collect();
 
-        for provider in refreshable {
-            let (generation, controller) = self.begin_provider_refresh(provider.id());
-            let signal = child_of(&[&caller_signal, &controller]);
-
-            let outcome = self
-                .refresh_provider(
-                    provider.as_ref(),
-                    generation,
+        // `Promise.all(refreshable.map(...))`: the providers refresh concurrently, and
+        // each operation is raced against its own signal so that an implementation
+        // ignoring the signal cannot hold the caller.
+        let operations = refreshable.into_iter().map(|provider| {
+            let caller_signal = caller_signal.clone();
+            let force = options.force;
+            async move {
+                let (generation, controller) = self.begin_provider_refresh(provider.id());
+                let signal = child_of(&[&caller_signal, &controller]);
+                let outcome = crate::utils::abort::race_with_abort_signal(
+                    self.refresh_provider(
+                        provider.as_ref(),
+                        generation,
+                        &signal,
+                        allow_network,
+                        force,
+                    ),
                     &signal,
-                    allow_network,
-                    options.force,
                 )
                 .await;
-            if let Err(error) = outcome
-                && !signal.is_cancelled()
-            {
-                errors.insert(provider.id().to_string(), error);
+                let error = match outcome {
+                    Ok(Err(error)) if !signal.is_cancelled() => Some(error),
+                    _ => None,
+                };
+                {
+                    let mut refresh = self.refresh.lock().expect("refresh state poisoned");
+                    if refresh
+                        .controllers
+                        .get(provider.id())
+                        .is_some_and(|current| current.is_cancelled() == controller.is_cancelled())
+                    {
+                        refresh.controllers.remove(provider.id());
+                    }
+                }
+                (provider.id().to_string(), error)
             }
-
-            let mut refresh = self.refresh.lock().expect("refresh state poisoned");
-            if refresh
-                .controllers
-                .get(provider.id())
-                .is_some_and(|current| current.is_cancelled() == controller.is_cancelled())
-            {
-                refresh.controllers.remove(provider.id());
+        });
+        if let Ok(results) = crate::utils::abort::race_with_abort_signal(
+            futures::future::join_all(operations),
+            &caller_signal,
+        )
+        .await
+        {
+            for (provider_id, error) in results {
+                if let Some(error) = error {
+                    errors.insert(provider_id, error);
+                }
             }
         }
 
@@ -713,18 +734,24 @@ impl Models {
         let signal = options
             .and_then(|options| options.signal)
             .unwrap_or_default();
-        if signal.is_cancelled() {
-            return Err(ModelsError::new(
-                ModelsErrorCode::Auth,
-                "The operation was aborted",
-            ));
-        }
-        let Some(provider) = self.get_provider(provider_id) else {
-            return Ok(None);
+        let check = async {
+            let Some(provider) = self.get_provider(provider_id) else {
+                return Ok(None);
+            };
+            let credential = self.read_credential(provider_id, &signal).await?;
+            self.check_provider_auth(provider.as_ref(), credential.as_ref(), &signal)
+                .await
         };
-        let credential = self.read_credential(provider_id, &signal).await?;
-        self.check_provider_auth(provider.as_ref(), credential.as_ref(), &signal)
+        // `raceWithAbortSignal(check, signal)`: a provider check that ignores the
+        // signal must not keep the caller waiting.
+        crate::utils::abort::race_with_abort_signal(check, &signal)
             .await
+            .unwrap_or_else(|_| {
+                Err(ModelsError::new(
+                    ModelsErrorCode::Auth,
+                    "The operation was aborted",
+                ))
+            })
     }
 
     /// `getAvailable(providerId?, options?)`
@@ -736,32 +763,38 @@ impl Models {
         let signal = options
             .and_then(|options| options.signal)
             .unwrap_or_default();
-        if signal.is_cancelled() {
-            return Err(ModelsError::new(
-                ModelsErrorCode::Auth,
-                "The operation was aborted",
-            ));
-        }
-        let providers = match provider_id {
-            Some(provider_id) => self
-                .get_provider(provider_id)
-                .into_iter()
-                .collect::<Vec<_>>(),
-            None => self.get_providers(),
-        };
+        let collect = async {
+            let providers = match provider_id {
+                Some(provider_id) => self
+                    .get_provider(provider_id)
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                None => self.get_providers(),
+            };
 
-        let mut available = Vec::new();
-        for provider in providers {
-            let credential = self.read_credential(provider.id(), &signal).await?;
-            let auth = self
-                .check_provider_auth(provider.as_ref(), credential.as_ref(), &signal)
-                .await?;
-            if auth.is_none() {
-                continue;
+            let mut available = Vec::new();
+            for provider in providers {
+                let credential = self.read_credential(provider.id(), &signal).await?;
+                let auth = self
+                    .check_provider_auth(provider.as_ref(), credential.as_ref(), &signal)
+                    .await?;
+                if auth.is_none() {
+                    continue;
+                }
+                available
+                    .extend(provider.filter_models(provider.get_models(), credential.as_ref()));
             }
-            available.extend(provider.filter_models(provider.get_models(), credential.as_ref()));
-        }
-        Ok(available)
+            Ok(available)
+        };
+        // `raceWithAbortSignal(available, signal)`.
+        crate::utils::abort::race_with_abort_signal(collect, &signal)
+            .await
+            .unwrap_or_else(|_| {
+                Err(ModelsError::new(
+                    ModelsErrorCode::Auth,
+                    "The operation was aborted",
+                ))
+            })
     }
 
     /// `getAuth(providerId | model, overrides?)`

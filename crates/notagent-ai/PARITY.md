@@ -706,6 +706,19 @@ Umgebung, deshalb liest `e2e_support::env`/`resolve_api_key` ohne diese Variable
 grundsätzlich kein Credential. `NOTAGENT_AI_E2E=1 cargo test -p notagent-ai` entspricht
 dem TS-Lauf mit Keys in der Umgebung.
 
+## Nachträge aus Workstream-B-Task 14 (coding-agent-Modell-Schicht)
+
+Beim Portieren der coding-agent-Suiten (`model-runtime-*`, `remote-catalog-provider`)
+sind drei Abweichungen dieses Ports gegenüber `packages/ai` aufgefallen und behoben:
+
+| TS-Stelle | Rust-Modul | Korrektur |
+|---|---|---|
+| `src/models.ts:511-521` (`checkAuth`) | `src/models.rs` | `raceWithAbortSignal(check, signal)` nachgezogen: ein Provider-`check`, der das Signal ignoriert, hielt den Aufrufer sonst unbegrenzt fest |
+| `src/models.ts:522-541` (`getAvailable`) | `src/models.rs` | dito für die Verfügbarkeitsabfrage |
+| `src/models.ts:386-446` (`refresh`) | `src/models.rs` | Die Provider laufen jetzt wie in TS parallel (`Promise.all` → `futures::future::join_all`), jede Provider-Operation rennt gegen ihr eigenes Signal und der Gesamtlauf gegen das Aufrufer-Signal. Vorher lief die Schleife sequentiell und ohne Race — ein blockierender `refreshModels` hielt alle übrigen Provider und den Aufrufer fest |
+| `src/compat.ts:178-205` (`BUILTIN_APIS`, `getApiProvider`) | `src/api/streams.rs` | `compat.ts` bleibt als Extension-Registry ausgeschlossen; die statische Tabelle der zehn eingebauten API-IDs plus die Nachschlagefunktion sind nachgetragen, weil der coding-agent-Provider-Composer sie braucht, sobald ein models.json-Modell eine API deklariert, die sein Basis-Provider nicht implementiert |
+
+
 ## Ausschlüsse
 
 

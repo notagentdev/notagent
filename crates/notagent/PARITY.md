@@ -520,6 +520,86 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | test/suite/regressions/5596-missing-theme-export.test.ts | 90 | — | Workstream C und B | `initTheme` ist nur Kulisse; geprüft wird der HTML-Export einer `AgentSession` (C) über `core/export-html/` (B, seit O-4) |
 | test/session-info-modified-timestamp.test.ts | 83 | — | Workstream C | prüft den `SessionManager`; `initTheme` ist nur Kulisse |
 
+## B: model layer
+
+Ownership-Übergabe durch `plans/interface-requests.md` O-4: Workstream B besitzt die
+App-Modell-Schicht unter `crates/notagent/src/core/` (Task 14 des WS-B-Plans).
+
+Klasse-2-Grundsatzentscheidung dieser Sektion: die Extension-Provider-API
+(`registerProvider(name, config)`, `ProviderConfigInput`, `ExtensionOAuthConfig`,
+`validateExtensionProvider`, `applyExtension`, `getRegisteredProviderConfig`) entfällt
+mit dem Extension-System (`plans/facts/extension-boundary.md` §6: "Custom Provider via
+registerProvider (inkl. OAuth) entfällt ersatzlos"). Erhalten bleibt
+`registerNativeProvider` — der Weg, den der native llama.cpp-Provider nimmt (C behält
+llama, siehe O-4).
+
+### Lektüre-Protokoll
+
+| Datum | TS-/Referenz-Datei | LOC | gelesen von (Task) |
+|---|---|---|---|
+| 2026-08-14 | packages/coding-agent/src/core/auth-guidance.ts | 25 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/runtime-credentials.ts | 52 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/model-registry.ts | 157 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/model-config.ts | 298 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/provider-composer.ts | 572 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/model-runtime.ts | 787 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/remote-catalog-provider.ts | 132 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/models-store.ts | 146 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/model-resolver.ts | 769 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/core/defaults.ts | 3 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/utils/json.ts | 6 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/utils/notagent-user-agent.ts | 4 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/src/cli/args.ts (VALID_THINKING_LEVELS/isValidThinkingLevel) | 8 | B-Task 14 |
+| 2026-08-14 | packages/ai/src/compat.ts (BUILTIN_APIS/getApiProvider) | 40 | B-Task 14 |
+| 2026-08-14 | packages/ai/src/models.ts (checkAuth/getAvailable/refresh — Abort-Race-Abgleich) | 90 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/model-resolver.test.ts | 801 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/model-registry.test.ts | 1 982 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/model-runtime-auth-options.test.ts | 326 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/model-runtime-credential-sync.test.ts | 375 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/model-runtime-modify-models-compat.test.ts | 332 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/model-runtime-cloudflare-compat.test.ts | 102 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/models-store.test.ts | 139 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/remote-catalog-provider.test.ts | 241 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/runtime-credentials.test.ts | 86 | B-Task 14 |
+| 2026-08-14 | packages/coding-agent/test/model-runtime-test-utils.ts | 33 | B-Task 14 |
+
+### Ledger
+
+| TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
+|---|---|---|---|---|
+| src/core/defaults.ts | 3 | src/core/defaults.rs | verifiziert | — |
+| src/utils/json.ts | 6 | src/utils/json.rs | verifiziert | Dieselben zwei Regex-Durchläufe über die `regex`-Crate; 4 Testfälle gegen die TS-Funktion im Node-REPL abgeglichen |
+| src/utils/notagent-user-agent.ts | 4 | src/utils/notagent_user_agent.rs | verifiziert | Klasse 4: das Runtime-Token nennt `rust/<version>` statt `bun/<v>`/`node/<v>` — hinter dieser Binary steht keine Node-Laufzeit; `process.platform`/`process.arch` werden auf die JS-Namen (`darwin`, `win32`, `x64`, `arm64`) abgebildet |
+| src/core/auth-guidance.ts | 25 | src/core/auth_guidance.rs | verifiziert | — |
+| src/core/runtime-credentials.ts | 52 | src/core/runtime_credentials.rs | verifiziert | Klasse 1: die Overrides liegen in einer `Mutex<BTreeMap>`, weil `CredentialStore` `&self` nimmt; `list()` behält wie die JS-`Map` die Reihenfolge des unterliegenden Stores und hängt reine Runtime-IDs an |
+| test/runtime-credentials.test.ts | 86 | tests/runtime_credentials.rs | verifiziert | 5 Tests. Statt `vi.spyOn(storage, "delete")` scheitert ein zählender Test-Store einmalig |
+| src/core/models-store.ts | 146 | src/core/models_store.rs | verifiziert | Klasse 1: `InMemoryCodingAgentModelsStore` ist ein Alias auf `notagent_ai::InMemoryModelsStore` (verhaltensgleich); der koaleszierte Reload spiegelt `core/auth_storage.rs` (Shared-Future auf eigener Task, Reader-Zähler, Abbruch beim letzten Leser). `with_backend` ist die Test-Naht für `vi.spyOn(lockfile, "lock")` |
+| test/models-store.test.ts | 139 | tests/models_store.rs | verifiziert | Die vier `it()`-Blöcke laufen als ein sequentieller Test: sie teilen sich den prozessweiten Read-State, den `FileModelsStore` für den ersten gesehenen Pfad beansprucht, und Rust führt Testfunktionen parallel aus. Lock-Zählung über einen zählenden Backend-Wrapper |
+| src/core/model-config.ts | 298 | src/core/model_config.rs | verifiziert | Klasse 3: TypeBox `Compile` → handgeschriebener Validator plus serde; Meldungen folgen TypeBox' Wortlaut (`Expected string`, `Expected required property`, …) und dem Layout `  - <pfad>: <text>` — kein TS-Test pinnt den Text. `compat` bleibt rohes JSON (die Union aus drei rein optionalen Objekten akzeptiert jedes Objekt). Klasse 1: `contextWindow`/`maxTokens` sind im JSON `f64` und werden beim Modellbau zu `u64` geschnitten (TS trägt einen Bruchwert weiter); `deepFreeze`/`structuredClone` entfallen, Rust besitzt die Werte |
+| src/core/provider-composer.ts | 572 | src/core/provider_composer.rs | verifiziert | Klasse 2: die Extension-Schicht entfällt (siehe Sektionskopf) — damit auch `applyExtension`, `adaptOAuth`, `validateExtensionProvider` und der `extension`-Parameter aller Funktionen. Der `refreshModels`-Wrapper reduziert sich auf die Delegation an den Basis-Provider (die verbleibende `publish({update})` setzte nur die Extension-OAuth-Credential für `modifyModels`). Klasse 1: `mergeCompat` arbeitet in JSON und wird danach passend zur `api` des Modells geparst — dabei fallen Schlüssel weg, die zu einer anderen API gehören (TS trägt sie ungelesen mit); `getModels` darf in Rust nicht werfen und liefert bei einem Layering-Fehler eine leere Liste (dieselben Eingaben lehnt `compose_model_provider` vorab ab) |
+| src/core/remote-catalog-provider.ts | 132 | src/core/remote_catalog_provider.rs | verifiziert | Klasse 1: der Overlay ist ein Wrapper-Struct statt eines Objekt-Spreads; `dynamicModels` liegt in einer `Mutex`. `parseCatalog` überspringt Einträge, die sich nicht zu `Model` deserialisieren lassen (TS reicht sie kaputt weiter). Klasse 3: `fetch` → `utils::management_http::fetch_with_retry` plus `race_with_abort_signal` für das Signal |
+| test/remote-catalog-provider.test.ts | 241 | tests/remote_catalog_provider.rs | verifiziert | 7 Tests. `vi.spyOn(globalThis, "fetch")` hat keine Entsprechung: die Suite fährt einen echten Loopback-HTTP-Server (`tests/support/mod.rs`) und prüft Header und Aufrufzahl an dessen Aufzeichnung |
+| src/core/model-runtime.ts | 787 | src/core/model_runtime.rs | verifiziert | Klasse 2: `registerProvider(id, config)`, `getRegisteredProviderConfig` und die Extension-Zweige von `getProviderAuthStatus`/`getCompatibilityRequestConfig` entfallen. Klasse 1: `ModelsRequestTransforms` wird als Feld neben den Provider-Optionen geführt (`ModelsApiStreamOptions`/`ModelsSimpleStreamOptions`/`ModelsDeferred*Options`), weil Rust keine strukturelle Schnittmenge kennt; `enqueueCredentialOperation` ist eine `tokio::sync::Mutex` je Provider (FIFO wie die Promise-Kette); Zustand liegt hinter `Mutex` statt in Instanzfeldern; werfende Methoden geben `Result` zurück, `CredentialSynchronizationError` ist eine Variante von `ModelRuntimeError` |
+| test/model-runtime-credential-sync.test.ts | 375 | tests/model_runtime_credential_sync.rs | verifiziert | 10 Tests, alle über `register_native_provider`. Statt eines eingefangenen `AbortSignal` veröffentlicht der Test-Provider seinen Refresh-Token, damit die Suite ihn während der Blockade prüfen kann |
+| test/model-runtime-auth-options.test.ts | 326 | tests/model_runtime_auth_options.rs | verifiziert | 8 von 11 Fällen. Ausgeschlossen (Klasse 2): "constructs an API key method for an extension API-key provider", "forwards cancellation to extension OAuth refresh", "does not fabricate an API key method for an extension OAuth-only provider" — reine `registerProvider(name, config)`-Fälle. Die beiden Header-Fälle laufen über models.json plus einen nativen Aufzeichnungs-Provider |
+| test/model-runtime-modify-models-compat.test.ts | 332 | tests/model_runtime_native_providers.rs | verifiziert | 3 von 5 Fällen (native Registrierung, Deferred-Durchreichung über den Overlay, models.json-Overrides über nativen Providern). Ausgeschlossen (Klasse 2): `refreshModels` einer Extension-Config und Legacy-OAuth-`modifyModels` |
+| test/model-runtime-cloudflare-compat.test.ts | 102 | — | ausgeschlossen | Beide Fälle hängen an `vi.mock("openai")`, also am OpenAI-SDK, das der Port nicht benutzt (Master-Substitution: eigener SSE-/reqwest-Pfad). Die Cloudflare-Endpunkt-Materialisierung selbst ist in `crates/notagent-ai/tests/cloudflare_gateway_binding.rs` abgedeckt |
+| src/core/model-registry.ts | 157 | src/core/model_registry.rs | verifiziert | Klasse 2: die `registerProvider(name, config)`-Überladung und `getRegisteredProviderConfig` entfallen. Klasse 1: TS liest `error.cause.message`; der Port faltet die Ursache in die Meldung (`"<kontext>: <ursache>"`) und erkennt den authHeader-Marker am Ende |
+| test/model-registry.test.ts | 1 982 | tests/model_registry.rs | verifiziert | 70 Tests. Der Block "dynamic provider lifecycle" ist bis auf die Anzeigenamen ausgeschlossen (Klasse 2, `registerProvider(name, config)`); dafür prüft ein neuer Fall, dass ein models.json-`name` den eingebauten Providernamen überschreibt |
+| src/core/model-resolver.ts | 769 | src/core/model_resolver.rs | verifiziert | Klasse 3: `minimatch(..., { nocase: true })` → `globset` mit `literal_separator(true)` (`*` überschreitet kein `/`, wie in minimatch). Klasse 1: die Funktionen nehmen den Trait `ModelCatalog` statt `ModelRuntime`, weil die TS-Suite strukturell typisierte Stubs übergibt; `console.warn`/`console.log`/`process.exit(1)` entfallen — Diagnosen, Meldungen und CLI-Fehler werden zurückgegeben (`ResolveModelScopeResult`, `RestoreMessage`, `Result` von `find_initial_model`); `localeCompare` ist als absteigender Vergleich auf `(kleingeschrieben, original)` nachgebaut (die IDs sind ASCII) |
+| test/model-resolver.test.ts | 801 | tests/model_resolver.rs | verifiziert | 34 Tests: parseModelPattern (einfach, Thinking-Suffixe, OpenRouter-Doppelpunkte, Randfälle), Scope-Auflösung inkl. Diagnosen und Klammer-IDs, resolveCliModel (Provider-Inferenz, Mehrdeutigkeit, Fallback-Modell mit :thinking) und die Initialwahl |
+| src/cli/args.ts (Anteil) | 8 | src/core/model_resolver.rs (`VALID_THINKING_LEVELS`, `parse_thinking_level`) | portiert (Teil) | Der Rest von `cli/args.ts` gehört zu Workstream C (Task 12); C re-exportiert diese beiden statt sie zu duplizieren |
+
+### Nachgezogene Abweichungen in notagent-ai
+
+Die portierten coding-agent-Suiten haben drei Lücken im eigenen `packages/ai`-Port
+aufgedeckt; sie sind in `crates/notagent-ai/` behoben (Details dort im Ledger):
+`Models::check_auth` und `Models::get_available` rennen jetzt wie in TS gegen das
+Abbruch-Signal, `Models::refresh` führt die Provider parallel aus (TS: `Promise.all`)
+und rennt je Provider und insgesamt gegen das Signal, und `api/streams.rs` trägt die
+statische `BUILTIN_APIS`-Tabelle plus `get_api_provider(api)` aus `compat.ts` nach.
+
+
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |

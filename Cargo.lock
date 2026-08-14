@@ -2087,6 +2087,7 @@ dependencies = [
  "chrono",
  "dirs",
  "futures",
+ "globset",
  "ignore",
  "image",
  "libc",
