@@ -3928,6 +3928,14 @@ impl AgentSession {
         }
     }
 
+    /// Announces the end of the session to the user's hooks, with the reason the
+    /// runtime is replacing it. Called before `dispose`.
+    pub async fn shutdown_hooks(&self, reason: &str) {
+        if let Some(hooks) = self.hooks.as_ref() {
+            hooks.session_shutdown(reason).await;
+        }
+    }
+
     /// Announces the session to the user's hooks. Called once, after the host
     /// has bound whatever UI it has.
     pub async fn start(&self) {

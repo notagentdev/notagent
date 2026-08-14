@@ -126,6 +126,9 @@ pub struct HarnessOptions {
     pub excluded_tool_names: Option<Vec<String>>,
     pub with_configured_auth: Option<bool>,
     pub settings: Option<serde_json::Value>,
+    /// Slows the faux provider down, for cases that need a request to still be
+    /// in flight while something else is asserted.
+    pub tokens_per_second: Option<f64>,
 }
 
 pub struct Harness {
@@ -228,6 +231,7 @@ pub fn create_harness(options: HarnessOptions) -> Harness {
 
     let faux = faux_provider(FauxProviderOptions {
         models: options.models.clone(),
+        tokens_per_second: options.tokens_per_second,
         ..FauxProviderOptions::default()
     });
     faux.core.set_responses(Vec::new());

@@ -1,6 +1,8 @@
 //! Port of `packages/coding-agent/src/core/`.
 
 pub mod agent_session;
+pub mod agent_session_runtime;
+pub mod agent_session_services;
 pub mod auth_guidance;
 pub mod auth_storage;
 pub mod bash_executor;
@@ -24,11 +26,14 @@ pub mod notagent_manifest;
 pub mod permissions;
 pub mod project_trust;
 pub mod prompt_templates;
+pub mod provider_attribution;
 pub mod provider_composer;
 pub mod remote_catalog_provider;
 pub mod resolve_config_value;
 pub mod resource_loader;
 pub mod runtime_credentials;
+pub mod sdk;
+pub mod session_cwd;
 pub mod session_manager;
 pub mod settings_manager;
 pub mod skills;
