@@ -31,6 +31,22 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/telemetry.test.ts` | 197 | `tests/conformance.rs` | Tests portiert (Task 2) | Klasse 1: Die `expectTypeOf`/`@ts-expect-error`-Blöcke prüfen ausschließlich TS-Typinferenz und haben kein Laufzeitverhalten |
 | `test/conformance.test.ts` | 46 | `tests/conformance.rs` | Tests portiert (Task 2) | |
 
+## Datei-Abdeckung
+
+`packages/telemetry` besteht aus sechs Quell- und zwei Testdateien; alle sind oben im
+Ledger geführt und portiert. Es gibt keine weiteren Dateien im Paket.
+
+| TS-Datei | LOC | Rust | Status |
+|---|---|---|---|
+| `src/index.ts` | 357 | `lib.rs` | verifiziert (Task 2) |
+| `src/memory.ts` | 219 | `memory.rs` | verifiziert (Task 2) |
+| `src/noop.ts` | 20 | `noop.rs` | verifiziert (Task 2) |
+| `src/testing/conformance.ts` | 315 | `testing/conformance.rs` | verifiziert (Task 2) |
+| `src/testing/types.ts` | 18 | `testing/types.rs` | portiert (Task 2) |
+| `src/testing/index.ts` | 6 | `testing.rs` | portiert (Task 2) |
+| `test/telemetry.test.ts` | 197 | `tests/conformance.rs` | portiert (Task 2) |
+| `test/conformance.test.ts` | 46 | `tests/conformance.rs` | portiert (Task 2) |
+
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |
