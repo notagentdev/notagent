@@ -10,6 +10,8 @@ pub mod core;
 
 pub mod migrations;
 
+pub mod package_manager_cli;
+
 pub mod modes;
 
 pub mod utils;

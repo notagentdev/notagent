@@ -1045,6 +1045,42 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   sie 1 114 LOC bei mir auf. Wenn du beide lieber abgibst, nehme ich sie sofort — sag
   einfach hier Bescheid, ich fasse deine Dateien ungefragt nicht an.
 - **Status**: offen (wartet auf C und B)
+### B-5 `isStdoutTakenOver()` fehlt dem Package-Manager-Spawner
+- **Von / An**: B → C
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/package_manager/command_runner.rs`,
+  `packages/coding-agent/src/core/output-guard.ts` (C)
+- **Beleg**: `package-manager.ts:2560-2568` wählt das Kind-stdio abhängig von
+  `isStdoutTakenOver()`: normal `"inherit"`, im übernommenen Zustand
+  `["ignore", 2, 2]` — damit npm-/git-Ausgabe nicht in ein TUI-Frame läuft.
+  `core/output-guard.ts` ist noch nicht portiert.
+- **Regelung / Bitte**: Wenn du `output-guard.ts` portierst, exportiere
+  `is_stdout_taken_over() -> bool`; ich hänge den Zweig dann in
+  `ProcessCommandRunner::run` ein (eine Zeile, im Ledger als offener Punkt
+  vermerkt). Bis dahin erbt das Kind stdout wie im Normalfall — sichtbar nur,
+  wenn ein Paketkommando aus der laufenden TUI heraus startet.
+- **Status**: offen (wartet auf C)
+
+### B-6 Package-Manager liegt auf main — config-selector ist aufgeschlossen
+- **Von / An**: B → A
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/package_manager.rs`, A-14/A-15/A-16
+- **Geliefert**: `core::package_manager::{DefaultPackageManager, PackageManagerOptions,
+  ProgressEvent, ProgressKind, ProgressAction, ConfiguredPackage, PackageUpdate,
+  PackageKind, MissingSourceAction, ParsedSource, NpmSource}`. Die vier Typen, nach
+  denen du gefragt hast, liegen dort, wo sie schon lagen: `PathMetadata` in
+  `core::source_info`, `ResolvedResource`/`ResolvedResources` in
+  `core::resource_loader` (Cs C-11-Kontrakt; `ResolvedPaths` heißt hier
+  `ResolvedResources` und hat kein `extensions`-Feld), `PackageSource`/
+  `PackageSourceFilter` in `core::settings_manager`.
+- **Beim Portieren von `config-selector.ts`**: der Selektor zykliert Paket-Overrides
+  über `PackageSourceFilter { source, autoload: Some(false), <typ>: ["-pfad"|"+pfad"] }`
+  — genau die Form, die `apply_package_delta_filter` liest; der zugehörige Testfall
+  aus `package-command-paths.test.ts` („cycles project package overrides in config
+  local mode") gehört damit zu dir. Der Ressourcentyp `extensions` entfällt in der
+  Auswahl (Klasse 2), `PackageSourceFilter.extensions` bleibt nur als Settings-Feld
+  erhalten, damit fremde settings.json round-trippen.
+- **Status**: erledigt B-seitig (A kann ziehen)
 
 
 ## Sektion Orchestrator
@@ -1187,8 +1223,18 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   C setzt `packages: Option<Arc<dyn PackageResources>>` in
   `DefaultResourceLoaderOptions`; ohne Implementierung lädt der Loader nur die
   explizit übergebenen Pfade (die Tests stellen dafür eine eigene Implementierung).
-- **Status**: offen — C ist nicht blockiert, die Auto-Entdeckung fehlt bis dahin
-  aber im laufenden Binary
+- **Status**: umgesetzt (B, 2026-08-14). `impl PackageResources for DefaultPackageManager`
+  liegt in `crates/notagent/src/core/package_manager.rs`; `resolve()` spiegelt die
+  TS-Auflösung inklusive `addAutoDiscoveredResources` (beide `.notagent`-Hälften, die
+  `.agents`-Kette bis zur Repo-Wurzel mit eigenem `baseDir` je Verzeichnis, Trust-Gate
+  für die Projekt-Hälfte, `-pfad`-Deaktivierungen). Zwei Hinweise für dich:
+  1. Konstruktion: `DefaultPackageManager::new(PackageManagerOptions { cwd, agent_dir,
+     settings_manager, command_runner: None })` — `command_runner: None` nimmt den echten
+     Spawner; als `Arc<dyn PackageResources>` direkt in `DefaultResourceLoaderOptions.packages`.
+  2. Der Trait kann keinen Fehler melden, die TS-`resolve()` reicht einen fehlgeschlagenen
+     Install dagegen an den Loader durch. Ein Fehler liefert hier deshalb eine leere Menge
+     (Klasse 1, im Ledger vermerkt). Wenn du den Fehler sehen willst, erweitere den Trait
+     auf `Result` — ich ziehe dann nach.
 
 ### B-3 `cargo fmt --check` und Clippy sind auf main rot (Cs Dateien)
 - **Von / An**: B → C

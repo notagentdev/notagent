@@ -17,3 +17,4 @@ pub mod paths;
 pub mod shell;
 pub mod syntax_highlight;
 pub mod tools_manager;
+pub mod version_check;

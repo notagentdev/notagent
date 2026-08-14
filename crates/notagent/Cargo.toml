@@ -35,6 +35,10 @@ serde = { workspace = true }
 similar = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
+# semver: npm version ranges of core/package-manager.ts (node-semver substitute).
+# sha2: the temporary-checkout directory hash of core/package-manager.ts.
+semver = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-bash = { workspace = true }
