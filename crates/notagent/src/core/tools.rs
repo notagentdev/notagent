@@ -12,6 +12,7 @@ pub mod patch_minified;
 pub mod path_utils;
 pub mod read;
 pub mod read_minified;
+pub mod render_utils;
 pub mod skill;
 pub mod task;
 pub mod task_tools;

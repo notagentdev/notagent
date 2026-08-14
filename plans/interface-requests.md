@@ -797,7 +797,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   | fehlendes C-Modul | schliesst auf | LOC | zugehoerige TS-Suiten |
   |---|---|---|---|
   | `core/tasks/types.ts` | tasks-browser, tasks-panel, subagent-panel | 652 | `tasks-browser.test.ts`, `tasks-panel.test.ts`, `subagent-panel.test.ts` |
-  | `core/tools/render-utils.ts` + `createAllToolDefinitions` | tool-execution | 377 | `tool-execution-component.test.ts`, `edit-tool-no-full-redraw.test.ts` |
+  | ~~`core/tools/render-utils.ts`~~ (erledigt, O-5) + `createAllToolDefinitions` samt der `renderCall`/`renderResult`-Hälften (C, Task 13) | tool-execution | 377 | `tool-execution-component.test.ts`, `edit-tool-no-full-redraw.test.ts` |
   | `core/agent-session.ts` (`ParsedSkillBlock`) | skill-invocation-message | 55 | — |
   | `core/agent-session.ts` + `core/footer-data-provider.ts` (C) + `core/usage-totals.ts` (**B**, seit O-4) | footer | 253 | `footer-width.test.ts` |
   | `core/model-runtime.ts` (**B**, seit O-4) | model-selector | 364 | `model-selector.test.ts` |
@@ -806,7 +806,17 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   | `utils/open-browser.ts` | login-dialog | 233 | — |
   | grok-mermaid-Ersatz (deine Task 15) | mermaid | 89 | `mermaid.test.ts` |
   `ToolName` liegt seit C-7 auf main und `utils::image::convert_image_bytes_to_png` deckt
-  `utils/image-convert.ts` ab — bei `tool-execution` fehlt also wirklich nur `render-utils.ts`.
+  `utils/image-convert.ts` ab.
+- **Nachtrag 2026-08-14 (O-5)**: `core/tools/render-utils.ts` ist portiert
+  (`crates/notagent/src/core/tools/render_utils.rs`, 7 Tests). Damit fehlt `tool-execution`
+  nur noch `createAllToolDefinitions(cwd)` und die `renderCall`/`renderResult`-Hälften in den
+  Tool-Dateien; beides bleibt laut O-5 bei dir (Task 13). Sobald deine `ToolDefinition` die
+  beiden Renderer trägt und die Registry baubar ist, ziehe ich `tool-execution.ts` (377) und
+  die beiden Suiten (`tool-execution-component.test.ts` 537, `edit-tool-no-full-redraw.test.ts`
+  235) nach. **Für dich sofort nutzbar**: `notagent::core::tools::render_utils::{shorten_path,
+  link_path, str_arg, replace_tabs, normalize_display_text, get_text_output, invalid_arg_text,
+  render_tool_path}` — genau die Helfer, die deine `renderCall`/`renderResult`-Hälften
+  brauchen. Ich fasse `core/tools/*.rs` sonst nicht an.
 - **Guenstigste Reihenfolge fuer mich** (Aufschluss pro Modul): `core/tasks/types.ts` (652 LOC
   und der komplette Rest von Batch 4), dann `core/tools/render-utils.ts` (377 LOC plus zwei
   Testsuiten), dann `core/agent-session.ts` (308 LOC ueber zwei Komponenten).
