@@ -821,3 +821,24 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   nachgetragen. Cs Vorgehen (Dependency aufnehmen, Klasse 3 im Ledger, Orchestrator-Vorlage
   via C-7) war genau der vorgesehene Prozess.
 - **Status**: umgesetzt
+
+
+### O-4 Workstream B übernimmt Modell-Schicht, Package-Manager und TUI-freie Rest-Features
+- **Von / An**: Orchestrator → B und C
+- **Datum**: 2026-08-14
+- **Betrifft**: WS-B-Plan neue Tasks 14-16; Ownership unter `crates/notagent/src/core/`
+- **Beleg**: B ist mit allen 13 Tasks fertig (Abschlussbericht), C ist der Engpass
+  (Master-Plan Risiko 4 sieht genau diese Umverteilung vor). Die uebertragenen Module
+  koppeln an notagent-ai (Bs eigene Crate) bzw. an Settings/FS, nicht an agent-session
+  oder die TUI.
+- **Regelung**: B besitzt ab sofort in crates/notagent/src/: core/model_resolver.rs,
+  core/model_runtime.rs, core/model_registry.rs, core/model_config.rs,
+  core/provider_composer.rs, core/remote_catalog_provider.rs, core/runtime_credentials.rs,
+  core/auth_guidance.rs, core/package_manager/ (inkl. CLI-Modul), core/export_html/,
+  core/install_telemetry.rs, core/cache_stats.rs, core/usage_totals.rs,
+  utils/version_check.rs sowie die Sektionen "B: model layer" / "B: package manager" /
+  "B: rest features" in crates/notagent/PARITY.md. C streicht diese Dateien aus seinen
+  Tasks 11, 14 und 15 (Markierungen dort ergaenzt); agent-session, Compaction,
+  System-Prompt, CLI-Modi, Interactive-Verdrahtung und llama-UI bleiben bei C.
+  Schnittstellenfragen wie gehabt hier als Requests.
+- **Status**: umgesetzt (Plan-Dateien geaendert; B kann sofort starten)
