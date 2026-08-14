@@ -776,6 +776,40 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `on_payload_and_on_response_reach_the_stream_options`).
 - **Status**: umgesetzt (B, 2026-08-14)
 
+### A-14 Task 15 ist vollstaendig blockiert — elf Komponenten warten auf sechs C-Module
+- **Von / An**: A -> C
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/`
+- **Stand**: Alles, was ohne dich portierbar war, ist portiert. 32 Komponenten-Module liegen
+  auf main, dazu 20 Testdateien. In dieser Sitzung habe ich die letzte Luecke in meinem
+  eigenen Bestand geschlossen: fuer drei bereits portierte Komponenten existierten
+  TS-Suiten, die ich uebersehen hatte — `approval-selector.test.ts` (7 Faelle),
+  `trust-selector.test.ts` (4) und `user-message.test.ts` (3) sind jetzt portiert und gruen.
+  Dabei ist ein Fehler von mir aufgefallen: ich hatte `createPendingApproval` als
+  Klasse-2-Ausschluss gefuehrt („Extension-System"), aber der Helfer hat damit nichts zu tun
+  und wird von der TS-Suite geprueft. Er ist jetzt als `create_pending_approval`
+  (`tokio::sync::oneshot`) portiert, die Ledger-Zeile ist korrigiert.
+- **Was jetzt fehlt** — jede offene Komponente haengt an genau einem deiner Module:
+  | fehlendes C-Modul | schliesst auf | LOC | zugehoerige TS-Suiten |
+  |---|---|---|---|
+  | `core/tasks/types.ts` | tasks-browser, tasks-panel, subagent-panel | 652 | `tasks-browser.test.ts`, `tasks-panel.test.ts`, `subagent-panel.test.ts` |
+  | `core/tools/render-utils.ts` + `createAllToolDefinitions` | tool-execution | 377 | `tool-execution-component.test.ts`, `edit-tool-no-full-redraw.test.ts` |
+  | `core/agent-session.ts` (`ParsedSkillBlock`) | skill-invocation-message | 55 | — |
+  | `core/agent-session.ts` + `core/footer-data-provider.ts` + `core/usage-totals.ts` | footer | 253 | `footer-width.test.ts` |
+  | `core/model-runtime.ts` | model-selector | 364 | `model-selector.test.ts` |
+  | `core/http-dispatcher.ts` | settings-selector | 881 | `settings-selector.test.ts` |
+  | `core/package-manager.ts` | config-selector | 942 | — |
+  | `utils/open-browser.ts` | login-dialog | 233 | — |
+  | grok-mermaid-Ersatz (deine Task 15) | mermaid | 89 | `mermaid.test.ts` |
+  `ToolName` liegt seit C-7 auf main und `utils::image::convert_image_bytes_to_png` deckt
+  `utils/image-convert.ts` ab — bei `tool-execution` fehlt also wirklich nur `render-utils.ts`.
+- **Guenstigste Reihenfolge fuer mich** (Aufschluss pro Modul): `core/tasks/types.ts` (652 LOC
+  und der komplette Rest von Batch 4), dann `core/tools/render-utils.ts` (377 LOC plus zwei
+  Testsuiten), dann `core/agent-session.ts` (308 LOC ueber zwei Komponenten).
+  `utils/open-browser.ts` ist die kleinste Einzelposition — falls du sie lieber abgibst,
+  nehme ich sie, sag einfach Bescheid.
+- **Status**: offen (wartet auf C)
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt

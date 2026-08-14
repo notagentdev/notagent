@@ -130,3 +130,35 @@ impl Component for ApprovalSelectorComponent {
         self.select_list.borrow_mut().handle_input(data);
     }
 }
+
+/// A pending approval: the future the tool-call hook awaits, and the answer
+/// callback the dialog invokes. Separated from the component so the waiting
+/// side can be driven in tests without a terminal.
+pub struct PendingApproval {
+    /// Resolves once with the answer.
+    pub answer: tokio::sync::oneshot::Receiver<ApprovalAnswer>,
+    settle: Option<tokio::sync::oneshot::Sender<ApprovalAnswer>>,
+}
+
+impl PendingApproval {
+    /// Answer the request. Repeated answers are ignored rather than panicking:
+    /// a double keypress must not turn into a failure in the middle of a tool
+    /// call (`resolve` in TypeScript drops its `settle` reference the same way).
+    pub fn resolve(&mut self, value: ApprovalAnswer) {
+        let Some(settle) = self.settle.take() else {
+            return;
+        };
+        // The receiver may be gone if the caller stopped waiting; that is the
+        // TypeScript case of a settled promise nobody holds any more.
+        let _ = settle.send(value);
+    }
+}
+
+/// Creates a pending approval whose future settles exactly once.
+pub fn create_pending_approval() -> PendingApproval {
+    let (settle, answer) = tokio::sync::oneshot::channel();
+    PendingApproval {
+        answer,
+        settle: Some(settle),
+    }
+}
