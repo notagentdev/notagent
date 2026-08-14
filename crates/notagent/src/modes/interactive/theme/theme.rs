@@ -11,6 +11,7 @@
 //! - Built-in themes ship inside the binary (`include_str!`) instead of next to
 //!   it (`dist/theme/*.json`) — distribution mechanics.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -24,6 +25,10 @@ use notagent_tui::{
 };
 
 use crate::config::{get_custom_themes_dir, get_themes_dir};
+use crate::core::source_info::SourceInfo;
+use crate::utils::syntax_highlight::{
+    HighlightFormatter, HighlightOptions, HighlightTheme, highlight, supports_language,
+};
 
 // ============================================================================
 // Types & Schema
@@ -649,6 +654,8 @@ pub struct ThemeOptions {
     pub name: Option<String>,
     /// Absolute path the theme was loaded from.
     pub source_path: Option<String>,
+    /// Where the theme file came from; set by the resource loader.
+    pub source_info: Option<SourceInfo>,
 }
 
 /// A resolved theme: every slot holds its ready-made ANSI sequence.
@@ -658,6 +665,9 @@ pub struct Theme {
     pub name: Option<String>,
     /// Absolute path the theme was loaded from.
     pub source_path: Option<String>,
+    /// Where the theme file came from; set by the resource loader and read by
+    /// the `/theme` command.
+    pub source_info: Option<SourceInfo>,
     fg_colors: HashMap<ThemeColor, String>,
     bg_colors: HashMap<ThemeBg, String>,
     mode: ColorMode,
@@ -702,6 +712,7 @@ impl Theme {
         Ok(Self {
             name: options.name,
             source_path: options.source_path,
+            source_info: options.source_info,
             fg_colors: fg_map,
             bg_colors: bg_map,
             mode,
@@ -1354,6 +1365,7 @@ fn create_theme(
         ThemeOptions {
             name: Some(theme_json.name.clone()),
             source_path,
+            source_info: None,
         },
     )
 }
@@ -2211,31 +2223,115 @@ fn read_theme_export_colors(name: &str) -> Result<ThemeExportColors> {
 /// Whether the syntax highlighter supports a language.
 ///
 /// `packages/coding-agent/src/utils/syntax-highlight.ts` (146 LOC — highlight.js
-/// replaced by tree-sitter-highlight per the master plan) belongs to workstream
-/// C (their task 13) and is not on main yet; see interface request A-5. Until it
-/// lands no language is supported, so `highlight_code` takes exactly the path
-/// TypeScript takes for an unsupported language.
-fn supports_language(_name: &str) -> bool {
-    false
+/// Formatter map of the syntax highlighter, keyed by highlight.js scope.
+type CliHighlightTheme = HighlightTheme;
+
+fn build_cli_highlight_theme(theme: &Arc<Theme>) -> CliHighlightTheme {
+    fn fg(theme: &Arc<Theme>, color: ThemeColor) -> HighlightFormatter {
+        // TypeScript closes over the theme instance `t`, not the global.
+        let theme = Arc::clone(theme);
+        Rc::new(move |text: &str| theme.fg(color, text))
+    }
+    let style = |apply: fn(&Theme, &str) -> String| -> HighlightFormatter {
+        let theme = Arc::clone(theme);
+        Rc::new(move |text: &str| apply(&theme, text))
+    };
+    let entries: Vec<(&str, HighlightFormatter)> = vec![
+        ("keyword", fg(theme, ThemeColor::SyntaxKeyword)),
+        ("built_in", fg(theme, ThemeColor::SyntaxType)),
+        ("literal", fg(theme, ThemeColor::SyntaxNumber)),
+        ("number", fg(theme, ThemeColor::SyntaxNumber)),
+        ("regexp", fg(theme, ThemeColor::SyntaxString)),
+        ("string", fg(theme, ThemeColor::SyntaxString)),
+        ("comment", fg(theme, ThemeColor::SyntaxComment)),
+        ("doctag", fg(theme, ThemeColor::SyntaxComment)),
+        ("meta", fg(theme, ThemeColor::Muted)),
+        ("function", fg(theme, ThemeColor::SyntaxFunction)),
+        ("title", fg(theme, ThemeColor::SyntaxFunction)),
+        ("class", fg(theme, ThemeColor::SyntaxType)),
+        ("type", fg(theme, ThemeColor::SyntaxType)),
+        ("tag", fg(theme, ThemeColor::SyntaxPunctuation)),
+        ("name", fg(theme, ThemeColor::SyntaxKeyword)),
+        ("attr", fg(theme, ThemeColor::SyntaxVariable)),
+        ("variable", fg(theme, ThemeColor::SyntaxVariable)),
+        ("params", fg(theme, ThemeColor::SyntaxVariable)),
+        ("operator", fg(theme, ThemeColor::SyntaxOperator)),
+        ("punctuation", fg(theme, ThemeColor::SyntaxPunctuation)),
+        ("emphasis", style(Theme::italic)),
+        ("strong", style(Theme::bold)),
+        ("link", style(Theme::underline)),
+        ("addition", fg(theme, ThemeColor::ToolDiffAdded)),
+        ("deletion", fg(theme, ThemeColor::ToolDiffRemoved)),
+    ];
+    entries
+        .into_iter()
+        .map(|(scope, formatter)| (scope.to_string(), formatter))
+        .collect()
 }
 
-/// Highlight code with syntax coloring based on file extension or language.
-/// Returns array of highlighted lines.
-pub fn highlight_code(code: &str, lang: Option<&str>) -> Vec<String> {
+/// `getCliHighlightTheme(t)` — the memoised formatter map.
+///
+/// TypeScript compares object identity (`cachedHighlightThemeFor !== t`); the
+/// port compares the `Arc` the global theme handed out and keeps that `Arc`
+/// alive in the cache, so an address can never be reused behind a stale hit.
+/// The formatters hold `Rc`, so the cache is per thread rather than global.
+fn get_cli_highlight_theme(theme: &Arc<Theme>) -> Rc<CliHighlightTheme> {
+    thread_local! {
+        static CACHE: RefCell<Option<(Arc<Theme>, Rc<CliHighlightTheme>)>> =
+            const { RefCell::new(None) };
+    }
+    CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some((cached_theme, cached)) = cache.as_ref()
+            && Arc::ptr_eq(cached_theme, theme)
+        {
+            return Rc::clone(cached);
+        }
+        let built = Rc::new(build_cli_highlight_theme(theme));
+        *cache = Some((Arc::clone(theme), Rc::clone(&built)));
+        built
+    })
+}
+
+/// The shared body of `highlightCode` and `getMarkdownTheme().highlightCode`.
+///
+/// The two differ only in the `catch` branch, which `on_error` supplies.
+fn highlight_code_with(
+    code: &str,
+    lang: Option<&str>,
+    on_error: impl Fn(&str) -> Vec<String>,
+) -> Vec<String> {
     // Validate language before highlighting to avoid stderr spam from cli-highlight
     let valid_lang = lang.filter(|lang| supports_language(lang));
     // Skip highlighting when no valid language is specified. cli-highlight's
     // auto-detection is unreliable and can misidentify prose as AppleScript,
     // LiveCodeServer, etc., coloring random English words as keywords.
-    if valid_lang.is_none() {
+    let Some(valid_lang) = valid_lang else {
         let theme = theme();
         return code
             .split('\n')
             .map(|line| theme.fg(ThemeColor::MdCodeBlock, line))
             .collect();
+    };
+    let theme = theme();
+    let options = HighlightOptions {
+        language: Some(valid_lang.to_string()),
+        ignore_illegals: true,
+        language_subset: None,
+        theme: (*get_cli_highlight_theme(&theme)).clone(),
+    };
+    match highlight(code, &options) {
+        Ok(highlighted) => highlighted.split('\n').map(str::to_string).collect(),
+        Err(_) => on_error(code),
     }
-    // Unreachable until the syntax highlighter lands (see `supports_language`).
-    code.split('\n').map(str::to_string).collect()
+}
+
+/// Highlight code with syntax coloring based on file extension or language.
+/// Returns array of highlighted lines.
+pub fn highlight_code(code: &str, lang: Option<&str>) -> Vec<String> {
+    highlight_code_with(code, lang, |code| {
+        code.split('\n').map(str::to_string).collect()
+    })
 }
 
 /// Get language identifier from file path extension.
@@ -2333,23 +2429,14 @@ pub fn get_markdown_theme() -> MarkdownTheme {
         underline: Rc::new(|text: &str| theme().underline(text)),
         strikethrough: Rc::new(|text: &str| theme().strikethrough(text)),
         highlight_code: Some(Rc::new(|code: &str, lang: Option<&str>| -> Vec<String> {
-            // Validate language before highlighting to avoid stderr spam from cli-highlight
-            let valid_lang = lang.filter(|lang| supports_language(lang));
-            // Skip highlighting when no valid language is specified. cli-highlight's
-            // auto-detection is unreliable and can misidentify prose as AppleScript,
-            // LiveCodeServer, etc., coloring random English words as keywords.
-            if valid_lang.is_none() {
+            // The markdown theme keeps the code-block colour on failure; the
+            // free `highlightCode` returns the raw lines.
+            highlight_code_with(code, lang, |code| {
                 let theme = theme();
-                return code
-                    .split('\n')
+                code.split('\n')
                     .map(|line| theme.fg(ThemeColor::MdCodeBlock, line))
-                    .collect();
-            }
-            // Unreachable until the syntax highlighter lands (see `supports_language`).
-            let theme = theme();
-            code.split('\n')
-                .map(|line| theme.fg(ThemeColor::MdCodeBlock, line))
-                .collect()
+                    .collect()
+            })
         }) as HighlightCodeFn),
         code_block_indent: None,
     }
