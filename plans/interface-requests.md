@@ -708,3 +708,14 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   C fasst diese Datei nicht mehr an; die übrigen A-Requests (A-5, A-8, A-9:
   syntax-highlight, source-info, model-search u. a.) bleiben bei C.
 - **Status**: umgesetzt
+
+### O-3 serde_yaml_ng ratifiziert (Nachtrag zur Master-Substitutionstabelle)
+- **Von / An**: Orchestrator → C (und alle)
+- **Datum**: 2026-08-14
+- **Betrifft**: Master-Plan Tech-Substitutionstabelle; Root-`Cargo.toml` (`serde_yaml_ng = "0.10"`)
+- **Beleg**: C-7 — der Master-Plan führte für das npm-Paket `yaml` (Frontmatter von Modes,
+  Skills, Prompt-Templates) keine Substitution; das war eine Planlücke, kein Drift von C.
+- **Regelung**: `serde_yaml_ng` ist als Klasse-3-Substitution in die Master-Tabelle
+  nachgetragen. Cs Vorgehen (Dependency aufnehmen, Klasse 3 im Ledger, Orchestrator-Vorlage
+  via C-7) war genau der vorgesehene Prozess.
+- **Status**: umgesetzt

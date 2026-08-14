@@ -53,6 +53,7 @@ Die vollständige Faktenbasis liegt in `plans/facts/` (tui.md, ai-and-agent.md, 
 | photon WASM | image-Crate (Resize, EXIF-Orientierung, Formatkonvertierung) |
 | diff (jsdiff) | similar-Crate für Unified-Patches; Display-Diff-Format als 1:1-Port von `generateDiffString` |
 | glob/minimatch | globset; ignore-Paket → ignore-Crate |
+| yaml (npm, Frontmatter von Modes/Skills/Prompt-Templates) | serde_yaml_ng (nachgetragen 2026-08-14 auf C-7: die Tabelle hatte hier eine Lücke; gepflegte serde_yaml-Fortführung, Tausch wäre auf utils/frontmatter.rs beschränkt) |
 | proper-lockfile | fs4/fd-lock-basiertes Advisory-Locking mit identischer Retry-Semantik (10 × 20 ms) |
 | node:sqlite | rusqlite (bundled) |
 | undici/Proxy-Agents | reqwest-Proxy-Konfiguration (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) |
