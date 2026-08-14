@@ -134,6 +134,9 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-14 | packages/coding-agent/test/trust-selector.test.ts | 87 | A-Task 15 (Batch 3) |
 | 2026-08-14 | packages/coding-agent/test/user-message.test.ts | 58 | A-Task 15 (Batch 2, Nachzug) |
 | 2026-08-14 | packages/coding-agent/src/core/tools/render-utils.ts (Ownership per O-5) | 85 | A-Task 15 |
+| 2026-08-14 | packages/coding-agent/test/tasks-browser.test.ts | 283 | A-Task 15 (Batch 4) |
+| 2026-08-14 | packages/coding-agent/test/tasks-panel.test.ts | 115 | A-Task 15 (Batch 4) |
+| 2026-08-14 | packages/coding-agent/test/subagent-panel.test.ts | 165 | A-Task 15 (Batch 4) |
 | 2026-08-13 | packages/coding-agent/src/core/tools/bash.ts | 771 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/shell.ts (erneut, Spawn-/Signalteil) | 259 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/child-process.ts | 137 | C-Task 8 |
@@ -449,12 +452,15 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | src/modes/interactive/components/armin.ts | 382 | src/modes/interactive/components/armin.rs | verifiziert | Klasse 1: `setInterval` wird zur Poll-Schnittstelle (`deadline()`/`tick()`), wie alle Timer des Ports; `effectState: Record<string, unknown>` wird ein Enum; `Math.random()` → `rand`; `Array.prototype.slice` mit negativem Index (Glitch-Verschiebung) ist als Rotation nachgebaut. bug-compat: die Zeile „ARMIN SAYS HI" wird nie gekürzt und überläuft ein Terminal unter 15 Spalten, weil TS nur das rechte Padding klemmt |
 | src/modes/interactive/components/daxnuts.ts | 164 | src/modes/interactive/components/daxnuts.rs | verifiziert | Klasse 1: `setInterval` → `deadline()`/`tick()`; das Hex-Bild ist zur Lesbarkeit auf mehrere `&str` verteilt und wird zur Laufzeit zusammengesetzt; `s.replace(/\x1b\[[0-9;]*m/g,"").length` ist als Zähler nachgebaut (`plain_length`), damit die Zentrierung dieselben Spalten trifft |
 | src/modes/interactive/components/earendil-announcement.ts | 53 | src/modes/interactive/components/earendil_announcement.rs | verifiziert | Klasse 1: Vererbung von `Container` wird Komposition; das Modul-Cache-Paar `cachedImageBase64`/`attemptedImageLoad` wird ein `OnceLock` (gleiche „genau ein Versuch"-Semantik) |
-| src/modes/interactive/components/tasks-browser.ts | 435 | — | offen | braucht `core/tasks/types.ts` (`TaskInfo`, `TaskStatus`, `isTerminalTaskStatus`) — Workstream C, A-13 |
-| src/modes/interactive/components/subagent-panel.ts | 111 | — | offen | braucht `core/tasks/types.ts` (`SubagentTaskInfo`) — A-13 |
-| src/modes/interactive/components/tasks-panel.ts | 106 | — | offen | braucht `core/tasks/types.ts` — A-13 |
+| src/modes/interactive/components/tasks-browser.ts | 435 | src/modes/interactive/components/tasks_browser.rs | verifiziert | Klasse 1: `props` mit sechs Callbacks bleibt eine Struktur mit `Box<dyn FnMut>`-Feldern (keiner greift auf die Komponente zurück, sie gehen an interactive-mode); der `setTimeout` der Stop-Bestätigung wird `stop_confirm_deadline()`/`tick_stop_confirm()`; `task.kind` wird ein `match` über die Enum-Variante, die flachen Felder liegen unter `base()`; `Number.isFinite`-Schutz in `relativeTime` entfällt, weil `Option<i64>` denselben Fall trägt |
+| src/modes/interactive/components/subagent-panel.ts | 111 | src/modes/interactive/components/subagent_panel.rs | verifiziert | Klasse 1: der Typwächter `isRunningSubagent` wird `as_running_subagent` mit `Option<&SubagentTaskInfo>`; `Math.max(...map(length))` zählt Zeichen statt UTF-16-Einheiten (für Modus-Ids identisch); `toFixed(1)` → `{:.1}`, beide runden dasselbe Binär-Double |
+| src/modes/interactive/components/tasks-panel.ts | 106 | src/modes/interactive/components/tasks_panel.rs | verifiziert | Klasse 1: `TasksPanelScope` und die Statusfarben werden Enums; `Math.round` auf positiven Werten entspricht `f64::round`; `single_line`/`now_ms` liegen hier und werden von den beiden anderen Panels mitbenutzt |
 | test/approval-selector.test.ts | 75 | tests/permission_selectors.rs | verifiziert | 7 Tests (TS: 7), unverändert — inklusive der beiden `createPendingApproval`-Fälle |
 | test/trust-selector.test.ts | 87 | tests/permission_selectors.rs | verifiziert | 4 Tests (TS: 4), unverändert |
 | — (neu) | — | tests/permission_selectors.rs | verifiziert | 5 zusätzliche Tests, die die beiden TS-Suiten nicht abdecken: fehlende Modus-Zeile, Antwort über die Tastatur statt über den Listen-Callback, Abbruch per Escape, Trust-Dialog ohne gespeicherte Entscheidung, `j`/`k`-Navigation |
+| test/tasks-browser.test.ts | 283 | tests/tasks_browser.rs | verifiziert | 26 Tests (TS: 26), unverändert — inklusive der beiden Rahmen-Tests, die jede Zeile auf exakt die vorgegebene Breite prüfen |
+| test/tasks-panel.test.ts | 115 | tests/tasks_panel.rs | verifiziert | 9 Tests (TS: 9), unverändert |
+| test/subagent-panel.test.ts | 165 | tests/subagent_panel.rs | verifiziert | 17 Tests (TS: 17), unverändert |
 | — (neu) | — | tests/panels.rs | verifiziert | 8 Tests für die drei portierten Panels (Rasterhöhe und Padding, Clipping samt bug-compat der Meldungszeile, Frame-Takt und `dispose`, Scanline-Start und Zentrierung, Ankündigungstext mit Rahmen) |
 | — (neu) | — | tests/selectors.rs | verifiziert | 19 Tests für die portierten Selektoren: 8 für die fünf Batch-3-Selektoren der ersten Runde, 5 portierte OAuth-Fälle plus 3 eigene (Auth-Typ-Label bei gemischten Providern, Suchfilter über die Eingabe, leere Listen je Modus, Abbruch), 3 für den First-Time-Setup-Dialog (Vorauswahl und Preview, Schrittwechsel und Ergebnis, Abbruch) |
 

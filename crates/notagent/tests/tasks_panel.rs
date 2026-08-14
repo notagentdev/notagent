@@ -1,0 +1,193 @@
+//! Port of `packages/coding-agent/test/tasks-panel.test.ts` (115 LOC).
+//!
+//! The panel above the editor.
+//!
+//! The property worth protecting is that it costs nothing when there is nothing
+//! to say: a row spent telling every user "no background tasks" is a row taken
+//! from the transcript of everyone who never starts one.
+
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+use notagent::core::tasks::types::{ShellTaskInfo, TaskInfo, TaskInfoBase, TaskStatus};
+use notagent::modes::interactive::components::tasks_panel::{TasksPanel, TasksPanelScope};
+use notagent::modes::interactive::theme::theme::init_theme;
+use notagent_tui::tui::Component;
+
+/// The global theme is a process global.
+fn theme_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    init_theme(None, false);
+    guard
+}
+
+fn shell(task_id: &str, status: TaskStatus, description: &str, started_at: i64) -> TaskInfo {
+    TaskInfo::Shell(ShellTaskInfo {
+        base: TaskInfoBase {
+            task_id: task_id.to_string(),
+            description: description.to_string(),
+            status,
+            detached: Some(true),
+            started_at,
+            ended_at: if status == TaskStatus::Running {
+                None
+            } else {
+                Some(started_at + 1000)
+            },
+            stop_reason: None,
+            notification_suppressed: None,
+            timeout_ms: None,
+        },
+        command: "cmd".to_string(),
+        pid: 1,
+        exit_code: if status == TaskStatus::Completed {
+            Some(0)
+        } else {
+            None
+        },
+    })
+}
+
+fn rendered(panel: &mut TasksPanel) -> String {
+    panel.render(100).join("\n")
+}
+
+// --- what the panel occupies -------------------------------------------------------
+
+#[test]
+fn takes_no_rows_at_all_when_nothing_is_running() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_tasks(Vec::new());
+    assert!(panel.render(100).is_empty());
+}
+
+#[test]
+fn takes_no_rows_when_everything_is_finished_and_only_running_work_is_shown() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_tasks(vec![shell(
+        "bash-11112222",
+        TaskStatus::Completed,
+        "a build",
+        0,
+    )]);
+    assert!(panel.render(100).is_empty());
+}
+
+#[test]
+fn shows_a_running_task_with_its_id_and_description() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_tasks(vec![shell(
+        "bash-11112222",
+        TaskStatus::Running,
+        "the dev server",
+        0,
+    )]);
+    let text = rendered(&mut panel);
+    assert!(text.contains("bash-11112222"), "{text}");
+    assert!(text.contains("the dev server"), "{text}");
+}
+
+#[test]
+fn caps_how_much_of_the_screen_a_fan_out_can_take() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_tasks(
+        (0..30)
+            .map(|index| {
+                shell(
+                    &format!("bash-1111222{}", index % 10),
+                    TaskStatus::Running,
+                    &format!("task {index}"),
+                    0,
+                )
+            })
+            .collect(),
+    );
+    // Heading, the capped rows, and one line saying what was left out.
+    assert!(panel.render(100).len() <= 10);
+    assert!(rendered(&mut panel).contains("more"));
+}
+
+// --- the scope ring -----------------------------------------------------------------
+
+#[test]
+fn steps_through_running_all_and_hidden() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    assert_eq!(panel.get_scope(), TasksPanelScope::Running);
+    assert_eq!(panel.cycle_scope(), TasksPanelScope::All);
+    assert_eq!(panel.cycle_scope(), TasksPanelScope::Hidden);
+    assert_eq!(panel.cycle_scope(), TasksPanelScope::Running);
+}
+
+#[test]
+fn shows_finished_work_only_in_the_all_scope() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_tasks(vec![shell(
+        "bash-11112222",
+        TaskStatus::Completed,
+        "a build",
+        0,
+    )]);
+    assert!(panel.render(100).is_empty());
+    panel.set_scope(TasksPanelScope::All);
+    assert!(rendered(&mut panel).contains("a build"));
+}
+
+#[test]
+fn shows_nothing_at_all_once_hidden_whatever_is_running() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_tasks(vec![shell(
+        "bash-11112222",
+        TaskStatus::Running,
+        "the dev server",
+        0,
+    )]);
+    panel.set_scope(TasksPanelScope::Hidden);
+    assert!(panel.render(100).is_empty());
+}
+
+// --- ordering -------------------------------------------------------------------------
+
+#[test]
+fn keeps_running_work_above_finished_work() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_scope(TasksPanelScope::All);
+    panel.set_tasks(vec![
+        shell("bash-11112222", TaskStatus::Completed, "done first", 0),
+        shell("bash-33334444", TaskStatus::Running, "still going", 0),
+    ]);
+    let lines = panel.render(100);
+    let running_row = lines
+        .iter()
+        .position(|line| line.contains("still going"))
+        .expect("the running row is drawn");
+    let finished_row = lines
+        .iter()
+        .position(|line| line.contains("done first"))
+        .expect("the finished row is drawn");
+    assert!(running_row < finished_row);
+}
+
+#[test]
+fn keeps_the_oldest_running_task_in_place_rather_than_reshuffling_on_each_new_one() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_tasks(vec![
+        shell("bash-33334444", TaskStatus::Running, "newer", 2000),
+        shell("bash-11112222", TaskStatus::Running, "older", 1000),
+    ]);
+    let lines = panel.render(100);
+    let older = lines.iter().position(|line| line.contains("older"));
+    let newer = lines.iter().position(|line| line.contains("newer"));
+    assert!(older < newer, "{older:?} {newer:?}");
+}

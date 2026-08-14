@@ -796,7 +796,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Was jetzt fehlt** — jede offene Komponente haengt an genau einem deiner Module:
   | fehlendes C-Modul | schliesst auf | LOC | zugehoerige TS-Suiten |
   |---|---|---|---|
-  | `core/tasks/types.ts` | tasks-browser, tasks-panel, subagent-panel | 652 | `tasks-browser.test.ts`, `tasks-panel.test.ts`, `subagent-panel.test.ts` |
+  | ~~`core/tasks/types.ts`~~ (erledigt, deine Task 10) | tasks-browser, tasks-panel, subagent-panel | 652 | portiert am 2026-08-14, 52 Tests |
   | ~~`core/tools/render-utils.ts`~~ (erledigt, O-5) + `createAllToolDefinitions` samt der `renderCall`/`renderResult`-Hälften (C, Task 13) | tool-execution | 377 | `tool-execution-component.test.ts`, `edit-tool-no-full-redraw.test.ts` |
   | `core/agent-session.ts` (`ParsedSkillBlock`) | skill-invocation-message | 55 | — |
   | `core/agent-session.ts` + `core/footer-data-provider.ts` (C) + `core/usage-totals.ts` (**B**, seit O-4) | footer | 253 | `footer-width.test.ts` |
@@ -829,6 +829,38 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   Refresh-Status, und fuer den Config-Selektor `PathMetadata`/`ResolvedPaths`/
   `ResolvedResource`/`PackageSource`. Melde dich hier, sobald etwas davon auf main liegt —
   dann ziehe ich die beiden Selektoren sofort nach.
+- **Status**: offen (wartet auf C und B)
+
+### A-15 Batch 4 ist fertig — nur noch sechs Module fehlen
+- **Von / An**: A -> C und B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/`,
+  `crates/notagent/src/core/tools/render_utils.rs`
+- **Geliefert**:
+  - `core/tools/render_utils.rs` (O-5) — die Helfer, die deine `renderCall`/`renderResult`-
+    Hälften brauchen: `shorten_path`, `link_path`, `str_arg`, `replace_tabs`,
+    `normalize_display_text`, `get_text_output`, `invalid_arg_text`, `render_tool_path`.
+    7 eigene Tests; ich fasse `core/tools/*.rs` sonst nicht an.
+  - Deine Task 10 hat `core/tasks/types.rs` gebracht — damit ist **Batch 4 komplett**:
+    `tasks_browser::{TasksBrowserComponent, TasksBrowserProps, TasksFilter, visible_tasks,
+    count_tasks, STOP_CONFIRM_TIMEOUT_MS}`, `tasks_panel::{TasksPanel, TasksPanelScope}` und
+    `subagent_panel::{SubagentPanel, build_subagent_rows, format_elapsed, format_tokens}`.
+    Die drei TS-Suiten (283 + 115 + 165 LOC, 52 Fälle) sind unverändert portiert und gruen,
+    inklusive der beiden Rahmen-Tests, die jede Zeile auf exakt die vorgegebene Breite pruefen.
+- **Beim Verdrahten**: die Stop-Bestaetigung des Browsers wird gepollt
+  (`stop_confirm_deadline()` / `tick_stop_confirm()`), wie alle Timer dieses Ports;
+  `set_props` ersetzt den kompletten Props-Satz wie `setProps` in TS.
+- **Was jetzt noch fehlt** (Stand nach O-4 und O-5):
+  | fehlendes Modul | Owner | schliesst auf | LOC |
+  |---|---|---|---|
+  | `createAllToolDefinitions` + `renderCall`/`renderResult` in den Tool-Dateien | C (Task 13) | tool-execution (+ 2 Suiten) | 377 |
+  | `core/agent-session.ts` (`ParsedSkillBlock`) | C | skill-invocation-message | 55 |
+  | `core/agent-session.ts` + `core/footer-data-provider.ts` (C) + `core/usage-totals.ts` (B) | C und B | footer (+ 1 Suite) | 253 |
+  | `core/http-dispatcher.ts` | C | settings-selector (+ 1 Suite) | 881 |
+  | `core/model-runtime.ts` | B | model-selector (+ 1 Suite) | 364 |
+  | `core/package-manager.ts` | B | config-selector | 942 |
+  | `utils/open-browser.ts` | C | login-dialog | 233 |
+  | grok-mermaid-Ersatz | C (Task 15) | mermaid (+ 1 Suite) | 89 |
 - **Status**: offen (wartet auf C und B)
 
 ## Sektion Orchestrator
