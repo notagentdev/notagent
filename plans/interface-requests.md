@@ -883,3 +883,16 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   System-Prompt, CLI-Modi, Interactive-Verdrahtung und llama-UI bleiben bei C.
   Schnittstellenfragen wie gehabt hier als Requests.
 - **Status**: umgesetzt (Plan-Dateien geaendert; B kann sofort starten)
+
+### O-5 render-utils.ts an Workstream A
+- **Von / An**: Orchestrator → A und C
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/tools/render_utils.rs` (+ zwei TS-Suiten)
+- **Beleg**: A-14 (render-utils.ts 377 LOC blockiert Tool-Rendering-Komponenten bei A);
+  C hat die renderCall/renderResult-Hälften laut Task-8-Abschluss ohnehin nach Task 13
+  verschoben; Hauptkonsument tool-execution gehört bereits A.
+- **Regelung**: A portiert `packages/coding-agent/src/core/tools/render-utils.ts` nach
+  `crates/notagent/src/core/tools/render_utils.rs` samt Suiten (Ledger-Sektion
+  "A: interactive components"). Die renderCall/renderResult-Hälften IN den einzelnen
+  Tool-Dateien bleiben bei C (Task 13) — A fasst core/tools/*.rs sonst nicht an.
+- **Status**: umgesetzt (A kann sofort starten)
