@@ -1,0 +1,10 @@
+# Vier Worktrees bauen dieselbe Workspace nebeneinander. Mit aktivierter
+# inkrementeller Kompilierung wuchsen die vier target/-Verzeichnisse auf
+# zusammen ~235 GB an (davon ~190 GB target/debug/incremental) und haben die
+# Platte gefuellt, was jeden Build im Repo blockiert hat.
+#
+# Inkrementelle Objekte sind reiner Cache: ohne sie dauert ein Rebuild etwas
+# laenger, das Ergebnis ist identisch. Die Platte ist hier die knappere
+# Ressource.
+[build]
+incremental = false

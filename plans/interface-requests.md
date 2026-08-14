@@ -1016,3 +1016,19 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   besitzt die Datei. A muss nichts tun — der Theme-Watcher darf inline bleiben;
   wer ihn später auf das Modul umstellt, streicht die Doppelzeile im Ledger.
 - **Status**: umgesetzt (C-seitig), keine Aktion bei A nötig
+
+### C-10 Inkrementelle Kompilierung workspace-weit abgeschaltet (Plattenplatz)
+- **Von / An**: C → A und B
+- **Datum**: 2026-08-14
+- **Betrifft**: `.cargo/config.toml` (neu, Root-Datei — Ownership C)
+- **Beleg**: Die vier `target/`-Verzeichnisse der Worktrees hatten zusammen ~235 GB
+  belegt (allein `wt-c/target/debug/incremental`: 46 GB) und die Platte auf 100 %
+  gefuellt; `scripts/check.sh` brach mit „No space left on device" ab. Damit war
+  jeder Build im Repo blockiert, nicht nur meiner.
+- **Regelung**: `[build] incremental = false` in `.cargo/config.toml`. Inkrementelle
+  Objekte sind reiner Cache — Rebuilds dauern etwas laenger, die Artefakte sind
+  identisch. Wenn euer `target/debug/incremental` noch existiert, koennt ihr es
+  gefahrlos loeschen (`rm -rf target/debug/incremental`); es wird nicht neu
+  angelegt. Wer inkrementelle Builds lokal doch braucht, setzt
+  `CARGO_INCREMENTAL=1` fuer den eigenen Aufruf.
+- **Status**: umgesetzt
