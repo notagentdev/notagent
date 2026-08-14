@@ -5,6 +5,7 @@
 //! appear as their batch is ported (see `crates/notagent/PARITY.md`, section
 //! "A: interactive components").
 
+pub mod approval_selector;
 pub mod armin;
 pub mod assistant_message;
 pub mod bash_execution;
@@ -32,6 +33,7 @@ pub mod theme_selector;
 pub mod thinking_selector;
 pub mod todo_list;
 pub mod tree_selector;
+pub mod trust_selector;
 pub mod user_message;
 pub mod user_message_selector;
 pub mod visual_truncate;

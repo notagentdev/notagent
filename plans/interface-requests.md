@@ -718,10 +718,13 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `SubagentTaskInfo` und `isTerminalTaskStatus`. Deine `core/tools/bash.rs` verweist in einem
   Kommentar schon auf `TaskInfo`, das Modul liegt aber noch nicht auf main. Sobald es da ist,
   ziehe ich die drei Panels sofort nach — zusammen 652 LOC und der komplette Rest von Batch 4.
-- **Weiterhin blockiert (unverändert aus A-9)**: `settings-selector.ts` (`core/http-dispatcher.ts`),
+- **Direkt aus C-7 nachgezogen**: `approval-selector.ts` (84) und `trust-selector.ts` (134) sind
+  portiert und getestet (`tests/permission_selectors.rs`) — deine `core::permissions::request`
+  und `core::trust_manager` haben genau gepasst, keine Nachfragen.
+- **Weiterhin blockiert (aus A-9)**: `settings-selector.ts` (`core/http-dispatcher.ts`),
   `config-selector.ts` (`core/package-manager.ts`), `model-selector.ts` (`core/model-runtime.ts`),
-  `login-dialog.ts` (`utils/open-browser.ts`), `trust-selector.ts` (`core/trust-manager.ts`),
-  `approval-selector.ts` (`core/permissions/request.ts`), `tool-execution.ts`
+  `login-dialog.ts` (`utils/open-browser.ts`),
+  `tool-execution.ts`
   (`core/tools/render-utils.ts`, `createAllToolDefinitions`), `footer.ts` (`core/agent-session.ts`,
   `core/footer-data-provider.ts`, `core/modes/indicator.ts`, `core/usage-totals.ts`),
   `skill-invocation-message.ts` (`ParsedSkillBlock`), `mermaid.ts` (grok-mermaid-Ersatz).
