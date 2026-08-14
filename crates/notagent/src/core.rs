@@ -3,13 +3,17 @@
 pub mod auth_storage;
 pub mod bash_executor;
 pub mod experimental;
+pub mod hooks;
 pub mod keybindings;
 pub mod messages;
 pub mod mini_read;
 pub mod modes;
+pub mod permissions;
+pub mod project_trust;
 pub mod resolve_config_value;
 pub mod session_manager;
 pub mod settings_manager;
 pub mod source_info;
 pub mod todos;
 pub mod tools;
+pub mod trust_manager;

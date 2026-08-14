@@ -27,9 +27,12 @@ pub enum ShellId {
 /// whether an existing tool runs unattended. Ordered from most to least
 /// supervised, which is also the ring order once the read-only stop is put in
 /// front of them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ApprovalLevel {
+    /// The default everywhere an approval level is missing: an undeclared
+    /// level must never resolve to running unattended.
+    #[default]
     Manual,
     Auto,
     Yolo,

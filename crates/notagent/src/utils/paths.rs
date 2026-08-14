@@ -262,7 +262,7 @@ fn current_dir() -> String {
         .into_owned()
 }
 
-fn main_separator() -> char {
+pub(crate) fn main_separator() -> char {
     if cfg!(windows) { '\\' } else { '/' }
 }
 
@@ -274,7 +274,7 @@ fn join_path(base: &str, rest: &str) -> String {
     Path::new(base).join(rest).to_string_lossy().into_owned()
 }
 
-fn is_absolute_path(path: &str) -> bool {
+pub(crate) fn is_absolute_path(path: &str) -> bool {
     if cfg!(windows) {
         let bytes = path.as_bytes();
         if bytes.len() >= 3
@@ -290,7 +290,7 @@ fn is_absolute_path(path: &str) -> bool {
 }
 
 /// `path.resolve(...)`: right-to-left until absolute, then dot-segment removal.
-fn node_resolve(segments: &[&str]) -> String {
+pub(crate) fn node_resolve(segments: &[&str]) -> String {
     let separator = main_separator();
     let mut resolved = String::new();
     let mut absolute = false;
@@ -385,7 +385,7 @@ fn normalize_dot_segments(path: &str, rooted: bool) -> String {
 }
 
 /// `path.relative(from, to)` for already-resolved absolute paths.
-fn node_relative(from: &str, to: &str) -> String {
+pub(crate) fn node_relative(from: &str, to: &str) -> String {
     let case_sensitive = !cfg!(windows);
     let equal = |left: &str, right: &str| {
         if case_sensitive {

@@ -641,6 +641,39 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `todo-list.ts` ist damit frei. `core/modes/*` und `core/permissions/request.ts` liefert Task 9.
 - **Status**: umgesetzt (siehe Commit `app: port syntax highlighting, source info and model search`)
 
+### C-7 Task 9 liegt auf main: Modes, Permissions (Gate), Hooks (Dispatcher), Project-Trust
+- **Von / An**: C → A und B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/{modes,permissions,hooks,project_trust,trust_manager}.rs`,
+  `crates/notagent/src/utils/frontmatter.rs`, `crates/notagent/src/core/tools.rs` (`ToolName`)
+- **Beleg**: WS-C-Plan Task 9; `plans/facts/extension-boundary.md` §2.1 und §2.2
+  (Permissions und Hooks sind in TS versteckte Inline-Extensions und werden nativ nachgebaut).
+- **Für A sofort nutzbar** (beides stand in A-8/A-9 als blockiert):
+  - `approval-selector.ts` (84 LOC): `notagent::core::permissions::request` liefert
+    `ApprovalRequest { tool_name, target, policy_name, reason, mode_id }`, `ApprovalAnswer`
+    (`ApproveOnce`/`ApproveAlways`/`Deny` mit `as_str`), `APPROVAL_ANSWERS` in Dialogreihenfolge,
+    `format_request_summary`, `format_request_explanation`, `answer_allows`, `answer_persists`.
+    Der Selektor muss nur die drei Labels anzeigen und die Antwort zurückgeben; die
+    Verdrahtung (`interactiveMode.requestApproval` → `ApprovalPresenter`) mache ich in Task 13.
+  - `todo-list.ts` (216 LOC): `core/todos` liegt seit Task 8 auf main — das war der letzte
+    fehlende Baustein aus A-8 für diese Komponente.
+  - Für Footer und Mode-Anzeige: `core::modes::indicator::{indicator_color_key,
+    format_mode_label, format_mode_switch_notice}` und `core::modes::cycle::{order_modes,
+    next_mode_id, initial_mode_id}` sind portiert.
+- **Neue Workspace-Dependency**: `serde_yaml_ng = "0.10"` als Ersatz für das npm-Paket `yaml`
+  (Frontmatter von Modes, Skills, Prompt-Templates). Der Master-Plan führt für YAML keine
+  Substitution; ich habe sie als Klasse 3 im Ledger dokumentiert, weil ohne YAML-Parser weder
+  Modes noch Skills ladbar sind. Falls der Orchestrator eine andere Crate vorzieht, ist der
+  Tausch auf `utils/frontmatter.rs` beschränkt.
+- **Für B (Information)**: der Agent-Loop braucht in Task 11 zwei Einstiegspunkte, die jetzt
+  existieren und keine Extension-Infrastruktur verlangen:
+  `PermissionGate::before_tool_call(tool_name, input, signal) -> Option<PermissionBlock>`
+  (vor jedem Tool-Aufruf; `terminate: true` beendet den Batch) und die Methoden von
+  `HookDispatcher` an den bisherigen Emit-Stellen (`session_start`, `session_shutdown`,
+  `before_agent_start` → optionale `hook_context`-Message, `agent_end`/`agent_settled`,
+  `tool_result`, `session_before_compact`, `session_compact`).
+- **Status**: umgesetzt (Commit `app: port modes, permissions and hooks`)
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt

@@ -5,17 +5,18 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (68 856 LOC
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 8 abgeschlossen.** `config.ts`, `core/settings-manager.ts` (inkl. aller
-typisierten Zugriffsmethoden), `migrations.ts`, `core/resolve-config-value.ts`,
-`core/auth-storage.ts` und die Utilities (`utils/paths.ts`, `utils/shell.ts`,
-`utils/abort.ts` + Lockfile-Ersatz) sind portiert und testbelegt. Offen bleibt nur, was
-laut Plan zu späteren Tasks gehört: `utils/shell.ts` liefert erst mit Task 8 die
-Bash-Ausführung nach, die keybindings.json-Migration folgt mit Task 13. Task 6
-(`core/session-manager.ts`) ist portiert und mit den TS-Fixtures roundtrip-getestet;
-offen bleibt daraus `resolveSessionPath`, das in `src/main.ts` sitzt und zu Task 12 gehört.
-Task 7 ist bis auf zwei Dateien portiert: `tools/render-utils.ts` braucht das Theme aus
-A-Batch 0 (Interface-Request C-5) und `tools/index.ts` ist die Registry über alle 16 Tools,
-also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen geführt.
+**Stand: Task 9 abgeschlossen.** Tasks 5-8 sind portiert und testbelegt; offen bleibt
+daraus nur, was laut Plan zu späteren Tasks gehört: `resolveSessionPath` sitzt in
+`src/main.ts` (Task 12), `tools/render-utils.ts` und die Renderer der Tools gehören zu
+Task 13, und `tools/index.ts` ist bis auf die Namen (`ToolName`, `allToolNames`, mit
+Task 9 nachgezogen) erst nach Task 10 vollständig baubar.
+
+Task 9 hat Modes, Permissions, Hooks und Project-Trust portiert. Die beiden versteckten
+Inline-Extensions sind dabei durch native Einstiegspunkte ersetzt: `PermissionGate` ist
+das Pre-Tool-Gate, das der Agent-Loop ruft, und `HookDispatcher` bildet die 16 Hook-Namen
+auf Methoden ab, die die Session an den bisherigen Emit-Stellen ruft (Verdrahtung in
+`agent-session.rs` mit Task 11). Zusätzlich sind `utils/frontmatter.ts` und die Tool-Namen
+aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 
 ## Lektüre-Protokoll
 
@@ -142,6 +143,47 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | 2026-08-13 | packages/coding-agent/src/core/source-info.ts | 40 | C-Task 14 (vorgezogen für A-5) |
 | 2026-08-13 | packages/coding-agent/src/core/package-manager.ts (`PathMetadata`) | — | C-Task 14 (vorgezogen für A-5) |
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/model-search.ts | 21 | C-Task 13 (vorgezogen für A-9) |
+| 2026-08-14 | packages/coding-agent/src/core/modes/modes.ts | 266 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/modes/shells.ts | 136 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/modes/cycle.ts | 50 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/modes/indicator.ts | 50 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/modes/builtin/{auto,manual,plan,yolo}/10-*.md | 4 Dateien | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/utils/frontmatter.ts | 39 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/tools/index.ts (`ToolName`, `allToolNames`) | 40 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/policy.ts | 111 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/chain.ts | 117 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/policies.ts | 219 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/user-rules.ts | 80 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/request.ts | 100 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/coordinator.ts | 149 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/hook.ts | 95 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/permissions/extension.ts | 107 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/hooks/events.ts | 65 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/hooks/hooks.ts | 194 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/hooks/payload.ts | 67 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/hooks/runner.ts | 278 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/hooks/runtime.ts | 138 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/hooks/extension.ts | 183 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/project-trust.ts | 96 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/trust-manager.ts | 244 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/main.ts (Zeilen 588-643, 1015-1030: Hook-/Permission-Verdrahtung) | 70 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/src/core/agent-session.ts (`_loadModes`, Zeilen 955-975) | 20 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/modes.test.ts | 261 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/mode-block.test.ts | 162 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/frontmatter.test.ts | 60 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-policy.test.ts | 95 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-chain.test.ts | 195 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-destructive.test.ts | 152 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-user-rules.test.ts | 184 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-coordinator.test.ts | 151 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-request.test.ts | 101 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-end-to-end.test.ts | 279 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/permission-extension.test.ts | 182 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/hooks.test.ts | 134 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/hooks-runner.test.ts | 213 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/hooks-runtime.test.ts | 172 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/hooks-extension.test.ts | 247 | C-Task 9 |
+| 2026-08-14 | packages/coding-agent/test/trust-manager.test.ts | 67 | C-Task 9 |
 
 ## Ledger
 
@@ -216,6 +258,36 @@ also erst nach den Tasks 8-10 vollständig baubar. Beide sind unten als offen ge
 | test/syntax-highlight.test.ts | 76 | src/utils/syntax_highlight.rs (Testmodul) | Tests portiert (erster `describe`) | 5 Fälle unverändert. Der zweite `describe` („theme syntax highlighting") prüft das Zusammenspiel mit `theme.ts` und gehört damit zu Workstream A; die drei Erwartungen sind hier als Scope-Test gepinnt: Regex-Literal → `string` und HTML-Tagname → `name` treffen die TS-Farbe, der Python-Dekorator nicht (siehe Zeile oben). Der `diff`-Fall ist über den handportierten Grammatikteil erfüllt. Dazu 9 eigene Tests: Alias-/Groß-Kleinschreibungsauflösung, Bau aller Grammatiken, Unknown-Language-Fehler, HTML-Roundtrip-Treue, Capture→Scope-Abbildung je Sprache |
 | src/core/source-info.ts | 40 | src/core/source_info.rs | portiert | Klasse 1: `PathMetadata` wird hier deklariert statt in `core/package-manager.ts` (TS importiert wechselseitig; `package_manager` re-exportiert den Typ in Task 14). `SourceScope`/`SourceOrigin` sind Enums mit der TS-Serialisierung (`"user"`/`"project"`/`"temporary"`, `"package"`/`"top-level"`), `baseDir` fehlt im JSON, wenn nicht gesetzt |
 | src/modes/interactive/model-search.ts | 21 | src/modes/interactive/model_search.rs | portiert | vollständig; die Wiederholung des Providers und die Sonderstellung von `getModelSelectorSearchText` (Rang von `provider/id` vor Proxy-IDs) sind wörtlich übernommen |
+| src/core/modes/modes.ts | 266 | src/core/modes.rs | portiert | Frontmatter-Regeln (erste Deklaration gewinnt, Konflikt wird gemeldet), Datei-Sortierung nach `localeCompare(…, "en")`, Präzedenz der Roots und `renderModeBlock` wörtlich. Klasse 4: die vier mitgelieferten Modes liegen per `include_str!` in der Binary statt als `.md` neben dem Kompilat; `load_modes` erkennt `get_builtin_modes_dir()` und schickt sie durch denselben Parser, also gleiche Diagnostics und gleiche gemeldete Pfade. Klasse 1: `parseFrontmatter` wirft in TS und `loadModeDir` fängt nicht — daraus wird `Result<_, ModeLoadError>` statt einer Panik; `by_id` ist ein einfügereihenfolge-erhaltender Vec (die `Map`-Semantik: ein Ersatz behält die Position) |
+| src/core/modes/shells.ts | 136 | src/core/modes/shells.rs | portiert | vollständig; `ShellId`/`ApprovalLevel` sind Enums mit derselben Serialisierung. Klasse 1: die Tool-Menge ist ein `Vec<ToolName>` statt eines `Set<string>`, weil die Einfügereihenfolge die Ausgabereihenfolge bestimmt; ein Name aus `knownToolNames`, für den es keinen `ToolName` gibt (in TS über Extensions möglich), kann nicht in die Allowlist wandern und wird beim Hinzufügen als unbekannt gemeldet |
+| src/core/modes/cycle.ts | 50 | src/core/modes/cycle.rs | portiert | vollständig (Ring-Reihenfolge, Wrap, Rückfall auf den ersten Mode, `initialModeId`) |
+| src/core/modes/indicator.ts | 50 | src/core/modes/indicator.rs | portiert | vollständig. Klasse 1: `formatModeLabel`/`formatModeSwitchNotice` nehmen id und shell einzeln statt `Pick<Mode, …>`; `toFixed(1)` rundet kaufmännisch, Rusts `{:.1}` bankers-rounding — deshalb wird vor dem Formatieren explizit gerundet; `estimateInjectedTokens` zählt UTF-16-Einheiten wie JS |
+| src/core/modes/builtin/{auto,manual,plan,yolo}/10-*.md | 4 Dateien | src/core/modes/builtin/… (`include_str!`) | verifiziert | unverändert übernommen (Asset) |
+| src/utils/frontmatter.ts | 39 | src/utils/frontmatter.rs | portiert | Klasse 3: das npm-Paket `yaml` → `serde_yaml_ng` (gepflegte serde_yaml-Fortführung; neue Workspace-Dependency, im Master-Plan nicht vorgesehen und deshalb hier dokumentiert). libyaml wertet das Ende der Eingabe nicht als Zeilenumbruch, deshalb wird der abgetrennte Block mit einem angehängten `\n` geparst — sonst verlöre ein `|`-Blockskalar den Zeilenumbruch, den Clip-Chomping behält. Klasse 1: der Wurf bei ungültigem YAML wird `Result`; die Fehlermeldung nennt nicht wie in TS Zeile und Spalte |
+| src/core/tools/index.ts (`ToolName`, `allToolNames`) | 40 | src/core/tools.rs | portiert (Namensteil) | die 16 Tool-Namen als Enum mit `as_str`/`parse` und `ALL_TOOL_NAMES` in der Einfügereihenfolge des TS-`Set`. **Offen:** die Fabriken (`createTool`, `createAllToolDefinitions`, Presets) brauchen die Task-Tools und folgen mit Task 10 |
+| src/core/permissions/policy.ts | 111 | src/core/permissions/policy.rs | portiert | Klasse 1: `PermissionPolicy` ist ein objekt-sicheres Trait (`Send + Sync`, weil die Kette geteilt wird), die kleinen Regeln entstehen über `FnPolicy`; `undefined` → `Option` |
+| src/core/permissions/chain.ts | 117 | src/core/permissions/chain.rs | portiert | `POLICY_ORDER` mit allen 13 Slots in exakter Reihenfolge (destructive-command-ask VOR yolo), `buildPolicyChain` mit derselben Auslassungsregel für unbesetzte Slots. Klasse 1: die Zusatz-Policies kommen als Slice von (Slot, Policy) statt als `Map` |
+| src/core/permissions/policies.ts | 219 | src/core/permissions/policies.rs | portiert | alle Regex-Listen (11 sensible Pfade, 16 destruktive Kommandos) zeichengleich, mit `(?i)` statt des `i`-Flags; Pfadlogik über die Node-Semantik aus `utils/paths.rs` (`resolve`/`relative`/`isAbsolute`/`sep`) |
+| src/core/permissions/user-rules.ts | 80 | src/core/permissions/user_rules.rs | portiert | vollständig; die History-Policy hält den Coordinator als `Arc` |
+| src/core/permissions/request.ts | 100 | src/core/permissions/request.rs | portiert | Zieltext, Kürzung auf 60 UTF-16-Einheiten, beide Formatierer und die Antwortreihenfolge wörtlich. Klasse 1: `ApprovalAnswer` ist ein Enum mit `as_str` |
+| src/core/permissions/coordinator.ts | 149 | src/core/permissions/coordinator.rs | portiert | Klasse 3: die Promise-Kette wird eine faire `tokio::sync::Mutex` (FIFO wie die Kette), das `aborted`-Flag ein `CancellationToken`, das `reset` durch ein frisches ersetzt — damit settelt `abort()` jede wartende Anfrage, ohne eine Warteliste zu führen. Klasse 1: ein Presenter kann nicht „rejecten"; er antwortet selbst `Deny`. Der Observer läuft detached, ein Panic auf beiden Seiten des Await wird geschluckt (TS: ein `try`/`catch` um denselben Fall) |
+| src/core/permissions/hook.ts | 95 | src/core/permissions/hook.rs | portiert | vollständig inkl. der vier Blockier-Pfade und ihrer Wortlaute; `decide` ist ein optionaler async-Callback wie in TS |
+| src/core/permissions/extension.ts | 107 | src/core/permissions/gate.rs | nativ ersetzt | Klasse 2 (extension-boundary §2.1): statt einer versteckten Inline-Extension mit `tool_call`/`session_start`/`session_shutdown`-Handlern gibt es `PermissionGate::{before_tool_call, session_start, session_shutdown, abort, reset, observe}`. Verhalten identisch, inklusive `terminate: true` beim Block und dem Nachrüsten des `session-approval-history`-Slots. Die Registrierungsreihenfolge („zuerst in der Factory-Liste") entfällt, weil es keine zweite Instanz gibt, die eine Ablehnung überstimmen könnte |
+| src/core/hooks/events.ts | 65 | src/core/hooks/events.rs | portiert | alle 16 Namen als Enum mit denselben Schreibweisen; `TOOL_SCOPED_EVENTS`/`UNEMITTED_EVENTS`/`BLOCKING_EVENT` als Methoden bzw. Konstante |
+| src/core/hooks/hooks.ts | 194 | src/core/hooks.rs | portiert | Discovery auf beiden Ebenen, 30-s-Default und 300-s-Cap, alle Diagnosetexte wörtlich, Matcher-Semantik (Kommaliste, `*`, kein Muster). Klasse 1: `Number(entry.timeout)` ist als `js_number` nachgebaut (String/Bool/Null wie in JS; Arrays und Objekte ergeben NaN, wo JS für `[]` 0 liefert — eine Timeout-Angabe dieser Form gibt es nicht); `timeoutMs` bleibt `f64`, damit Diagnosetext und Ausgabe die JS-Zahlform behalten |
+| src/core/hooks/payload.ts | 67 | src/core/hooks/payload.rs | portiert | Feldnamen in snake_case wie in TS; `transcript_path` fehlt im JSON, wenn es keine Datei gibt (`undefined` wird von `JSON.stringify` entfernt); 2000-Zeichen-Kürzung zählt UTF-16-Einheiten |
+| src/core/hooks/runner.ts | 278 | src/core/hooks/runner.rs | portiert | Klasse 3: `spawn(cmd, {shell: true})` → `/bin/sh -c` bzw. `ComSpec /d /s /c`; `AbortSignal` → `CancellationToken`; SIGTERM per `libc::kill` mit 2-s-Gnadenfrist vor SIGKILL. Verdikt-Lesen, Reference-Schreibweisen, Exit-2-Regel, Timeout-als-Ablehnung und die Refusal-Texte wörtlich |
+| src/core/hooks/runtime.ts | 138 | src/core/hooks/runtime.rs | portiert | vollständig. Der `catch`-Zweig um `runHooks` ist unerreichbar, weil `run_hooks` nicht fehlschlagen kann — im Modul dokumentiert |
+| src/core/hooks/extension.ts | 183 | src/core/hooks/dispatch.rs | nativ ersetzt | Klasse 2 (extension-boundary §2.2): die Mapping-Tabelle wird zu Methoden von `HookDispatcher` (`session_start`, `session_shutdown`, `before_agent_start`, `agent_end`, `agent_settled`, `tool_result`, `session_before_compact`, `session_compact`), die die Agent-Session an denselben Stellen ruft; `createApprovalObserver` bleibt als `HookApprovalObserver`. Namen, Felder und die Notification-Verdopplung sind unverändert |
+| src/core/project-trust.ts | 96 | src/core/project_trust.rs | portiert | Klasse 2: der `project_trust`-Extension-Pfad entfällt ersatzlos; Override, Ressourcen-Kurzschluss, Store, `defaultProjectTrust` und Prompt sind unverändert. Klasse 1: der UI-Select ist ein async-Callback im `ProjectTrustContext` |
+| src/core/trust-manager.ts | 244 | src/core/trust_manager.rs | portiert | Vererbung über Elternverzeichnisse, Optionsliste inkl. der Session-only-Antworten, sortierte JSON-Ausgabe mit abschließendem Zeilenumbruch, Ressourcen-Erkennung inkl. der Ausnahme für `~/.agents/skills`. Klasse 3: `proper-lockfile` → `utils/lockfile.rs` mit derselben 10 × 20-ms-Retry; Klasse 1: `boolean | null` wird `Option<bool>`, Wurf → `Result`; Schlüssel werden byte-sortiert statt nach UTF-16-Einheiten (identisch für jeden Pfad innerhalb der BMP) |
+| test/modes.test.ts + test/mode-block.test.ts | 423 | tests/modes.rs | Tests portiert | 41 Tests. Aus `mode-block.test.ts` sind die beiden Blöcke zur Supersession-Regel (`core/system-prompt.ts`, Task 11) und zu `--auto`/`--yolo` (`cli/args.ts`, Task 12) dort noch offen |
+| test/frontmatter.test.ts | 60 | src/utils/frontmatter.rs (Testmodul) | Tests portiert | 8 Tests; der Fall „throws on invalid YAML" prüft nur noch den Fehler selbst, nicht den TS-Meldungstext mit Zeile und Spalte |
+| test/permission-{policy,chain,destructive,user-rules,coordinator,request}.test.ts | 858 | tests/permissions.rs | Tests portiert | 80 Tests. Klasse 1 in zwei Fällen: „keeps the queue moving when a presenter rejects" nutzt eine `Deny`-Antwort statt einer abgelehnten Promise, und der werfende Observer panikt statt zu werfen |
+| test/permission-end-to-end.test.ts + test/permission-extension.test.ts | 461 | tests/permission_end_to_end.rs | Tests portiert | 31 Tests gegen das echte write-Tool und echte Hook-Prozesse; die Extension-Fälle laufen gegen `PermissionGate`. Ausgeschlossen: „decides even when reading the signal throws" (ein stale Extension-Kontext, dessen `signal`-Getter wirft — ein `CancellationToken` kann das nicht). „refuses a call whose approval was pending" nutzt einen Presenter, der noch nicht geantwortet hat: in JS gewinnt der Abort über die Microtask-Grenze, ein Rust-Future pollt an derselben Stelle durch |
+| test/hooks.test.ts + test/hooks-runner.test.ts + test/hooks-runtime.test.ts | 519 | tests/hooks.rs | Tests portiert | 65 Tests (`#![cfg(unix)]`, weil die Hook-Kommandos `sh` sind) |
+| test/hooks-extension.test.ts | 247 | tests/hook_dispatch.rs | Tests portiert | 19 Tests. Statt `vi.spyOn(runtime, "emit")` laufen echte Hooks, die ihr Payload in ein Log schreiben — dieselben Namen und Felder, geprüft an der Prozessgrenze, die ein Supervisor tatsächlich liest |
+| test/trust-manager.test.ts | 67 | tests/trust_manager.rs + tests/trust_manager_home.rs | Tests portiert | 10 Tests: die zwei TS-Fälle plus acht für die Optionsliste und die Entscheidungswege von `resolveProjectTrusted`, die in TS nur über den Selektor abgedeckt sind. Der `$HOME`-Fall liegt in einer eigenen Testdatei, weil das Ersetzen einer Umgebungsvariable prozessweit wirkt |
 
 ## A: interactive components
 
