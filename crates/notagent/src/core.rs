@@ -1,5 +1,6 @@
 //! Port of `packages/coding-agent/src/core/`.
 
+pub mod agent_session;
 pub mod auth_guidance;
 pub mod auth_storage;
 pub mod bash_executor;

@@ -171,3 +171,58 @@ impl AgentTool for WrappedToolDefinition {
             .execute(tool_call_id, params, signal, on_update, context)
     }
 }
+
+/// Port of `createToolDefinitionFromAgentTool` from
+/// `packages/coding-agent/src/core/tools/tool-definition-wrapper.ts`.
+///
+/// The other direction of [`wrap_tool_definition`]: a plain tool becomes a
+/// definition so the session can keep a definition-first registry even when a
+/// caller supplies tools rather than definitions.
+pub struct AgentToolDefinition {
+    tool: Arc<dyn AgentTool>,
+}
+
+pub fn create_tool_definition_from_agent_tool(tool: Arc<dyn AgentTool>) -> Arc<dyn ToolDefinition> {
+    Arc::new(AgentToolDefinition { tool })
+}
+
+impl ToolDefinition for AgentToolDefinition {
+    fn name(&self) -> &str {
+        self.tool.name()
+    }
+
+    fn label(&self) -> &str {
+        self.tool.label()
+    }
+
+    fn description(&self) -> &str {
+        self.tool.description()
+    }
+
+    fn parameters(&self) -> &Value {
+        self.tool.parameters()
+    }
+
+    fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
+        self.tool.constrained_sampling()
+    }
+
+    fn prepare_arguments(&self, args: Value) -> Value {
+        self.tool.prepare_arguments(args)
+    }
+
+    fn execution_mode(&self) -> Option<ToolExecutionMode> {
+        self.tool.execution_mode()
+    }
+
+    fn execute<'a>(
+        &'a self,
+        tool_call_id: &'a str,
+        params: Value,
+        signal: Option<CancellationToken>,
+        on_update: Option<AgentToolUpdateCallback>,
+        _context: Option<ToolContext>,
+    ) -> BoxFuture<'a, Result<AgentToolResult, ToolExecutionError>> {
+        self.tool.execute(tool_call_id, params, signal, on_update)
+    }
+}
