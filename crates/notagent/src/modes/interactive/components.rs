@@ -23,6 +23,7 @@ pub mod first_time_setup;
 pub mod keybinding_hints;
 pub mod list_selector;
 pub mod markdown_transform;
+pub mod model_selector;
 pub mod oauth_selector;
 pub mod scoped_models_selector;
 pub mod session_selector;

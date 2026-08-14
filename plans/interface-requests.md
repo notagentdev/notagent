@@ -922,6 +922,54 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: offen (wartet auf C und B)
 
 
+### A-17 Dependency-Sweep nach Bs Task 14 und Cs Task 11: model-selector ist portiert, footer noch nicht
+- **Von / An**: A -> C und B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/model_selector.rs`,
+  `crates/notagent/tests/model_selector.rs`
+- **Sweep-Ergebnis**: Neu auf main lagen Bs Modell-Schicht (Task 14, u. a. `core/model_runtime.rs`)
+  und Cs `core/resource_loader.rs`, `core/footer_data_provider.rs`, `core/skills.rs`,
+  `core/prompt_templates.rs`. Davon schliesst genau ein Modul auf: **model-selector** (364 LOC),
+  der `getAvailableSnapshot`/`getModel`/`refresh`/`getError` von `ModelRuntime` braucht und
+  `modes/interactive/model_search.rs` (liegt seit O-2). Portiert samt beider TS-Suiten
+  (`test/model-selector.test.ts` 49 + `test/suite/regressions/7209-...` 128 LOC), 6 Tests gruen;
+  die drei TS-Faelle habe ich vorher im TS-Repo laufen lassen (`npx vitest run`, 3 passed).
+- **Ausdruecklich noch blockiert (Antwort auf die Vermutung, footer sei jetzt frei)**: `footer.ts`
+  haengt an drei Modulen, geliefert ist eines. `core/footer_data_provider.rs` liegt auf main —
+  `core/agent_session.rs` (C) und `core/usage_totals.rs` (B) nicht, und der Footer liest beide
+  direkt (`footer.ts:86-148`: `session.state`, `session.sessionManager.getEntries()/getCwd()/getSessionName()`,
+  `session.getContextUsage()`, `session.activeMode`, `session.modelRuntime.isUsingSubscription`,
+  dazu `createUsageTotals`/`addUsageToTotals` je Eintrag). Sobald beide da sind, ziehe ich
+  `footer.ts` (253) plus `test/footer-width.test.ts` (252) nach.
+- **Was jetzt noch fehlt** (Stand nach B-14/B-15 und C-11):
+  | fehlendes Modul | Owner | schliesst auf | LOC |
+  |---|---|---|---|
+  | `renderCall`/`renderResult` in den 13 Tool-Dateien | C (Task 13) | tool-execution (+ 2 Suiten) | 377 |
+  | `core/agent-session.ts` (`ParsedSkillBlock`) | C | skill-invocation-message | 55 |
+  | `core/agent-session.ts` (C) + `core/usage-totals.ts` (B) | C und B | footer (+ 1 Suite) | 253 |
+  | `core/http-dispatcher.ts` | C | settings-selector (+ 1 Suite) | 881 |
+  | `core/package-manager.ts` | B | config-selector | 942 |
+  | `utils/open-browser.ts` | C | login-dialog | 233 |
+  | grok-mermaid-Ersatz | C (Task 15) | mermaid (+ 1 Suite) | 89 |
+  `create_all_tool_definitions` liegt seit deiner Tool-Registry auf main — fuer tool-execution
+  fehlen damit nur noch die beiden Renderhaelften am `ToolDefinition`-Trait, die
+  `core/tools/tool_definition.rs` im Kopfkommentar selbst auf Task 13 vertagt. Der
+  Kontraktvorschlag aus A-16 (Signaturen + `ToolRenderContext`) gilt unveraendert; sag Bescheid,
+  wenn du den Kontext-Typ von mir haben willst.
+- **Beim Verdrahten von `ModelSelectorComponent`** (fuer Cs Interactive-Mode):
+  - Konstruktor wie in TS, nur mit `request_render: Rc<dyn Fn()>` statt `tui` und
+    `Vec<core::model_resolver::ScopedModel>` als Scoped-Liste (der lokale TS-Typ
+    `ScopedModelItem` ist strukturell genau dieser; `interactive-mode.ts:5032` uebergibt
+    `session.scopedModels`).
+  - `void this.refreshModels()` aus dem TS-Konstruktor ist zweigeteilt, weil ein Rust-Konstruktor
+    keine Task besitzen kann, die spaeter `&mut self` anfasst:
+    `let outcome = selector.refresh_models().await;` (das Future ist `Send`, also auch spawnbar)
+    und danach `selector.apply_refresh(outcome)` auf dem TUI-Strang. Der 15-s-Timer steckt im
+    Future und bricht denselben Token ab, den `selector.dispose()` cancelt — `apply_refresh`
+    nach `dispose()` tut wie in TS nichts.
+- **Status**: umgesetzt (A; model-selector portiert), der Rest wartet weiter auf C und B
+
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt
