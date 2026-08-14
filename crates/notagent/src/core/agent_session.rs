@@ -4022,3 +4022,62 @@ fn settings_queue_mode(mode: QueueMode) -> crate::core::settings_manager::QueueM
         QueueMode::OneAtATime => crate::core::settings_manager::QueueMode::OneAtATime,
     }
 }
+
+/// The real model runtime, read through the seam.
+///
+/// The trait is C's and the type is B's, so the implementation lives here and
+/// workstream B needs no change (interface request C-13, resolved this way once
+/// `model-runtime.rs` landed).
+impl SessionModelRuntime for crate::core::model_runtime::ModelRuntime {
+    fn get_auth<'a>(
+        &'a self,
+        model: &'a Model,
+    ) -> BoxFuture<'a, Result<Option<SessionAuth>, String>> {
+        Box::pin(async move {
+            match self.get_auth_for_model(model, None).await {
+                Ok(Some(result)) => Ok(Some(SessionAuth {
+                    api_key: result.auth.api_key,
+                    // `withoutDeletedHeaders`: a `null` value deletes a default
+                    // header and is not something a request carries.
+                    headers: result.auth.headers.map(|headers| {
+                        headers
+                            .into_iter()
+                            .filter_map(|(name, value)| value.map(|value| (name, value)))
+                            .collect()
+                    }),
+                    base_url: result.auth.base_url,
+                    env: result
+                        .env
+                        .map(|env| env.into_iter().collect::<Vec<(String, String)>>()),
+                })),
+                Ok(None) => Ok(None),
+                Err(error) => Err(error.to_string()),
+            }
+        })
+    }
+
+    fn has_configured_auth(&self, provider: &str) -> bool {
+        crate::core::model_runtime::ModelRuntime::has_configured_auth(self, provider)
+    }
+
+    fn check_auth<'a>(&'a self, provider: &'a str) -> BoxFuture<'a, bool> {
+        Box::pin(async move {
+            matches!(
+                crate::core::model_runtime::ModelRuntime::check_auth(self, provider, None).await,
+                Ok(Some(_))
+            )
+        })
+    }
+
+    fn is_using_oauth(&self, provider: &str) -> bool {
+        crate::core::model_runtime::ModelRuntime::is_using_oauth(self, provider)
+    }
+
+    fn get_available_snapshot(&self) -> Vec<Model> {
+        crate::core::model_runtime::ModelRuntime::get_available_snapshot(self)
+    }
+
+    fn get_model(&self, provider: &str, id: &str) -> Option<Model> {
+        crate::core::model_runtime::ModelRuntime::get_model(self, provider, id)
+    }
+}

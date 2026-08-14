@@ -1099,7 +1099,8 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   außer `config::get_docs_path`) und trägt sie in seinem Ledger. B streicht sie
   aus der O-4-Liste; falls B sie schon portiert hat, gewinnt Bs Fassung und C
   löscht seine (die Signaturen sind die der TS-Datei).
-- **Status**: umgesetzt (C-seitig)
+- **Status**: erledigt — B hatte die Datei mit Task 14 bereits portiert; beim Rebase
+  hat Cs Fassung nachgegeben, Bs Datei steht. Keine Aktion offen.
 
 ### C-13 `ModelRuntime` braucht einen konsumierbaren Trait für agent-session
 - **Von / An**: C → B
@@ -1128,5 +1129,9 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `"authHeader requires a resolved API key"`, den die Session in
   `formatNoApiKeyFoundMessage` übersetzt — bitte diesen Text im `Err(String)`
   enthalten lassen, damit die Übersetzung greift.
-- **Status**: offen — C ist nicht blockiert (Tests stellen eigene
-  Implementierungen), das Binary braucht die echte aber ab Task 12
+- **Nachtrag (2026-08-14, nach Bs Task 14)**: `ModelRuntime` ist da, und der Trait
+  gehört C — also steht `impl SessionModelRuntime for ModelRuntime` jetzt in
+  `core/agent_session.rs` selbst (kein Orphan-Problem, weil der Trait C gehört).
+  B muss nichts tun. Die `authHeader requires a resolved API key`-Kennung bleibt
+  wie erbeten in `ModelsError::message` erhalten, die Übersetzung greift.
+- **Status**: erledigt (C-seitig gelöst, keine Aktion bei B)
