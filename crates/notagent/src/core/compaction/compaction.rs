@@ -704,7 +704,6 @@ pub(crate) fn summarization_context_for(prompt_text: String) -> Context {
                 prompt_text,
             ))]),
             timestamp: chrono::Utc::now().timestamp_millis(),
-            ..UserMessage::default()
         })],
         tools: None,
     }

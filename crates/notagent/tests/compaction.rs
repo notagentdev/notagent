@@ -80,7 +80,6 @@ fn user_message(text: &str) -> AgentMessage {
     AgentMessage::User(UserMessage {
         content: UserContent::Text(text.to_owned()),
         timestamp: 0,
-        ..UserMessage::default()
     })
 }
 
@@ -618,7 +617,6 @@ fn never_truncates_user_or_assistant_messages() {
         Message::User(UserMessage {
             content: UserContent::Blocks(vec![TextOrImageContent::Text(TextContent::new(&long))]),
             timestamp: 0,
-            ..UserMessage::default()
         }),
         Message::Assistant(assistant_message(&long, Usage::default())),
     ]);

@@ -1086,3 +1086,47 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   footer_data_provider.rs/resource_loader.rs (+Test) und zwei redundante Match-Guards
   durch Literal-Patterns ersetzt (verhaltensgleich, Clippy-Vorschlag). fmt, Clippy und
   die betroffene Testsuite sind grün; kein inhaltlicher Eingriff in C-Code.
+- **Status**: offen
+### C-12 auth-guidance.ts von C portiert (Blocker für agent-session)
+- **Von / An**: C → B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/auth_guidance.rs` (25 LOC TS)
+- **Beleg**: O-4 hat `auth-guidance.ts` mit der Modell-Schicht an B übertragen.
+  `agent-session.ts` ruft `formatNoApiKeyFoundMessage` und
+  `formatNoModelSelectedMessage` an fünf Stellen (Prompt-Preflight, Compaction,
+  Auth-Auflösung) — ohne die Datei kompiliert C-Task 11 nicht.
+- **Regelung**: C hat die Datei portiert (vier Funktionen, keine Abhängigkeit
+  außer `config::get_docs_path`) und trägt sie in seinem Ledger. B streicht sie
+  aus der O-4-Liste; falls B sie schon portiert hat, gewinnt Bs Fassung und C
+  löscht seine (die Signaturen sind die der TS-Datei).
+- **Status**: umgesetzt (C-seitig)
+
+### C-13 `ModelRuntime` braucht einen konsumierbaren Trait für agent-session
+- **Von / An**: C → B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent/src/core/model_runtime.rs` (B, O-4) und
+  `crates/notagent/src/core/agent_session.rs` (C)
+- **Beleg**: `agent-session.ts` liest sechs Methoden von `ModelRuntime`
+  (`getAuth`, `hasConfiguredAuth`, `checkAuth`, `isUsingOAuth`,
+  `getAvailableSnapshot`, `getModel`) und ruft sie über den ganzen Lebenszyklus.
+  Mit O-4 gehört `model-runtime.ts` B — die Grenze braucht in Rust einen Trait.
+- **Regelung**: C hat in `core/agent_session.rs` definiert:
+  ```rust
+  pub struct SessionAuth { pub api_key: Option<String>, pub headers: Option<Vec<(String, String)>>,
+                           pub base_url: Option<String>, pub env: Option<Vec<(String, String)>> }
+  pub trait SessionModelRuntime: Send + Sync {
+      fn get_auth<'a>(&'a self, model: &'a Model) -> BoxFuture<'a, Result<Option<SessionAuth>, String>>;
+      fn has_configured_auth(&self, provider: &str) -> bool;
+      fn check_auth<'a>(&'a self, provider: &'a str) -> BoxFuture<'a, bool>;
+      fn is_using_oauth(&self, provider: &str) -> bool;
+      fn get_available_snapshot(&self) -> Vec<Model>;
+      fn get_model(&self, provider: &str, id: &str) -> Option<Model>;
+  }
+  ```
+  Bitte `impl SessionModelRuntime for ModelRuntime` ergänzen. Der Fehlerfall von
+  `get_auth` trägt in TS eine `cause` mit dem Text
+  `"authHeader requires a resolved API key"`, den die Session in
+  `formatNoApiKeyFoundMessage` übersetzt — bitte diesen Text im `Err(String)`
+  enthalten lassen, damit die Übersetzung greift.
+- **Status**: offen — C ist nicht blockiert (Tests stellen eigene
+  Implementierungen), das Binary braucht die echte aber ab Task 12
