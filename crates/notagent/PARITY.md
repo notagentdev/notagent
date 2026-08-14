@@ -600,6 +600,34 @@ und rennt je Provider und insgesamt gegen das Signal, und `api/streams.rs` träg
 statische `BUILTIN_APIS`-Tabelle plus `get_api_provider(api)` aus `compat.ts` nach.
 
 
+## B: package manager (Task 15, in Arbeit)
+
+Ownership-Übergabe durch O-4. Klasse-2-Grundsatz dieser Sektion: der
+Ressourcentyp `extensions` entfällt mit dem Extension-System
+(`plans/facts/extension-boundary.md` §6) — `RESOURCE_TYPES` sind nur noch
+`skills`, `prompts`, `themes`, und `resolveExtensionSources`/`PiManifest.extensions`
+entfallen ersatzlos.
+
+### Lektüre-Protokoll
+
+| Datum | TS-/Referenz-Datei | LOC | gelesen von (Task) |
+|---|---|---|---|
+| 2026-08-14 | packages/coding-agent/src/core/notagent-manifest.ts | 34 | B-Task 15 |
+| 2026-08-14 | packages/coding-agent/src/utils/git.ts | 226 | B-Task 15 |
+| 2026-08-14 | packages/coding-agent/src/core/package-manager.ts | 2 677 | B-Task 15 |
+| 2026-08-14 | packages/coding-agent/test/git-ssh-url.test.ts | 91 | B-Task 15 |
+| 2026-08-14 | packages/coding-agent/test/package-manager.test.ts (Struktur + Git-URL-Block) | 2 597 | B-Task 15 |
+
+### Ledger
+
+| TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
+|---|---|---|---|---|
+| src/core/notagent-manifest.ts | 34 | src/core/notagent_manifest.rs | verifiziert | Klasse 2: das Feld `extensions` entfällt. `ResourceType` liegt hier statt in package-manager.ts, weil beide Module es brauchen |
+| src/utils/git.ts | 226 | src/utils/git.rs | verifiziert | Klasse 3: das npm-Paket `hosted-git-info` wird zu `hosted_from_url` — ein Port der vier Default-Hosts, die dieser Code überhaupt erreichen kann (github, gitlab, bitbucket, gist) plus der bloßen `user/repo`-Kurzform. Alle übrigen Hosts landen wie in TS bei `parseGenericGitUrl` und kommen dort zum selben Ergebnis. `new URL(...)` ist als kleiner Parser für die vier akzeptierten Schemata nachgebaut; `decodeURIComponent` als eigene Prüf-Dekodierung |
+| test/git-ssh-url.test.ts | 91 | src/utils/git.rs (Testmodul) | verifiziert | 4 Tests (Protokoll-URLs, Kurzformen mit `git:`-Präfix, unsichere Eingaben, Ablehnung ohne Präfix) plus ein fünfter, der den Git-URL-Block aus `package-manager.test.ts` (GitHub/GitLab/Bitbucket/Codeberg, `.git`-Suffix, `git:https://`, Ref mit Slash) mitnimmt |
+| src/core/package-manager.ts | 2 677 | — | gelesen | Port läuft (Task 15) |
+
+
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |

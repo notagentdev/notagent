@@ -18,6 +18,7 @@ pub mod model_resolver;
 pub mod model_runtime;
 pub mod models_store;
 pub mod modes;
+pub mod notagent_manifest;
 pub mod permissions;
 pub mod project_trust;
 pub mod prompt_templates;
