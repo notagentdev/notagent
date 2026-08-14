@@ -5,7 +5,7 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (68 856 LOC
 Regeln: Master-Plan `plans/2026-08-13-rust-port-master-v1.md`, Abschnitt "Drift-Kontrolle".
 Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 
-**Stand: Task 11 abgeschlossen.** Tasks 5-9 sind portiert und testbelegt; offen bleibt
+**Stand: Task 11 abgeschlossen, Task 12 begonnen (args.ts).** Tasks 5-9 sind portiert und testbelegt; offen bleibt
 daraus nur, was laut Plan zu späteren Tasks gehört: `resolveSessionPath` sitzt in
 `src/main.ts` (Task 12), `tools/render-utils.ts` und die `renderCall`/`renderResult`-
 Hälften aller Tools gehören zu Task 13.
@@ -425,6 +425,8 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | src/core/agent-session-services.ts | 221 | src/core/agent_session_services.rs | portiert (ohne Extension-Teile) | cwd-gebundene Dienste (Modell-Laufzeit, Settings, Resource-Loader) plus Diagnosen als Rückgabewert statt Ausgabe; `createAgentSessionFromServices` unverändert. Klasse 2: Extension-Flag-Werte und `pendingProviderRegistrations` entfallen |
 | src/core/agent-session-runtime.ts | 441 | src/core/agent_session_runtime.rs | portiert (ohne Extension-Teile) | Besitz der aktuellen Session, Teardown-vor-Aufbau mit `abort()` (damit der abgebrochene Zug samt Tool-Ergebnissen noch in die alte Session fällt), `switchSession`/`newSession`/`fork` (beide Positionen, persistiert und in-memory) /`importFromJsonl`/`dispose`, cwd-Prüfung an jedem Übergang. Klasse 2: `session_before_switch`/`session_before_fork` entfallen; `session_shutdown` bleibt als Hook-Aufruf. Klasse 1: `rebindSession`/`beforeSessionInvalidate` bleiben als Host-Callbacks (kein Extension-API); der Zustand liegt hinter einem Mutex |
 | test/suite/agent-session-compaction.test.ts + test/agent-session-{compaction,stats,tree-navigation}.test.ts | 633 + 209 + 277 + 323 | tests/agent_session_compaction.rs | verifiziert (Nicht-Extension-Hälfte) | 12 Tests: manuelle Compaction inkl. Split-Turn-Pfad mit zwei Summarization-Aufrufen, „Already compacted", Kontextnutzung vor und nach einer Compaction, Session-Statistiken, Baum-Navigation (Editor-Text, No-op, unbekannter Eintrag), JSONL-Export mit neu verketteten `parentId`, und der Prompt-Riegel während einer laufenden Compaction (mit gedrosseltem Faux-Provider) |
+| src/cli/args.ts | 435 | src/cli/args.rs | portiert (minus Extension-Flags) | Vollständige Flag-Tabelle, `@pfad`-Argumente, `-p`-Sonderregel (`---` ist kein Flag, sondern YAML-Frontmatter), `--auto`/`--yolo`-Konflikt als Fehler, `--tui-mode`-Diagnosen wortgleich, `--list-models [suche]`, Help-Text inkl. Env-Var-Liste. Klasse 2: `--extension`/`-e` und `--no-extensions`/`-ne` entfallen; `unknownFlags` bleibt als Sammelstelle, wird aber über `unknown_flags_error` zum Fehler statt an Extensions weitergereicht (extension-boundary §6). Klasse 1: `printHelp` gibt den Text zurück statt ihn zu drucken (der Aufrufer entscheidet über den Kanal); `unknownFlags` ist eine `BTreeMap`, damit die Fehlermeldung deterministisch sortiert ist |
+| test/args.test.ts | 466 | tests/args.rs | verifiziert | 20 Tests (TS: 63 `test`-Blöcke, im Port zu Fällen mit mehreren Erwartungen zusammengezogen; die 5 Extension-Flag-Fälle entfallen). Zusätzlich: der Start-Modus-Konflikt, `--list-models` mit folgendem Flag, ein unbekanntes Kurz-Flag und die neue Sammelfehlermeldung |
 
 ## A: interactive components
 
