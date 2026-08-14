@@ -732,6 +732,41 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   danach `core/tools/render-utils.ts` (377) und `core/agent-session.ts` (308).
 - **Status**: umgesetzt
 
+### C-8 `Agent`: Lesezugriff auf die Provider-Verdrahtung (blockiert Delegation, Task 10/11)
+- **Von / An**: C → B
+- **Datum**: 2026-08-14
+- **Betrifft**: `crates/notagent-agent/src/agent.rs` (`Agent`), `AgentOptions`
+- **Beleg**: `packages/coding-agent/src/core/delegation/run.ts:170-203` (`createChild`) baut das
+  Kind aus dem Elternteil: `initialState` aus `parent.state` (systemPrompt, model,
+  thinkingLevel) plus `convertToLlm`, `streamFn` und danach neun Zuweisungen —
+  `getApiKey`, `onPayload`, `onResponse`, `beforeToolCall`, `afterToolCall`,
+  `thinkingBudgets`, `transport`, `maxRetryDelayMs`, `toolExecution`. In TS sind das
+  öffentliche Felder der `Agent`-Klasse (`packages/agent/src/agent.ts:183-201`); der
+  Rust-Port hat sie in das private `options: Mutex<AgentOptions>` gefaltet, und `Agent`
+  bietet weder Getter noch Setter dafür. Damit ist `createChild` nicht portierbar.
+- **Warum eine Kopie beim Elternbau nicht reicht**: die Felder werden zur Laufzeit
+  geändert — `interactive-mode.ts:4726` setzt `session.agent.transport` beim
+  Transport-Wechsel, `agent-session.ts:546,567` setzt `beforeToolCall`/`afterToolCall`
+  (Permission-Gate und Hooks, C-Task 11). Ein beim Konstruieren gezogener Schnappschuss
+  wäre also beobachtbar veraltet.
+- **Wunsch (klein gehalten, zwei Methoden auf `Agent`)**:
+  - `pub fn options(&self) -> AgentOptions` — Klon des aktuellen Optionsstands
+    (`AgentOptions` ist bereits `Clone`, `create_loop_config` klont es schon).
+  - `pub fn update_options(&self, f: impl FnOnce(&mut AgentOptions))` — deckt die
+    TS-Feldzuweisungen ab, die C in Task 11 (`beforeToolCall`/`afterToolCall`) und
+    Task 13 (`transport`) braucht.
+- **Zusätzlicher Befund (gegen die TS-Quelle geprüft, kein Blocker für C)**:
+  `onPayload`/`onResponse` fehlen im Rust-Agent vollständig. TS reicht sie in
+  `createLoopConfig` an `streamSimple` weiter (`packages/agent/src/agent.ts:452-453`,
+  Felder in Zeile 104/183); Konsumenten sind `coding-agent/src/core/sdk.ts:335,342`
+  (C-Task 15) und eben `delegation/run.ts`. Bis sie existieren, kopiert mein
+  `create_child` die übrigen Felder und lässt diese beiden aus (im Ledger vermerkt).
+- **Solange offen**: C portiert Task 10 ohne `delegation/run.rs` und `tools/task.rs`
+  (Tasks-Maschinerie, Store, Notification, `task_list`/`task_output`/`task_stop`,
+  Shell-Tasks am echten Manager) und zieht die beiden Dateien nach, sobald die Methoden
+  auf main liegen.
+- **Status**: offen
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt
