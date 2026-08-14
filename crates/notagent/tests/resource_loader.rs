@@ -133,17 +133,9 @@ impl PackageResources for AutoDiscovery {
             for (kind, extension) in [("skills", ".md"), ("prompts", ".md"), ("themes", ".json")] {
                 let mut list = Vec::new();
                 if self.project_trusted {
-                    list.extend(Self::entries(
-                        &project_base.join(kind),
-                        &project,
-                        extension,
-                    ));
+                    list.extend(Self::entries(&project_base.join(kind), &project, extension));
                 }
-                list.extend(Self::entries(
-                    &self.agent_dir.join(kind),
-                    &user,
-                    extension,
-                ));
+                list.extend(Self::entries(&self.agent_dir.join(kind), &user, extension));
                 match kind {
                     "skills" => resolved.skills = list,
                     "prompts" => resolved.prompts = list,
@@ -212,7 +204,9 @@ async fn discovers_skills_from_the_agent_directory() {
 #[tokio::test]
 async fn ignores_extra_markdown_files_next_to_a_skill_file() {
     let fixture = fixture();
-    let skill_dir = fixture.agent_dir.join("skills/notagent-skills/browser-tools");
+    let skill_dir = fixture
+        .agent_dir
+        .join("skills/notagent-skills/browser-tools");
     write(
         &skill_dir.join("SKILL.md"),
         "---\nname: browser-tools\ndescription: Browser tools\n---\nSkill content here.",
@@ -224,12 +218,12 @@ async fn ignores_extra_markdown_files_next_to_a_skill_file() {
 
     let (skills, diagnostics) = loader.get_skills();
     assert!(skills.iter().any(|skill| skill.name == "browser-tools"));
-    assert!(
-        !diagnostics.iter().any(|diagnostic| diagnostic
+    assert!(!diagnostics.iter().any(|diagnostic| {
+        diagnostic
             .path
             .as_deref()
-            .is_some_and(|path| path.ends_with("EFFICIENCY.md")))
-    );
+            .is_some_and(|path| path.ends_with("EFFICIENCY.md"))
+    }));
 }
 
 #[tokio::test]
@@ -458,10 +452,7 @@ async fn discovers_an_append_system_prompt() {
         loader.get_append_system_prompt(),
         vec!["Project append prompt.".to_string()]
     );
-    assert_eq!(
-        loader.get_append_system_prompt_sources(),
-        vec![text(&path)]
-    );
+    assert_eq!(loader.get_append_system_prompt_sources(), vec![text(&path)]);
 }
 
 #[tokio::test]
@@ -499,10 +490,7 @@ async fn reports_only_the_file_backed_append_prompt_options_as_sources() {
             "Literal append prompt.".to_string()
         ]
     );
-    assert_eq!(
-        loader.get_append_system_prompt_sources(),
-        vec![text(&path)]
-    );
+    assert_eq!(loader.get_append_system_prompt_sources(), vec![text(&path)]);
 }
 
 #[tokio::test]
@@ -510,7 +498,10 @@ async fn skips_project_resources_that_require_trust_when_the_project_is_not_trus
     let fixture = fixture();
     let project_config = fixture.cwd.join(".notagent");
     write(&project_config.join("SYSTEM.md"), "Project system prompt.");
-    write(&fixture.agent_dir.join("SYSTEM.md"), "Global system prompt.");
+    write(
+        &fixture.agent_dir.join("SYSTEM.md"),
+        "Global system prompt.",
+    );
     write(&fixture.agent_dir.join("AGENTS.md"), "Global instructions");
     write(&fixture.cwd.join("AGENTS.md"), "Project instructions");
     write(
@@ -937,7 +928,10 @@ fn climbs_normally_when_the_gitdir_target_does_not_exist() {
     let repo = fixture.temp_dir.join("corrupt");
     let src = repo.join("src");
     std::fs::create_dir_all(&src).expect("create src");
-    write(&repo.join(".git"), "gitdir: /nonexistent/path/worktrees/feat\n");
+    write(
+        &repo.join(".git"),
+        "gitdir: /nonexistent/path/worktrees/feat\n",
+    );
     write(&repo.join("AGENTS.md"), "repo instructions");
     write(&src.join("AGENTS.md"), "src instructions");
 

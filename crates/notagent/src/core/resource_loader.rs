@@ -144,7 +144,10 @@ fn find_shadowed_context_file(cwd: &str) -> Option<String> {
     let main_repo_root_text = main_repo_root.to_string_lossy().into_owned();
     // False for an ordinary repository, where the two are the same directory,
     // and for a sibling worktree, whose main repository is not an ancestor.
-    if !worktree_root.starts_with(&format!("{main_repo_root_text}{}", std::path::MAIN_SEPARATOR)) {
+    if !worktree_root.starts_with(&format!(
+        "{main_repo_root_text}{}",
+        std::path::MAIN_SEPARATOR
+    )) {
         return None;
     }
     // The parent of the common git directory is the main worktree root only
@@ -250,7 +253,9 @@ pub trait ResourceLoader: Send + Sync {
 
 type SkillsOverride = Arc<dyn Fn(LoadSkillsResult) -> LoadSkillsResult + Send + Sync>;
 type PromptsOverride = Arc<
-    dyn Fn((Vec<PromptTemplate>, Vec<ResourceDiagnostic>)) -> (Vec<PromptTemplate>, Vec<ResourceDiagnostic>)
+    dyn Fn(
+            (Vec<PromptTemplate>, Vec<ResourceDiagnostic>),
+        ) -> (Vec<PromptTemplate>, Vec<ResourceDiagnostic>)
         + Send
         + Sync,
 >;
@@ -324,16 +329,13 @@ impl DefaultResourceLoader {
             .unwrap_or_else(|_| options.cwd.clone());
         let agent_dir = resolve_path_default(&options.agent_dir, &current_dir())
             .unwrap_or_else(|_| options.agent_dir.clone());
-        let settings_manager = options
-            .settings_manager
-            .clone()
-            .unwrap_or_else(|| {
-                Arc::new(SettingsManager::create(
-                    Path::new(&cwd),
-                    Some(Path::new(&agent_dir)),
-                    SettingsManagerCreateOptions::default(),
-                ))
-            });
+        let settings_manager = options.settings_manager.clone().unwrap_or_else(|| {
+            Arc::new(SettingsManager::create(
+                Path::new(&cwd),
+                Some(Path::new(&agent_dir)),
+                SettingsManagerCreateOptions::default(),
+            ))
+        });
         let packages = options.packages.clone();
         Self {
             cwd,
@@ -412,8 +414,8 @@ impl DefaultResourceLoader {
             };
         }
 
-        let normalized_path =
-            resolve_path_default(file_path, &current_dir()).unwrap_or_else(|_| file_path.to_string());
+        let normalized_path = resolve_path_default(file_path, &current_dir())
+            .unwrap_or_else(|_| file_path.to_string());
         let roots = ["skills", "prompts", "themes", "extensions"];
         for root in roots {
             let candidate = Path::new(&self.agent_dir).join(root);
@@ -689,7 +691,12 @@ fn load_themes_from_dir(
     };
     let mut entries: Vec<(String, PathBuf)> = read_dir
         .flatten()
-        .map(|entry| (entry.file_name().to_string_lossy().into_owned(), entry.path()))
+        .map(|entry| {
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                entry.path(),
+            )
+        })
         .collect();
     entries.sort_by(|left, right| left.0.cmp(&right.0));
 
@@ -751,9 +758,13 @@ fn dedupe_themes(themes: Vec<Theme>) -> (Vec<Theme>, Vec<ResourceDiagnostic>) {
 
     for theme in themes {
         let name = theme.name.clone().unwrap_or_else(|| "unnamed".to_string());
-        let existing = seen
-            .iter()
-            .find(|candidate| candidate.name.clone().unwrap_or_else(|| "unnamed".to_string()) == name);
+        let existing = seen.iter().find(|candidate| {
+            candidate
+                .name
+                .clone()
+                .unwrap_or_else(|| "unnamed".to_string())
+                == name
+        });
         match existing {
             Some(existing) => diagnostics.push(ResourceDiagnostic::collision(
                 format!("name \"{name}\" collision"),
@@ -953,16 +964,20 @@ impl ResourceLoader for DefaultResourceLoader {
                         .iter()
                         .any(|diagnostic| diagnostic.path.as_deref() == Some(resolved.as_str()))
                 {
-                    state
-                        .skill_diagnostics
-                        .push(ResourceDiagnostic::error("Skill path does not exist", &resolved));
+                    state.skill_diagnostics.push(ResourceDiagnostic::error(
+                        "Skill path does not exist",
+                        &resolved,
+                    ));
                 }
             }
 
             let prompt_paths = if self.options.no_prompt_templates {
                 self.merge_paths(&[], &self.options.additional_prompt_template_paths)
             } else {
-                self.merge_paths(&enabled_prompts, &self.options.additional_prompt_template_paths)
+                self.merge_paths(
+                    &enabled_prompts,
+                    &self.options.additional_prompt_template_paths,
+                )
             };
             state.last_prompt_paths = prompt_paths.clone();
             self.update_prompts_from_paths(&mut state, &prompt_paths);
@@ -999,9 +1014,10 @@ impl ResourceLoader for DefaultResourceLoader {
                         .iter()
                         .any(|diagnostic| diagnostic.path.as_deref() == Some(resolved.as_str()))
                 {
-                    state
-                        .theme_diagnostics
-                        .push(ResourceDiagnostic::error("Theme path does not exist", &resolved));
+                    state.theme_diagnostics.push(ResourceDiagnostic::error(
+                        "Theme path does not exist",
+                        &resolved,
+                    ));
                 }
             }
 
@@ -1076,7 +1092,9 @@ fn map_skill_path(path: &str, metadata_by_path: &mut HashMap<String, PathMetadat
     let skill_file = Path::new(path).join("SKILL.md");
     if skill_file.exists() {
         let skill_file = skill_file.to_string_lossy().into_owned();
-        metadata_by_path.entry(skill_file.clone()).or_insert(metadata);
+        metadata_by_path
+            .entry(skill_file.clone())
+            .or_insert(metadata);
         return skill_file;
     }
     path.to_string()

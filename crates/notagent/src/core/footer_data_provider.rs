@@ -105,12 +105,7 @@ fn resolve_against(base: &Path, target: &str) -> PathBuf {
     }
 }
 
-const GIT_BRANCH_ARGS: [&str; 4] = [
-    "--no-optional-locks",
-    "symbolic-ref",
-    "--quiet",
-    "--short",
-];
+const GIT_BRANCH_ARGS: [&str; 4] = ["--no-optional-locks", "symbolic-ref", "--quiet", "--short"];
 
 /// Asks git for the current branch. `None` on a detached HEAD or when git is
 /// unavailable.
@@ -417,7 +412,8 @@ impl Inner {
         if changed {
             inner.notify_branch_change();
         }
-        if inner.refresh_pending.load(Ordering::Relaxed) && !inner.disposed.load(Ordering::Relaxed) {
+        if inner.refresh_pending.load(Ordering::Relaxed) && !inner.disposed.load(Ordering::Relaxed)
+        {
             inner.refresh_pending.store(false, Ordering::Relaxed);
             Inner::schedule_refresh(inner);
         }
@@ -432,7 +428,7 @@ impl Inner {
     fn resolve_git_branch_sync(&self) -> Option<String> {
         let (content, repo_dir) = self.head_content()?;
         match content.strip_prefix("ref: refs/heads/") {
-            Some(branch) if branch == ".invalid" => Some(
+            Some(".invalid") => Some(
                 resolve_branch_with_git_sync(&repo_dir).unwrap_or_else(|| "detached".to_string()),
             ),
             Some(branch) => Some(branch.to_string()),
@@ -443,7 +439,7 @@ impl Inner {
     async fn resolve_git_branch_async(&self) -> Option<String> {
         let (content, repo_dir) = self.head_content()?;
         match content.strip_prefix("ref: refs/heads/") {
-            Some(branch) if branch == ".invalid" => Some(
+            Some(".invalid") => Some(
                 resolve_branch_with_git_async(&repo_dir)
                     .await
                     .unwrap_or_else(|| "detached".to_string()),

@@ -1082,4 +1082,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `cargo test --workspace` (alles grün) und Clippy über die eigenen Crates
   (`-p notagent -p notagent-ai --all-targets -D warnings`, grün); der fmt- und
   Clippy-Schritt über die zwei fremden Dateien ist übersprungen.
-- **Status**: offen
+- **Status**: erledigt (Orchestrator, 2026-08-14) — mechanischer `cargo fmt`-Lauf über
+  footer_data_provider.rs/resource_loader.rs (+Test) und zwei redundante Match-Guards
+  durch Literal-Patterns ersetzt (verhaltensgleich, Clippy-Vorschlag). fmt, Clippy und
+  die betroffene Testsuite sind grün; kein inhaltlicher Eingriff in C-Code.
