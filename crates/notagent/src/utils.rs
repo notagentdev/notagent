@@ -12,6 +12,7 @@ pub mod lockfile;
 pub mod management_http;
 pub mod mime;
 pub mod notagent_user_agent;
+pub mod open_browser;
 pub mod paths;
 pub mod shell;
 pub mod syntax_highlight;

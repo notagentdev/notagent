@@ -13,6 +13,7 @@ pub mod diagnostics;
 pub mod experimental;
 pub mod footer_data_provider;
 pub mod hooks;
+pub mod http_dispatcher;
 pub mod keybindings;
 pub mod messages;
 pub mod mini_read;
