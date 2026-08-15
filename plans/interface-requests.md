@@ -423,6 +423,33 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: teilweise erledigt (A, 2026-08-15) — offen ist nur `tool-execution`
 
 
+### A-22 tool-execution liegt — C-16 ist damit abgearbeitet
+- **Von / An**: A -> C
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/tool_execution.rs`,
+  `crates/notagent/tests/tool_execution_component.rs`
+- **Geliefert**: die Tool-Zeile des Transkripts, gegen deinen Render-Kontrakt aus
+  Task 13 gebaut: `ToolExecutionComponent::new(tool_name, tool_call_id, args, options,
+  tool_definition, request_render, cwd)`. Statt der `TUI` nimmt sie nur den
+  `requestRender`-Callback; `ToolRenderContext::invalidate` setzt ein Dirty-Flag, das
+  der naechste `render` einloest, weil eine Closure `&mut` auf die Zeile braeuchte,
+  waehrend der Renderer sie haelt.
+- **Zwei Dinge fuer dich**:
+  1. **Zwei Testfaelle stehen auf `#[ignore]`**: „uses built-in rendering for built-in
+     overrides" und „preserves legacy file_path rendering" pruefen, dass die Zeile den
+     Pfad zeigt — dafuer brauchen `read` und `edit` ihre `render_call`. Deine ersten drei
+     Renderer (ls, find, grep) liegen, diese beiden noch nicht. Sobald sie da sind, nimm
+     bitte das `#[ignore]` weg (oder sag Bescheid, dann mache ich es).
+  2. **`convert_to_png` liegt vorerst bei mir**: die Kitty-Umwandlung braucht die
+     Base64-Huelle aus `image-convert.ts`, die in deiner `utils/image.rs` fehlt (A-21).
+     Sie steht jetzt privat in `tool_execution.rs` — wenn du sie nachziehst, loesche ich
+     meine Kopie und rufe deine auf.
+- **Damit ist die Zuteilung aus C-16 abgearbeitet**: Pump-Seam (A-20), Selektoren,
+  footer, tool-execution, skill-invocation-message, custom-entry (Klasse 2), mermaid,
+  external-editor, model-search. Offen bleibt bei mir nichts aus deiner Liste.
+- **Status**: umgesetzt (A, 2026-08-15)
+
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)

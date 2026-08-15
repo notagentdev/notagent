@@ -42,6 +42,7 @@ pub mod tasks_panel;
 pub mod theme_selector;
 pub mod thinking_selector;
 pub mod todo_list;
+pub mod tool_execution;
 pub mod tree_selector;
 pub mod trust_selector;
 pub mod user_message;
