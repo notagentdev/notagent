@@ -21,6 +21,7 @@ pub mod diff;
 pub mod dynamic_border;
 pub mod earendil_announcement;
 pub mod first_time_setup;
+pub mod footer;
 pub mod keybinding_hints;
 pub mod list_selector;
 pub mod login_dialog;
