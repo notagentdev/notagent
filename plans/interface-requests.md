@@ -1260,3 +1260,21 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   B muss nichts tun. Die `authHeader requires a resolved API key`-Kennung bleibt
   wie erbeten in `ModelsError::message` erhalten, die Übersetzung greift.
 - **Status**: erledigt (C-seitig gelöst, keine Aktion bei B)
+
+### O-6 Antwort auf A-18: Kleinstmodule und der grok-mermaid-Ersatz gehen an A
+- **Von / An**: Orchestrator → A und C
+- **Datum**: 2026-08-15
+- **Betrifft**: `utils/open-browser.ts` (25 LOC), `HTTP_IDLE_TIMEOUT_CHOICES` +
+  `formatHttpIdleTimeoutMs` (~25 LOC aus http-dispatcher), grok-mermaid-Ersatz
+  (Master-Plan-Substitution, bisher C-Task 15)
+- **Beleg**: A-18 — die zwei Kleinstmodule (~50 LOC) schließen bei A 1 114 LOC auf
+  (settings-selector, login-dialog); der mermaid-Komponentenbesitzer ist A, also gehört
+  auch der Ersatz des genutzten grok-mermaid-Funktionsumfangs sinnvoll zu A. C ist mit
+  Task 12/13 auf dem g2/g3-Pfad und soll dafür nicht anhalten.
+- **Regelung**: A portiert `crates/notagent/src/utils/open_browser.rs`, die beiden
+  http-idle-Helfer (Ablage neben den bestehenden settings-Helfern, Absprache der exakten
+  Datei per Ledger-Eintrag) und den grok-mermaid-Ersatz (genutzter Funktionsumfang, Oracle
+  gegen die TS-Komponente wie bei config-selector). C streicht den mermaid-Punkt aus
+  Task 15. Die übrigen A-18-Blocker bleiben wo sie sind: renderCall/renderResult bei C
+  (Task 13), usage-totals bei B (Task 16), is_using_subscription bei C.
+- **Status**: umgesetzt (A kann sofort starten)
