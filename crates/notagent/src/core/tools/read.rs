@@ -8,17 +8,26 @@ use notagent_agent::types::{
 use notagent_ai::types::{
     ConstrainedSampling, ImageContent, Modality, Model, TextContent, TextOrImageContent,
 };
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::path_utils::resolve_read_path;
+use crate::core::tools::path_utils::resolve_to_cwd;
+use crate::core::tools::render_utils::{get_text_output, render_tool_path, replace_tabs, str_arg};
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
+    ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
+    wrap_tool_definition,
 };
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, TruncationOptions, format_size,
-    truncate_head,
+    truncate_head, truncation_from_details,
+};
+use crate::modes::interactive::components::keybinding_hints::{key_hint, key_text};
+use crate::modes::interactive::theme::theme::{
+    Theme, ThemeColor, get_language_from_path, highlight_code,
 };
 use crate::utils::image::{ProcessImageResult, process_image};
 use crate::utils::mime::detect_supported_image_mime_type_from_file;
@@ -148,6 +157,273 @@ fn get_non_vision_image_note(model: Option<&Model>) -> Option<&'static str> {
     }
 }
 
+// ============================================================================
+// Rendering
+// ============================================================================
+
+/// What a compact `read` header shows instead of the plain path.
+struct CompactReadClassification {
+    kind: CompactReadKind,
+    label: String,
+}
+
+#[derive(PartialEq, Eq)]
+enum CompactReadKind {
+    Docs,
+    Resource,
+    Skill,
+}
+
+impl CompactReadKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Docs => "docs",
+            Self::Resource => "resource",
+            Self::Skill => "skill",
+        }
+    }
+}
+
+const COMPACT_RESOURCE_FILE_NAMES: [&str; 5] = [
+    "AGENTS.override.md",
+    "AGENTS.md",
+    "AGENTS.MD",
+    "CLAUDE.md",
+    "CLAUDE.MD",
+];
+
+/// `:12-40` after the path, when the call asks for a line range.
+fn format_read_line_range(args: &Value, theme: &Theme) -> String {
+    let offset = args.get("offset");
+    let limit = args.get("limit");
+    if offset.is_none() && limit.is_none() {
+        return String::new();
+    }
+    // `args.offset ?? 1` — a null offset falls back to the first line.
+    let offset = offset.filter(|value| !value.is_null());
+    let start_display = offset.map_or_else(|| "1".to_string(), display_arg);
+    let start_number = offset.map_or(Some(1.0), Value::as_f64);
+    // `startLine + limit - 1`, then `endLine ? … : ""` — 0 and NaN are falsy, so
+    // a limit that is not a number leaves the range open-ended. Deviation
+    // (class 1): TypeScript would concatenate a string operand first; the port
+    // treats every non-numeric value the way TS treats the rest, as NaN.
+    let end_line = match (start_number, limit) {
+        (Some(start), Some(limit)) => limit
+            .as_f64()
+            .map(|limit| start + limit - 1.0)
+            .filter(|end| *end != 0.0 && !end.is_nan()),
+        _ => None,
+    };
+    let range = match end_line {
+        Some(end) => format!("-{}", notagent_ai::utils::js_number::to_js_string(end)),
+        None => String::new(),
+    };
+    theme.fg(ThemeColor::Warning, &format!(":{start_display}{range}"))
+}
+
+fn format_read_call(args: &Value, theme: &Theme, cwd: &str) -> String {
+    let raw_path = read_path_arg(args);
+    let path_display = render_tool_path(raw_path.as_deref(), theme, cwd, None);
+    format!(
+        "{} {path_display}{}",
+        theme.fg(ThemeColor::ToolTitle, &theme.bold("read")),
+        format_read_line_range(args, theme)
+    )
+}
+
+/// `str(args?.file_path ?? args?.path)`
+fn read_path_arg(args: &Value) -> Option<String> {
+    let raw = args
+        .get("file_path")
+        .filter(|value| !value.is_null())
+        .or_else(|| args.get("path"));
+    str_arg(raw)
+}
+
+fn trim_trailing_empty_lines(lines: Vec<String>) -> Vec<String> {
+    let mut end = lines.len();
+    while end > 0 && lines[end - 1].is_empty() {
+        end -= 1;
+    }
+    let mut lines = lines;
+    lines.truncate(end);
+    lines
+}
+
+fn to_posix_path(file_path: &str) -> String {
+    file_path
+        .split(std::path::MAIN_SEPARATOR)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// The docs, README and examples shipped with the package render compactly.
+fn get_pi_docs_classification(absolute_path: &str) -> Option<CompactReadClassification> {
+    let package_root = crate::config::get_readme_path()
+        .parent()?
+        .to_string_lossy()
+        .into_owned();
+    // `relative === ""` (the package root itself) is not a docs path; every
+    // escaping path is filtered by `get_cwd_relative_path` returning `None`.
+    let relative_path =
+        crate::utils::paths::get_cwd_relative_path(absolute_path, &package_root).ok()??;
+    if relative_path == "." {
+        return None;
+    }
+
+    let label = to_posix_path(&relative_path);
+    if label == "README.md" || label.starts_with("docs/") || label.starts_with("examples/") {
+        return Some(CompactReadClassification {
+            kind: CompactReadKind::Docs,
+            label,
+        });
+    }
+    None
+}
+
+fn get_compact_read_classification(args: &Value, cwd: &str) -> Option<CompactReadClassification> {
+    let raw_path = read_path_arg(args).filter(|path| !path.is_empty())?;
+
+    let absolute_path = resolve_to_cwd(&raw_path, cwd);
+    let file_name = std::path::Path::new(&absolute_path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if file_name == "SKILL.md" {
+        let parent = std::path::Path::new(&absolute_path)
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        return Some(CompactReadClassification {
+            kind: CompactReadKind::Skill,
+            // `basename(dirname(path)) || fileName`
+            label: if parent.is_empty() { file_name } else { parent },
+        });
+    }
+
+    if let Some(docs_classification) = get_pi_docs_classification(&absolute_path) {
+        return Some(docs_classification);
+    }
+
+    if COMPACT_RESOURCE_FILE_NAMES.contains(&file_name.as_str()) {
+        return Some(CompactReadClassification {
+            kind: CompactReadKind::Resource,
+            label: crate::utils::paths::format_path_relative_to_cwd_or_absolute(
+                &absolute_path,
+                cwd,
+            )
+            .ok()?,
+        });
+    }
+
+    None
+}
+
+fn format_compact_read_call(
+    classification: &CompactReadClassification,
+    args: &Value,
+    theme: &Theme,
+) -> String {
+    let expand_hint = theme.fg(
+        ThemeColor::Dim,
+        &format!(" ({} to expand)", key_text("app.tools.expand")),
+    );
+    if classification.kind == CompactReadKind::Skill {
+        return theme.fg(ThemeColor::CustomMessageLabel, "\x1b[1m[skill]\x1b[22m ")
+            + &theme.fg(ThemeColor::CustomMessageText, &classification.label)
+            + &format_read_line_range(args, theme)
+            + &expand_hint;
+    }
+
+    theme.fg(
+        ThemeColor::ToolTitle,
+        &theme.bold(&format!("read {}", classification.kind.as_str())),
+    ) + " "
+        + &theme.fg(ThemeColor::Accent, &classification.label)
+        + &format_read_line_range(args, theme)
+        + &expand_hint
+}
+
+/// Preview rows of the result before it is expanded.
+const READ_PREVIEW_LINES: usize = 10;
+
+fn format_read_result(
+    args: &Value,
+    result: ToolRenderResult<'_>,
+    options: ToolRenderResultOptions,
+    theme: &Theme,
+    show_images: bool,
+    is_error: bool,
+) -> String {
+    if !options.expanded && !is_error {
+        return String::new();
+    }
+
+    let raw_path = read_path_arg(args);
+    let output = get_text_output(Some(result.content), show_images);
+    let lang = match (is_error, &raw_path) {
+        (false, Some(raw_path)) if !raw_path.is_empty() => get_language_from_path(raw_path),
+        _ => None,
+    };
+    let rendered_lines = match &lang {
+        Some(lang) => highlight_code(&replace_tabs(&output), Some(lang)),
+        None => output.split('\n').map(str::to_string).collect(),
+    };
+    let lines = trim_trailing_empty_lines(rendered_lines);
+    let max_lines = if options.expanded {
+        lines.len()
+    } else {
+        READ_PREVIEW_LINES
+    };
+    let display_lines = &lines[..max_lines.min(lines.len())];
+    let remaining = lines.len() as isize - max_lines as isize;
+    let mut text = format!(
+        "\n{}",
+        display_lines
+            .iter()
+            .map(|line| match &lang {
+                Some(_) => replace_tabs(line),
+                None => theme.fg(ThemeColor::ToolOutput, &replace_tabs(line)),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    if remaining > 0 {
+        text += &format!(
+            "{} {}{}",
+            theme.fg(
+                ThemeColor::Muted,
+                &format!("\n... ({remaining} more lines,")
+            ),
+            key_hint("app.tools.expand", "to expand"),
+            theme.fg(ThemeColor::Muted, ")")
+        );
+    }
+
+    if let Some(truncation) = truncation_from_details(result.details).filter(|t| t.truncated) {
+        let warning = if truncation.first_line_exceeds_limit {
+            format!(
+                "[First line exceeds {} limit]",
+                format_size(truncation.max_bytes)
+            )
+        } else if truncation.truncated_by == Some(TruncatedBy::Lines) {
+            format!(
+                "[Truncated: showing {} of {} lines ({} line limit)]",
+                truncation.output_lines, truncation.total_lines, truncation.max_lines
+            )
+        } else {
+            format!(
+                "[Truncated: {} lines shown ({} limit)]",
+                truncation.output_lines,
+                format_size(truncation.max_bytes)
+            )
+        };
+        text += &format!("\n{}", theme.fg(ThemeColor::Warning, &warning));
+    }
+    text
+}
+
 impl ToolDefinition for ReadToolDefinition {
     fn name(&self) -> &str {
         "read"
@@ -179,6 +455,44 @@ impl ToolDefinition for ReadToolDefinition {
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
         self.constrained_sampling.as_ref()
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let classification = if context.expanded {
+            None
+        } else {
+            get_compact_read_classification(args, &context.cwd)
+        };
+        let text = match &classification {
+            Some(classification) => format_compact_read_call(classification, args, theme),
+            None => format_read_call(args, theme, &context.cwd),
+        };
+        Some(render_text_call(context, &text))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        Some(render_text_result(
+            context,
+            &format_read_result(
+                &context.args,
+                result,
+                options,
+                theme,
+                context.show_images,
+                context.is_error,
+            ),
+        ))
     }
 
     fn execute<'a>(

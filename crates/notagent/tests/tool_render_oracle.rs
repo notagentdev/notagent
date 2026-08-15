@@ -14,6 +14,7 @@ use notagent::core::tools::tool_definition::{
 };
 use notagent::core::tools::{ToolName, create_tool_definition};
 use notagent::modes::interactive::theme::theme::{init_theme, theme};
+use notagent::utils::ansi::strip_ansi;
 use notagent_ai::types::{ImageContent, TextContent, TextOrImageContent};
 use notagent_tui::{TerminalCapabilities, reset_capabilities_cache, set_capabilities};
 use serde_json::Value;
@@ -29,18 +30,29 @@ fn global_lock() -> MutexGuard<'static, ()> {
 #[serde(rename_all = "camelCase")]
 struct OracleCase {
     tool: String,
-    args: Value,
+    /// `bytes` compares the rendered lines verbatim; `plain` strips the ANSI
+    /// first, for the cases that run through the syntax highlighter (master
+    /// plan, class 3: highlight.js is substituted by tree-sitter, so the token
+    /// colours differ by construction while the layout must not).
+    compare: String,
+    steps: Vec<OracleStep>,
     cwd: String,
     width: usize,
     expanded: bool,
     is_partial: bool,
     is_error: bool,
     show_images: bool,
-    args_complete: bool,
     execution_started: bool,
     result: Option<OracleResult>,
-    call_lines: Vec<String>,
+    call_line_steps: Vec<Vec<String>>,
     result_lines: Option<Vec<String>>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OracleStep {
+    args: Value,
+    args_complete: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -65,6 +77,17 @@ fn expand(value: &Value) -> Value {
                 .collect(),
         ),
         value => value.clone(),
+    }
+}
+
+/// The lines as the case compares them.
+fn comparable(lines: &[String], compare: &str) -> Vec<String> {
+    match compare {
+        "plain" => lines
+            .iter()
+            .map(|line| strip_ansi(line).trim_end().to_string())
+            .collect(),
+        _ => lines.to_vec(),
     }
 }
 
@@ -100,6 +123,10 @@ fn matches_the_typescript_renderers_for_every_oracle_case() {
         hyperlinks: false,
     });
     init_theme(Some("dark"), false);
+    // Set after the theme is loaded, like the generator does: the compact `read`
+    // header resolves the packaged docs against it.
+    // SAFETY: single-threaded test, guarded by the module lock above.
+    unsafe { std::env::set_var("NOTAGENT_PACKAGE_DIR", "/oracle-package") };
 
     let oracle: Vec<OracleCase> =
         serde_json::from_str(include_str!("fixtures/tool-render-oracle.json"))
@@ -111,25 +138,36 @@ fn matches_the_typescript_renderers_for_every_oracle_case() {
     for (index, case) in oracle.iter().enumerate() {
         let name = ToolName::parse(&case.tool).expect("known tool name");
         let definition = create_tool_definition(name, &case.cwd, None);
-        let args = expand(&case.args);
 
-        let mut context = ToolRenderContext::new("oracle-call", args.clone(), case.cwd.clone());
+        // One context per case, so the steps share their render state exactly as
+        // the rows of `tool-execution.ts` do.
+        let mut context = ToolRenderContext::new("oracle-call", Value::Null, case.cwd.clone());
         context.execution_started = case.execution_started;
-        context.args_complete = case.args_complete;
         context.is_partial = case.is_partial;
         context.expanded = case.expanded;
         context.show_images = case.show_images;
         context.is_error = case.is_error;
 
-        let call = definition
-            .render_call(&args, &theme, &context)
-            .expect("built-in tools render their call");
-        let call_lines = call.borrow_mut().render(case.width);
-        if call_lines != case.call_lines {
-            failures.push(format!(
-                "case {index} ({}) call\n  expected {:?}\n  actual   {:?}",
-                case.tool, case.call_lines, call_lines
-            ));
+        for (step_index, step) in case.steps.iter().enumerate() {
+            let args = expand(&step.args);
+            context.args = args.clone();
+            context.args_complete = step.args_complete;
+            let call = definition
+                .render_call(&args, &theme, &context)
+                .expect("built-in tools render their call");
+            let call_lines = comparable(&call.borrow_mut().render(case.width), &case.compare);
+            let expected = comparable(
+                case.call_line_steps
+                    .get(step_index)
+                    .map_or(&[][..], Vec::as_slice),
+                &case.compare,
+            );
+            if call_lines != expected {
+                failures.push(format!(
+                    "case {index} ({}) call step {step_index}\n  expected {expected:?}\n  actual   {call_lines:?}",
+                    case.tool
+                ));
+            }
         }
 
         if let Some(result) = &case.result {
@@ -153,8 +191,8 @@ fn matches_the_typescript_renderers_for_every_oracle_case() {
                     &context,
                 )
                 .expect("built-in tools render their result");
-            let result_lines = rendered.borrow_mut().render(case.width);
-            let expected = case.result_lines.clone().unwrap_or_default();
+            let result_lines = comparable(&rendered.borrow_mut().render(case.width), &case.compare);
+            let expected = comparable(case.result_lines.as_deref().unwrap_or(&[]), &case.compare);
             if result_lines != expected {
                 failures.push(format!(
                     "case {index} ({}) result\n  expected {expected:?}\n  actual   {result_lines:?}",

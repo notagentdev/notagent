@@ -11,9 +11,6 @@
 //! The description is long because it is doing two jobs — teaching the protocol
 //! and teaching when the list is worth keeping at all. Both come from the
 //! reference implementation, which had them tuned against real sessions.
-//!
-//! `renderCall`/`renderResult` need the theme and are wired in task 13; the
-//! data they render is already here (`todos::render::build_todo_diff_lines`).
 
 use std::sync::{Arc, Mutex};
 
@@ -21,15 +18,18 @@ use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
-use crate::core::todos::render::render_todos_updated;
+use crate::core::todos::render::{TodoDiffKind, build_todo_diff_lines, render_todos_updated};
 use crate::core::todos::{TODO_STATUSES, Todo, TodoStatus, TodoStore};
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
+    ToolRenderResultOptions, render_text_call, render_text_result, wrap_tool_definition,
 };
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 pub const TODO_WRITE_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -161,6 +161,17 @@ fn parse_todo(value: &Value) -> Result<Todo, String> {
     })
 }
 
+/// The `before`/`after` lists of the tool details.
+///
+/// Deviation (class 1): `details` is typed in TypeScript and JSON here, so the
+/// renderer reads the lists back out of the value the tool produced.
+fn todos_from_details(details: &Value, key: &str) -> Vec<Todo> {
+    details
+        .get(key)
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
+        .unwrap_or_default()
+}
+
 impl ToolDefinition for TodoWriteToolDefinition {
     fn name(&self) -> &str {
         "todo_write"
@@ -192,6 +203,85 @@ impl ToolDefinition for TodoWriteToolDefinition {
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
         self.constrained_sampling.as_ref()
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let count = args
+            .get("todos")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        let label = if count == 1 {
+            "1 task".to_string()
+        } else {
+            format!("{count} tasks")
+        };
+        Some(render_text_call(
+            context,
+            &format!(
+                "{} {}",
+                theme.fg(ThemeColor::ToolTitle, &theme.bold("todo_write")),
+                theme.fg(ThemeColor::Muted, &label)
+            ),
+        ))
+    }
+
+    /// The transcript keeps the moment: what changed is emphasised, what stayed
+    /// is dimmed, and what was dropped is struck through so a task never
+    /// disappears without a trace.
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let Some(details) = result.details else {
+            return Some(render_text_result(context, ""));
+        };
+        let before = todos_from_details(details, "before");
+        let after = todos_from_details(details, "after");
+        let lines: Vec<String> = build_todo_diff_lines(&before, &after)
+            .into_iter()
+            .map(|line| {
+                let label = &line.todo.content;
+                if line.kind == TodoDiffKind::Removed {
+                    let struck = theme.strikethrough(label);
+                    let rendered = format!("  {} {struck}", line.icon);
+                    return if line.todo.status == TodoStatus::Completed {
+                        theme.fg(ThemeColor::Muted, &rendered)
+                    } else {
+                        theme.fg(ThemeColor::Error, &rendered)
+                    };
+                }
+                let body = if line.todo.status == TodoStatus::Completed {
+                    theme.strikethrough(label)
+                } else {
+                    label.clone()
+                };
+                let colour = match line.todo.status {
+                    TodoStatus::Completed => ThemeColor::Success,
+                    TodoStatus::InProgress => ThemeColor::Accent,
+                    TodoStatus::Pending => ThemeColor::Text,
+                };
+                let rendered = format!("  {} {body}", line.icon);
+                if line.kind == TodoDiffKind::Kept {
+                    theme.fg(ThemeColor::Muted, &rendered)
+                } else {
+                    theme.fg(colour, &theme.bold(&rendered))
+                }
+            })
+            .collect();
+        let text = if lines.is_empty() {
+            String::new()
+        } else {
+            format!("\n{}", lines.join("\n"))
+        };
+        Some(render_text_result(context, &text))
     }
 
     fn execute<'a>(

@@ -8,16 +8,17 @@
 //! sequentially against the result of the previous one, re-minifying in
 //! between, because every splice invalidates the previous source map. Nothing
 //! is written until all edits succeed.
-//!
-//! `renderCall`/`renderResult` need the theme and the diff renderer and are
-//! wired in task 13.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_tui::components::text::Text;
+use notagent_tui::tui::{ComponentRef, Container};
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -26,7 +27,13 @@ use crate::core::mini_read::apply_minified_edit;
 use crate::core::tools::edit_diff::{generate_diff_string, generate_unified_patch, strip_bom};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::tool_definition::{ToolContext, ToolDefinition, wrap_tool_definition};
+use crate::core::tools::render_utils::{render_tool_path, str_arg};
+use crate::core::tools::tool_definition::{
+    ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
+    tool_render_state, wrap_tool_definition,
+};
+use crate::modes::interactive::components::diff::{RenderDiffOptions, render_diff};
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 fn minified_edit_properties() -> Value {
     json!({
@@ -409,6 +416,39 @@ pub fn create_multi_patch_minified_tool_definition(
     }
 }
 
+// ============================================================================
+// Rendering
+// ============================================================================
+
+/// The row state of a patch call.
+///
+/// The result is a `Text` when there is something to show and an empty
+/// `Container` otherwise; see [`crate::core::tools::write`] for why the two
+/// slots are separate here (deviation class 1).
+#[derive(Default)]
+struct PatchRenderState {
+    call: Option<Rc<RefCell<Text>>>,
+    result_text: Option<Rc<RefCell<Text>>>,
+    result_container: Option<Rc<RefCell<Container>>>,
+}
+
+/// `str(args?.file_path ?? args?.path)`
+fn patch_path_arg(args: &Value) -> Option<String> {
+    let raw = args
+        .get("file_path")
+        .filter(|value| !value.is_null())
+        .or_else(|| args.get("path"));
+    str_arg(raw)
+}
+
+fn format_patch_call(label: &str, args: &Value, theme: &Theme, cwd: &str) -> String {
+    let path_display = render_tool_path(patch_path_arg(args).as_deref(), theme, cwd, None);
+    format!(
+        "{} {path_display}",
+        theme.fg(ThemeColor::ToolTitle, &theme.bold(label))
+    )
+}
+
 impl ToolDefinition for PatchMinifiedToolDefinition {
     fn name(&self) -> &str {
         if self.multi {
@@ -451,6 +491,85 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
 
     fn parameters(&self) -> &Value {
         &self.parameters
+    }
+
+    /// These tools use the default shell, so the renderers return plain text
+    /// content (matching read/write/grep) rather than framing themselves.
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let mut state = tool_render_state::<PatchRenderState>(&context.state);
+        let text = format_patch_call(self.label(), args, theme, &context.cwd);
+        let component = state
+            .call
+            .get_or_insert_with(|| Rc::new(RefCell::new(Text::new("", 0, 0))));
+        component.borrow_mut().set_text(text);
+        Some(Rc::clone(component) as ComponentRef)
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let raw_path = patch_path_arg(&context.args);
+        let mut sections: Vec<String> = Vec::new();
+        let diff = if context.is_error {
+            None
+        } else {
+            result
+                .details
+                .and_then(|details| details.get("diff"))
+                .and_then(Value::as_str)
+                .filter(|diff| !diff.is_empty())
+        };
+        if let Some(diff) = diff {
+            sections.push(render_diff(
+                diff,
+                &RenderDiffOptions {
+                    file_path: raw_path,
+                },
+            ));
+        }
+        if let Some(warnings) = result
+            .details
+            .and_then(|details| details.get("warnings"))
+            .and_then(Value::as_array)
+        {
+            for warning in warnings {
+                let warning = warning.as_str().map_or_else(
+                    || crate::core::tools::tool_definition::display_arg(warning),
+                    str::to_string,
+                );
+                sections.push(theme.fg(ThemeColor::Warning, &format!("! {warning}")));
+            }
+        }
+
+        let mut state = tool_render_state::<PatchRenderState>(&context.state);
+        if sections.is_empty() {
+            let component = state
+                .result_container
+                .get_or_insert_with(|| Rc::new(RefCell::new(Container::new())));
+            component.borrow_mut().clear();
+            return Some(Rc::clone(component) as ComponentRef);
+        }
+        let component = state
+            .result_text
+            .get_or_insert_with(|| Rc::new(RefCell::new(Text::new("", 0, 0))));
+        component.borrow_mut().set_text(format!(
+            "
+{}",
+            sections.join(
+                "
+"
+            )
+        ));
+        Some(Rc::clone(component) as ComponentRef)
     }
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {

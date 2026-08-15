@@ -28,6 +28,7 @@ use notagent_agent::types::{
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use notagent_ai::uuidv7;
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Value, json};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
@@ -43,7 +44,12 @@ use crate::core::tasks::manager::{RegisterTaskOptions, TaskManager};
 use crate::core::tasks::subagent_task::{SubagentRunResult, SubagentTask, SubagentTaskOptions};
 use crate::core::tasks::types::{BackgroundTask, ForegroundRelease};
 use crate::core::tools::ToolsOptions;
-use crate::core::tools::tool_definition::{ToolContext, ToolDefinition, wrap_tool_definition};
+use crate::core::tools::render_utils::str_arg;
+use crate::core::tools::tool_definition::{
+    ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
+    render_text_call, render_text_result, wrap_tool_definition,
+};
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 /// What the tool needs from the session it runs in.
 #[derive(Clone)]
@@ -354,6 +360,83 @@ impl ToolDefinition for TaskToolDefinition {
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
         self.constrained_sampling.as_ref()
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let mode = str_arg(args.get("mode")).unwrap_or_default();
+        let count = args
+            .get("tasks")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        let suffix = if count == 1 {
+            "1 task".to_string()
+        } else {
+            format!("{count} tasks")
+        };
+        // `=== true` — only the boolean runs in the background.
+        let background = args.get("run_in_background") == Some(&Value::Bool(true));
+        Some(render_text_call(
+            context,
+            &format!(
+                "{} {} {}{}",
+                theme.fg(ThemeColor::ToolTitle, &theme.bold("task")),
+                theme.fg(ThemeColor::Accent, &mode),
+                theme.fg(ThemeColor::Muted, &suffix),
+                if background {
+                    theme.fg(ThemeColor::Muted, " (background)")
+                } else {
+                    String::new()
+                }
+            ),
+        ))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let Some(details) = result.details else {
+            return Some(render_text_result(context, ""));
+        };
+        let empty = Vec::new();
+        let results = details
+            .get("results")
+            .and_then(Value::as_array)
+            .unwrap_or(&empty);
+        let backgrounded = results
+            .iter()
+            .filter(|entry| entry.get("background") == Some(&Value::Bool(true)))
+            .count();
+        if backgrounded == results.len() && backgrounded > 0 {
+            return Some(render_text_result(
+                context,
+                &theme.fg(
+                    ThemeColor::Muted,
+                    &format!("\n{backgrounded} subagent(s) running in the background"),
+                ),
+            ));
+        }
+        let failed = results
+            .iter()
+            .filter(|entry| entry.get("failed") == Some(&Value::Bool(true)))
+            .count();
+        let summary = if failed == 0 {
+            format!("{} subagent(s) finished", results.len())
+        } else {
+            format!("{} subagent(s), {failed} without an answer", results.len())
+        };
+        Some(render_text_result(
+            context,
+            &theme.fg(ThemeColor::Muted, &format!("\n{summary}")),
+        ))
     }
 
     fn execute<'a>(

@@ -21,13 +21,19 @@ use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tasks::manager::TaskManager;
 use crate::core::tasks::types::{TaskInfo, is_terminal_task_status};
-use crate::core::tools::tool_definition::{ToolContext, ToolDefinition, wrap_tool_definition};
+use crate::core::tools::render_utils::str_arg;
+use crate::core::tools::tool_definition::{
+    ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
+    display_arg, render_text_call, render_text_result, wrap_tool_definition,
+};
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 /// Bytes of output returned inline. The complete log is read with `read`.
 const OUTPUT_PREVIEW_BYTES: u64 = 32 * 1024;
@@ -181,6 +187,45 @@ impl ToolDefinition for TaskListToolDefinition {
         self.constrained_sampling.as_ref()
     }
 
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        // `=== true` — anything else is the running scope.
+        let scope = if args.get("all") == Some(&Value::Bool(true)) {
+            "all"
+        } else {
+            "running"
+        };
+        Some(render_text_call(
+            context,
+            &format!(
+                "{} {}",
+                theme.fg(ThemeColor::ToolTitle, &theme.bold("task_list")),
+                theme.fg(ThemeColor::Muted, scope)
+            ),
+        ))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let count = result
+            .details
+            .and_then(|details| details.get("count"))
+            .map_or_else(|| "0".to_string(), display_arg);
+        Some(render_text_result(
+            context,
+            &theme.fg(ThemeColor::Muted, &format!("\n{count} task(s)")),
+        ))
+    }
+
     fn execute<'a>(
         &'a self,
         _tool_call_id: &'a str,
@@ -280,6 +325,43 @@ impl ToolDefinition for TaskOutputToolDefinition {
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
         self.constrained_sampling.as_ref()
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let task_id = str_arg(args.get("task_id")).unwrap_or_default();
+        Some(render_text_call(
+            context,
+            &format!(
+                "{} {}",
+                theme.fg(ThemeColor::ToolTitle, &theme.bold("task_output")),
+                theme.fg(ThemeColor::Accent, &task_id)
+            ),
+        ))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let text = match result.details {
+            Some(details) => theme.fg(
+                ThemeColor::Muted,
+                &format!(
+                    "\n{}",
+                    details.get("status").map_or_else(String::new, display_arg)
+                ),
+            ),
+            None => String::new(),
+        };
+        Some(render_text_result(context, &text))
     }
 
     fn execute<'a>(
@@ -408,6 +490,43 @@ impl ToolDefinition for TaskStopToolDefinition {
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
         self.constrained_sampling.as_ref()
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let task_id = str_arg(args.get("task_id")).unwrap_or_default();
+        Some(render_text_call(
+            context,
+            &format!(
+                "{} {}",
+                theme.fg(ThemeColor::ToolTitle, &theme.bold("task_stop")),
+                theme.fg(ThemeColor::Accent, &task_id)
+            ),
+        ))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let text = match result.details {
+            Some(details) => theme.fg(
+                ThemeColor::Muted,
+                &format!(
+                    "\n{}",
+                    details.get("status").map_or_else(String::new, display_arg)
+                ),
+            ),
+            None => String::new(),
+        };
+        Some(render_text_result(context, &text))
     }
 
     fn execute<'a>(

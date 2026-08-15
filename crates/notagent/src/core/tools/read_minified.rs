@@ -1,7 +1,5 @@
 //! Port of `packages/coding-agent/src/core/tools/read-minified.ts` (tool half).
 //!
-//! `renderCall`/`renderResult` need the theme and syntax highlighting and are
-//! wired in task 13.
 
 use std::sync::Arc;
 
@@ -9,17 +7,24 @@ use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::mini_read::minify_for_path;
 use crate::core::tools::path_utils::resolve_read_path;
+use crate::core::tools::render_utils::{get_text_output, render_tool_path, replace_tabs, str_arg};
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
+    ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
+    wrap_tool_definition,
 };
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncationOptions, truncate_head,
+};
+use crate::modes::interactive::theme::theme::{
+    Theme, ThemeColor, get_language_from_path, highlight_code,
 };
 use crate::utils::mime::detect_supported_image_mime_type_from_file;
 
@@ -139,6 +144,145 @@ pub fn create_read_minified_tool_definition(
     }
 }
 
+// ============================================================================
+// Rendering
+// ============================================================================
+
+/// `str(args?.file_path ?? args?.path)`
+fn minified_path_arg(args: &Value) -> Option<String> {
+    let raw = args
+        .get("file_path")
+        .filter(|value| !value.is_null())
+        .or_else(|| args.get("path"));
+    str_arg(raw)
+}
+
+/// `:12-40` after the path, when the call asks for a line range.
+///
+/// Identical to the `read` tool's; both files carry their own copy.
+fn format_line_range(args: &Value, theme: &Theme) -> String {
+    let offset = args.get("offset");
+    let limit = args.get("limit");
+    if offset.is_none() && limit.is_none() {
+        return String::new();
+    }
+    let offset = offset.filter(|value| !value.is_null());
+    let start_display = offset.map_or_else(|| "1".to_string(), display_arg);
+    let start_number = offset.map_or(Some(1.0), Value::as_f64);
+    let end_line = match (start_number, limit) {
+        (Some(start), Some(limit)) => limit
+            .as_f64()
+            .map(|limit| start + limit - 1.0)
+            .filter(|end| *end != 0.0 && !end.is_nan()),
+        _ => None,
+    };
+    let range = match end_line {
+        Some(end) => format!("-{}", notagent_ai::utils::js_number::to_js_string(end)),
+        None => String::new(),
+    };
+    theme.fg(ThemeColor::Warning, &format!(":{start_display}{range}"))
+}
+
+fn format_call(args: &Value, theme: &Theme, cwd: &str) -> String {
+    let path_display = render_tool_path(minified_path_arg(args).as_deref(), theme, cwd, None);
+    // `args?.keep_comments ?` — every falsy value hides the marker.
+    let comments = match args.get("keep_comments") {
+        Some(value) if is_truthy(value) => theme.fg(ThemeColor::Dim, " +comments"),
+        _ => String::new(),
+    };
+    format!(
+        "{} {path_display}{}{comments}",
+        theme.fg(ThemeColor::ToolTitle, &theme.bold("read minified")),
+        format_line_range(args, theme)
+    )
+}
+
+/// JavaScript truthiness, for the arguments that reach the renderer unvalidated.
+fn is_truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(number) => number.as_f64().is_some_and(|number| number != 0.0),
+        Value::String(text) => !text.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}
+
+fn trim_trailing_empty_lines(lines: Vec<String>) -> Vec<String> {
+    let mut end = lines.len();
+    while end > 0 && lines[end - 1].is_empty() {
+        end -= 1;
+    }
+    let mut lines = lines;
+    lines.truncate(end);
+    lines
+}
+
+/// Preview rows of the result before it is expanded.
+const READ_MINIFIED_PREVIEW_LINES: usize = 10;
+
+fn format_result(
+    args: &Value,
+    result: ToolRenderResult<'_>,
+    options: ToolRenderResultOptions,
+    theme: &Theme,
+    show_images: bool,
+    is_error: bool,
+) -> String {
+    if !options.expanded && !is_error {
+        return String::new();
+    }
+
+    let raw_path = minified_path_arg(args);
+    let output = get_text_output(Some(result.content), show_images);
+    let lang = match (is_error, &raw_path) {
+        (false, Some(raw_path)) if !raw_path.is_empty() => get_language_from_path(raw_path),
+        _ => None,
+    };
+    let rendered_lines = match &lang {
+        Some(lang) => highlight_code(&replace_tabs(&output), Some(lang)),
+        None => output.split('\n').map(str::to_string).collect(),
+    };
+    let lines = trim_trailing_empty_lines(rendered_lines);
+    let max_lines = if options.expanded {
+        lines.len()
+    } else {
+        READ_MINIFIED_PREVIEW_LINES
+    };
+    let display_lines = &lines[..max_lines.min(lines.len())];
+    let remaining = lines.len() as isize - max_lines as isize;
+    let mut text = format!(
+        "\n{}",
+        display_lines
+            .iter()
+            .map(|line| match &lang {
+                Some(_) => replace_tabs(line),
+                None => theme.fg(ThemeColor::ToolOutput, &replace_tabs(line)),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    if remaining > 0 {
+        text += &theme.fg(
+            ThemeColor::Muted,
+            &format!("\n... ({remaining} more lines)"),
+        );
+    }
+    // `result.details && !result.details.minified`
+    if let Some(details) = result.details
+        && !details.get("minified").is_some_and(is_truthy)
+    {
+        text += &format!(
+            "\n{}",
+            theme.fg(
+                ThemeColor::Warning,
+                "[Language not supported for minification — raw content shown]"
+            )
+        );
+    }
+    text
+}
+
 impl ToolDefinition for ReadMinifiedToolDefinition {
     fn name(&self) -> &str {
         "read_minified"
@@ -166,6 +310,38 @@ impl ToolDefinition for ReadMinifiedToolDefinition {
 
     fn parameters(&self) -> &Value {
         &self.parameters
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        Some(render_text_call(
+            context,
+            &format_call(args, theme, &context.cwd),
+        ))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        Some(render_text_result(
+            context,
+            &format_result(
+                &context.args,
+                result,
+                options,
+                theme,
+                context.show_images,
+                context.is_error,
+            ),
+        ))
     }
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {

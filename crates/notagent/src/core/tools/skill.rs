@@ -17,8 +17,6 @@
 //! carries exactly the fields the TS `resolve` reads, so wiring the real type
 //! onto it is a mapping; the resolution order, the case handling, the envelope
 //! and the resource listing are unchanged.
-//!
-//! `renderCall`/`renderResult` need the theme and are wired in task 13.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -27,15 +25,20 @@ use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::modes::indicator::estimate_injected_tokens;
 use crate::core::modes::{Mode, render_mode_injection};
+use crate::core::tools::render_utils::str_arg;
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
+    ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
+    wrap_tool_definition,
 };
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 pub const SKILL_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -247,6 +250,54 @@ impl ToolDefinition for SkillToolDefinition {
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
         self.constrained_sampling.as_ref()
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        // `str(args?.name) ?? ""` — a non-string name renders as nothing here
+        // rather than as `[invalid arg]`.
+        let name = str_arg(args.get("name")).unwrap_or_default();
+        Some(render_text_call(
+            context,
+            &format!(
+                "{} {}",
+                theme.fg(ThemeColor::ToolTitle, &theme.bold("skill")),
+                theme.fg(ThemeColor::Accent, &name)
+            ),
+        ))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let Some(details) = result.details else {
+            return Some(render_text_result(context, ""));
+        };
+        let resource_count = details
+            .get("resources")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        let resources = if resource_count > 0 {
+            format!(", {resource_count} resource(s)")
+        } else {
+            String::new()
+        };
+        let tokens = details.get("tokens").map_or_else(String::new, display_arg);
+        Some(render_text_result(
+            context,
+            &theme.fg(
+                ThemeColor::Muted,
+                &format!("\nloaded {tokens} tokens{resources}"),
+            ),
+        ))
     }
 
     fn execute<'a>(
