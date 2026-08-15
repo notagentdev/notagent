@@ -113,6 +113,23 @@ pub fn convert_image_bytes_to_png(bytes: &[u8]) -> Option<Vec<u8>> {
     encode(&decoded, ImageFormat::Png, None)
 }
 
+/// `convertToPng(base64Data, mimeType)` — the base64 shell around it.
+///
+/// The kitty graphics protocol only takes PNG (`f=100`), so the tool row
+/// converts an inline image before it shows one (`components/tool-execution.ts:191`).
+/// Returns the data and its mime type, or `None` when the bytes cannot be
+/// decoded.
+pub fn convert_to_png(base64_data: &str, mime_type: &str) -> Option<(String, String)> {
+    if mime_type == "image/png" {
+        return Some((base64_data.to_owned(), mime_type.to_owned()));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64_data)
+        .ok()?;
+    let png_bytes = convert_image_bytes_to_png(&bytes)?;
+    Some((base64_encode(&png_bytes), "image/png".to_owned()))
+}
+
 struct EncodedCandidate {
     data: String,
     encoded_size: usize,
@@ -352,6 +369,29 @@ mod tests {
         assert_eq!(mime_type, "image/png");
         assert_eq!(data, base64_encode(&bytes));
         assert!(hints.is_empty());
+    }
+
+    #[test]
+    fn converts_to_png_only_when_it_has_to() {
+        let png = base64_encode(&png_bytes(4, 4));
+        assert_eq!(
+            convert_to_png(&png, "image/png"),
+            Some((png.clone(), "image/png".to_owned())),
+            "a PNG is passed through untouched"
+        );
+
+        let jpeg = base64_encode(
+            &encode(&DynamicImage::new_rgb8(4, 4), ImageFormat::Jpeg, Some(80)).expect("encode"),
+        );
+        let (data, mime_type) = convert_to_png(&jpeg, "image/jpeg").expect("converted");
+        assert_eq!(mime_type, "image/png");
+        assert!(data != jpeg);
+
+        assert_eq!(convert_to_png("not base64 @@@", "image/jpeg"), None);
+        assert_eq!(
+            convert_to_png(&base64_encode(b"not an image"), "image/jpeg"),
+            None
+        );
     }
 
     #[test]

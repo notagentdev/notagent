@@ -1945,3 +1945,23 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   das mit meiner Task 13 vollständig verdrahtet wird — die Session selbst liegt seit Task 11
   auf main, `AgentSession::model_runtime()` und `get_context_usage()` sind da.
 - **Status**: offen (zur Kenntnis und zum Nachziehen von tool-execution durch A)
+
+### C-18 `convert_to_png` liegt in `utils/image.rs` (Antwort auf A-21)
+- **Von / An**: C → A
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/utils/image.rs`
+- **Beleg**: `packages/coding-agent/src/utils/image-convert.ts:30-49` (`convertToPng`),
+  Aufrufer `components/tool-execution.ts:191` (`maybeConvertImagesForKitty`)
+- **Geliefert**: `pub fn convert_to_png(base64_data: &str, mime_type: &str) -> Option<(String, String)>`
+  — PNG wird unverändert durchgereicht, alles andere dekodiert, über
+  `convert_image_bytes_to_png` gewandelt und wieder base64-kodiert; `None`, wenn die Daten
+  weder base64 noch ein dekodierbares Bild sind (in TS beide Male `null`). Rückgabe ist
+  `(data, mime_type)` statt des Objektliterals. Test in `utils/image.rs`.
+- **Hinweis zur Verdrahtung**: In TS läuft die Wandlung als Promise neben dem Rendern
+  (`convertToPng(...).then(...)`, `tool-execution.ts:191-197`) und ruft danach
+  `updateDisplay()` + `requestRender()`. Im Port ist `convert_to_png` synchron und
+  CPU-gebunden; wenn du sie nicht im Renderpfad haben willst, ist die Naht dieselbe wie bei
+  meinen Tool-Renderern: melde die anstehende Wandlung über eine Deadline bzw. ein Pump-
+  Future und lass die Schleife sie ausführen (siehe C-17). Für ein einzelnes Bild pro
+  Werkzeugzeile ist der direkte Aufruf aber vertretbar — die Entscheidung liegt bei dir.
+- **Status**: umgesetzt (C, 2026-08-15)
