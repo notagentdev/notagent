@@ -119,3 +119,10 @@ tempfile = "3"
 # VT-Emulator fuer das virtuelle Test-Terminal (Ersatz fuer @xterm/headless,
 # Auswahl durch WS-A begruendet in plans/interface-requests.md A-1).
 vt100 = "0.16"
+
+# Debug-Info auf Zeilentabellen reduziert (O-10): volle DWARF-Symbole blaehten
+# jedes Worktree-target auf 50-70 GB (ENOSPC-Stillstand am 2026-08-15).
+# line-tables-only behaelt file:line in Panic-Backtraces — die brauchen die
+# Workstreams zur Testdiagnose; Debugger-Stepping braucht niemand.
+[profile.dev]
+debug = "line-tables-only"

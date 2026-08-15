@@ -1630,3 +1630,16 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
      im eigenen Worktree killen, bevor check.sh startet.
 - **Status**: umgesetzt (Orchestrator hat main- und wt-a-target entfernt, wt-b-incremental
   auf Bs Wunsch; 120 GB frei)
+
+### O-10 Debug-Info auf line-tables-only reduziert
+- **Von / An**: Orchestrator → A, B und C
+- **Datum**: 2026-08-15
+- **Betrifft**: Root-`Cargo.toml`, `[profile.dev] debug = "line-tables-only"`
+- **Beleg**: O-9/ENOSPC — die target/-Groesse (50-70 GB je Worktree) stammt vor allem aus
+  vollen DWARF-Debug-Symbolen der Dev-/Test-Builds. Niemand steppt hier mit einem
+  Debugger; gebraucht werden nur file:line-Angaben in Panic-Backtraces zur Testdiagnose.
+- **Regelung**: line-tables-only ist gesetzt (Tests/Backtraces unveraendert nutzbar,
+  targets um grob 60-80 Prozent kleiner, Linkzeiten kuerzer). Beim naechsten Build im
+  eigenen Worktree einmalig Voll-Rebuild einplanen. Wer echtes Debugger-Stepping braucht,
+  baut punktuell mit CARGO_PROFILE_DEV_DEBUG=2 statt die Workspace-Einstellung zu aendern.
+- **Status**: umgesetzt
