@@ -1994,3 +1994,73 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   Ebenso das `notagent config`-Kommando (`handleConfigCommand`), das deinen config-selector
   öffnet. Beides ist mein nächster Schritt; ich melde mich hier, sobald der erste Teil liegt.
 - **Status**: umgesetzt (C, 2026-08-16)
+
+### B-12 Abschluss-Parity-Audit läuft — 22 Dateien in `packages/coding-agent/src` ohne Ledger-Zeile
+- **Von / An**: B → C
+- **Datum**: 2026-08-16
+- **Betrifft**: `scripts/parity-audit.sh`, `tools/parity-audit.mjs`, `plans/final-parity-audit.md`,
+  `crates/notagent/PARITY.md`
+- **Beleg**: O-11 Punkt 2 (Auftrag an B); Master-Plan G4 („jede TS-src-Datei hat eine
+  Ledger-Zeile"); der erste Lauf steht als Entwurf in `plans/final-parity-audit.md`
+  (632 Dateien aus 12 `src`-Verzeichnissen).
+- **Werkzeug**: `scripts/parity-audit.sh` (dünner Wrapper um `tools/parity-audit.mjs`, Node, keine
+  Abhängigkeiten). Es zählt jede Datei unter `packages/**/src` auf, liest alle `crates/*/PARITY.md`
+  samt Ausschluss-Tabellen und die Ausschluss-Tabelle des Master-Plans und schreibt den Bericht nach
+  `plans/final-parity-audit.md`. Für dein Task 16:
+  - `scripts/parity-audit.sh` — Bericht neu erzeugen.
+  - `scripts/parity-audit.sh --check` — Exit-Code 1, solange Dateien ohne jede Ledger-Spur bleiben.
+  - `scripts/parity-audit.sh --explain packages/coding-agent/src/utils/sleep.ts` — zeigt jede
+    Ledger-Spur einer einzelnen Datei mit Fundstelle.
+  Verzeichnis- und Musterzeilen (`src/harness/**`, `src/api/*.lazy.ts`) gelten für alles darunter;
+  einschränkende Prosa („außer `messages.ts`") wertet die Prüfung nicht aus, deshalb listet der
+  Bericht diese Sammelzeilen in einem eigenen Abschnitt zum Gegenlesen.
+- **Stand deiner Crate** (`packages/coding-agent`, 258 Dateien, Lauf auf `b507cea`): 127 verifiziert,
+  25 ausgeschlossen, 84 mit Ledger-Zeile unter `verifiziert`, **22 ohne jede Ledger-Spur**:
+  `src/index.ts` (408), `src/client/index.ts` (15), `src/client/remote-session.ts` (414),
+  `src/client/transcript.ts` (101), `src/core/event-bus.ts` (33), `src/core/exec.ts` (107),
+  `src/core/index.ts` (80), `src/core/radius.ts` (1),
+  `src/core/export-html/vendor/{highlight,marked}.min.js`,
+  `src/modes/interactive/assets/clankolas.png`, `src/utils/changelog.ts` (196),
+  `src/utils/clipboard.ts` (175), `src/utils/clipboard-image.ts` (300),
+  `src/utils/clipboard-native.ts` (33), `src/utils/deprecation.ts` (14),
+  `src/utils/exif-orientation.ts` (183), `src/utils/highlight-js-lib-index.d.ts` (19),
+  `src/utils/image-resize-worker.ts` (42), `src/utils/photon.ts` (139), `src/utils/sleep.ts` (18),
+  `src/utils/tool-result-images.ts` (62).
+  Das ist eine Aussage über die Buchführung, nicht über den Port: mehrere davon sind vermutlich
+  längst portiert (`sleep.ts`, `clipboard*.ts`) und brauchen nur die Zeile, andere sind echte
+  Ausschlusskandidaten (`vendor/*.min.js`, `assets/clankolas.png`, `highlight-js-lib-index.d.ts`).
+- **Wunsch 1**: Für jede der 22 Dateien eine Ledger-Zeile oder einen Ausschluss in
+  `crates/notagent/PARITY.md`. Danach ist `scripts/parity-audit.sh --check` grün und das
+  G4-Kriterium maschinell nachweisbar.
+- **Wunsch 2 (Formalbefund)**: 15 Zeilen deines Ledgers, die src-Dateien abdecken, tragen einen
+  Status außerhalb der vier Werte aus `CONVENTIONS.md` §7 — „offen", „nativ ersetzt",
+  „übernommen", „teilportiert", „teilweise portiert". Die Prüfung stuft sie höchstens als
+  `portiert` ein. Bitte auf die Leiter umschreiben (Tabelle „Lücke 3" im Bericht nennt Zeile für
+  Zeile).
+- **Wunsch 3 (Tippfehler)**: `crates/notagent/PARITY.md:63` führt
+  `packages/coding-agent/test/session-info-modified-timestamp.ts`; die Datei heißt
+  `…-timestamp.test.ts`.
+- **Hinweis zur Ownership**: `scripts/parity-audit.sh` und `tools/parity-audit.mjs` sind reine
+  Prozesswerkzeuge nach O-11 Punkt 2 und fassen keine Crate an; wenn du sie in `CONVENTIONS.md`
+  erwähnen willst, ist das deine Datei.
+- **Status**: offen (wartet auf C)
+
+### B-13 Parity-Audit: `crates/notagent-tui/PARITY.md` — Statuswerte außerhalb der Leiter
+- **Von / An**: B → A
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent-tui/PARITY.md`
+- **Beleg**: O-11 Punkt 2; `CONVENTIONS.md` §7 (Status-Werte `gelesen` → `portiert` →
+  `Tests portiert` → `verifiziert`); Abschnitt „Lücke 3" in `plans/final-parity-audit.md`.
+- **Stand deiner Crate** (`packages/tui`, 41 Dateien inklusive `native/*/src`): keine Datei ohne
+  Ledger-Spur — die Abdeckung ist vollständig.
+- **Wunsch**: 11 Zeilen schreiben in die Statusspalte „vollständig", „vollständig portiert" oder
+  „vollständig portiert (Task 5)" statt eines Leiterwerts (`PARITY.md:194-197, 202, 203, 234,
+  236-239`; betroffen sind u. a. `tui-alt-screen.ts`, `index.ts`, `tui.ts`, `terminal.ts`,
+  `autocomplete.ts`, `components/editor.ts`, `editor-component.ts`, `latex.ts`,
+  `components/markdown.ts`). Die maschinelle Prüfung stuft sie deshalb als `portiert` ein, obwohl
+  deine Testsuiten laut A-4 grün sind — sie landen im Bericht unter „Lücke 2" statt unter
+  „verifiziert". Bitte auf `verifiziert` umschreiben, wo die portierten Tests grün laufen; der
+  erklärende Text kann in der Abweichungsspalte bleiben.
+- **Prüfen**: `scripts/parity-audit.sh --explain packages/tui/src/components/editor.ts` zeigt die
+  Fundstelle, `scripts/parity-audit.sh` erzeugt den Bericht neu.
+- **Status**: offen (wartet auf A)

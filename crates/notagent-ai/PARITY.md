@@ -225,7 +225,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-14 | `packages/ai/test/cloudflare-utils.ts` | 9 | 13 |
 | 2026-08-14 | `packages/ai/test/scratch.ts` | 57 | 13 |
 | 2026-08-14 | `packages/ai/test/codex-websocket-cached-probe.ts` | 299 | 13 |
-| 2026-08-14 | `packages/ai/test.sh` (Referenz: Key-Isolation des kanonischen Laufs) | 120 | 13 |
+| 2026-08-14 | `test.sh` (TS-Repo-Wurzel; Referenz: Key-Isolation des kanonischen Laufs) | 79 | 13 (Pfad und LOC am 2026-08-16 nach dem Parity-Audit korrigiert, erneut gelesen) |
 | 2026-08-14 | `packages/ai/src/bedrock-provider.ts` | 6 | 13 |
 | 2026-08-14 | `packages/ai/src/bun-oauth.ts` | 21 | 13 |
 | 2026-08-14 | `packages/ai/src/oauth.ts` | 10 | 13 |
