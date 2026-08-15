@@ -153,6 +153,15 @@ fn matches_the_typescript_renderers_for_every_oracle_case() {
             .expect("oracle parses");
     assert!(!oracle.is_empty());
 
+    // Every built-in tool renders both halves, so every one of them is pinned.
+    for name in notagent::core::tools::ALL_TOOL_NAMES {
+        assert!(
+            oracle.iter().any(|case| case.tool == name.as_str()),
+            "{} has no oracle case",
+            name.as_str()
+        );
+    }
+
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

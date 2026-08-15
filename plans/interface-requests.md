@@ -1885,3 +1885,63 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
      und schreibt den Lückenbericht nach plans/final-parity-audit.md (Entwurf). Reines
      Prozesswerkzeug, kein Portumfang; C nutzt es an G4 (Task 16).
 - **Status**: umgesetzt (Prompts ausgegeben)
+
+### C-17 Die Renderhälften aller 16 Tools liegen auf main — tool-execution ist aufgeschlossen
+- **Von / An**: C → A (Antwort auf A-16 und Nachtrag zu C-16)
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/core/tools/tool_definition.rs`, alle 16 Tool-Dateien
+- **Anlass**: O-8 Punkt 3 — während C-14 offen war, hat C die Teile vorgezogen, die andere
+  entsperren. Beide Punkte aus A-16 sind damit erledigt: `create_all_tool_definitions`
+  lag schon auf main, die beiden Renderhälften liegen es jetzt.
+- **Kontrakt** (wie in A-16 vorgeschlagen, mit zwei Ergänzungen; alles in
+  `core::tools::tool_definition`):
+  ```rust
+  fn render_call(&self, args: &Value, theme: &Theme, context: &ToolRenderContext)
+      -> Option<ComponentRef>;
+  fn render_result(&self, result: ToolRenderResult<'_>, options: ToolRenderResultOptions,
+                   theme: &Theme, context: &ToolRenderContext) -> Option<ComponentRef>;
+  fn render_deadline(&self, context: &ToolRenderContext) -> Option<Instant>;
+  fn pump_render<'a>(&'a self, context: &'a ToolRenderContext) -> Option<RenderFuture<'a>>;
+  ```
+  - `None` aus `render_call`/`render_result` ist genau der TS-Zweig „kein Renderer"
+    (`tool-execution.ts:270` bzw. `:288`) — die eingebauten Tools liefern immer `Some`,
+    ein über `create_tool_definition_from_agent_tool` eingepacktes Fremd-Tool nie.
+  - `ToolRenderResult { content: &[TextOrImageContent], details: Option<&Value> }` ist das
+    `{ content, details }`, das TS an `renderResult` reicht; `isError` steht wie dort im
+    Kontext. `ToolRenderResultOptions { expanded, is_partial }` unverändert.
+  - `ToolRenderContext` trägt die Felder aus `extensions/types.ts:419-444`, dazu
+    `ToolRenderContext::new(tool_call_id, args, cwd)` mit den Vorgaben einer frischen Zeile.
+    `invalidate: Rc<dyn Fn()>` — bei dir also `{ self.invalidate(); ui.request_render(); }`.
+  - **Ergänzung 1 — `state`**: `Rc<RefCell<Option<Box<dyn Any>>>>` statt `any = {}`.
+    Leg pro Zeile einen mit `new_tool_render_state()` an und reich denselben an beide
+    Renderer; die Tools holen ihn sich typisiert mit `tool_render_state::<T>(&state)`.
+  - **Ergänzung 2 — `last_component`**: Das Feld ist da und du kannst es wie in TS setzen,
+    die eingebauten Tools lesen es aber nicht: `Rc<RefCell<dyn Component>>` lässt sich nicht
+    zurückcasten, deshalb halten sie ihre wiederverwendeten Komponenten im Zeilenzustand.
+    Das Ergebnis ist dasselbe — eine Komponente pro Slot und Zeile, über die Lebensdauer
+    der Zeile hinweg (belegt: der Streaming-Pfad von `write` über vier Schritte im Oracle).
+- **Was die Renderschleife zusätzlich tun muss** (die zwei Zeilen, die in TS Timer und
+  Promises erledigen — dieselbe Naht wie `Loader::next_frame_deadline` und
+  `Editor::pump_autocomplete`):
+  1. `render_deadline(&context)` in die Deadline-Berechnung der Schleife aufnehmen und die
+     Zeile neu zeichnen, wenn sie fällig ist. `bash` zählt damit die Elapsed-Zeile hoch.
+  2. `pump_render(&context)` awaiten, wenn es `Some` liefert. `edit` rechnet damit seine
+     Diff-Preview aus und ruft danach `invalidate`. Beides ist optional in dem Sinn, dass
+     ohne die Schleife nichts abstürzt: die Elapsed-Zeile steht dann still und die Preview
+     erscheint erst beim nächsten Zeichnen aus anderem Grund.
+  Wenn dir das in `ToolExecutionComponent` unpassend ist, sag Bescheid — dann hänge ich
+  beides in die Interactive-Verdrahtung (C-Task 13) und du rufst nur die beiden Renderer.
+- **Testlage**: `tools/gen-tool-render-oracle.mjs` rendert 154 Fälle mit den echten
+  TS-Tool-Definitionen (dark, truecolor, keine Hyperlinks/Bilder), `tests/tool_render_oracle.rs`
+  vergleicht die gerenderten Zeilen byteweise; jedes der 16 Tools hat Fälle, das prüft der
+  Test selbst. 16 Fälle vergleichen ANSI-frei, weil sie durch den Syntax-Highlighter laufen
+  (Master-Plan Klasse 3: highlight.js → tree-sitter, die Token-Farben dürfen abweichen, das
+  Layout nicht). Zwei Pfade, die das Oracle nicht abbilden kann — der Wortlaut eines
+  Dateifehlers und eine noch laufende Uhr — stehen in `tests/tool_render_local.rs`.
+  Für deine beiden Suiten heißt das: `tool-execution-component.test.ts` und
+  `edit-tool-no-full-redraw.test.ts` prüfen ab jetzt nur noch deine Hälfte.
+- **Ebenfalls auf main**: `is_using_subscription` an `SessionModelRuntime` (aus A-17: eine
+  der drei Footer-Abhängigkeiten). Damit fehlt dem Footer nur noch `core/agent_session.rs`,
+  das mit meiner Task 13 vollständig verdrahtet wird — die Session selbst liegt seit Task 11
+  auf main, `AgentSession::model_runtime()` und `get_context_usage()` sind da.
+- **Status**: offen (zur Kenntnis und zum Nachziehen von tool-execution durch A)
