@@ -2,6 +2,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -28,6 +31,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -52,6 +58,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -78,6 +87,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -104,6 +116,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -131,6 +146,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -158,6 +176,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -185,6 +206,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -212,6 +236,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -240,6 +267,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -268,6 +298,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -307,6 +340,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -358,6 +394,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -423,6 +462,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -477,6 +519,9 @@
 	{
 		"tool": "grep",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -516,6 +561,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -540,6 +588,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -566,6 +617,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -592,6 +646,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -618,6 +675,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -644,6 +704,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -671,6 +734,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -727,6 +793,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -787,6 +856,9 @@
 	{
 		"tool": "ls",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -840,6 +912,9 @@
 	{
 		"tool": "find",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -866,6 +941,9 @@
 	{
 		"tool": "find",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -890,6 +968,9 @@
 	{
 		"tool": "find",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -918,6 +999,9 @@
 	{
 		"tool": "find",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -945,6 +1029,9 @@
 	{
 		"tool": "find",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1001,6 +1088,9 @@
 	{
 		"tool": "find",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1054,6 +1144,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1080,6 +1173,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -1104,6 +1200,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1130,6 +1229,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1157,6 +1259,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1185,6 +1290,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1212,6 +1320,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1240,6 +1351,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1268,6 +1382,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1294,6 +1411,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1321,6 +1441,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1347,6 +1470,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1373,6 +1499,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1399,6 +1528,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1425,6 +1557,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1451,6 +1586,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1477,6 +1615,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1503,6 +1644,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1530,6 +1674,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1556,6 +1703,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1589,6 +1739,9 @@
 	{
 		"tool": "read",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1626,6 +1779,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1681,6 +1837,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1717,6 +1876,9 @@
 	{
 		"tool": "read",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1769,6 +1931,9 @@
 	{
 		"tool": "read",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1821,6 +1986,9 @@
 	{
 		"tool": "read",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1873,6 +2041,9 @@
 	{
 		"tool": "read",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1915,6 +2086,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1941,6 +2115,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1968,6 +2145,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -1995,6 +2175,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2024,6 +2207,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2048,6 +2234,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2100,6 +2289,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2140,6 +2332,9 @@
 	{
 		"tool": "read_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2176,6 +2371,9 @@
 	{
 		"tool": "skill",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2202,6 +2400,9 @@
 	{
 		"tool": "skill",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2226,6 +2427,9 @@
 	{
 		"tool": "skill",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2252,6 +2456,9 @@
 	{
 		"tool": "skill",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2293,6 +2500,9 @@
 	{
 		"tool": "skill",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2337,6 +2547,9 @@
 	{
 		"tool": "skill",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2370,6 +2583,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2401,6 +2617,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2435,6 +2654,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2463,6 +2685,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2487,6 +2712,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2517,6 +2745,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2566,6 +2797,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2621,6 +2855,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2678,6 +2915,9 @@
 	{
 		"tool": "task",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2711,6 +2951,9 @@
 	{
 		"tool": "task_list",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2735,6 +2978,9 @@
 	{
 		"tool": "task_list",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2761,6 +3007,9 @@
 	{
 		"tool": "task_list",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2787,6 +3036,9 @@
 	{
 		"tool": "task_list",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2825,6 +3077,9 @@
 	{
 		"tool": "task_list",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2863,6 +3118,9 @@
 	{
 		"tool": "task_list",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2897,6 +3155,9 @@
 	{
 		"tool": "task_output",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2923,6 +3184,9 @@
 	{
 		"tool": "task_output",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -2947,6 +3211,9 @@
 	{
 		"tool": "task_output",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -2988,6 +3255,9 @@
 	{
 		"tool": "task_output",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3021,6 +3291,9 @@
 	{
 		"tool": "task_stop",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3048,6 +3321,9 @@
 	{
 		"tool": "task_stop",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3074,6 +3350,9 @@
 	{
 		"tool": "task_stop",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3114,6 +3393,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3140,6 +3422,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3172,6 +3457,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3209,6 +3497,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -3233,6 +3524,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3291,6 +3585,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3343,6 +3640,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3401,6 +3701,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3438,6 +3741,9 @@
 	{
 		"tool": "todo_write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3471,6 +3777,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3500,6 +3809,9 @@
 	{
 		"tool": "write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3530,6 +3842,9 @@
 	{
 		"tool": "write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3556,6 +3871,9 @@
 	{
 		"tool": "write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3585,6 +3903,9 @@
 	{
 		"tool": "write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3612,6 +3933,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3651,6 +3975,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3703,6 +4030,9 @@
 	{
 		"tool": "write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3742,6 +4072,9 @@
 	{
 		"tool": "write",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3770,6 +4103,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3838,6 +4174,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3879,6 +4218,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3920,6 +4262,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -3964,6 +4309,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4000,6 +4348,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4039,6 +4390,9 @@
 	{
 		"tool": "write",
 		"compare": "plain",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4076,6 +4430,9 @@
 	{
 		"tool": "patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4102,6 +4459,9 @@
 	{
 		"tool": "patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {},
@@ -4126,6 +4486,9 @@
 	{
 		"tool": "multi_patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4152,6 +4515,9 @@
 	{
 		"tool": "patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4195,6 +4561,9 @@
 	{
 		"tool": "patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4238,6 +4607,9 @@
 	{
 		"tool": "multi_patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4285,6 +4657,9 @@
 	{
 		"tool": "patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4322,6 +4697,9 @@
 	{
 		"tool": "patch_minified",
 		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
 		"steps": [
 			{
 				"args": {
@@ -4348,6 +4726,1169 @@
 		"callLineSteps": [
 			[
 				"\u001b[38;2;212;212;212m\u001b[1mpatch minified\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc/index.ts\u001b[39m                                                                         "
+			]
+		],
+		"resultLines": []
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls -la"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls -la\u001b[22m\u001b[39m                                                                                            "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[38;2;128;128;128m...\u001b[39m\u001b[22m\u001b[39m                                                                                               "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": ""
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[38;2;128;128;128m...\u001b[39m\u001b[22m\u001b[39m                                                                                               "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": 7
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[22m\u001b[39m                                                                                     "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "npm test",
+					"timeout": 120
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ npm test\u001b[22m\u001b[39m\u001b[38;2;128;128;128m (timeout 120s)\u001b[39m                                                                           "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "npm test",
+					"timeout": 0
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ npm test\u001b[22m\u001b[39m                                                                                          "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "npm test",
+					"timeout": null
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ npm test\u001b[22m\u001b[39m                                                                                          "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "a.txt\nb.txt"
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+			]
+		],
+		"resultLines": [
+			"",
+			"\u001b[38;2;128;128;128ma.txt\u001b[39m                                                                                               ",
+			"\u001b[38;2;128;128;128mb.txt\u001b[39m                                                                                               "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry 1\nentry 2\nentry 3\nentry 4\nentry 5\nentry 6\nentry 7\nentry 8\nentry 9\nentry 10\nentry 11\nentry 12"
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+			]
+		],
+		"resultLines": [
+			"",
+			"\u001b[38;2;128;128;128m... (7 earlier lines,\u001b[39m \u001b[38;2;102;102;102m\u001b[39m\u001b[38;2;128;128;128m to expand\u001b[39m\u001b[38;2;128;128;128m)\u001b[39m",
+			"\u001b[38;2;128;128;128mentry 8\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 9\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 10\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 11\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 12\u001b[39m                                                                                            "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": true,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry 1\nentry 2\nentry 3\nentry 4\nentry 5\nentry 6\nentry 7\nentry 8\nentry 9\nentry 10\nentry 11\nentry 12"
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+			]
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mentry 1\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 2\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 3\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 4\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 5\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 6\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 7\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 8\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 9\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 10\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 11\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 12\u001b[39m                                                                                            "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "(no output)"
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+			]
+		],
+		"resultLines": [
+			"",
+			"\u001b[38;2;128;128;128m(no output)\u001b[39m                                                                                         "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry 1\nentry 2\n\n[Showing lines 1-2 of 900. Full output: /tmp/bash-output.log]"
+				}
+			],
+			"details": {
+				"truncation": {
+					"content": "",
+					"truncated": true,
+					"truncatedBy": "lines",
+					"totalLines": 900,
+					"totalBytes": 40000,
+					"outputLines": 200,
+					"outputBytes": 9000,
+					"lastLinePartial": false,
+					"firstLineExceedsLimit": false,
+					"maxLines": 2000,
+					"maxBytes": 51200
+				},
+				"fullOutputPath": "/tmp/bash-output.log"
+			}
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+			]
+		],
+		"resultLines": [
+			"",
+			"\u001b[38;2;128;128;128mentry 1\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 2\u001b[39m                                                                                             ",
+			"                                                                                                    ",
+			"\u001b[38;2;255;255;0m[Full output: /tmp/bash-output.log. Truncated: showing 200 of 900 lines]\u001b[39m                            "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry 1"
+				}
+			],
+			"details": {
+				"truncation": {
+					"content": "",
+					"truncated": true,
+					"truncatedBy": "bytes",
+					"totalLines": 900,
+					"totalBytes": 90000,
+					"outputLines": 120,
+					"outputBytes": 51200,
+					"lastLinePartial": false,
+					"firstLineExceedsLimit": false,
+					"maxLines": 2000,
+					"maxBytes": 51200
+				},
+				"fullOutputPath": "/tmp/bash-output.log"
+			}
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+			]
+		],
+		"resultLines": [
+			"",
+			"\u001b[38;2;128;128;128mentry 1\u001b[39m                                                                                             ",
+			"                                                                                                    ",
+			"\u001b[38;2;255;255;0m[Full output: /tmp/bash-output.log. Truncated: 120 lines shown (50.0KB limit)]\u001b[39m                      "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "ls"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry 1"
+				}
+			],
+			"details": {
+				"fullOutputPath": "/tmp/bash-output.log"
+			}
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+			]
+		],
+		"resultLines": [
+			"",
+			"\u001b[38;2;128;128;128mentry 1\u001b[39m                                                                                             ",
+			"                                                                                                    ",
+			"\u001b[38;2;255;255;0m[Full output: /tmp/bash-output.log]\u001b[39m                                                                 "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": {
+			"startedAt": 1000,
+			"endedAt": 2500
+		},
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "sleep 1"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "done"
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ sleep 1\u001b[22m\u001b[39m                                                                                           "
+			]
+		],
+		"resultLines": [
+			"",
+			"\u001b[38;2;128;128;128mdone\u001b[39m                                                                                                ",
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mTook 1.5s\u001b[39m                                                                                           "
+		]
+	},
+	{
+		"tool": "bash",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": {
+			"startedAt": 1000,
+			"endedAt": 1000
+		},
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"command": "sleep 1"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": false,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": ""
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1m$ sleep 1\u001b[22m\u001b[39m                                                                                           "
+			]
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mTook 0.0s\u001b[39m                                                                                           "
+		]
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"path": "src/index.ts"
+				},
+				"argsComplete": false
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc/index.ts\u001b[39m                                                                                  \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {},
+				"argsComplete": false
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;128;128;128m...\u001b[39m                                                                                           \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"file_path": "src/index.ts",
+					"path": "src/other.ts"
+				},
+				"argsComplete": false
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc/index.ts\u001b[39m                                                                                  \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"path": 5
+				},
+				"argsComplete": false
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m                                                                                 \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": {
+			"path": "/tmp/notagent-oracle/sample.ts",
+			"content": "const a = 1;\nconst b = 2;\n"
+		},
+		"stateElapsed": null,
+		"pumpPreview": true,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/sample.ts",
+					"edits": [
+						{
+							"oldText": "const b = 2;",
+							"newText": "const b = 3;"
+						}
+					]
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/sample.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/sample.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;128;128;128m 1 const a = 1;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-2 const b = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+2 const b = \u001b[7m3\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": {
+			"path": "/tmp/notagent-oracle/legacy.ts",
+			"content": "let value = 1;\n"
+		},
+		"stateElapsed": null,
+		"pumpPreview": true,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/legacy.ts",
+					"oldText": "let value = 1;",
+					"newText": "let value = 2;"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/legacy.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/legacy.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 let value = \u001b[7m1\u001b[27m;\u001b[39m                                                                                  \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 let value = \u001b[7m2\u001b[27m;\u001b[39m                                                                                  \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": {
+			"path": "/tmp/notagent-oracle/nomatch.ts",
+			"content": "const a = 1;\n"
+		},
+		"stateElapsed": null,
+		"pumpPreview": true,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/nomatch.ts",
+					"edits": [
+						{
+							"oldText": "nothing like this",
+							"newText": "x"
+						}
+					]
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/nomatch.ts\u001b[39m                                                               \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;60;40;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;60;40;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/nomatch.ts\u001b[39m                                                               \u001b[49m",
+				"\u001b[48;2;60;40;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;60;40;40m \u001b[38;2;204;102;102mCould not find the exact text in /tmp/notagent-oracle/nomatch.ts. The old text must match exactly  \u001b[49m",
+				"\u001b[48;2;60;40;40m \u001b[38;2;204;102;102mincluding all whitespace and newlines.\u001b[39m                                                             \u001b[49m",
+				"\u001b[48;2;60;40;40m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": {
+			"path": "/tmp/notagent-oracle/streaming.ts",
+			"content": "const a = 1;\n"
+		},
+		"stateElapsed": null,
+		"pumpPreview": true,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/streaming.ts",
+					"edits": [
+						{
+							"oldText": "const a = 1;"
+						}
+					]
+				},
+				"argsComplete": false
+			},
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/streaming.ts",
+					"edits": [
+						{
+							"oldText": "const a = 1;",
+							"newText": "const a = 2;"
+						}
+					]
+				},
+				"argsComplete": false
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                             \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                             \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                             \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": {
+			"path": "/tmp/notagent-oracle/result.ts",
+			"content": "const a = 1;\n"
+		},
+		"stateElapsed": null,
+		"pumpPreview": true,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/result.ts",
+					"edits": [
+						{
+							"oldText": "const a = 1;",
+							"newText": "const a = 2;"
+						}
+					]
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully replaced 1 block(s) in result.ts."
+				}
+			],
+			"details": {
+				"diff": "-  1 const a = 1;\n+  1 const a = 2;",
+				"patch": "",
+				"firstChangedLine": 1
+			}
+		},
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/result.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/result.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 const a = \u001b[7m1\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 const a = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": []
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": {
+			"path": "/tmp/notagent-oracle/other.ts",
+			"content": "const a = 1;\n"
+		},
+		"stateElapsed": null,
+		"pumpPreview": true,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/other.ts",
+					"edits": [
+						{
+							"oldText": "const a = 1;",
+							"newText": "const a = 2;"
+						}
+					]
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully replaced 1 block(s)."
+				}
+			],
+			"details": {
+				"diff": "-  1 const a = 1;\n+  1 const a = 9;",
+				"patch": ""
+			}
+		},
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/other.ts\u001b[39m                                                                 \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/other.ts\u001b[39m                                                                 \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 const a = \u001b[7m1\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 const a = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": []
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": {
+			"path": "/tmp/notagent-oracle/failed.ts",
+			"content": "const a = 1;\n"
+		},
+		"stateElapsed": null,
+		"pumpPreview": true,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/failed.ts",
+					"edits": [
+						{
+							"oldText": "const a = 1;",
+							"newText": "const a = 2;"
+						}
+					]
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": true,
+		"showImages": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "Could not edit file: failed.ts. Error code: EACCES."
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/failed.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
+			],
+			[
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/failed.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 const a = \u001b[7m1\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 const a = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
+				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m"
+			]
+		],
+		"resultLines": [
+			"",
+			" \u001b[38;2;204;102;102mCould not edit file: failed.ts. Error code: EACCES.\u001b[39m                                                "
+		]
+	},
+	{
+		"tool": "edit",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"path": "/tmp/notagent-oracle/plain.ts",
+					"edits": []
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": ""
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/plain.ts\u001b[39m                                                                 \u001b[49m",
+				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			]
 		],
 		"resultLines": []

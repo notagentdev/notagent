@@ -629,6 +629,43 @@ pub fn generate_diff_string(
     }
 }
 
+/// The diff of one or more edits, without applying them.
+///
+/// The TUI shows it as a preview while the model is still streaming the call,
+/// which is why it reads the file itself instead of going through the tool's
+/// operations: `edit-diff.ts` imports `fs/promises` directly for the same
+/// reason. A failure is not an error of the render path — it is the preview,
+/// and it is shown in place of the diff (`EditDiffError` in TypeScript).
+///
+/// Deviation (class 1): the wording of a filesystem failure is Rust's rather
+/// than Node's; the `Could not edit file: …` sentence around it is verbatim.
+pub async fn compute_edits_diff(
+    path: &str,
+    edits: &[Edit],
+    cwd: &str,
+) -> Result<DiffString, String> {
+    let absolute_path = crate::core::tools::path_utils::resolve_to_cwd(path, cwd);
+
+    if let Err(error) = tokio::fs::metadata(&absolute_path).await {
+        return Err(format!("Could not edit file: {path}. {error}."));
+    }
+
+    let raw_content = tokio::fs::read(&absolute_path)
+        .await
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .map_err(|error| error.to_string())?;
+
+    // The model never includes an invisible BOM in oldText.
+    let (_bom, content) = strip_bom(&raw_content);
+    let normalized_content = normalize_to_lf(content);
+    let applied = apply_edits_to_normalized_content(&normalized_content, edits, path)?;
+    Ok(generate_diff_string(
+        &applied.base_content,
+        &applied.new_content,
+        4,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

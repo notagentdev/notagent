@@ -1,8 +1,5 @@
 //! Port of `packages/coding-agent/src/core/tools/bash.ts` (tool half).
 //!
-//! `renderCall`/`renderResult` need the theme and the TUI components and are
-//! wired in task 13.
-//!
 //! Deviation (class 1): `BashToolSources` hands the tool a
 //! [`BashTaskManager`] trait object instead of the concrete `TaskManager` of
 //! `core/tasks/manager.ts`. TS reaches the same indirection through the
@@ -11,8 +8,10 @@
 //! trait is implemented for the real manager and where
 //! `test/bash-background.test.ts` is ported.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::process::Stdio;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -21,6 +20,9 @@ use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_tui::components::text::Text;
+use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::utils::truncate_to_width;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -28,12 +30,18 @@ use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::output_accumulator::{
     OutputAccumulator, OutputAccumulatorOptions, OutputSnapshot,
 };
+use crate::core::tools::render_utils::{get_text_output, invalid_arg_text, str_arg};
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    RenderFuture, SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext,
+    ToolRenderResult, ToolRenderResultOptions, display_arg, tool_render_state,
+    wrap_tool_definition,
 };
 use crate::core::tools::truncate::{
-    DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, format_size,
+    DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, format_size, truncation_from_details,
 };
+use crate::modes::interactive::components::keybinding_hints::key_hint;
+use crate::modes::interactive::components::visual_truncate::truncate_to_visual_lines;
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor, theme};
 use crate::utils::shell::{
     CommandTransport, ShellConfig, get_shell_config, get_shell_env, kill_process_tree,
     terminate_process_tree, track_detached_child_pid, untrack_detached_child_pid,
@@ -918,6 +926,229 @@ impl BashToolDefinition {
     }
 }
 
+// ============================================================================
+// Rendering
+// ============================================================================
+
+/// Preview rows of the output before the result is expanded.
+const BASH_PREVIEW_LINES: usize = 5;
+
+/// How often the elapsed time is refreshed while the command runs.
+const BASH_ELAPSED_TICK: Duration = Duration::from_secs(1);
+
+/// The row state of a `bash` call.
+///
+/// `started_at`/`ended_at` are what TypeScript keeps in `context.state`; the
+/// `setInterval` that redraws the elapsed time becomes [`Self::tick_deadline`],
+/// which [`ToolDefinition::render_deadline`] reports to the render loop
+/// (deviation class 1).
+#[derive(Default)]
+pub struct BashRenderState {
+    pub started_at: Option<Instant>,
+    pub ended_at: Option<Instant>,
+    /// When the elapsed line is next due; `None` while nothing ticks.
+    pub tick_deadline: Option<Instant>,
+    call: Option<Rc<RefCell<Text>>>,
+    result: Option<Rc<RefCell<Container>>>,
+}
+
+/// The preview of a long output, truncated to the visible rows.
+///
+/// TypeScript adds an inline component that closes over the parent's cache;
+/// the port makes it a real component with the same cache, which the parent's
+/// `invalidate()` clears exactly as it does there (deviation class 1).
+struct BashPreviewComponent {
+    styled_output: String,
+    cached_width: Option<usize>,
+    cached_lines: Option<Vec<String>>,
+    cached_skipped: Option<usize>,
+}
+
+impl Component for BashPreviewComponent {
+    fn render(&mut self, width: usize) -> Vec<String> {
+        if self.cached_lines.is_none() || self.cached_width != Some(width) {
+            // `paddingX` defaults to 0: the preview sits inside the tool shell's box.
+            let preview =
+                truncate_to_visual_lines(&self.styled_output, BASH_PREVIEW_LINES, width, 0);
+            self.cached_lines = Some(preview.visual_lines);
+            self.cached_skipped = Some(preview.skipped_count);
+            self.cached_width = Some(width);
+        }
+        let lines = self.cached_lines.clone().unwrap_or_default();
+        if let Some(skipped) = self.cached_skipped.filter(|skipped| *skipped > 0) {
+            let theme = theme();
+            let hint = theme.fg(ThemeColor::Muted, &format!("... ({skipped} earlier lines,"))
+                + " "
+                + &key_hint("app.tools.expand", "to expand")
+                + &theme.fg(ThemeColor::Muted, ")");
+            let mut rendered = vec![String::new(), truncate_to_width(&hint, width)];
+            rendered.extend(lines);
+            return rendered;
+        }
+        let mut rendered = vec![String::new()];
+        rendered.extend(lines);
+        rendered
+    }
+
+    fn invalidate(&mut self) {
+        self.cached_width = None;
+        self.cached_lines = None;
+        self.cached_skipped = None;
+    }
+}
+
+fn format_duration(elapsed: Duration) -> String {
+    format!("{:.1}s", elapsed.as_secs_f64())
+}
+
+fn format_bash_call(args: &Value, theme: &Theme) -> String {
+    let command = str_arg(args.get("command"));
+    // `timeout ?` — every falsy value hides the suffix.
+    let timeout_suffix = match args.get("timeout") {
+        Some(timeout) if is_truthy_timeout(timeout) => theme.fg(
+            ThemeColor::Muted,
+            &format!(" (timeout {}s)", display_arg(timeout)),
+        ),
+        _ => String::new(),
+    };
+    let command_display = match &command {
+        None => invalid_arg_text(theme),
+        Some(command) if command.is_empty() => theme.fg(ThemeColor::ToolOutput, "..."),
+        Some(command) => command.clone(),
+    };
+    theme.fg(
+        ThemeColor::ToolTitle,
+        &theme.bold(&format!("$ {command_display}")),
+    ) + &timeout_suffix
+}
+
+fn is_truthy_timeout(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(number) => number.as_f64().is_some_and(|number| number != 0.0),
+        Value::String(text) => !text.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}
+
+fn rebuild_bash_result_component(
+    component: &Rc<RefCell<Container>>,
+    result: ToolRenderResult<'_>,
+    options: ToolRenderResultOptions,
+    theme: &Theme,
+    show_images: bool,
+    started_at: Option<Instant>,
+    ended_at: Option<Instant>,
+) {
+    component.borrow_mut().clear();
+
+    let mut output = get_text_output(Some(result.content), show_images)
+        .trim()
+        .to_string();
+    let truncation = truncation_from_details(result.details);
+    let full_output_path = result
+        .details
+        .and_then(|details| details.get("fullOutputPath"))
+        .and_then(Value::as_str);
+    // The model-facing footer names the full log; the TUI shows that as its own
+    // warning line, so it is cut from the preview text.
+    if !options.is_partial
+        && truncation
+            .as_ref()
+            .is_some_and(|truncation| truncation.truncated)
+        && let Some(full_output_path) = full_output_path
+        && output.ends_with(']')
+        && let Some(footer_start) = output.rfind("\n\n[")
+        && output[footer_start..].contains(full_output_path)
+    {
+        output = output[..footer_start].trim_end().to_string();
+    }
+
+    if !output.is_empty() {
+        let styled_output = output
+            .split('\n')
+            .map(|line| theme.fg(ThemeColor::ToolOutput, line))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if options.expanded {
+            component.borrow_mut().add_child(component_ref(Text::new(
+                format!("\n{styled_output}"),
+                0,
+                0,
+            )));
+        } else {
+            component
+                .borrow_mut()
+                .add_child(component_ref(BashPreviewComponent {
+                    styled_output,
+                    cached_width: None,
+                    cached_lines: None,
+                    cached_skipped: None,
+                }));
+        }
+    }
+
+    let truncated = truncation
+        .as_ref()
+        .is_some_and(|truncation| truncation.truncated);
+    if truncated || full_output_path.is_some() {
+        let mut warnings: Vec<String> = Vec::new();
+        if let Some(full_output_path) = full_output_path {
+            warnings.push(format!("Full output: {full_output_path}"));
+        }
+        if let Some(truncation) = truncation
+            .as_ref()
+            .filter(|truncation| truncation.truncated)
+        {
+            if truncation.truncated_by == Some(TruncatedBy::Lines) {
+                warnings.push(format!(
+                    "Truncated: showing {} of {} lines",
+                    truncation.output_lines, truncation.total_lines
+                ));
+            } else {
+                warnings.push(format!(
+                    "Truncated: {} lines shown ({} limit)",
+                    truncation.output_lines,
+                    format_size(truncation.max_bytes)
+                ));
+            }
+        }
+        component.borrow_mut().add_child(component_ref(Text::new(
+            format!(
+                "\n{}",
+                theme.fg(ThemeColor::Warning, &format!("[{}]", warnings.join(". ")))
+            ),
+            0,
+            0,
+        )));
+    }
+
+    if let Some(started_at) = started_at {
+        let label = if options.is_partial {
+            "Elapsed"
+        } else {
+            "Took"
+        };
+        let end_time = ended_at.unwrap_or_else(Instant::now);
+        component.borrow_mut().add_child(component_ref(Text::new(
+            format!(
+                "\n{}",
+                theme.fg(
+                    ThemeColor::Muted,
+                    &format!(
+                        "{label} {}",
+                        format_duration(end_time.saturating_duration_since(started_at))
+                    )
+                )
+            ),
+            0,
+            0,
+        )));
+    }
+}
+
 impl ToolDefinition for BashToolDefinition {
     fn name(&self) -> &str {
         "bash"
@@ -968,6 +1199,83 @@ impl ToolDefinition for BashToolDefinition {
 
     fn constrained_sampling(&self) -> Option<&ConstrainedSampling> {
         self.constrained_sampling.as_ref()
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let mut state = tool_render_state::<BashRenderState>(&context.state);
+        // The clock starts when the command does, not when the call is first
+        // drawn: the arguments are still streaming before that.
+        if context.execution_started && state.started_at.is_none() {
+            state.started_at = Some(Instant::now());
+            state.ended_at = None;
+        }
+        let text = format_bash_call(args, theme);
+        let component = state
+            .call
+            .get_or_insert_with(|| Rc::new(RefCell::new(Text::new("", 0, 0))));
+        component.borrow_mut().set_text(text);
+        Some(Rc::clone(component) as ComponentRef)
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let mut state = tool_render_state::<BashRenderState>(&context.state);
+        // While the command runs, the elapsed line is refreshed once a second;
+        // TypeScript keeps a `setInterval` here (deviation class 1, see
+        // `render_deadline`).
+        if state.started_at.is_some() && options.is_partial && state.tick_deadline.is_none() {
+            state.tick_deadline = Some(Instant::now() + BASH_ELAPSED_TICK);
+        }
+        if !options.is_partial || context.is_error {
+            state.ended_at.get_or_insert_with(Instant::now);
+            state.tick_deadline = None;
+        }
+        let started_at = state.started_at;
+        let ended_at = state.ended_at;
+        let component = state
+            .result
+            .get_or_insert_with(|| Rc::new(RefCell::new(Container::new())))
+            .clone();
+        drop(state);
+        rebuild_bash_result_component(
+            &component,
+            result,
+            options,
+            theme,
+            context.show_images,
+            started_at,
+            ended_at,
+        );
+        component.borrow_mut().invalidate();
+        Some(component as ComponentRef)
+    }
+
+    /// The elapsed line ticks once a second while the command runs.
+    fn render_deadline(&self, context: &ToolRenderContext) -> Option<Instant> {
+        tool_render_state::<BashRenderState>(&context.state).tick_deadline
+    }
+
+    /// Arm the next tick once the render loop has drawn the due one.
+    fn pump_render<'a>(&'a self, context: &'a ToolRenderContext) -> Option<RenderFuture<'a>> {
+        let mut state = tool_render_state::<BashRenderState>(&context.state);
+        let deadline = state.tick_deadline?;
+        if Instant::now() < deadline {
+            return None;
+        }
+        state.tick_deadline = Some(Instant::now() + BASH_ELAPSED_TICK);
+        drop(state);
+        (context.invalidate)();
+        Some(Box::pin(async {}))
     }
 
     fn execute<'a>(

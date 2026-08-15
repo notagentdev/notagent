@@ -1,24 +1,36 @@
 //! Port of `packages/coding-agent/src/core/tools/edit.ts` (tool half).
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 
 use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_tui::components::box_component::BoxComponent;
+use notagent_tui::components::spacer::Spacer;
+use notagent_tui::components::text::Text;
+use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::edit_diff::{
-    Edit, apply_edits_to_normalized_content, detect_line_ending, generate_diff_string,
-    generate_unified_patch, normalize_to_lf, restore_line_endings, strip_bom,
+    DiffString, Edit, apply_edits_to_normalized_content, compute_edits_diff, detect_line_ending,
+    generate_diff_string, generate_unified_patch, normalize_to_lf, restore_line_endings, strip_bom,
 };
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
+use crate::core::tools::render_utils::{render_tool_path, str_arg};
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    RenderFuture, RenderShell, SystemPromptContribution, ToolContext, ToolDefinition,
+    ToolRenderContext, ToolRenderResult, ToolRenderResultOptions, tool_render_state,
+    wrap_tool_definition,
 };
+use crate::modes::interactive::components::diff::{RenderDiffOptions, render_diff};
+use crate::modes::interactive::theme::theme::{Theme, ThemeBg, ThemeColor};
 
 pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -213,6 +225,254 @@ fn validate_edit_input(input: &Value) -> Result<(String, Vec<Edit>), ToolExecuti
     Ok((path, edits))
 }
 
+// ============================================================================
+// Rendering
+// ============================================================================
+
+/// The preview shown before the edit runs: either its diff or why it failed.
+type EditPreview = Result<DiffString, String>;
+
+/// The header of an `edit` call, with the live preview of its diff.
+///
+/// TypeScript hangs the four preview fields off a `Box` instance
+/// (`EditCallRenderComponent`); the port makes that a component of its own
+/// (deviation class 1).
+struct EditCallComponent {
+    header: BoxComponent,
+    preview: Option<EditPreview>,
+    preview_args_key: Option<String>,
+    preview_pending: bool,
+    settled_error: bool,
+}
+
+impl EditCallComponent {
+    fn new() -> Self {
+        Self {
+            header: BoxComponent::new(1, 1, Some(Rc::new(|text: &str| text.to_string()))),
+            preview: None,
+            preview_args_key: None,
+            preview_pending: false,
+            settled_error: false,
+        }
+    }
+}
+
+impl Component for EditCallComponent {
+    fn render(&mut self, width: usize) -> Vec<String> {
+        self.header.render(width)
+    }
+
+    fn invalidate(&mut self) {
+        self.header.invalidate();
+    }
+}
+
+/// The row state of an `edit` call.
+#[derive(Default)]
+struct EditRenderState {
+    call: Option<Rc<RefCell<EditCallComponent>>>,
+    result: Option<Rc<RefCell<Container>>>,
+    /// A preview the render loop still has to compute; see `pump_render`.
+    pending: Option<PendingPreview>,
+}
+
+/// One outstanding preview computation.
+struct PendingPreview {
+    path: String,
+    edits: Vec<Edit>,
+    cwd: String,
+    args_key: String,
+}
+
+/// The arguments a preview can be computed from, or `None` while they are still
+/// incomplete.
+struct RenderablePreviewInput {
+    path: String,
+    edits: Vec<Edit>,
+}
+
+fn get_renderable_preview_input(args: &Value) -> Option<RenderablePreviewInput> {
+    // `args.path` first here, unlike the header, which prefers `file_path`.
+    let path = args
+        .get("path")
+        .and_then(Value::as_str)
+        .or_else(|| args.get("file_path").and_then(Value::as_str))
+        .filter(|path| !path.is_empty())?
+        .to_string();
+
+    if let Some(entries) = args.get("edits").and_then(Value::as_array)
+        && !entries.is_empty()
+        && entries.iter().all(|edit| {
+            edit.get("oldText").and_then(Value::as_str).is_some()
+                && edit.get("newText").and_then(Value::as_str).is_some()
+        })
+    {
+        return Some(RenderablePreviewInput {
+            path,
+            edits: entries
+                .iter()
+                .map(|edit| Edit {
+                    old_text: edit["oldText"].as_str().unwrap_or_default().to_string(),
+                    new_text: edit["newText"].as_str().unwrap_or_default().to_string(),
+                })
+                .collect(),
+        });
+    }
+
+    let old_text = args.get("oldText").and_then(Value::as_str)?;
+    let new_text = args.get("newText").and_then(Value::as_str)?;
+    Some(RenderablePreviewInput {
+        path,
+        edits: vec![Edit {
+            old_text: old_text.to_string(),
+            new_text: new_text.to_string(),
+        }],
+    })
+}
+
+/// `JSON.stringify({ path, edits })` — the identity of one preview request.
+fn preview_args_key(input: &RenderablePreviewInput) -> String {
+    json!({
+        "path": input.path,
+        "edits": input.edits.iter().map(|edit| json!({
+            "oldText": edit.old_text,
+            "newText": edit.new_text,
+        })).collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
+/// `str(args?.file_path ?? args?.path)`
+fn edit_path_arg(args: &Value) -> Option<String> {
+    let raw = args
+        .get("file_path")
+        .filter(|value| !value.is_null())
+        .or_else(|| args.get("path"));
+    str_arg(raw)
+}
+
+fn format_edit_call(args: &Value, theme: &Theme, cwd: &str) -> String {
+    let path_display = render_tool_path(edit_path_arg(args).as_deref(), theme, cwd, None);
+    format!(
+        "{} {path_display}",
+        theme.fg(ThemeColor::ToolTitle, &theme.bold("edit"))
+    )
+}
+
+/// The header colour says where the edit stands: previewed, failed or pending.
+fn edit_header_bg(
+    preview: Option<&EditPreview>,
+    settled_error: bool,
+    theme: &Theme,
+) -> notagent_tui::components::text::BackgroundFn {
+    let background = match (preview, settled_error) {
+        (Some(Err(_)), _) => ThemeBg::ToolErrorBg,
+        (Some(Ok(_)), _) => ThemeBg::ToolSuccessBg,
+        (None, true) => ThemeBg::ToolErrorBg,
+        (None, false) => ThemeBg::ToolPendingBg,
+    };
+    let theme = theme.clone();
+    Rc::new(move |text: &str| theme.bg(background, text))
+}
+
+fn build_edit_call_component(
+    component: &Rc<RefCell<EditCallComponent>>,
+    args: &Value,
+    theme: &Theme,
+    cwd: &str,
+) {
+    let header_text = format_edit_call(args, theme, cwd);
+    let mut component = component.borrow_mut();
+    let background = edit_header_bg(component.preview.as_ref(), component.settled_error, theme);
+    component.header.set_bg_fn(Some(background));
+    component.header.clear();
+    component
+        .header
+        .add_child(component_ref(Text::new(header_text, 0, 0)));
+
+    let Some(preview) = &component.preview else {
+        return;
+    };
+    let body = match preview {
+        Err(error) => theme.fg(ThemeColor::Error, error),
+        Ok(diff) => render_diff(&diff.diff, &RenderDiffOptions::default()),
+    };
+    component.header.add_child(component_ref(Spacer::new(1)));
+    component
+        .header
+        .add_child(component_ref(Text::new(body, 0, 0)));
+}
+
+/// Store a preview and report whether it differs from the one shown.
+fn set_edit_preview(
+    component: &mut EditCallComponent,
+    preview: EditPreview,
+    args_key: Option<String>,
+) -> bool {
+    let changed = match (&component.preview, &preview) {
+        (None, _) => true,
+        (Some(Err(current)), Err(next)) => current != next,
+        (Some(Ok(current)), Ok(next)) => {
+            current.diff != next.diff || current.first_changed_line != next.first_changed_line
+        }
+        _ => true,
+    };
+    component.preview = Some(preview);
+    component.preview_args_key = args_key;
+    component.preview_pending = false;
+    changed
+}
+
+/// What the result adds below the header: an error the preview did not already
+/// show, or a diff that differs from the previewed one.
+fn format_edit_result(
+    args: &Value,
+    preview: Option<&EditPreview>,
+    result: ToolRenderResult<'_>,
+    theme: &Theme,
+    is_error: bool,
+) -> Option<String> {
+    let raw_path = edit_path_arg(args);
+    let preview_diff = match preview {
+        Some(Ok(preview)) => Some(preview.diff.as_str()),
+        _ => None,
+    };
+    let preview_error = match preview {
+        Some(Err(error)) => Some(error.as_str()),
+        _ => None,
+    };
+    if is_error {
+        let error_text = result
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                TextOrImageContent::Text(text) => Some(text.text.clone()),
+                TextOrImageContent::Image(_) => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if error_text.is_empty() || Some(error_text.as_str()) == preview_error {
+            return None;
+        }
+        return Some(theme.fg(ThemeColor::Error, &error_text));
+    }
+
+    let result_diff = result
+        .details
+        .and_then(|details| details.get("diff"))
+        .and_then(Value::as_str)
+        .filter(|diff| !diff.is_empty())?;
+    if Some(result_diff) == preview_diff {
+        return None;
+    }
+    Some(render_diff(
+        result_diff,
+        &RenderDiffOptions {
+            file_path: raw_path,
+        },
+    ))
+}
+
 impl ToolDefinition for EditToolDefinition {
     fn name(&self) -> &str {
         "edit"
@@ -247,8 +507,165 @@ impl ToolDefinition for EditToolDefinition {
     }
 
     /// The edit tool frames its own diff output.
-    fn render_shell(&self) -> crate::core::tools::tool_definition::RenderShell {
-        crate::core::tools::tool_definition::RenderShell::SelfManaged
+    fn render_shell(&self) -> RenderShell {
+        RenderShell::SelfManaged
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let mut state = tool_render_state::<EditRenderState>(&context.state);
+        let component = state
+            .call
+            .get_or_insert_with(|| Rc::new(RefCell::new(EditCallComponent::new())))
+            .clone();
+        let preview_input = get_renderable_preview_input(args);
+        let args_key = preview_input.as_ref().map(preview_args_key);
+
+        {
+            let mut borrowed = component.borrow_mut();
+            // Changed arguments invalidate everything the old ones produced.
+            if borrowed.preview_args_key != args_key {
+                borrowed.preview = None;
+                borrowed.preview_args_key = args_key.clone();
+                borrowed.preview_pending = false;
+                borrowed.settled_error = false;
+            }
+
+            if context.args_complete
+                && let Some(preview_input) = &preview_input
+                && borrowed.preview.is_none()
+                && !borrowed.preview_pending
+            {
+                borrowed.preview_pending = true;
+                state.pending = Some(PendingPreview {
+                    path: preview_input.path.clone(),
+                    edits: preview_input.edits.clone(),
+                    cwd: context.cwd.clone(),
+                    args_key: args_key.clone().unwrap_or_default(),
+                });
+            }
+        }
+        drop(state);
+
+        build_edit_call_component(&component, args, theme, &context.cwd);
+        Some(component as ComponentRef)
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        _options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        let mut state = tool_render_state::<EditRenderState>(&context.state);
+        let call_component = state.call.clone();
+        let container = state
+            .result
+            .get_or_insert_with(|| Rc::new(RefCell::new(Container::new())))
+            .clone();
+        drop(state);
+
+        let preview_input = get_renderable_preview_input(&context.args);
+        let args_key = preview_input.as_ref().map(preview_args_key);
+        let result_diff = if context.is_error {
+            None
+        } else {
+            result
+                .details
+                .and_then(|details| details.get("diff"))
+                .and_then(Value::as_str)
+        };
+
+        if let Some(call_component) = &call_component {
+            let mut changed = false;
+            {
+                let mut borrowed = call_component.borrow_mut();
+                if let Some(result_diff) = result_diff {
+                    let first_changed_line = result
+                        .details
+                        .and_then(|details| details.get("firstChangedLine"))
+                        .and_then(Value::as_u64)
+                        .map(|line| line as usize);
+                    changed = set_edit_preview(
+                        &mut borrowed,
+                        Ok(DiffString {
+                            diff: result_diff.to_string(),
+                            first_changed_line,
+                        }),
+                        args_key,
+                    ) || changed;
+                }
+                if borrowed.settled_error != context.is_error {
+                    borrowed.settled_error = context.is_error;
+                    changed = true;
+                }
+            }
+            if changed {
+                build_edit_call_component(call_component, &context.args, theme, &context.cwd);
+            }
+        }
+
+        let preview = call_component
+            .as_ref()
+            .and_then(|component| component.borrow().preview.clone());
+        let output = format_edit_result(
+            &context.args,
+            preview.as_ref(),
+            result,
+            theme,
+            context.is_error,
+        );
+        container.borrow_mut().clear();
+        let Some(output) = output else {
+            return Some(container as ComponentRef);
+        };
+        container
+            .borrow_mut()
+            .add_child(component_ref(Spacer::new(1)));
+        container
+            .borrow_mut()
+            .add_child(component_ref(Text::new(output, 1, 0)));
+        Some(container as ComponentRef)
+    }
+
+    /// A pending preview is due at once; the loop calls `pump_render` for it.
+    fn render_deadline(&self, context: &ToolRenderContext) -> Option<Instant> {
+        tool_render_state::<EditRenderState>(&context.state)
+            .pending
+            .is_some()
+            .then(Instant::now)
+    }
+
+    /// Compute the preview the last `render_call` asked for.
+    ///
+    /// Deviation (class 1): TypeScript continues a promise inside the renderer
+    /// and calls `context.invalidate()` from it; the port hands the work to the
+    /// render loop, which awaits it on the TUI thread. The result is dropped if
+    /// the arguments moved on in the meantime, exactly as the `previewArgsKey`
+    /// check does there.
+    fn pump_render<'a>(&'a self, context: &'a ToolRenderContext) -> Option<RenderFuture<'a>> {
+        let pending = tool_render_state::<EditRenderState>(&context.state)
+            .pending
+            .take()?;
+        Some(Box::pin(async move {
+            let preview = compute_edits_diff(&pending.path, &pending.edits, &pending.cwd).await;
+            let call = tool_render_state::<EditRenderState>(&context.state)
+                .call
+                .clone();
+            let Some(call) = call else { return };
+            let matches =
+                call.borrow().preview_args_key.as_deref() == Some(pending.args_key.as_str());
+            if !matches {
+                return;
+            }
+            set_edit_preview(&mut call.borrow_mut(), preview, Some(pending.args_key));
+            (context.invalidate)();
+        }))
     }
 
     fn prepare_arguments(&self, args: Value) -> Value {

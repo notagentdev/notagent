@@ -9,8 +9,9 @@
 
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+use notagent::core::tools::bash::BashRenderState;
 use notagent::core::tools::tool_definition::{
-    ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
+    ToolRenderContext, ToolRenderResult, ToolRenderResultOptions, tool_render_state,
 };
 use notagent::core::tools::{ToolName, create_tool_definition};
 use notagent::modes::interactive::theme::theme::{init_theme, theme};
@@ -30,6 +31,12 @@ fn global_lock() -> MutexGuard<'static, ()> {
 #[serde(rename_all = "camelCase")]
 struct OracleCase {
     tool: String,
+    /// A file the case needs on disk, for the renderers that read one.
+    file: Option<OracleFile>,
+    /// Seeds the `bash` clock so the elapsed line is deterministic.
+    state_elapsed: Option<OracleElapsed>,
+    /// Runs the pending render work (the `edit` preview) and draws again.
+    pump_preview: bool,
     /// `bytes` compares the rendered lines verbatim; `plain` strips the ANSI
     /// first, for the cases that run through the syntax highlighter (master
     /// plan, class 3: highlight.js is substituted by tree-sitter, so the token
@@ -53,6 +60,19 @@ struct OracleCase {
 struct OracleStep {
     args: Value,
     args_complete: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct OracleFile {
+    path: String,
+    content: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OracleElapsed {
+    started_at: u64,
+    ended_at: u64,
 }
 
 #[derive(serde::Deserialize)]
@@ -133,6 +153,10 @@ fn matches_the_typescript_renderers_for_every_oracle_case() {
             .expect("oracle parses");
     assert!(!oracle.is_empty());
 
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
     let theme = theme();
     let mut failures = Vec::new();
     for (index, case) in oracle.iter().enumerate() {
@@ -141,12 +165,28 @@ fn matches_the_typescript_renderers_for_every_oracle_case() {
 
         // One context per case, so the steps share their render state exactly as
         // the rows of `tool-execution.ts` do.
+        if let Some(file) = &case.file {
+            let path = std::path::Path::new(&file.path);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("fixture directory");
+            }
+            std::fs::write(path, &file.content).expect("fixture file");
+        }
+
         let mut context = ToolRenderContext::new("oracle-call", Value::Null, case.cwd.clone());
         context.execution_started = case.execution_started;
         context.is_partial = case.is_partial;
         context.expanded = case.expanded;
         context.show_images = case.show_images;
         context.is_error = case.is_error;
+
+        if let Some(elapsed) = &case.state_elapsed {
+            let now = std::time::Instant::now();
+            let mut state = tool_render_state::<BashRenderState>(&context.state);
+            state.started_at =
+                Some(now - std::time::Duration::from_millis(elapsed.ended_at - elapsed.started_at));
+            state.ended_at = Some(now);
+        }
 
         for (step_index, step) in case.steps.iter().enumerate() {
             let args = expand(&step.args);
@@ -165,6 +205,32 @@ fn matches_the_typescript_renderers_for_every_oracle_case() {
             if call_lines != expected {
                 failures.push(format!(
                     "case {index} ({}) call step {step_index}\n  expected {expected:?}\n  actual   {call_lines:?}",
+                    case.tool
+                ));
+            }
+        }
+
+        if case.pump_preview {
+            // The render loop awaits the work a renderer started; here that is
+            // the `edit` preview.
+            if let Some(pump) = definition.pump_render(&context) {
+                runtime.block_on(pump);
+            }
+            let step = case.steps.last().expect("a case has steps");
+            let args = expand(&step.args);
+            context.args = args.clone();
+            context.args_complete = step.args_complete;
+            let call = definition
+                .render_call(&args, &theme, &context)
+                .expect("built-in tools render their call");
+            let call_lines = comparable(&call.borrow_mut().render(case.width), &case.compare);
+            let expected = comparable(
+                case.call_line_steps.last().map_or(&[][..], Vec::as_slice),
+                &case.compare,
+            );
+            if call_lines != expected {
+                failures.push(format!(
+                    "case {index} ({}) call after pump\n  expected {expected:?}\n  actual   {call_lines:?}",
                     case.tool
                 ));
             }

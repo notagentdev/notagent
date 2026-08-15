@@ -6,7 +6,9 @@
 //
 // Run from packages/coding-agent of the TypeScript repo:
 //   FORCE_COLOR=1 npx tsx tools/gen-tool-render-oracle.mjs > .../tests/fixtures/tool-render-oracle.json
+import * as fs from "node:fs";
 import * as os from "node:os";
+import * as path from "node:path";
 
 const { setCapabilities } = await import("@notagent/tui");
 setCapabilities({ images: null, trueColor: true, hyperlinks: false });
@@ -520,17 +522,235 @@ const CASES = [
 		result: { content: [text("failed")], details: { diff: "-  1 a\n+  1 b", warnings: [] } },
 	},
 	{ tool: "patch_minified", args: { path: "src/index.ts" }, result: { content: [text("ok")], details: undefined } },
+	// ---------------------------------------------------------------- bash
+	{ tool: "bash", args: { command: "ls -la" }, executionStarted: false },
+	{ tool: "bash", args: {}, executionStarted: false },
+	{ tool: "bash", args: { command: "" }, executionStarted: false },
+	{ tool: "bash", args: { command: 7 }, executionStarted: false },
+	{ tool: "bash", args: { command: "npm test", timeout: 120 }, executionStarted: false },
+	{ tool: "bash", args: { command: "npm test", timeout: 0 }, executionStarted: false },
+	{ tool: "bash", args: { command: "npm test", timeout: null }, executionStarted: false },
+	{
+		tool: "bash",
+		args: { command: "ls" },
+		executionStarted: false,
+		result: { content: [text("a.txt\nb.txt")], details: undefined },
+	},
+	{
+		// More output than the preview shows: the hint counts the hidden lines.
+		tool: "bash",
+		args: { command: "ls" },
+		executionStarted: false,
+		result: { content: [text(lines(12, "entry"))], details: undefined },
+	},
+	{
+		tool: "bash",
+		args: { command: "ls" },
+		executionStarted: false,
+		expanded: true,
+		result: { content: [text(lines(12, "entry"))], details: undefined },
+	},
+	{
+		tool: "bash",
+		args: { command: "ls" },
+		executionStarted: false,
+		result: { content: [text("(no output)")], details: undefined },
+	},
+	{
+		// The model-facing footer naming the full log is cut from the preview.
+		tool: "bash",
+		args: { command: "ls" },
+		executionStarted: false,
+		result: {
+			content: [
+				text(
+					"entry 1\nentry 2\n\n[Showing lines 1-2 of 900. Full output: /tmp/bash-output.log]",
+				),
+			],
+			details: { truncation: TRUNCATION.lines, fullOutputPath: "/tmp/bash-output.log" },
+		},
+	},
+	{
+		tool: "bash",
+		args: { command: "ls" },
+		executionStarted: false,
+		result: {
+			content: [text("entry 1")],
+			details: { truncation: TRUNCATION.bytes, fullOutputPath: "/tmp/bash-output.log" },
+		},
+	},
+	{
+		tool: "bash",
+		args: { command: "ls" },
+		executionStarted: false,
+		result: { content: [text("entry 1")], details: { fullOutputPath: "/tmp/bash-output.log" } },
+	},
+	{
+		// A finished command reports how long it took.
+		tool: "bash",
+		args: { command: "sleep 1" },
+		executionStarted: false,
+		stateElapsed: { startedAt: 1000, endedAt: 2500 },
+		result: { content: [text("done")], details: undefined },
+	},
+	{
+		tool: "bash",
+		args: { command: "sleep 1" },
+		executionStarted: false,
+		stateElapsed: { startedAt: 1000, endedAt: 1000 },
+		result: { content: [text("")], details: undefined },
+	},
+	// ---------------------------------------------------------------- edit
+	{ tool: "edit", args: { path: "src/index.ts" }, argsComplete: false },
+	{ tool: "edit", args: {}, argsComplete: false },
+	{ tool: "edit", args: { file_path: "src/index.ts", path: "src/other.ts" }, argsComplete: false },
+	{ tool: "edit", args: { path: 5 }, argsComplete: false },
+	{
+		// The preview lands after the arguments are complete and colours the
+		// header; the second step is the row once it has resolved.
+		tool: "edit",
+		file: { path: "/tmp/notagent-oracle/sample.ts", content: "const a = 1;\nconst b = 2;\n" },
+		pumpPreview: true,
+		steps: [
+			{
+				args: {
+					path: "/tmp/notagent-oracle/sample.ts",
+					edits: [{ oldText: "const b = 2;", newText: "const b = 3;" }],
+				},
+				argsComplete: true,
+			},
+		],
+	},
+	{
+		// Legacy single-edit arguments preview the same way.
+		tool: "edit",
+		file: { path: "/tmp/notagent-oracle/legacy.ts", content: "let value = 1;\n" },
+		pumpPreview: true,
+		steps: [
+			{
+				args: { path: "/tmp/notagent-oracle/legacy.ts", oldText: "let value = 1;", newText: "let value = 2;" },
+				argsComplete: true,
+			},
+		],
+	},
+	{
+		// An edit that does not match previews its error instead of a diff.
+		tool: "edit",
+		file: { path: "/tmp/notagent-oracle/nomatch.ts", content: "const a = 1;\n" },
+		pumpPreview: true,
+		steps: [
+			{
+				args: {
+					path: "/tmp/notagent-oracle/nomatch.ts",
+					edits: [{ oldText: "nothing like this", newText: "x" }],
+				},
+				argsComplete: true,
+			},
+		],
+	},
+	{
+		// Incomplete arguments never start a preview.
+		tool: "edit",
+		file: { path: "/tmp/notagent-oracle/streaming.ts", content: "const a = 1;\n" },
+		pumpPreview: true,
+		steps: [
+			{
+				args: { path: "/tmp/notagent-oracle/streaming.ts", edits: [{ oldText: "const a = 1;" }] },
+				argsComplete: false,
+			},
+			{
+				args: {
+					path: "/tmp/notagent-oracle/streaming.ts",
+					edits: [{ oldText: "const a = 1;", newText: "const a = 2;" }],
+				},
+				argsComplete: false,
+			},
+		],
+	},
+	{
+		tool: "edit",
+		file: { path: "/tmp/notagent-oracle/result.ts", content: "const a = 1;\n" },
+		pumpPreview: true,
+		steps: [
+			{
+				args: {
+					path: "/tmp/notagent-oracle/result.ts",
+					edits: [{ oldText: "const a = 1;", newText: "const a = 2;" }],
+				},
+				argsComplete: true,
+			},
+		],
+		result: {
+			content: [text("Successfully replaced 1 block(s) in result.ts.")],
+			details: { diff: "-  1 const a = 1;\n+  1 const a = 2;", patch: "", firstChangedLine: 1 },
+		},
+	},
+	{
+		// A result whose diff differs from the preview is shown below it.
+		tool: "edit",
+		file: { path: "/tmp/notagent-oracle/other.ts", content: "const a = 1;\n" },
+		pumpPreview: true,
+		steps: [
+			{
+				args: {
+					path: "/tmp/notagent-oracle/other.ts",
+					edits: [{ oldText: "const a = 1;", newText: "const a = 2;" }],
+				},
+				argsComplete: true,
+			},
+		],
+		result: {
+			content: [text("Successfully replaced 1 block(s).")],
+			details: { diff: "-  1 const a = 1;\n+  1 const a = 9;", patch: "" },
+		},
+	},
+	{
+		// A failed edit turns the header red and prints the message once.
+		tool: "edit",
+		file: { path: "/tmp/notagent-oracle/failed.ts", content: "const a = 1;\n" },
+		pumpPreview: true,
+		isError: true,
+		steps: [
+			{
+				args: {
+					path: "/tmp/notagent-oracle/failed.ts",
+					edits: [{ oldText: "const a = 1;", newText: "const a = 2;" }],
+				},
+				argsComplete: true,
+			},
+		],
+		result: { content: [text("Could not edit file: failed.ts. Error code: EACCES.")], details: undefined },
+	},
+	{
+		tool: "edit",
+		args: { path: "/tmp/notagent-oracle/plain.ts", edits: [] },
+		argsComplete: true,
+		result: { content: [text("")], details: undefined },
+	},
 ];
+
 
 
 const definitions = createAllToolDefinitions(CWD);
 
-const output = CASES.map((testCase) => {
+const output = [];
+for (const testCase of CASES) {
 	const definition = definitions[testCase.tool];
 	if (!definition) throw new Error(`unknown tool ${testCase.tool}`);
 	const width = testCase.width ?? 100;
 	const result = testCase.result ? expand(testCase.result) : undefined;
 	const state = {};
+	// `bash` keeps the command's clock in the render state; seeding it makes the
+	// elapsed line deterministic.
+	if (testCase.stateElapsed) {
+		state.startedAt = testCase.stateElapsed.startedAt;
+		state.endedAt = testCase.stateElapsed.endedAt;
+	}
+	// `edit` previews the diff of a real file, so the case brings one.
+	if (testCase.file) {
+		fs.mkdirSync(path.dirname(testCase.file.path), { recursive: true });
+		fs.writeFileSync(testCase.file.path, testCase.file.content);
+	}
 	const cwd = testCase.cwd ?? CWD;
 	// A case either renders its arguments once or streams them in steps
 	// through the same render state, the way tool-execution does.
@@ -564,6 +784,20 @@ const output = CASES.map((testCase) => {
 		return callComponent.render(width);
 	});
 
+	// The preview of an `edit` call resolves asynchronously; the extra step is
+	// what the row shows once it has landed.
+	if (testCase.pumpPreview) {
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		const step = steps[steps.length - 1];
+		callComponent = definition.renderCall(step.args, theme, {
+			...baseContext,
+			args: step.args,
+			argsComplete: step.argsComplete,
+			lastComponent: callComponent,
+		});
+		callLineSteps.push(callComponent.render(width));
+	}
+
 	const lastStep = steps[steps.length - 1];
 	let resultLines;
 	if (result) {
@@ -576,9 +810,12 @@ const output = CASES.map((testCase) => {
 		resultLines = resultComponent.render(width);
 	}
 
-	return {
+	output.push({
 		tool: testCase.tool,
 		compare: testCase.compare ?? "bytes",
+		file: testCase.file ?? null,
+		stateElapsed: testCase.stateElapsed ?? null,
+		pumpPreview: testCase.pumpPreview ?? false,
 		steps: (testCase.steps ?? [{ args: testCase.args, argsComplete: testCase.argsComplete }]).map((step) => ({
 			args: step.args,
 			argsComplete: step.argsComplete ?? true,
@@ -593,7 +830,7 @@ const output = CASES.map((testCase) => {
 		result: testCase.result ?? null,
 		callLineSteps,
 		resultLines: resultLines ?? null,
-	};
-});
+	});
+}
 
 process.stdout.write(JSON.stringify(output, null, "\t"));
