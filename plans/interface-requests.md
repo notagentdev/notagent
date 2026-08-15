@@ -1863,3 +1863,25 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Hinweis zur Registrierung**: `LlamaProvider` meldet `is_dynamic() == true`; TS prüft an
   derselben Stelle `provider.refreshModels !== undefined`.
 - **Status**: erledigt
+### O-11 Endspiel-Aufträge für A und B (g3/g4-Vorbereitung)
+- **Von / An**: Orchestrator → A und B
+- **Datum**: 2026-08-15
+- **Betrifft**: G3-E2E-Szenarien (A), Parity-Audit-Werkzeug (B)
+- **Beleg**: Beide Workstreams sind mit ihrem Planumfang fertig; offen sind nur noch Cs
+  Tasks 13-16. Das G3-Gate verlangt "End-to-End-Szenarien über das virtuelle Terminal
+  grün" (Master-Plan), das G4-Gate ein Audit "jede TS-src-Datei hat eine Ledger-Zeile" —
+  beides ist vorbereitbar, ohne Cs Verdrahtungsarbeit anzufassen.
+- **Regelung**:
+  1. A baut die G3-E2E-Infrastruktur in `crates/notagent/tests/interactive_e2e/`
+     (Helfer: App gegen VirtualTerminal + faux-Provider fahren, per A-2-Feature
+     test-terminal) und schreibt die Master-Plan-Szenarien (Startup, Prompt-Roundtrip,
+     Tool-Anzeige, Selector-Bedienung, Theme-Wechsel, Resize) — aber IMMER NUR gegen
+     bereits auf main gemergte Verdrahtung von C. Fehlende Verdrahtung → Request an C,
+     keine eigene Implementierung in interactive-mode. Szenarien, die noch nicht
+     lauffähig sind, als #[ignore = "wartet auf C Task 13: …"] anlegen.
+  2. B baut das Abschluss-Audit-Werkzeug `scripts/parity-audit.sh` (oder kleines
+     Rust-Tool unter tools/): enumeriert jede Datei unter packages/*/src des TS-Repos,
+     prüft sie gegen alle PARITY.md (Status verifiziert oder dokumentierter Ausschluss)
+     und schreibt den Lückenbericht nach plans/final-parity-audit.md (Entwurf). Reines
+     Prozesswerkzeug, kein Portumfang; C nutzt es an G4 (Task 16).
+- **Status**: umgesetzt (Prompts ausgegeben)
