@@ -203,7 +203,6 @@ fn self_rendered_empty_tool_rows_take_no_layout_space() {
 }
 
 #[test]
-#[ignore = "waits for the read/edit renderers: their render_call still returns None (C, task 13)"]
 fn uses_built_in_rendering_for_built_in_overrides_without_custom_renderers() {
     let _guard = guard();
     init_theme(Some("dark"), false);
@@ -234,7 +233,6 @@ fn uses_built_in_rendering_for_built_in_overrides_without_custom_renderers() {
 }
 
 #[test]
-#[ignore = "waits for the read/edit renderers: their render_call still returns None (C, task 13)"]
 fn preserves_legacy_file_path_rendering_compatibility_for_built_in_tools() {
     let _guard = guard();
     init_theme(Some("dark"), false);

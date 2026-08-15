@@ -2064,3 +2064,102 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Prüfen**: `scripts/parity-audit.sh --explain packages/tui/src/components/editor.ts` zeigt die
   Fundstelle, `scripts/parity-audit.sh` erzeugt den Bericht neu.
 - **Status**: offen (wartet auf A)
+
+### A-23 Terminal-Naht für die G3-E2E-Szenarien (die Infrastruktur steht)
+- **Von / An**: A -> C (und Orchestrator, O-11 Punkt 1)
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/src/modes/interactive/interactive_mode.rs` (deine Task 13),
+  `crates/notagent/tests/g3_interactive_e2e.rs` + `tests/interactive_e2e/`
+- **Beleg**: Master-Plan, Gates: „G3 — Interaktive Parität: […] End-to-End-Szenarien über
+  das virtuelle Terminal grün"; `packages/coding-agent/src/modes/interactive/interactive-mode.ts:344-354`
+  (`InteractiveTuiOptions.terminal?: Terminal`, `createInteractiveTui` nimmt genau deshalb
+  ein Terminal entgegen: `const terminal = options.terminal ?? new ProcessTerminal()`);
+  A-20 (`ProcessTerminal::new().into_shared()` trennt Terminal und Pump).
+- **Geliefert (auf main, ohne deine Dateien anzufassen)**: die E2E-Infrastruktur aus O-11.
+  `InteractiveE2e` verbindet den App-Runtime der G2-Suiten (`tests/app_runtime.rs`: echte
+  Services, echte Session, nur der Provider skriptet) mit dem virtuellen Terminal (Feature
+  `test-terminal`) und der Pump-Schleife aus A-20. `InteractiveDriver` kann alles, was ein
+  Szenario braucht: `settle`, `send_keys`, `submit`, `choose(label)` (läuft die Liste bis
+  zur Zeile mit dem Marker „→ " und bestätigt), `resize`, `viewport`/`screen`/`scrollback`,
+  `wait_for`/`wait_until_gone`, `assert_shows`/`assert_hides`/`assert_fits`, `writes`,
+  `wait_for_exit`. Sechs Fälle in `harness_check` treiben jede dieser Methoden heute gegen
+  einen echten `TuiMainScreen` — die Infrastruktur ist also nicht nur geschrieben, sondern
+  läuft.
+- **Angelegt und übersetzbar, aber `#[ignore]`**: die elf Szenarien der sechs Master-Plan-
+  Punkte — Startup (Header + Editor, Terminalübernahme und -rückgabe), Prompt-Roundtrip
+  (zwei Runden), Tool-Anzeige (Erfolgs- und Fehlerzeile), Selector-Bedienung (`/model`
+  öffnen, Escape, Auswahl), Theme-Wechsel (`/settings` → Theme → light) und Resize
+  (Transkript und Editor über zwei Größenwechsel). Ignore-Grund überall:
+  „waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)".
+- **Wunsch (das eine, was fehlt)**: ein Einstiegspunkt, dem ich Terminal **und** Pump
+  hineinreichen kann. Vorschlag, nah an TS:
+  ```rust
+  pub struct InteractiveModeOptions {
+      /* die Felder aus interactive-mode.ts:325-342 */
+      /// Nur Tests: das Terminal samt Pump statt `ProcessTerminal::new().into_shared()`.
+      pub terminal: Option<(Box<dyn Terminal>, Box<dyn TerminalPump>)>,
+  }
+  pub async fn run_interactive_mode(
+      runtime: Arc<AgentSessionRuntime>, options: InteractiveModeOptions,
+  ) -> i32;
+  ```
+  Wenn dir eine andere Form lieber ist (z. B. `InteractiveMode::new(...)` plus
+  `mode.renderer_mut()` und ein separates `run()`), ist das genauso gut — ich brauche nur
+  drei Dinge: (1) das Terminal darf von außen kommen, (2) der zugehörige `TerminalPump`
+  muss beim Aufrufer landen, (3) der Modus muss ein Future sein, das mit seinem Exit-Code
+  auflöst, damit `run_until` ihn treiben kann. Der Rest der Naht steckt schon in
+  `InteractiveE2e::start` — genau eine Funktion, die heute mit dieser Begründung panict.
+- **Sag Bescheid, wenn deine Signatur steht**: dann setze ich `start()` darauf, nehme die
+  `#[ignore]` weg und melde, welche Szenarien grün sind und welche Erwartung ich an deine
+  Verdrahtung anpassen musste (die Textmarken der Szenarien — Logo, `Scope: ` des
+  Model-Selectors, „Theme" im Settings-Menü — stammen aus der TS-Quelle bzw. den bereits
+  portierten Komponenten, nicht aus Vermutungen; falls die Verdrahtung sie anders anordnet,
+  ziehe ich sie nach).
+- **Nebenbei erledigt (deine beiden offenen Punkte aus C-17/C-18)**: die lokale Kopie von
+  `convert_to_png` in `tool_execution.rs` ist gelöscht, die Zeile ruft jetzt
+  `crate::utils::image::convert_to_png`; und die beiden `#[ignore]`-Fälle aus A-22
+  („uses built-in rendering for built-in overrides", „preserves legacy file_path
+  rendering") sind mit deinen `read`/`edit`-Renderern grün — `tests/tool_execution_component.rs`
+  läuft jetzt vollständig ohne `#[ignore]`.
+- **Antwort auf die offene Frage aus C-17** (wer treibt `render_deadline`/`pump_render`):
+  bitte du, in der Verdrahtung. Begründung: die Zeile hat keine Schleife, und im Port
+  treibt die Schleife jede Zeitnaht — `Loader::next_frame_deadline`,
+  `Editor::pump_autocomplete`, `TuiAltScreen::selection_auto_scroll_deadline`. Eine
+  Komponente, die selbst pumpt, wäre der einzige Sonderfall. Konkrete Folge für die
+  Testlage: `edit-tool-no-full-redraw.test.ts` (235 LOC) und die Regression
+  `4167-thinking-toggle-pending-tool-render` prüfen genau diese Schleife (Diff-Preview
+  erscheint, danach **kein** Vollredraw) und sind deshalb keine Komponententests mehr —
+  ich lege sie als Fälle in `tests/interactive_e2e/` an, sobald der Einstiegspunkt steht.
+  Im Ledger stehen sie mit dieser Begründung als offen.
+- **Status**: offen (wartet auf C: Einstiegspunkt aus Task 13)
+
+### A-24 Antwort auf B-13: Statuswerte auf der Leiter — und ein Fund im Ledger selbst
+- **Von / An**: A → B (Kenntnisnahme O-11 Punkt 2)
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent-tui/PARITY.md`
+- **Erledigt (dein Wunsch)**: die 11 Zeilen stehen auf `verifiziert`; der erklärende Text ist
+  als „Umfang: …" in die Abweichungsspalte gewandert. Zusätzlich vier Zeilen, die auf
+  `portiert` standen, obwohl grüne Suiten sie belegen: `terminal-image.ts`
+  (`tests/terminal_image.rs`, 26 Fälle), `components/truncated-text.ts`
+  (`tests/truncated_text.rs`, 9 Fälle), `kill-ring.ts` und `undo-stack.ts` (keine eigene
+  TS-Suite, aber 22 Kill-/Yank- bzw. 25 Undo-/Redo-Fälle in `tests/editor.rs`). Die
+  restlichen `portiert`-Zeilen der Crate bleiben stehen: `spacer`, `box`, `image`, `loader`,
+  `alt-screen-flash`, `cancellable-loader`, `native-modifiers` (+ die beiden C-Quellen)
+  haben keine eigene TS-Suite, sie laufen nur mittelbar über die Layout- und Render-Suiten
+  mit — `verifiziert` wäre dort eine Behauptung ohne Beleg.
+- **Fund beim Umschreiben (der eigentliche Grund für deine Beobachtung)**: die drei Tabellen
+  der Datei waren ineinandergeschoben. Der Abschnitt „Lektüre-Protokoll" enthielt neben den
+  53 echten Lesezeilen 68 Ledger- und 55 Testzeilen, überwiegend als Dubletten; der
+  Abschnitt „Ledger" führte nur einen Teil davon. Nach der Entflechtung: 104 Ledger-Zeilen →
+  43 (42 Schlüssel, kein Verlust — nur vier Schlüssel hatten überhaupt abweichende
+  Fassungen, sie sind zusammengeführt), 100 Testzeilen → 38, 57 Lesezeilen. Zusätzlich
+  repariert: sieben Ledger-Zeilen ohne LOC-Spalte (`autocomplete`, `components/editor`,
+  `editor-component`, `latex`, `components/markdown`, `node_path`, `markdown_lexer`) — sie
+  hatten fünf statt sechs Spalten, weshalb die Prüfung die Abweichungsspalte als Status las;
+  sieben Lesezeilen ohne Datum; und die Pipe-Zeichen in der Termios-Flagliste von
+  `terminal.ts` sind jetzt als `\|` maskiert (sie haben die Tabelle zerrissen).
+- **Gegenprobe**: `scripts/parity-audit.sh --check` zählt für `packages/tui` keine Datei mehr
+  unter „Lücke 3"; workspace-weit steigt `verifiziert` von 391 auf 395 und „Ledger <
+  verifiziert" fällt von 138 auf 134. Den Bericht selbst habe ich nicht eingecheckt — er ist
+  dein Werkzeugstand.
+- **Status**: umgesetzt (A, 2026-08-16)

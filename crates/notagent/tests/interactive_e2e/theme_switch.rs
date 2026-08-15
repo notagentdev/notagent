@@ -1,0 +1,66 @@
+//! Scenario 5 — switching the theme.
+//!
+//! There is no `/theme` command; the theme lives in the settings menu
+//! (`slash-commands.ts:20` "Open settings menu", submenu "Theme" in
+//! `settings_selector.rs:1193`). Picking a theme there does three things, and
+//! the scenario checks all three: the global theme instance changes
+//! (`theme()`), the choice is written to the settings, and the screen is
+//! repainted in the new colours.
+//!
+//! The theme registry is process-global, which is why the case reads the theme
+//! through `theme()` rather than through a handle of its own.
+
+use notagent::config::APP_NAME;
+use notagent::modes::interactive::theme::theme::theme;
+
+use super::harness::{InteractiveE2e, run_local};
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
+async fn the_settings_menu_switches_the_theme_and_repaints_the_screen() {
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        let before = theme();
+        let before_paint = driver.writes().len();
+
+        driver.submit("/settings").await;
+        driver.wait_for("Theme").await;
+        driver.choose("Theme").await;
+
+        // The submenu lists the theme names; "light" is built in, so it is
+        // there whatever the resource loader found.
+        driver.wait_for("light").await;
+        driver.choose("light").await;
+
+        // The instance the components draw through is a different one now …
+        let after = theme();
+        assert_eq!(after.name.as_deref(), Some("light"));
+        assert_ne!(
+            before.get_fg_ansi(notagent::modes::interactive::theme::theme::ThemeColor::Accent),
+            after.get_fg_ansi(notagent::modes::interactive::theme::theme::ThemeColor::Accent),
+            "the light theme paints the accent differently than {:?}",
+            before.name
+        );
+
+        // … the choice survives in the settings …
+        assert_eq!(
+            driver
+                .app()
+                .session()
+                .settings_manager()
+                .get_theme()
+                .as_deref(),
+            Some("light")
+        );
+
+        // … and the screen was redrawn afterwards.
+        assert!(
+            driver.writes().len() > before_paint,
+            "nothing was written after the theme changed"
+        );
+    })
+    .await;
+}

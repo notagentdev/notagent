@@ -16,7 +16,6 @@
 //! - The TS renderers are wrapped in try/catch; a Rust renderer reports failure
 //!   by returning `None`, which takes the same fallback path.
 
-use base64::Engine;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -37,6 +36,7 @@ use crate::core::tools::tool_definition::{
 };
 use crate::core::tools::{ToolDef, ToolName, create_all_tool_definitions};
 use crate::modes::interactive::theme::theme::{ThemeBg, ThemeColor, theme};
+use crate::utils::image::convert_to_png;
 
 /// Options of a tool row.
 #[derive(Debug, Clone, Default)]
@@ -483,24 +483,6 @@ impl ToolExecutionComponent {
         }
         text
     }
-}
-
-/// `convertToPng(base64Data, mimeType)` (`utils/image-convert.ts:29-49`).
-///
-/// Lives here until C adds it beside `convert_image_bytes_to_png` in
-/// `utils/image.rs`, where its TS file was ported (interface request A-21).
-fn convert_to_png(data: &str, mime_type: &str) -> Option<(String, String)> {
-    if mime_type == "image/png" {
-        return Some((data.to_string(), mime_type.to_string()));
-    }
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .ok()?;
-    let png = crate::utils::image::convert_image_bytes_to_png(&bytes)?;
-    Some((
-        base64::engine::general_purpose::STANDARD.encode(&png),
-        "image/png".to_string(),
-    ))
 }
 
 fn image_blocks(
