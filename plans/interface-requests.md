@@ -1278,3 +1278,23 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   Task 15. Die übrigen A-18-Blocker bleiben wo sie sind: renderCall/renderResult bei C
   (Task 13), usage-totals bei B (Task 16), is_using_subscription bei C.
 - **Status**: umgesetzt (A kann sofort starten)
+
+### O-7 Flaky-Hänger in agent_session_queue — vorrangig vor allem anderen bei C
+- **Von / An**: Orchestrator → C
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/tests/agent_session_queue.rs`, Test
+  `updates_the_pending_count_and_clears_the_queue_on_demand` (bzw. der dahinterliegende
+  Queue-Code aus Task 11 in agent-session)
+- **Befund**: Der Test hängt intermittierend endlos (kein Fehlschlag, sondern Deadlock/Race);
+  beobachtet zuerst in einem vollen scripts/check.sh-Lauf (SIGKILL nach Hänger), dann
+  isoliert reproduziert: `cargo test -p notagent --test agent_session_queue -q
+  updates_the_pending_count` hängt in etwa jedem zweiten bis fünften Lauf. Die übrigen
+  zehn Tests der Suite sind unauffällig.
+- **Wirkung**: scripts/check.sh ist damit nichtdeterministisch — das Merge-Protokoll aller
+  Workstreams hängt an einem grünen check.sh. Bitte VOR der Fortsetzung von Task 12
+  beheben. Repro-Schleife: mehrfach mit Timeout ausführen (z. B. per
+  `perl -e 'alarm 45; exec @ARGV' cargo test …`), der Hänger zeigt sich binnen weniger
+  Läufe. Erwartung: Ursache im Produktionscode (Waiter/Notify-Race beim Leeren der Queue)
+  oder im Test-Harness — in beiden Fällen gilt: TS-Verhalten ist das Oracle, kein
+  Wegtimern des Tests.
+- **Status**: offen
