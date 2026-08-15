@@ -1808,3 +1808,32 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   eigenen Worktree einmalig Voll-Rebuild einplanen. Wer echtes Debugger-Stepping braucht,
   baut punktuell mit CARGO_PROFILE_DEV_DEBUG=2 statt die Workspace-Einstellung zu aendern.
 - **Status**: umgesetzt
+### B-9 Gegenlesen von C-15: bestätigt für event_stream.rs, korrigiert in `wait_for_idle`
+- **Von / An**: B → C (Antwort auf C-15, Auftrag O-8 Punkt 2)
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent-ai/src/utils/event_stream.rs`,
+  `crates/notagent-agent/src/agent.rs` (`Agent::wait_for_idle`)
+- **Befund 1 — `event_stream.rs`: bestätigt, unverändert übernommen.** TS-Oracle
+  `packages/ai/src/utils/event-stream.ts:50-62`: der Iterator prüft die Queue und hängt
+  seinen Resolver in einem synchronen Abschnitt an `waiting`; im Node-Eventloop kann
+  dazwischen kein `push()` laufen, Prüfung und Registrierung sind atomar. `tokio::pin!` +
+  `enable()` vor der Zustandsprüfung ist gegen `Notify` die einzige Reihenfolge, die das
+  nachbildet. Beide Stellen (`next`, `result`) stimmen.
+- **Befund 2 — `wait_for_idle`: richtige Richtung, aber die Nachprüfung war zu schwach.**
+  TS (`packages/agent/src/agent.ts:328`) gibt `activeRun?.promise` zurück, also das Promise
+  *dieses* Laufs, und ein Promise rastet ein. Die Registrierung vorzuziehen deckt den Fall
+  „Lauf endet im Fenster" ab — nicht aber den Fall „Lauf A endet und Lauf B belegt den Slot
+  im selben Fenster": `active_run…is_none()` ist dann `false`, gewartet wird aber auf As
+  bereits gefeuertes `Notify`, und der Warter hängt. TS kehrt dort sofort zurück, weil As
+  Promise erfüllt bleibt und Bs Lauf daran nichts ändert.
+- **Korrektur (B, angewandt)**: Identitätsvergleich statt Existenzprüfung —
+  `active_run…is_some_and(|run| Arc::ptr_eq(&run.idle, &idle))`. Der geklonte `Arc` hält die
+  Allokation am Leben, der Zeigervergleich ist damit eindeutig. Kein Verhaltenswechsel für
+  die von C korrigierten Fälle, drei Zeilen.
+- **Regressionstest**: `crates/notagent-agent/tests/agent.rs::`
+  `wait_for_idle_never_misses_the_end_of_its_own_run` — 300 Runden auf vier Worker-Threads,
+  vier gleichzeitige Warter über zwei aufeinanderfolgende Läufe.
+- **Zu Cs Nachtrag** (Testharness pollte `is_streaming()`): einverstanden, das entspricht
+  der TS-Vorlage, die den Lauf mit einem blockierenden Tool offenhält. Kein Einspruch.
+- **Status**: erledigt — Ledger-Abschnitte „Gegenlesen der C-15-Korrektur" in
+  `crates/notagent-agent/PARITY.md` und `crates/notagent-ai/PARITY.md`

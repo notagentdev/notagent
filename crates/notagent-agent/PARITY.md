@@ -73,3 +73,25 @@ führt jede Datei mit Status.
 | Datei | Herkunft |
 |---|---|
 | `tests/fixtures/session-messages.jsonl` | 44 unveränderte `message`-Einträge aus `packages/coding-agent/test/fixtures/{before-compaction,large-session}.jsonl` (alle 17 vorkommenden Feld-/Content-Signaturen) |
+
+## Gegenlesen der C-15-Korrektur (2026-08-15)
+
+TS-Oracle: `packages/agent/src/agent.ts:328` — `waitForIdle()` liest `activeRun?.promise`
+synchron und gibt genau dieses Promise zurück. Zwei Eigenschaften folgen daraus:
+
+1. Ein Promise rastet ein. Beendet sich der Lauf zwischen Lesen und `await`, ist es bereits
+   erfüllt — der Warter kann keinen Weckruf verpassen.
+2. Gewartet wird auf *diesen* Lauf. Ein Nachfolgelauf, der `activeRun` danach neu belegt,
+   verlängert die Wartezeit nicht.
+
+Cs Korrektur (`notified()` vor der Prüfung mit `tokio::pin!` + `enable()` registrieren)
+stellt Eigenschaft 1 her und ist bestätigt — sie ist gegen `Notify` auch die einzige
+richtige Reihenfolge. Eigenschaft 2 blieb offen: die Nachprüfung war
+`active_run…is_none()`, also „läuft überhaupt etwas", nicht „läuft noch mein Lauf".
+Endet Lauf A und beginnt Lauf B im Fenster zwischen `enable()` und der Nachprüfung, wartet
+der Warter auf As bereits gefeuertes `Notify` und hängt, während TS sofort zurückkehrt.
+Korrigiert zu einem Identitätsvergleich (`Arc::ptr_eq` auf das `idle` des Laufs); der
+geklonte `Arc` hält die Allokation am Leben, der Zeigervergleich ist damit eindeutig.
+Regressionstest: `tests/agent.rs::wait_for_idle_never_misses_the_end_of_its_own_run`
+(300 Runden, 4 Worker-Threads, vier gleichzeitige Warter über zwei aufeinanderfolgende
+Läufe).

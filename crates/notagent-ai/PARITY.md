@@ -739,3 +739,18 @@ sind drei Abweichungen dieses Ports gegenüber `packages/ai` aufgefallen und beh
 | `test/scratch.ts` (57) | Demo-Skript ohne Zusicherungen, kein Test |
 | `test/codex-websocket-cached-probe.ts` (299) | manuelles Live-Probe-Skript für den Codex-`websocket-cached`-Transport, kein Test |
 | `test/model-catalog-types.test.ts` (15) | `expectTypeOf`-Zusicherungen über die generierten Literaltypen; die eine Laufzeitzusicherung (Copilot `grok-4.5` → `openai-responses`) deckt `tests/model_catalog.rs` über den Snapshot ab |
+
+## Gegenlesen der C-15-Korrektur (2026-08-15)
+
+TS-Oracle: `packages/ai/src/utils/event-stream.ts:50-62` — der Iterator prüft die Queue und
+hängt den Resolver in einem einzigen synchronen Abschnitt an `waiting` an; im Node-Eventloop
+kann dazwischen kein `push()` laufen. Prüfung und Registrierung sind also atomar.
+
+`tokio::sync::Notify` registriert den Warter erst beim ersten Poll, deshalb muss `notified()`
+per `tokio::pin!` + `enable()` VOR dem Blick auf den Zustand scharfgeschaltet werden — sonst
+geht ein `notify_waiters()` zwischen Prüfung und `await` verloren. Cs Korrektur in `next()`
+und `result()` macht genau das und ist bestätigt; eine andere Fassung gibt es hier nicht.
+Unverändert gilt die bereits im Ledger geführte Klasse-1-Abweichung: TS reicht ein Ereignis
+gezielt an den ersten wartenden Konsumenten, Rust weckt alle Warter, von denen genau einer
+das Ereignis aus der geteilten Queue zieht — derselbe Ereignisstrom, nur ist bei mehreren
+gleichzeitigen Konsumenten nicht festgelegt, welcher ein bestimmtes Ereignis erhält.

@@ -354,7 +354,17 @@ impl Agent {
         let notified = idle.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
-        if self.active_run.lock().expect("poisoned").is_none() {
+        // The second look asks whether *this* run is still the active one, not
+        // whether any run is. TS hands out `activeRun.promise`, which stays
+        // resolved once that run finished; a successor run occupying the slot
+        // does not make `waitForIdle()` wait again.
+        let still_running = self
+            .active_run
+            .lock()
+            .expect("poisoned")
+            .as_ref()
+            .is_some_and(|run| Arc::ptr_eq(&run.idle, &idle));
+        if !still_running {
             return;
         }
         notified.await;

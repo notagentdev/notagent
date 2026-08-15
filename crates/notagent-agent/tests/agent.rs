@@ -436,6 +436,49 @@ async fn wait_for_idle_returns_immediately_without_an_active_run() {
         .expect("wait_for_idle returns without an active run");
 }
 
+/// `waitForIdle()` hands out the promise of the run that was active at call
+/// time, and that promise stays resolved. Neither a run finishing while the
+/// waiter registers nor a successor run taking the slot may make the wait hang.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn wait_for_idle_never_misses_the_end_of_its_own_run() {
+    for _ in 0..300 {
+        let (stream_fn, _) = scripted_stream_fn(vec!["one", "two"]);
+        let agent = Agent::new(options(stream_fn));
+
+        let runner = {
+            let agent = Arc::clone(&agent);
+            tokio::spawn(async move {
+                agent
+                    .prompt(vec![user_message("first")])
+                    .await
+                    .expect("first prompt");
+                // A successor run occupies the slot right after the first one
+                // released it — the window in which the waiter may look.
+                agent
+                    .prompt(vec![user_message("second")])
+                    .await
+                    .expect("second prompt");
+            })
+        };
+
+        let waiters: Vec<_> = (0..4)
+            .map(|_| {
+                let agent = Arc::clone(&agent);
+                tokio::spawn(async move { agent.wait_for_idle().await })
+            })
+            .collect();
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            runner.await.expect("runner");
+            for waiter in waiters {
+                waiter.await.expect("waiter");
+            }
+        })
+        .await
+        .expect("wait_for_idle resolves");
+    }
+}
+
 #[tokio::test]
 async fn unsubscribing_stops_notifications() {
     let (stream_fn, _) = scripted_stream_fn(vec!["answer"]);
