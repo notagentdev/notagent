@@ -1591,3 +1591,26 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `renderCall`/`renderResult`-Hälften der Tool-Dateien unter `core/tools/`,
   `cli/startup-ui.ts` und `cli/session-picker.ts` (C-Task 13, warten auf C-14).
 - **Status**: offen
+
+### O-8 llama.cpp-Backend an Workstream B; C-14 ist As oberste Priorität
+- **Von / An**: Orchestrator → A, B und C
+- **Datum**: 2026-08-15
+- **Betrifft**: WS-C Task 14 (Teilübergabe); Priorisierung nach Gate g2
+- **Beleg**: Workstream B ist mit allen 16 Tasks fertig; C-14 blockiert Cs Task 13
+  (Interactive-Verdrahtung) und die Startup-Dialoge vollständig — ohne Pump-Seam gibt es
+  keine TUI-Schleife. Der llama-Backend-Teil (Provider/HTTP-Client/HuggingFace-Suche) ist
+  Provider-Handwerk und passt zu B; nur ui.ts ist TUI.
+- **Regelung**:
+  1. A behandelt C-14 VOR allem anderen (einer der beiden C-Signaturvorschläge oder ein
+     eigener, gegen die TS-Semantik von startup-ui.ts belegt; Kontrakt-Antwort in C-14).
+  2. B prüft zuerst Cs mechanische Korrekturen in seinen Crates gegen (C-15,
+     Notify-Races in event_stream.rs und agent.rs — TS-Semantik ist das Oracle), dann
+     übernimmt B aus C-Task 14 das llama-Backend: `src/extensions/llama/provider.ts` (150),
+     `client.ts` (332), `huggingface.ts` (158) nach `crates/notagent/src/core/llama/`
+     (Ledger-Sektion "B: llama backend"). `ui.ts` (542) und die Command-Verdrahtung
+     bleiben bei C (Task 13/14).
+  3. C zieht parallel zur C-14-Wartezeit die Punkte vor, die andere entsperren:
+     render_call/render_result am ToolDefinition-Trait (entsperrt As tool-execution)
+     und is_using_subscription an SessionModelRuntime (entsperrt As footer, Bs
+     usage-totals liegt bereits auf main).
+- **Status**: umgesetzt (Prompts entsprechend ausgegeben)
