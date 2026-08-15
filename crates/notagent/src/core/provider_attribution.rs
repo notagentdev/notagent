@@ -9,6 +9,7 @@
 use notagent_ai::types::{Model, ProviderHeaders};
 
 use crate::core::settings_manager::SettingsManager;
+use crate::core::telemetry::is_install_telemetry_enabled;
 
 const OPENROUTER_HOST: &str = "openrouter.ai";
 const NVIDIA_NIM_HOST: &str = "integrate.api.nvidia.com";
@@ -44,25 +45,6 @@ fn is_cloudflare_model(model: &Model) -> bool {
         || model.provider == "cloudflare-ai-gateway"
         || matches_host(&model.base_url, CLOUDFLARE_API_HOST)
         || matches_host(&model.base_url, CLOUDFLARE_AI_GATEWAY_HOST)
-}
-
-/// `isInstallTelemetryEnabled` from `core/telemetry.ts`.
-///
-/// Deviation (class 1): inlined here rather than imported. `telemetry.ts` went
-/// to workstream B with O-4 and has not landed; this is its one call site, and
-/// it is three lines. It moves to `core::install_telemetry` when that lands.
-fn is_install_telemetry_enabled(settings_manager: &SettingsManager) -> bool {
-    match std::env::var("NOTAGENT_TELEMETRY") {
-        Ok(value) => is_truthy_env_flag(&value),
-        Err(_) => settings_manager.get_enable_install_telemetry(),
-    }
-}
-
-fn is_truthy_env_flag(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
-    )
 }
 
 fn default_attribution_headers(

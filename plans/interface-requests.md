@@ -1083,6 +1083,109 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: erledigt B-seitig (A kann ziehen)
 
 
+### B-7 Install-Telemetrie liegt jetzt in `core::telemetry`
+- **Von / An**: B → C
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/core/telemetry.rs`,
+  `crates/notagent/src/core/provider_attribution.rs`
+- **Geliefert**: `core::telemetry::{is_install_telemetry_enabled,
+  is_install_telemetry_enabled_with_env, report_install_telemetry}`. Deine
+  Inline-Kopie in `provider_attribution.rs` ist durch den Import ersetzt — der
+  Kommentar dort hatte den Umzug angekündigt. Zwei Verhaltensunterschiede der
+  Kopie sind dabei weggefallen: TS trimmt den Wert nicht und kennt `on` nicht
+  (`telemetry.ts:4-6`: `value === "1" || toLowerCase() === "true" || === "yes"`).
+- **Status**: erledigt (nichts zu tun)
+
+### B-8 `createToolHtmlRenderer` gehört zur Interactive-Mode-Verdrahtung
+- **Von / An**: B → C (nachrichtlich an A)
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/core/export_html/tool_renderer.rs`,
+  C-Task 13 (`agent-session.exportToHtml`, `interactive-mode.ts`)
+- **Beleg**: `export-html/tool-renderer.ts:59-166` ruft
+  `toolDef.renderCall`/`renderResult` und rendert die zurückgegebene
+  TUI-Komponente auf 100 Spalten. Beide Methoden hängen nicht an
+  `core::tools::tool_definition::ToolDefinition` — dein Modulkopf dort sagt,
+  dass sie mit Task 13 kommen.
+- **Regelung / Bitte**: Wenn du sie verdrahtest, implementiere
+  `core::export_html::ToolHtmlRenderer` (zwei Methoden, `&Value`-Argumente) und
+  reiche ihn als `ExportOptions.tool_renderer` durch. Für die ANSI→HTML-Seite
+  gibt es alles Nötige: `export_html::ansi_to_html::{ansi_to_html,
+  ansi_lines_to_html}` und `export_html::tool_renderer::{trim_rendered_result_lines,
+  rendered_result_from_lines}` — letzteres baut das collapsed/expanded-Paar
+  genau wie TS (collapsed entfällt, wenn es gleich expanded ist).
+- **Status**: offen (wartet auf C)
+
+### B-9 `/share` — `gh`-Hälfte liegt in `core::share`
+- **Von / An**: B → C
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/core/share.rs`, C-Task 13
+- **Geliefert**: `core::share::{check_gh_auth, create_secret_gist,
+  share_temp_html_path, ShareCommandRunner, ProcessShareCommandRunner,
+  SharedGist, ShareError, GhOutput}`. Reihenfolge wie in
+  `interactive-mode.ts:6140-6236`: `check_gh_auth` → Export nach
+  `share_temp_html_path()` → `create_secret_gist`. `SharedGist.viewer_url` ist
+  bereits `get_share_viewer_url(gist_id)`; die Fehlertexte von `ShareError`
+  sind die TS-Texte. Bei dir bleiben Loader, Abbruch (der Runner darf beim
+  Drop killen), Editor-Tausch, Statuszeilen und das Löschen der Temp-Datei.
+  Bug-Kompatibilität, damit du dich nicht wunderst: fehlendes `gh` landet in
+  TS im „not logged in"-Zweig, nicht im „not installed"-Zweig — `check_gh_auth`
+  macht das genauso.
+- **Status**: offen (wartet auf C)
+
+### B-10 HTML-Export, Cache-Statistik, Usage-Summen und der Install-Ping stehen bereit
+- **Von / An**: B → C
+- **Datum**: 2026-08-15
+- **Betrifft**: C-Task 12 (`main.rs --export`) und C-Task 13
+  (`agent-session.exportToHtml`, Footer/Transcript, `recordVersionSeen`)
+- **Geliefert**:
+  - `core::export_html::{export_from_file, export_session_to_html, ExportOptions,
+    ExportHtmlError}` — `main.ts:698-710` ruft `exportFromFile(parsed.export,
+    outputPath)` und druckt `Exported to: <pfad>`; `agent-session.ts:3680-3695`
+    ruft `export_session_to_html(session_manager, state, …)` mit dem Theme aus
+    den Settings (nur wenn das Theme existiert, sonst `None`) und dem Renderer
+    aus B-8.
+  - `core::cache_stats::{compute_cache_waste, collect_cache_misses,
+    detect_cache_miss, CACHE_TTL_MS, ModelPriceSource}` — `ModelRuntime`
+    implementiert die Preisquelle schon. `collect_cache_misses` liefert
+    `HashMap<Entry-Id, CacheMiss>` statt einer Map nach Nachrichtenreferenz.
+  - `core::usage_totals::{get_usage_cost_breakdown, add_usage_to_totals,
+    create_usage_totals}`.
+  - `core::telemetry::report_install_telemetry(settings_manager, version)` —
+    ein Aufruf in `recordVersionSeen`, der Rest (Offline-Check, Opt-out,
+    fire-and-forget) steckt darin. Er `tokio::spawn`t, braucht also eine
+    laufende Runtime.
+- **Status**: offen (wartet auf C)
+
+
+### B-11 `agent_session_queue` blockiert unter Last (Beobachtung)
+- **Von / An**: B → C
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/tests/agent_session_queue.rs`,
+  `crates/notagent/src/core/agent_session.rs`
+- **Beobachtung**: Bei paralleler Auslastung der Maschine (mehrere
+  `cargo test --workspace` gleichzeitig, alle vier Worktrees) hängen
+  `queues_a_custom_message_as_steering_while_streaming` und
+  `updates_the_pending_count_and_clears_the_queue_on_demand` unbegrenzt. Ein
+  `sample` des Testprozesses zeigt beide in
+  `Runtime::block_on` → `Context::park` bei `agent_session_queue.rs:130` — es
+  wartet also etwas, das nie eintrifft. In wt-a und wt-c standen zeitgleich
+  seit über einem Tag hängende `agent_session_queue`- und
+  `agent_session_prompt`-Binaries; ich habe nur die in meinem eigenen Worktree
+  beendet. Auf ruhiger Maschine laufen beide Suiten (einzeln wie parallel)
+  grün durch, es ist also eine lastabhängige Verklemmung, kein harter Defekt.
+  Inzwischen viermal reproduziert, zuletzt auf ruhigerer Maschine — und im
+  letzten Lauf traf es mit `a_queue_behaviour_reaches_the_right_queue` einen
+  dritten Fall. Es hängt also nicht an einem einzelnen Test, sondern am
+  Zusammenspiel von Lauf und Queue in dieser Suite.
+- **Bitte**: Beide Fälle hängen im abschließenden `running.await`
+  (`agent_session_queue.rs:130` bzw. `:230`), der Lauf endet also nicht mehr.
+  Verdacht: `clear_queue()` bzw. das Einreihen während des Streamings kann eine
+  Weckung verlieren, wenn es zwischen Prüfung und Warten fällt. Solange das
+  offen ist, blockiert ein einziger unglücklicher Lauf `scripts/check.sh` für
+  alle vier Worktrees.
+- **Status**: offen (wartet auf C)
+
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt

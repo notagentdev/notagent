@@ -239,8 +239,8 @@ impl RemoteCatalogProvider {
     }
 }
 
-/// `encodeURIComponent(providerId)` for the path segment.
-fn urlencode(value: &str) -> String {
+/// `encodeURIComponent(value)` for a path segment or query value.
+pub(crate) fn urlencode(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
         match byte {

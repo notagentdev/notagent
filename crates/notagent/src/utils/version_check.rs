@@ -17,6 +17,27 @@ use crate::utils::management_http::{FetchRetryOptions, fetch_with_retry};
 use crate::utils::notagent_user_agent::get_pi_user_agent;
 
 const LATEST_VERSION_URL: &str = "https://notagent.dev/api/latest-version";
+
+/// Test seam. `vi.stubGlobal("fetch", …)` has no Rust counterpart, so the ported
+/// suite points the check at a loopback server instead (deviation class 3, see
+/// `crates/notagent/tests/support/mod.rs`). Unset in every other build path.
+static LATEST_VERSION_URL_OVERRIDE: std::sync::RwLock<Option<String>> =
+    std::sync::RwLock::new(None);
+
+/// Point [`get_latest_pi_release`] at another endpoint, or back at the default
+/// with `None`. Test-only; see [`LATEST_VERSION_URL_OVERRIDE`].
+#[doc(hidden)]
+pub fn set_latest_version_url_for_tests(url: Option<String>) {
+    *LATEST_VERSION_URL_OVERRIDE.write().expect("poisoned") = url;
+}
+
+fn latest_version_url() -> String {
+    LATEST_VERSION_URL_OVERRIDE
+        .read()
+        .expect("poisoned")
+        .clone()
+        .unwrap_or_else(|| LATEST_VERSION_URL.to_owned())
+}
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS: u64 = 10_000;
 
 /// `LatestPiRelease`
@@ -63,11 +84,12 @@ pub async fn get_latest_pi_release(
 
     let client = reqwest::Client::new();
     let user_agent = get_pi_user_agent(current_version);
+    let url = latest_version_url();
     let response = fetch_with_retry(
         &client,
         || {
             client
-                .get(LATEST_VERSION_URL)
+                .get(&url)
                 .header("User-Agent", user_agent.clone())
                 .header("accept", "application/json")
         },
