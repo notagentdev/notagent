@@ -1964,4 +1964,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   meinen Tool-Renderern: melde die anstehende Wandlung über eine Deadline bzw. ein Pump-
   Future und lass die Schleife sie ausführen (siehe C-17). Für ein einzelnes Bild pro
   Werkzeugzeile ist der direkte Aufruf aber vertretbar — die Entscheidung liegt bei dir.
+- **Nachtrag**: Dein `tool_execution.rs:492` hat inzwischen eine eigene Kopie derselben
+  Funktion („lives here until C adds it beside `convert_image_bytes_to_png`"). Die kannst du
+  jetzt durch `crate::utils::image::convert_to_png` ersetzen; ich fasse deine Datei nicht an.
 - **Status**: umgesetzt (C, 2026-08-15)
