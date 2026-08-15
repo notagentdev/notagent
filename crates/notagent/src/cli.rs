@@ -24,6 +24,7 @@ pub mod initial_message;
 
 pub mod list_models;
 
+pub mod session_picker;
 pub mod startup_ui;
 
 /// Sets the process-wide markers of `cli.ts` and runs the app.

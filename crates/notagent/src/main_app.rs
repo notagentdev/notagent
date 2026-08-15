@@ -43,6 +43,10 @@ use crate::cli::credential_print::resolve_credential_for_print;
 use crate::cli::file_processor::process_file_arguments;
 use crate::cli::initial_message::{InitialMessageInput, build_initial_message};
 use crate::cli::list_models::list_models;
+use crate::cli::session_picker::{SessionChoice, select_session};
+use crate::cli::startup_ui::{
+    should_run_first_time_setup, show_first_time_setup, show_startup_selector,
+};
 use crate::config::{VERSION, expand_tilde_path, get_agent_dir};
 use crate::core::agent_session::{AgentSession, ScopedModel as SessionScopedModel};
 use crate::core::agent_session_runtime::{
@@ -72,13 +76,16 @@ use crate::core::project_trust::{
     AppMode, ProjectTrustContext, ResolveProjectTrustedOptions, resolve_project_trusted,
 };
 use crate::core::sdk::NoTools;
-use crate::core::session_cwd::{format_missing_session_cwd_error, get_missing_session_cwd_issue};
+use crate::core::session_cwd::{
+    format_missing_session_cwd_error, format_missing_session_cwd_prompt,
+    get_missing_session_cwd_issue,
+};
 use crate::core::session_manager::{NewSessionOptions, SessionManager, assert_valid_session_id};
 use crate::core::settings_manager::{SettingsManager, SettingsManagerCreateOptions};
 use crate::core::timings::{print_timings, reset_timings, time};
 use crate::core::trust_manager::{ProjectTrustStore, has_trust_requiring_project_resources};
 use crate::migrations::run_migrations;
-use crate::modes::interactive::theme::theme::init_theme;
+use crate::modes::interactive::theme::theme::{init_theme, stop_theme_watcher};
 use crate::modes::print_mode::{PrintModeOptions, PrintOutputMode, run_print_mode};
 use crate::modes::rpc::rpc_mode::run_rpc_mode;
 use crate::package_manager_cli::{PackageCommandRuntime, handle_package_command};
@@ -87,6 +94,15 @@ use crate::utils::chalk::{dim, red, yellow};
 use crate::utils::paths::{
     current_dir, is_local_path, normalize_path_default, resolve_path_default,
 };
+
+/// Run a startup dialog on this thread.
+///
+/// Deviation (class 1): the TUI is `!Send` like its TypeScript original, and the
+/// binary runs on a multi-threaded runtime; a `LocalSet` gives the dialog the
+/// single-threaded context Node's event loop provides for free.
+async fn run_dialog<F: Future>(dialog: F) -> F::Output {
+    tokio::task::LocalSet::new().run_until(dialog).await
+}
 
 /// Wall-clock ceiling for the model-runtime and model-scope work at startup.
 const STARTUP_TIMEOUT_MS: u64 = 15_000;
@@ -492,6 +508,7 @@ async fn create_session_manager(
     parsed: &Args,
     cwd: &str,
     session_dir: Option<&str>,
+    settings_manager: &SettingsManager,
 ) -> Result<SessionManager, String> {
     if parsed.no_session || parsed.help || parsed.list_models.is_some() {
         return SessionManager::in_memory(
@@ -549,9 +566,20 @@ async fn create_session_manager(
     }
 
     if parsed.resume {
-        // The picker is a TUI dialog; it lands with the interactive main loop
-        // (plan task 13, interface request C-14).
-        return Err("Error: --resume needs the interactive session picker, which is not wired up in this build yet".to_owned());
+        let choice = run_dialog(select_session(cwd, session_dir, settings_manager)).await;
+        // `stopThemeWatcher()` in the `finally` of the TypeScript version: the
+        // picker's theme watcher must not outlive the dialog.
+        stop_theme_watcher();
+        return match choice {
+            SessionChoice::Selected(path) => SessionManager::open(&path, session_dir, None)
+                .map_err(|error| format!("Error: {error}")),
+            SessionChoice::Cancelled => {
+                console_log(&dim("No session selected"));
+                Err(String::new())
+            }
+            // `process.exit(0)` — Ctrl+C in the picker leaves without a word.
+            SessionChoice::Exit => Err(String::new()),
+        };
     }
 
     if parsed.continue_session {
@@ -809,7 +837,7 @@ pub async fn main(args: Vec<String>) -> i32 {
         return exit_code;
     }
 
-    let cwd = current_dir();
+    let mut cwd = current_dir();
     let agent_dir = get_agent_dir().to_string_lossy().into_owned();
 
     if let Some(exit_code) =
@@ -912,6 +940,18 @@ pub async fn main(args: Vec<String>) -> i32 {
         "startup session lookup",
     ));
 
+    // Experimental first-time setup: theme choice and analytics opt-in. It runs
+    // before any runtime service is created so the chosen settings apply
+    // everywhere.
+    if app_mode == AppMode::Interactive
+        && !parsed.help
+        && parsed.list_models.is_none()
+        && should_run_first_time_setup(None)
+    {
+        run_dialog(show_first_time_setup(&startup_settings_manager)).await;
+        time("firstTimeSetup");
+    }
+
     // Decide the final runtime cwd before creating cwd-bound services:
     // `--session` and `--resume` may select a session from another project, so
     // project-local settings, resources and models must be resolved only after
@@ -929,23 +969,46 @@ pub async fn main(args: Vec<String>) -> i32 {
         })
         .or_else(|| startup_settings_manager.get_session_dir());
 
-    let mut session_manager =
-        match create_session_manager(&parsed, &cwd, session_dir.as_deref()).await {
-            Ok(session_manager) => session_manager,
-            Err(message) => {
-                if message.is_empty() {
-                    return 0;
-                }
-                eprintln!("{}", red(&message));
-                return 1;
+    let mut session_manager = match create_session_manager(
+        &parsed,
+        &cwd,
+        session_dir.as_deref(),
+        &startup_settings_manager,
+    )
+    .await
+    {
+        Ok(session_manager) => session_manager,
+        Err(message) => {
+            if message.is_empty() {
+                return 0;
             }
-        };
+            eprintln!("{}", red(&message));
+            return 1;
+        }
+    };
 
     if let Some(issue) = get_missing_session_cwd_issue(&session_manager, &cwd) {
-        // The interactive prompt that offers the fallback directory is part of
-        // the startup UI (plan task 13); every other mode reports and stops.
-        eprintln!("{}", red(&format_missing_session_cwd_error(&issue)));
-        return 1;
+        // Interactively the user is offered the fallback directory; every other
+        // mode reports and stops.
+        if app_mode != AppMode::Interactive {
+            eprintln!("{}", red(&format_missing_session_cwd_error(&issue)));
+            return 1;
+        }
+        let chosen = run_dialog(show_startup_selector(
+            &startup_settings_manager,
+            &format_missing_session_cwd_prompt(&issue),
+            vec!["Continue".to_owned(), "Cancel".to_owned()],
+        ))
+        .await;
+        match chosen.as_deref() {
+            Some("Continue") => {
+                cwd = issue.fallback_cwd.clone();
+            }
+            _ => {
+                eprintln!("{}", red(&format_missing_session_cwd_error(&issue)));
+                return 1;
+            }
+        }
     }
 
     if let Some(name) = parsed.name.as_deref() {
@@ -1162,6 +1225,49 @@ pub async fn main(args: Vec<String>) -> i32 {
     }
 }
 
+/// The trust prompt, as far as the current mode can show one.
+///
+/// `createProjectTrustContext` in `cli/project-trust.ts`: only the interactive
+/// mode has a screen, every other mode answers "no dialog".
+///
+/// Deviation (class 1): the dialog is `!Send` and the callback is not, so the
+/// selector runs on a blocking thread with its own single-threaded runtime.
+/// Node needs no equivalent because it has one event loop for everything; the
+/// terminal is still touched by one dialog at a time.
+fn trust_prompt_context(
+    mode: AppMode,
+    settings_manager: Arc<SettingsManager>,
+) -> ProjectTrustContext {
+    if mode != AppMode::Interactive {
+        return ProjectTrustContext {
+            has_ui: false,
+            select: None,
+        };
+    }
+    ProjectTrustContext {
+        has_ui: true,
+        select: Some(Arc::new(move |title: String, options: Vec<String>| {
+            let settings_manager = Arc::clone(&settings_manager);
+            Box::pin(async move {
+                tokio::task::spawn_blocking(move || {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .ok()?;
+                    let local = tokio::task::LocalSet::new();
+                    local.block_on(
+                        &runtime,
+                        show_startup_selector(&settings_manager, &title, options),
+                    )
+                })
+                .await
+                .ok()
+                .flatten()
+            }) as BoxFuture<'static, Option<String>>
+        })),
+    }
+}
+
 /// Reads piped standard input, or `None` when it is a terminal.
 async fn read_piped_stdin() -> Option<String> {
     if stdin_is_tty() {
@@ -1192,7 +1298,6 @@ async fn build_runtime(
     prompt_template_paths: Vec<String>,
     theme_paths: Vec<String>,
 ) -> Result<CreateAgentSessionRuntimeResult, String> {
-    let _ = trust_prompt_mode;
     let cwd = input.cwd.clone();
     let cached_project_trust = project_trust_by_cwd
         .lock()
@@ -1241,9 +1346,10 @@ async fn build_runtime(
                         default_project_trust: Some(
                             startup_settings_manager.get_default_project_trust(),
                         ),
-                        // Asking needs a dialog, which only the interactive mode
-                        // has; without one the answer is "not trusted".
-                        project_trust_context: ProjectTrustContext::default(),
+                        project_trust_context: trust_prompt_context(
+                            trust_prompt_mode,
+                            Arc::clone(&startup_settings_manager),
+                        ),
                     })
                     .await
                     .unwrap_or(false);
