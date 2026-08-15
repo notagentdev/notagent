@@ -11,7 +11,7 @@
 | Komplette Tool-Suite grün | `bash_tool` 27, `task_tools` 24, `minified_tools` 17, `todo_and_skill_tools` 16, `task_tool` und die übrigen Tool-Suiten im Gesamtlauf | erfüllt |
 | Subagenten mit nachweislich paralleler Ausführung (Zeitmessung) | `crates/notagent/tests/tasks_parallel.rs` — 4 Tests, Wanduhrmessung über acht detachte Kommandos und acht Kinder aus einem `task`-Aufruf | erfüllt (0,53 s für Arbeit, die seriell ein Vielfaches bräuchte) |
 | Permissions-Policy-Chain-Tests grün | `permissions` 80 Tests, `permission_end_to_end` 31 Tests | erfüllt |
-| `scripts/check.sh` grün auf dem Gesamtworkspace | Lauf vom 2026-08-15 auf `ws/c-app` (Stand des Merges): fmt, clippy `-D warnings`, `cargo test --workspace` | erfüllt — 231 Testziele, 3 423 Tests, 0 Fehler |
+| `scripts/check.sh` grün auf dem Gesamtworkspace | Lauf vom 2026-08-15 auf `ws/c-app` (Stand des Merges): fmt, clippy `-D warnings`, `cargo test --workspace` | erfüllt — 242 Testziele, 3 622 Tests, 0 Fehler (Lauf nach dem Rebase auf Bs Tasks 15/16) |
 
 ## Zusätzlich in diesem Gate erbracht
 
@@ -38,6 +38,24 @@
    endlos, wenn der Lauf schneller fertig war als die erste Prüfung (reproduzierbar in
    ~10 % der Läufe, ohne Bezug zu Task 12). Die Suite hält den Lauf jetzt wie die
    TS-Vorlage mit einem blockierenden `wait`-Tool offen. 40 Läufe in Folge grün.
+
+## Ledger-Selbstaudit (Gate-Pflicht)
+
+`packages/coding-agent/src` hat 245 `.ts`-Dateien. 199 davon stehen namentlich im Ledger
+`crates/notagent/PARITY.md`. Die verbleibenden 46 verteilen sich auf:
+
+- **Gruppenzeilen im Ledger statt Einzelzeilen**: `src/bun/`, `src/cli/experimental/`,
+  `src/core/extensions/`, `src/extensions/index.ts` (Distributionsmechanik bzw. das
+  entfallende Extension-System).
+- **Spätere Tasks**: `src/extensions/llama/` (Task 14), `src/utils/image-*`, `photon.ts`,
+  `exif-orientation.ts`, `clipboard*`, `tool-result-images.ts`, `src/index.ts`,
+  `src/client/` (Task 15), `modes/interactive/external-editor.ts` (Task 13).
+- **Kleinstdateien ohne eigenen Aufrufer im Port**: `core/event-bus.ts`, `core/exec.ts`,
+  `core/radius.ts`, `core/index.ts`, `utils/sleep.ts`, `utils/deprecation.ts`,
+  `utils/changelog.ts` — sie bekommen ihre Zeile mit dem Task, der sie zuerst braucht.
+
+Der vollständige Abgleich Datei für Datei ist laut Master-Plan Aufgabe von G4
+(`plans/final-parity-audit.md`); für G2 ist der Stand hier festgehalten.
 
 ## Offene Punkte, die G2 nicht berühren
 
