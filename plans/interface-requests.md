@@ -1446,4 +1446,90 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   Läufe. Erwartung: Ursache im Produktionscode (Waiter/Notify-Race beim Leeren der Queue)
   oder im Test-Harness — in beiden Fällen gilt: TS-Verhalten ist das Oracle, kein
   Wegtimern des Tests.
+
+### C-14 Pump-Seam für die TUI-Renderschleife (Startup-Dialoge und Interactive-Mode)
+- **Von / An**: C → A
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent-tui/src/terminal.rs` (`Terminal`-Trait), `tui.rs` (`TuiCore`)
+- **Beleg**: `packages/coding-agent/src/cli/startup-ui.ts:79-90` (`createStartupTui` gibt den
+  `ProcessTerminal` an `TuiMainScreen` ab und startet danach die Schleife),
+  `src/cli/session-picker.ts:20-55`, `src/modes/interactive/interactive-mode.ts` (dieselbe
+  Schleife für die Hauptoberfläche). A-3/A-4: „Die Renderschleife wird vom Aufrufer
+  getrieben: `ProcessTerminal::pump()` verarbeitet stdin, SIGWINCH und die Timeouts."
+- **Problem**: `TuiCore::new(Box<dyn Terminal>)` übernimmt das Terminal, und `pump()` ist
+  eine inhärente Methode von `ProcessTerminal`, nicht Teil des `Terminal`-Traits. Nach der
+  Übergabe kommt der Aufrufer nicht mehr an `pump()` heran: `with_terminal(|t| …)` gibt nur
+  `&mut dyn Terminal`, und über einen `RefCell`-Borrow lässt sich kein `await` halten.
+  Damit ist keine Renderschleife baubar — weder für die Startup-Dialoge (C-Task 12) noch
+  für den Interactive-Mode (C-Task 13).
+- **Wunsch**: einen der beiden Wege, A entscheidet:
+  1. `async fn pump(&mut self) -> PumpResult` in den `Terminal`-Trait aufnehmen (Default für
+     das virtuelle Testterminal: auf die nächste anstehende Arbeit warten), oder
+  2. `TuiCore::pump()` / `TuiMainScreen::pump()`, die intern an das Terminal delegieren und
+     dabei den Borrow nur über die synchronen Teile halten.
+  Gebraucht wird eine Signatur, die zusammen mit `render_deadline()`/`begin_frame()` eine
+  Schleife der Form `loop { tui.wait_for_render().await; tui.pump().await; }` erlaubt.
+- **Auswirkung bis dahin**: `cli/startup-ui.ts` ist nur zur Hälfte portiert (Entscheidungs-
+  teil `shouldRunFirstTimeSetup`), `cli/session-picker.ts` und die `select`-Hälfte von
+  `cli/project-trust.ts` sind offen; `--resume`, der First-Time-Setup-Dialog, die
+  Trust-Rückfrage und die Rückfrage bei fehlendem Session-cwd melden eine klare
+  Fehlermeldung statt eines Dialogs. Alles davon landet mit C-Task 13.
+- **Status**: offen
+
+### C-15 Verpasste Weckrufe: `Notify::notified()` registriert erst beim ersten Poll
+- **Von / An**: C → B (Information + zwei bereits angewandte Korrekturen)
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent-ai/src/utils/event_stream.rs` (`next`, `result`),
+  `crates/notagent-agent/src/agent.rs` (`Agent::wait_for_idle`)
+- **Beleg**: `agent_session_queue` hing auf main reproduzierbar in etwa 10 % der Läufe
+  (`delivers_several_steering_messages_in_order_one_at_a_time`, aber auch andere Fälle).
+  Ursache ist das Muster
+  ```rust
+  let notified = notify.notified();   // registriert NICHT
+  if fertig() { return; }
+  notified.await;                     // registriert jetzt erst
+  ```
+  Zwischen Prüfung und `await` gefeuerte `notify_waiters()` gehen verloren, der Warter
+  wartet dann für immer. tokio verlangt dafür `tokio::pin!` + `notified.as_mut().enable()`
+  vor der Prüfung.
+- **Regelung**: C hat die drei Stellen mechanisch korrigiert (je drei Zeilen, kein
+  Verhaltenswechsel), weil sie Gate G2 blockiert haben: die beiden in `event_stream.rs`
+  und `Agent::wait_for_idle`. Die gleichartigen Stellen in Cs eigenen Dateien
+  (`core/agent_session.rs`, `core/output_guard.rs`) sind ebenfalls gefixt. Bitte beim
+  nächsten Durchgang gegenlesen; falls B eine andere Lösung bevorzugt, gewinnt Bs Fassung.
+- **Nachtrag**: Der eigentliche Aufhänger der Queue-Suite lag zusätzlich im Test selbst —
+  `start_run` pollte `is_streaming()` und drehte endlos, wenn der Lauf schneller fertig war
+  als die erste Prüfung. Die Suite hält den Lauf jetzt wie die TS-Vorlage mit einem
+  blockierenden `wait`-Tool offen; 40 Läufe in Folge grün.
+- **Antwort auf O-7**: Das ist der dort gemeldete Hänger. Ursache waren beide Punkte
+  zusammen — der Test-Race und die verpassten Weckrufe; nichts davon ist weggetimert,
+  die Suite hält den Lauf jetzt wie das TS-Original offen.
+- **Status**: umgesetzt (C, 2026-08-15) — Gegenlesen durch B offen
+
+### C-16 Komponenten-Zuteilung für A-Task 15 (Interactive-Verdrahtung, ab Gate G2)
+- **Von / An**: C → A
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/`, `.../interactive/`
+- **Anlass**: Gate G2 steht (Tag `gate-g2`). Damit ist die in A-4 erbetene Zuteilung fällig:
+  C verdrahtet den Interactive-Mode (C-Task 13), A liefert die Komponentendateien.
+- **Stand C-seitig**: Portiert und auf main sind Theme-System, alle Komponenten der
+  Batches 0-4 (siehe Sektion „A: interactive components" in `crates/notagent/PARITY.md`).
+  Offen ist die Hauptverdrahtung `modes/interactive/interactive-mode.ts` (6 688 LOC) — die
+  bleibt bei C — plus die unten genannten Dateien.
+- **Zuteilung, nach Priorität** (jede Datei: TS lesen, portieren, Tests mitportieren,
+  Ledger-Zeile in der A-Sektion):
+  1. **Blocker für jede TUI-Schleife**: der Pump-Seam aus C-14. Ohne ihn kann C weder die
+     Startup-Dialoge noch die Hauptschleife bauen. Bitte zuerst.
+  2. `components/model-selector.ts`, `components/settings-selector.ts`,
+     `components/config-selector.ts` — die drei Selektoren, die in der Ledger-Sektion noch
+     fehlen; `interactive-mode` ruft sie aus `/model`, `/settings` und `/config`.
+  3. `components/footer.ts` und `components/tool-execution.ts` samt
+     `components/bash-execution.ts`-Resten — die Dauerelemente der Oberfläche.
+  4. `components/skill-invocation-message.ts`, `components/custom-entry.ts`,
+     `components/mermaid.ts` — Nachrichtendarstellung, die der Transkript-Aufbau braucht.
+  5. `modes/interactive/external-editor.ts` (Ctrl+G) und `modes/interactive/model-search.ts`,
+     soweit noch offen.
+- **Nicht in der Zuteilung** (bleibt bei C): `interactive-mode.ts` selbst, die
+  `renderCall`/`renderResult`-Hälften der Tool-Dateien unter `core/tools/`,
+  `cli/startup-ui.ts` und `cli/session-picker.ts` (C-Task 13, warten auf C-14).
 - **Status**: offen

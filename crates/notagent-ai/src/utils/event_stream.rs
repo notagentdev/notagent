@@ -98,7 +98,13 @@ impl<T, R> EventStream<T, R> {
     /// Nächstes Ereignis; `None`, sobald der Strom beendet und die Queue geleert ist.
     pub async fn next(&self) -> Option<T> {
         loop {
+            // `notified()` only registers the waiter once the future is polled,
+            // so it is enabled *before* the state is checked. Without that, a
+            // `notify_waiters()` between the check and the await is missed and
+            // the consumer waits for an event that already happened.
             let notified = self.shared.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             {
                 let mut state = self
                     .shared
@@ -125,7 +131,10 @@ impl<T, R> EventStream<T, R> {
         R: Clone,
     {
         loop {
+            // Enabled before the check; see `next`.
             let notified = self.shared.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             {
                 let state = self
                     .shared

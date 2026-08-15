@@ -345,9 +345,19 @@ impl Agent {
             .expect("poisoned")
             .as_ref()
             .map(|run| Arc::clone(&run.idle));
-        if let Some(idle) = idle {
-            idle.notified().await;
+        let Some(idle) = idle else {
+            return;
+        };
+        // The waiter is registered before the second look at `active_run`:
+        // `notified()` registers on first poll, so a run that finishes in
+        // between would otherwise notify nobody and this would wait forever.
+        let notified = idle.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if self.active_run.lock().expect("poisoned").is_none() {
+            return;
         }
+        notified.await;
     }
 
     /// `reset()`

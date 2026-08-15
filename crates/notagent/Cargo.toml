@@ -12,7 +12,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "notagent"
-path = "src/main.rs"
+path = "src/bin/notagent.rs"
 
 [dependencies]
 notagent-agent = { workspace = true }

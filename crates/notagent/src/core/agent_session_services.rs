@@ -145,6 +145,7 @@ pub struct CreateAgentSessionFromServicesOptions {
     pub exclude_tools: Option<Vec<String>>,
     pub no_tools: Option<NoTools>,
     pub hooks: Option<Arc<crate::core::hooks::dispatch::HookDispatcher>>,
+    pub permissions: Option<Arc<crate::core::permissions::gate::PermissionGate>>,
     pub session_start_reason: String,
 }
 
@@ -170,6 +171,7 @@ pub async fn create_agent_session_from_services(
         exclude_tools: options.exclude_tools,
         no_tools: options.no_tools,
         hooks: options.hooks,
+        permissions: options.permissions,
         session_start_reason: options.session_start_reason,
     })
     .await

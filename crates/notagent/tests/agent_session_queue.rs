@@ -12,8 +12,14 @@ use notagent::core::agent_session::{
 };
 use notagent::core::messages::CustomMessage;
 use notagent_agent::types::{AgentMessage, QueueMode};
-use notagent_ai::providers::faux::{FauxResponseStep, faux_assistant_message, faux_text};
+use notagent_agent::types::{
+    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+};
+use notagent_ai::providers::faux::{
+    FauxResponseStep, faux_assistant_message, faux_text, faux_tool_call,
+};
 use notagent_ai::types::{StopReason, TextContent, TextOrImageContent, UserContent};
+use tokio::sync::Notify;
 
 use suite::{Harness, HarnessOptions, create_harness};
 
@@ -31,28 +37,125 @@ fn custom(text: &str) -> CustomMessage {
     }
 }
 
-/// Starts a run and returns once it is actually in flight.
-async fn start_run(harness: &Harness, text: &'static str) -> tokio::task::JoinHandle<()> {
-    let session = Arc::clone(&harness.session);
-    let handle = tokio::spawn(async move {
-        session
-            .prompt(text, PromptOptions::default())
-            .await
-            .expect("prompt");
-    });
-    while !harness.session.is_streaming() {
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+/// A tool that holds the turn open until it is released, as the TypeScript
+/// suite's `wait` tool does. Polling for `isStreaming` instead would be a race:
+/// a run with nothing to wait for can finish before the poll ever sees it.
+struct GateTool {
+    started: Arc<Notify>,
+    release: Arc<Notify>,
+    parameters: serde_json::Value,
+}
+
+impl GateTool {
+    fn build(started: Arc<Notify>, release: Arc<Notify>) -> Arc<dyn AgentTool> {
+        Arc::new(GateTool {
+            started,
+            release,
+            parameters: serde_json::json!({ "type": "object", "properties": {} }),
+        })
     }
-    handle
+}
+
+impl AgentTool for GateTool {
+    fn name(&self) -> &str {
+        "wait"
+    }
+    fn label(&self) -> &str {
+        "Wait"
+    }
+    fn description(&self) -> &str {
+        "Wait for release"
+    }
+    fn parameters(&self) -> &serde_json::Value {
+        &self.parameters
+    }
+    fn execute<'a>(
+        &'a self,
+        _tool_call_id: &'a str,
+        _params: serde_json::Value,
+        _signal: Option<tokio_util::sync::CancellationToken>,
+        _on_update: Option<AgentToolUpdateCallback>,
+    ) -> BoxFuture<'a, Result<AgentToolResult, ToolExecutionError>> {
+        let started = Arc::clone(&self.started);
+        let release = Arc::clone(&self.release);
+        Box::pin(async move {
+            let waiting = release.notified();
+            tokio::pin!(waiting);
+            waiting.as_mut().enable();
+            started.notify_waiters();
+            waiting.await;
+            Ok(AgentToolResult {
+                content: vec![TextOrImageContent::Text(TextContent::new("released"))],
+                ..AgentToolResult::default()
+            })
+        })
+    }
+}
+
+/// A harness whose first turn stops inside the gate tool.
+struct WaitingRun {
+    harness: Harness,
+    started: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+impl WaitingRun {
+    fn create() -> Self {
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let harness = create_harness(HarnessOptions {
+            tools: Some(vec![GateTool::build(
+                Arc::clone(&started),
+                Arc::clone(&release),
+            )]),
+            ..HarnessOptions::default()
+        });
+        WaitingRun {
+            harness,
+            started,
+            release,
+        }
+    }
+
+    /// Starts the run and returns once the gate tool is executing.
+    async fn start(&self) -> tokio::task::JoinHandle<()> {
+        let session = Arc::clone(&self.harness.session);
+        let waiting = self.started.notified();
+        tokio::pin!(waiting);
+        waiting.as_mut().enable();
+        let handle = tokio::spawn(async move {
+            session
+                .prompt("start", PromptOptions::default())
+                .await
+                .expect("prompt");
+        });
+        waiting.await;
+        handle
+    }
+
+    fn release(&self) {
+        self.release.notify_waiters();
+    }
+}
+
+/// The gate tool call the first scripted response makes.
+fn gate_call() -> FauxResponseStep {
+    faux_assistant_message(
+        vec![faux_tool_call("wait", serde_json::json!({}), None)],
+        StopReason::ToolUse,
+    )
+    .into()
 }
 
 #[tokio::test]
 async fn delivers_a_steering_message_before_the_next_provider_call() {
-    let harness = create_harness(HarnessOptions::default());
-    harness.set_responses(vec![reply("first"), reply("second")]);
-    let running = start_run(&harness, "start").await;
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
+    harness.set_responses(vec![gate_call(), reply("first"), reply("second")]);
+    let running = waiting.start().await;
 
     harness.session.steer("steered", &[]);
+    waiting.release();
     running.await.expect("run");
 
     let texts = harness.user_texts();
@@ -62,11 +165,13 @@ async fn delivers_a_steering_message_before_the_next_provider_call() {
 
 #[tokio::test]
 async fn delivers_a_follow_up_only_after_the_current_run_finishes() {
-    let harness = create_harness(HarnessOptions::default());
-    harness.set_responses(vec![reply("first"), reply("second")]);
-    let running = start_run(&harness, "start").await;
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
+    harness.set_responses(vec![gate_call(), reply("first"), reply("second")]);
+    let running = waiting.start().await;
 
     harness.session.follow_up("later", &[]);
+    waiting.release();
     running.await.expect("run");
 
     let texts = harness.user_texts();
@@ -75,13 +180,15 @@ async fn delivers_a_follow_up_only_after_the_current_run_finishes() {
 
 #[tokio::test]
 async fn delivers_several_steering_messages_in_order_one_at_a_time() {
-    let harness = create_harness(HarnessOptions::default());
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
     harness.session.set_steering_mode(QueueMode::OneAtATime);
-    harness.set_responses(vec![reply("a"), reply("b"), reply("c")]);
-    let running = start_run(&harness, "start").await;
+    harness.set_responses(vec![gate_call(), reply("a"), reply("b"), reply("c")]);
+    let running = waiting.start().await;
 
     harness.session.steer("one", &[]);
     harness.session.steer("two", &[]);
+    waiting.release();
     running.await.expect("run");
 
     let texts = harness.user_texts();
@@ -92,16 +199,18 @@ async fn delivers_several_steering_messages_in_order_one_at_a_time() {
 
 #[tokio::test]
 async fn delivers_all_steering_messages_at_once_in_all_mode() {
-    let harness = create_harness(HarnessOptions::default());
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
     // The TypeScript case switches the mode through the session, which is also
     // the path that persists it.
     harness.session.set_steering_mode(QueueMode::All);
     assert_eq!(harness.session.steering_mode(), QueueMode::All);
-    harness.set_responses(vec![reply("a"), reply("b")]);
-    let running = start_run(&harness, "start").await;
+    harness.set_responses(vec![gate_call(), reply("a"), reply("b")]);
+    let running = waiting.start().await;
 
     harness.session.steer("one", &[]);
     harness.session.steer("two", &[]);
+    waiting.release();
     running.await.expect("run");
 
     let texts = harness.user_texts();
@@ -111,9 +220,10 @@ async fn delivers_all_steering_messages_at_once_in_all_mode() {
 
 #[tokio::test]
 async fn queues_a_custom_message_as_steering_while_streaming() {
-    let harness = create_harness(HarnessOptions::default());
-    harness.set_responses(vec![reply("a"), reply("b")]);
-    let running = start_run(&harness, "start").await;
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
+    harness.set_responses(vec![gate_call(), reply("a"), reply("b")]);
+    let running = waiting.start().await;
 
     harness
         .session
@@ -125,6 +235,7 @@ async fn queues_a_custom_message_as_steering_while_streaming() {
             },
         )
         .await;
+    waiting.release();
     running.await.expect("run");
 
     assert_eq!(harness.custom_messages("note").len(), 1);
@@ -213,9 +324,10 @@ async fn a_custom_message_can_start_a_turn_of_its_own() {
 
 #[tokio::test]
 async fn updates_the_pending_count_and_clears_the_queue_on_demand() {
-    let harness = create_harness(HarnessOptions::default());
-    harness.set_responses(vec![reply("a"), reply("b")]);
-    let running = start_run(&harness, "start").await;
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
+    harness.set_responses(vec![gate_call(), reply("a"), reply("b")]);
+    let running = waiting.start().await;
 
     harness.session.follow_up("one", &[]);
     harness.session.follow_up("two", &[]);
@@ -227,16 +339,19 @@ async fn updates_the_pending_count_and_clears_the_queue_on_demand() {
     assert_eq!(follow_up, vec!["one".to_string(), "two".to_string()]);
     assert_eq!(harness.session.pending_message_count(), 0);
 
+    waiting.release();
     running.await.expect("run");
 }
 
 #[tokio::test]
 async fn removes_a_queued_message_from_the_queue_before_it_is_announced() {
-    let harness = create_harness(HarnessOptions::default());
-    harness.set_responses(vec![reply("a"), reply("b")]);
-    let running = start_run(&harness, "start").await;
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
+    harness.set_responses(vec![gate_call(), reply("a"), reply("b")]);
+    let running = waiting.start().await;
 
     harness.session.follow_up("later", &[]);
+    waiting.release();
     running.await.expect("run");
 
     // Delivered, so the queue is empty and a final update said so.
@@ -255,9 +370,10 @@ async fn removes_a_queued_message_from_the_queue_before_it_is_announced() {
 
 #[tokio::test]
 async fn a_queue_behaviour_reaches_the_right_queue() {
-    let harness = create_harness(HarnessOptions::default());
-    harness.set_responses(vec![reply("a"), reply("b")]);
-    let running = start_run(&harness, "start").await;
+    let waiting = WaitingRun::create();
+    let harness = &waiting.harness;
+    harness.set_responses(vec![gate_call(), reply("a"), reply("b")]);
+    let running = waiting.start().await;
 
     harness
         .session
@@ -275,5 +391,6 @@ async fn a_queue_behaviour_reaches_the_right_queue() {
         vec!["queued".to_string()]
     );
 
+    waiting.release();
     running.await.expect("run");
 }

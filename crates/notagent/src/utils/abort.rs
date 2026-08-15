@@ -37,6 +37,20 @@ pub async fn race_with_abort_signal<T>(
     }
 }
 
+/// `AbortSignal.timeout(ms)` — a token that cancels itself after `ms`.
+///
+/// Deviation (class 3): Node's static factory has no counterpart on
+/// `CancellationToken`, so the deadline is a task that cancels the token.
+pub fn timeout_signal(milliseconds: u64) -> CancellationToken {
+    let token = CancellationToken::new();
+    let deadline = token.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(milliseconds)).await;
+        deadline.cancel();
+    });
+    token
+}
+
 /// `signal?.throwIfAborted()`.
 pub fn throw_if_aborted(signal: Option<&CancellationToken>) -> Result<(), AbortError> {
     match signal {

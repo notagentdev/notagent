@@ -28,6 +28,7 @@ use crate::core::model_resolver::{FindInitialModelOptions, find_initial_model};
 use crate::core::model_runtime::{
     ModelRuntime, ModelsRequestTransforms, ModelsSimpleStreamOptions,
 };
+use crate::core::permissions::gate::PermissionGate;
 use crate::core::provider_attribution::merge_provider_attribution_headers;
 use crate::core::resource_loader::ResourceLoader;
 use crate::core::session_manager::SessionManager;
@@ -55,6 +56,10 @@ pub struct CreateAgentSessionOptions {
     /// `"all"` starts with no tools, `"builtin"` disables the built-ins only.
     pub no_tools: Option<NoTools>,
     pub hooks: Option<Arc<HookDispatcher>>,
+    /// The pre-tool gate. In TypeScript the permission chain is a hidden inline
+    /// extension the app registers ahead of every other one; here the app hands
+    /// the gate in and it becomes the agent's `before_tool_call`.
+    pub permissions: Option<Arc<PermissionGate>>,
     pub session_start_reason: String,
 }
 
@@ -195,6 +200,31 @@ pub async fn create_agent_session(options: CreateAgentSessionOptions) -> CreateA
     );
 
     let block_images_settings = Arc::clone(&settings_manager);
+    let permissions = options.permissions.clone();
+    let before_tool_call: Option<notagent_agent::types::BeforeToolCallFn> =
+        permissions.map(|permissions| {
+            Arc::new(
+                move |context: notagent_agent::types::BeforeToolCallContext,
+                      signal: Option<tokio_util::sync::CancellationToken>| {
+                    let permissions = Arc::clone(&permissions);
+                    Box::pin(async move {
+                        let input = context.args.as_object().cloned().unwrap_or_default();
+                        let block = permissions
+                            .before_tool_call(&context.tool_call.name, &input, signal.as_ref())
+                            .await?;
+                        Some(notagent_agent::types::BeforeToolCallResult {
+                            block: Some(true),
+                            reason: block.reason,
+                            terminate: Some(block.terminate),
+                        })
+                    })
+                        as notagent_agent::types::BoxFuture<
+                            'static,
+                            Option<notagent_agent::types::BeforeToolCallResult>,
+                        >
+                },
+            ) as notagent_agent::types::BeforeToolCallFn
+        });
     let agent = Agent::new(AgentOptions {
         system_prompt: Some(String::new()),
         model: model.clone(),
@@ -205,6 +235,7 @@ pub async fn create_agent_session(options: CreateAgentSessionOptions) -> CreateA
             Box::pin(async move { convert_with_block_images(&messages, &settings) })
         })),
         stream_fn: Some(stream_fn),
+        before_tool_call,
         session_id: Some(session_manager.get_session_id().to_string()),
         steering_mode: Some(agent_queue_mode(settings_manager.get_steering_mode())),
         follow_up_mode: Some(agent_queue_mode(settings_manager.get_follow_up_mode())),

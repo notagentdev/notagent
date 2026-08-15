@@ -307,13 +307,33 @@ pub struct AgentSessionConfig {
 }
 
 /// Options of [`AgentSession::prompt`].
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct PromptOptions {
     /// Whether skill commands and prompt templates are expanded. Default: true.
     pub expand_prompt_templates: Option<bool>,
     pub images: Vec<ImageContent>,
     /// How to queue while a run is active. Required when streaming.
     pub streaming_behavior: Option<QueueBehavior>,
+    /// Observes whether the prompt got past preflight. RPC mode answers its
+    /// caller from here: a queued or accepted prompt is a success even though
+    /// the run itself is still going, and only a preflight rejection is the
+    /// failure the caller has to hear about.
+    pub preflight_result: Option<PreflightResult>,
+}
+
+/// Callback of [`PromptOptions::preflight_result`].
+pub type PreflightResult = Arc<dyn Fn(bool) + Send + Sync>;
+
+impl std::fmt::Debug for PromptOptions {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PromptOptions")
+            .field("expand_prompt_templates", &self.expand_prompt_templates)
+            .field("images", &self.images.len())
+            .field("streaming_behavior", &self.streaming_behavior)
+            .field("preflight_result", &self.preflight_result.is_some())
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2010,6 +2030,11 @@ impl AgentSession {
         self.resource_loader.get_prompts().0
     }
 
+    /// The model runtime the session resolves models and auth against.
+    pub fn model_runtime(&self) -> Arc<dyn SessionModelRuntime> {
+        Arc::clone(&self.model_runtime)
+    }
+
     pub fn resource_loader(&self) -> Arc<dyn ResourceLoader> {
         Arc::clone(&self.resource_loader)
     }
@@ -2110,8 +2135,15 @@ impl AgentSession {
         options: PromptOptions,
     ) -> Result<(), String> {
         let expand = options.expand_prompt_templates.unwrap_or(true);
+        let preflight = options.preflight_result.clone();
+        let report = |success: bool| {
+            if let Some(preflight) = preflight.as_ref() {
+                preflight(success);
+            }
+        };
 
         if self.compaction_signal.lock().expect("poisoned").is_some() {
+            report(false);
             return Err(
                 "Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry."
                     .to_string(),
@@ -2127,6 +2159,7 @@ impl AgentSession {
 
         if self.is_streaming() {
             let Some(behavior) = options.streaming_behavior else {
+                report(false);
                 return Err(
                     "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message."
                         .to_string(),
@@ -2136,6 +2169,7 @@ impl AgentSession {
                 QueueBehavior::FollowUp => self.queue_follow_up(&expanded, &options.images),
                 QueueBehavior::Steer => self.queue_steer(&expanded, &options.images),
             }
+            report(true);
             return Ok(());
         }
 
@@ -2143,12 +2177,14 @@ impl AgentSession {
         self.flush_pending_bash_messages();
 
         let Some(model) = self.model() else {
+            report(false);
             return Err(format_no_model_selected_message());
         };
 
         let has_configured_auth = self.model_runtime.has_configured_auth(&model.provider)
             || self.model_runtime.check_auth(&model.provider).await;
         if !has_configured_auth {
+            report(false);
             if self.model_runtime.is_using_oauth(&model.provider) {
                 return Err(format!(
                     "Authentication failed for \"{}\". Credentials may have expired or network is unavailable. Run '/login {}' to re-authenticate.",
@@ -2230,6 +2266,7 @@ impl AgentSession {
             .clone();
         self.agent.set_system_prompt(base);
 
+        report(true);
         self.run_agent_prompt(messages).await;
         Ok(())
     }
@@ -2397,6 +2434,7 @@ impl AgentSession {
                 expand_prompt_templates: Some(expand_prompt_templates),
                 images,
                 streaming_behavior: deliver_as,
+                preflight_result: None,
             },
         )
         .await
@@ -2413,7 +2451,12 @@ impl AgentSession {
         if self.is_idle() {
             return;
         }
+        // `notified()` registers the waiter on first poll, not at creation, so
+        // it is enabled before the second check — otherwise a run that settles
+        // in between notifies nobody and this waits forever.
         let notified = self.idle.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
         if self.is_idle() {
             return;
         }
