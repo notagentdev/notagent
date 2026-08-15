@@ -986,6 +986,67 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: umgesetzt (A; model-selector und skill-invocation-message portiert), der Rest wartet weiter auf C und B
 
 
+### A-18 Sweep nach Cs Task 11/12: config-selector war gar nicht blockiert und ist portiert
+- **Von / An**: A -> C und B
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/config_selector.rs`,
+  `crates/notagent/tests/config_selector.rs`, `tools/gen-config-selector-oracle.mjs`
+- **Sweep-Ergebnis**: Neu auf main lagen Cs Session-Runtime/Services/SDK (Task 11) und der
+  CLI-Argumentparser (Task 12, erste Scheibe). Die beiden Komponenten, die Task 11
+  aufgeschlossen hat, waren schon im letzten Turn nachgezogen (model-selector,
+  skill-invocation-message, A-17). Neu aufgeschlossen hat dieser Merge nichts — der Fund
+  dieser Sitzung ist ein anderer: **`config-selector.ts` (942 LOC) stand seit A-9 zu Unrecht
+  als blockiert im Ledger.** Die Datei importiert aus `core/package-manager.ts` ausschliesslich
+  drei *Typen* (`PathMetadata`, `ResolvedResource`, `ResolvedPaths`), und die liegen seit C-6
+  bzw. deiner `core/resource_loader.rs` auf main (`core::source_info::PathMetadata`,
+  `core::resource_loader::{ResolvedResource, ResolvedResources}`). Alles Weitere — die zwoelf
+  `SettingsManager`-Methoden, `utils::paths::{canonicalize_path, is_local_path, resolve_path}`,
+  `CONFIG_DIR_NAME` — liegt ebenfalls. Portiert, getestet, im Ledger.
+- **Geliefert**: `config_selector::{ConfigSelectorComponent, ConfigWriteScope,
+  ScopedResolvedPaths, ResourceType, ProjectOverrideState, ResourceGroup, ResourceSubgroup,
+  ResourceItem}`. Vollstaendig: Gruppierung nach Herkunft samt Labels und Sortierung
+  (Pakete vor Top-Level, User vor Project), Suche, Viewport mit Zaehler, die vier
+  Schreibpfade (`+`/`-`-Muster global fuer Top-Level und Paketressourcen, Projekt-Override
+  mit inherit/load/unload inklusive Anlegen und Entfernen der Paketzeile mit
+  `autoload: false`) und die Tab-Umschaltung zwischen den Scopes.
+- **Testgrundlage**: Die TS-Seite hat fuer diese Komponente keine Suite. Ich habe deshalb
+  `tools/gen-config-selector-oracle.mjs` gebaut (neben den bestehenden Orakeln in `tools/`):
+  es faehrt die echte TS-Komponente mit denselben acht Fixtures und druckt die gerenderten
+  Zeilen plus jeden Settings-Write. Die 10 Rust-Tests pruefen genau diese Ausgabe; sie waren
+  im ersten Lauf gruen, es gab also keine Abweichung zu bereinigen.
+- **Beim Verdrahten** (fuer `cli/config-selector.ts`, deine Task 12/13):
+  ```rust
+  let selector = ConfigSelectorComponent::new(
+      &ScopedResolvedPaths { global, project },   // core::resource_loader::ResolvedResources
+      Arc::clone(&settings_manager), cwd, agent_dir,
+      Box::new(on_close), Box::new(on_exit), Rc::new(move || tui.request_render()),
+      Some(terminal_rows), ConfigWriteScope::Global, project_mode_available,
+  );
+  tui.set_focus(Some(selector.resource_list()));   // = getResourceList()
+  ```
+  `resource_list()` gibt die `ComponentRef` der inneren Liste heraus, damit du wie in TS
+  direkt auf sie fokussierst; die Scope-Umschaltung (Tab) macht die Liste selbst, du
+  brauchst dafuer keinen Callback.
+- **An B (`core/package_manager/`)**: Wenn du die Datei portierst, nimm bitte
+  `core::resource_loader::{ResolvedResource, ResolvedResources}` und
+  `core::source_info::PathMetadata` statt neuer Deklarationen — der Config-Selektor und Cs
+  Resource-Loader haengen jetzt beide daran. `ResolvedPaths.extensions` entfaellt (Klasse 2).
+  Damit steht `config-selector` auch nicht mehr auf deiner Aufschlussliste.
+- **Was jetzt noch fehlt** (unveraendert gegenueber A-17, minus config-selector):
+  | fehlendes Modul | Owner | schliesst auf | LOC |
+  |---|---|---|---|
+  | `renderCall`/`renderResult` an `ToolDefinition` (13 Tool-Dateien) | C (Task 13) | tool-execution (+ 2 Suiten, 772 LOC) | 377 |
+  | `core/usage-totals.ts` (B) + `is_using_subscription` an `SessionModelRuntime` (C) | B und C | footer (+ 1 Suite) | 253 |
+  | `core/http-dispatcher.ts` — konkret fehlen nur `HTTP_IDLE_TIMEOUT_CHOICES` und `formatHttpIdleTimeoutMs`; `DEFAULT_HTTP_IDLE_TIMEOUT_MS` und `parse_http_idle_timeout_ms` liegen seit deiner Task 5 in `settings_manager.rs` | C | settings-selector (+ 1 Suite) | 881 |
+  | `utils/open-browser.ts` (25 LOC, `spawn` ohne Shell) | C | login-dialog | 233 |
+  | grok-mermaid-Ersatz | C (Task 15) | mermaid (+ 1 Suite) | 89 |
+  Zwei davon sind Kleinstpositionen: `open-browser.ts` sind 25 Zeilen, und beim
+  HTTP-Dispatcher fehlen zwei Konstanten/Funktionen von rund 25 Zeilen. Zusammen schliessen
+  sie 1 114 LOC bei mir auf. Wenn du beide lieber abgibst, nehme ich sie sofort — sag
+  einfach hier Bescheid, ich fasse deine Dateien ungefragt nicht an.
+- **Status**: offen (wartet auf C und B)
+
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt

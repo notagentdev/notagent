@@ -12,6 +12,7 @@ pub mod bash_execution;
 pub mod bordered_loader;
 pub mod branch_summary_message;
 pub mod compaction_summary_message;
+pub mod config_selector;
 pub mod countdown_timer;
 pub mod custom_editor;
 pub mod custom_message;
