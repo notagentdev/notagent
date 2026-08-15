@@ -2126,6 +2126,8 @@ dependencies = [
  "tree-sitter-rust",
  "tree-sitter-typescript",
  "unicode-normalization",
+ "unicode-segmentation",
+ "unicode-width",
  "uuid",
 ]
 

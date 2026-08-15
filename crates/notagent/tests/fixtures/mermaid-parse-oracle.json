@@ -1,0 +1,696 @@
+[
+	{
+		"src": "flowchart LR\n  A[Start] --> B[Done]",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A[Start] --> B[Done]"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "Start",
+					"shape": "rect"
+				},
+				{
+					"label": "Done",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "graph TD\n  A --> B\n  B --> C",
+		"kind": "flowchart",
+		"statements": [
+			"graph TD",
+			"A --> B",
+			"B --> C"
+		],
+		"graph": {
+			"dir": "down",
+			"nodes": [
+				{
+					"label": "A",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				},
+				{
+					"label": "C",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 1,
+					"to": 2,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "pie\n  title Pets\n  \"Dogs\" : 4",
+		"kind": null,
+		"statements": [
+			"pie",
+			"title Pets",
+			"\"Dogs\" : 4"
+		],
+		"graph": null
+	},
+	{
+		"src": "stateDiagram-v2\n  [*] --> Idle",
+		"kind": "state",
+		"statements": [
+			"stateDiagram-v2",
+			"[*] --> Idle"
+		],
+		"graph": null
+	},
+	{
+		"src": "flowchart LR\n  A[Foo]:::highlight --> B[Bar]",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A[Foo]:::highlight --> B[Bar]"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "Foo",
+					"shape": "rect"
+				}
+			],
+			"edges": [],
+			"groups": [],
+			"nodeGroup": [
+				null
+			],
+			"warnings": [
+				"dropped, expected a link: \":::highlight --> B[Bar]\""
+			]
+		}
+	},
+	{
+		"src": "flowchart LR\n  A[Foo]:::highlight --> B[Bar]\n  C[Baz]:::other --> D[Qux]",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A[Foo]:::highlight --> B[Bar]",
+			"C[Baz]:::other --> D[Qux]"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "Foo",
+					"shape": "rect"
+				},
+				{
+					"label": "Baz",
+					"shape": "rect"
+				}
+			],
+			"edges": [],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null
+			],
+			"warnings": [
+				"dropped, expected a link: \":::highlight --> B[Bar]\"",
+				"dropped, expected a link: \":::other --> D[Qux]\""
+			]
+		}
+	},
+	{
+		"src": "flowchart TD\n  A{Choose} -->|yes| B((Round))\n  A -->|no| C[/Skew/]",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart TD",
+			"A{Choose} -->|yes| B((Round))",
+			"A -->|no| C[/Skew/]"
+		],
+		"graph": {
+			"dir": "down",
+			"nodes": [
+				{
+					"label": "Choose",
+					"shape": "diamond"
+				},
+				{
+					"label": "Round",
+					"shape": "round"
+				},
+				{
+					"label": "/Skew/",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": "yes",
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 0,
+					"to": 2,
+					"label": "no",
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart LR\n  A -- label --> B\n  B -.-> C\n  C ==> D",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A -- label --> B",
+			"B -.-> C",
+			"C ==> D"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "A",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				},
+				{
+					"label": "C",
+					"shape": "rect"
+				},
+				{
+					"label": "D",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": "label",
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 1,
+					"to": 2,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "dotted"
+				},
+				{
+					"from": 2,
+					"to": 3,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "thick"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null,
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart LR\n  A & B --> C & D",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A & B --> C & D"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "A",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				},
+				{
+					"label": "C",
+					"shape": "rect"
+				},
+				{
+					"label": "D",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 2,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 0,
+					"to": 3,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 1,
+					"to": 2,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 1,
+					"to": 3,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null,
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart RL\n  A <-- back -- B",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart RL",
+			"A <-- back -- B"
+		],
+		"graph": {
+			"dir": "left",
+			"nodes": [
+				{
+					"label": "A",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 1,
+					"to": 0,
+					"label": "back",
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart LR\n  A o--o B\n  X x--x Y",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A o--o B",
+			"X x--x Y"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "A",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				},
+				{
+					"label": "X",
+					"shape": "rect"
+				},
+				{
+					"label": "Y",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": null,
+					"headTo": "circle",
+					"headFrom": "circle",
+					"line": "solid"
+				},
+				{
+					"from": 2,
+					"to": 3,
+					"label": null,
+					"headTo": "cross",
+					"headFrom": "cross",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null,
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart LR\n  subgraph one[Group One]\n    A --> B\n  end\n  B --> C",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"subgraph one[Group One]",
+			"A --> B",
+			"end",
+			"B --> C"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "A",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				},
+				{
+					"label": "C",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 1,
+					"to": 2,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [
+				{
+					"id": "one",
+					"label": "Group One",
+					"parent": null
+				}
+			],
+			"nodeGroup": [
+				0,
+				0,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart LR\n  A[\"a] b\"] --> B[5\" pipe]",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A[\"a] b\"] --> B[5\" pipe]"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "a] b",
+					"shape": "rect"
+				},
+				{
+					"label": "5\" pipe",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart LR\n  A[<b>Bold</b> &amp; more] --> B[`**md**`]",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A[<b>Bold</b> &amp",
+			"more] --> B[`**md**`]"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "Bold &amp",
+					"shape": "rect"
+				},
+				{
+					"label": "more",
+					"shape": "rect"
+				}
+			],
+			"edges": [],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null
+			],
+			"warnings": [
+				"node \"A\": label is missing its closing `]`",
+				"dropped, expected a link: \"] --> B[`**md**`]\""
+			]
+		}
+	},
+	{
+		"src": "flowchart LR\n  A[Unclosed --> B",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A[Unclosed --> B"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "Unclosed --> B",
+					"shape": "rect"
+				}
+			],
+			"edges": [],
+			"groups": [],
+			"nodeGroup": [
+				null
+			],
+			"warnings": [
+				"node \"A\": label is missing its closing `]`"
+			]
+		}
+	},
+	{
+		"src": "flowchart LR\n  --> B",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"--> B"
+		],
+		"graph": null
+	},
+	{
+		"src": "flowchart LR; A-->B; %% comment\n  B-->C",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A-->B",
+			"B-->C"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "A",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				},
+				{
+					"label": "C",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				},
+				{
+					"from": 1,
+					"to": 2,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null,
+				null
+			],
+			"warnings": []
+		}
+	},
+	{
+		"src": "flowchart LR\n  A[A very long label that has to wrap somewhere sensible] --> B",
+		"kind": "flowchart",
+		"statements": [
+			"flowchart LR",
+			"A[A very long label that has to wrap somewhere sensible] --> B"
+		],
+		"graph": {
+			"dir": "right",
+			"nodes": [
+				{
+					"label": "A very long label that has to wrap somewhere sensible",
+					"shape": "rect"
+				},
+				{
+					"label": "B",
+					"shape": "rect"
+				}
+			],
+			"edges": [
+				{
+					"from": 0,
+					"to": 1,
+					"label": null,
+					"headTo": "arrow",
+					"headFrom": "none",
+					"line": "solid"
+				}
+			],
+			"groups": [],
+			"nodeGroup": [
+				null,
+				null
+			],
+			"warnings": []
+		}
+	}
+]

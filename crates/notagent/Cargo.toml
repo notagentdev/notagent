@@ -58,6 +58,8 @@ tree-sitter-typescript = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 unicode-normalization = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
 uuid = { workspace = true }
 futures = { workspace = true }
 globset = { workspace = true }

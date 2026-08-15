@@ -172,6 +172,16 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-15 | packages/coding-agent/src/modes/interactive/components/settings-selector.ts | 881 | A-Task 15 (Batch 7) |
 | 2026-08-15 | packages/coding-agent/test/settings-selector.test.ts | 43 | A-Task 15 (Batch 7) |
 | 2026-08-15 | packages/coding-agent/src/modes/interactive/components/login-dialog.ts | 233 | A-Task 15 (Batch 7) |
+| 2026-08-15 | node_modules/grok-mermaid/src/index.ts (0.2.2) | 104 | A-Task 15 (Batch 8, O-6) |
+| 2026-08-15 | node_modules/grok-mermaid/src/types.ts | 43 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/ansi.ts | 34 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/width.ts | 74 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/width-data.ts (Kopf, generiert) | 30 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/labels.ts | 326 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/canvas.ts | 373 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/graph.ts | 142 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/source-box.ts | 89 | A-Task 15 (Batch 8) |
+| 2026-08-15 | node_modules/grok-mermaid/src/parse.ts (Zeilen 1-446: Statements, diagramKind, Flowchart-Grammatik) | 446 | A-Task 15 (Batch 8) |
 | 2026-08-13 | packages/coding-agent/src/core/tools/bash.ts | 771 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/shell.ts (erneut, Spawn-/Signalteil) | 259 | C-Task 8 |
 | 2026-08-13 | packages/coding-agent/src/utils/child-process.ts | 137 | C-Task 8 |
@@ -539,7 +549,10 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 | src/modes/interactive/components/footer.ts | 253 | — | offen | braucht `core/agent-session.ts`, `core/footer-data-provider.ts`, `core/modes/indicator.ts` und `core/usage-totals.ts` (Workstream C) — A-8 |
 | src/modes/interactive/components/todo-list.ts | 216 | src/modes/interactive/components/todo_list.rs | verifiziert | Klasse 1: `TodoVisibility`s `setTimeout` wird zur Poll-Schnittstelle (`hide_deadline()`/`tick()`), wie alle Timer des Ports; der Epochen-Schutz bleibt unverändert, ein Tick gegen eine veraltete Epoche tut nichts. `Record<TodoStatus, string>` wird ein `match`, `readonly Todo[]` ein Slice |
 | test/todo-panel.test.ts | 164 | tests/todo_panel.rs | verifiziert | 15 Tests (TS: 15 `it`-Blöcke). Die beiden Fälle mit `await` pollen statt zu warten |
-| src/modes/interactive/components/mermaid.ts | 89 | — | offen | braucht den Ersatz für `grok-mermaid` (Master-Plan, WS-C Task 15) — A-8 |
+| src/modes/interactive/components/mermaid.ts | 89 | — | offen | wartet auf den Rest des grok-mermaid-Ersatzes (nächste Zeile) — A-19 |
+| node_modules/grok-mermaid 0.2.2 (Substitution) | 4 546 | src/utils/mermaid/ | teilweise portiert | Ownership mit O-6 von C übernommen; der Master-Plan führt das Paket unter den Substitutionen. **Portiert und testbelegt**: `types.ts` (43), `width.ts` (74), `labels.ts` (326), `canvas.ts` (373), `graph.ts` (142) und die Flowchart-Hälfte von `parse.ts` (Zeilen 1-446: `splitStatements`, `statementsOf`, `diagramKind`, `parseGraph` samt Knoten-, Shape-, Link- und Subgraph-Grammatik). **Offen**: `layout.ts` (1 015 — Ranks, Ordering, Positionen, Tracks, TD-/LR-Platzierung, Routing, Boxen, `layoutFlowchart`/`layoutGrouped`/`layoutClass`), `layout-seq.ts` (203), die vier strengeren Grammatiken aus `parse.ts` (Zeilen 447-1150: state, class, ER, sequence), `index.ts` (`render` samt Retry ohne letzte Zeile), `source-box.ts` und `ansi.ts`. Ohne das Layout gibt es noch kein `render`, deshalb bleibt `mermaid.ts` offen. Klasse 3 (durchgängig): `width-data.ts` ist eine generierte Tabelle, deren Kopf die Rust-Crate `unicode-width` als Quelle nennt — der Port ruft die Crate direkt auf und nimmt die Grapheme-Cluster aus `unicode-segmentation`, wo TS `Intl.Segmenter` benutzt (beide Seiten von UAX #29). Klasse 1: `asciiLower`/`asciiUpper` sind `to_ascii_lowercase`/`_uppercase` (die TS-Regex bildet genau das nach), `srcLines` ist `str::lines()` (die TS-Funktion bildet genau das nach), die Zeichen-Arrays aus `[...s]` werden `Vec<char>` |
+| — (neu) | — | tests/mermaid_parse.rs + tests/fixtures/mermaid-parse-oracle.json | verifiziert | 3 Tests über ein Korpus von 18 Quellen (`tools/gen-mermaid-parse-oracle.mjs` fährt grok-mermaid 0.2.2 selbst): Statement-Splitter, `diagramKind` und der vollständige geparste Graph — Knoten mit Label und Form, Kanten mit beiden Köpfen und Linienart, Gruppen, Knoten-Gruppen-Zuordnung und Warnungen. Enthalten sind die heiklen Fälle: quotierte Labels mit `]` darin, `5" pipe`, `&`-Fan-out, `<--`-Umkehr, `o--o`/`x--x`, Subgraph mit Titel, HTML-Entities und Markdown, nicht geschlossene Klammer, Kommentar-Abbruch |
+| — (neu) | — | src/utils/mermaid/width.rs (Unit-Tests) | verifiziert | 1 Test: CJK-Breite, kombinierende Marke, ZWJ-Familie, Flagge, VS16 und Soft-Hyphen — die Fälle, für die `width.ts` seine Sonderregeln hat |
 | test/assistant-message.test.ts | 241 | tests/assistant_message.rs | verifiziert | 10 Tests (TS: 11). Der Fall „continues the Markdown transformer chain when a transformer throws" entfällt mit der Schutzprüfung, die er testet: ein Rust-Transformer kann nicht werfen, und die Prüfung fing nur ungetypten Extension-Code ab |
 | test/custom-message.test.ts | 44 | tests/custom_message.rs | verifiziert | 2 Tests. Der TS-Fall treibt die Komponente über einen Custom-Renderer; beobachtbar bleibt der Default-Renderpfad, den die beiden Fälle prüfen |
 | test/bash-execution-width.test.ts | 80 | tests/bash_execution_width.rs | verifiziert | 2 Tests, unverändert; der TUI-Stub entfällt, weil die portierten Komponenten gepollt werden |

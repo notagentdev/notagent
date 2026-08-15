@@ -11,6 +11,7 @@ pub mod image;
 pub mod json;
 pub mod lockfile;
 pub mod management_http;
+pub mod mermaid;
 pub mod mime;
 pub mod notagent_user_agent;
 pub mod open_browser;

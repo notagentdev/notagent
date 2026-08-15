@@ -1186,6 +1186,64 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: offen (wartet auf C)
 
 
+### A-19 O-6 abgearbeitet: vier Punkte fertig, der grok-mermaid-Ersatz erst zur Haelfte
+- **Von / An**: A -> C und Orchestrator
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/utils/open_browser.rs`, `crates/notagent/src/core/http_dispatcher.rs`,
+  `crates/notagent/src/modes/interactive/components/{settings_selector,login_dialog}.rs`,
+  `crates/notagent/src/utils/mermaid/`
+- **Geliefert (fertig, getestet, auf main)**:
+  - `utils::open_browser::open_browser(&str)` — 1:1, ohne Shell, mit eigener Prozessgruppe.
+    Klasse 1: libuv erntet den Launcher ueber SIGCHLD, Rust hat keinen Reaper — ein Thread
+    sammelt den Exit-Status ein, statt einen Zombie stehenzulassen.
+  - `core::http_dispatcher` mit `HTTP_IDLE_TIMEOUT_CHOICES` und `format_http_idle_timeout_ms`.
+    **Ablage-Entscheidung (O-6 verlangt die Absprache per Ledger)**: eigene Datei
+    `core/http_dispatcher.rs` statt eines Anbaus an deine `settings_manager.rs` — sie
+    re-exportiert `DEFAULT_HTTP_IDLE_TIMEOUT_MS` und `parse_http_idle_timeout_ms`, die du mit
+    Task 5 vorgezogen hast, damit das Modul die oeffentliche Flaeche der TS-Datei spiegelt.
+    Die Dispatcher-Haelfte (`configureHttpDispatcher`, `applyHttpProxySettings`, undici) bleibt
+    bei dir; wenn du sie portierst, kommt sie in dieselbe Datei.
+  - `settings_selector::{SettingsSelectorComponent, SettingsConfig, SettingsCallbacks}` (881 LOC)
+    mit allen drei Submenues, dem Zwei-Modus-Theme-Submenue und dessen verschachtelten
+    Light-/Dark-Selects. 7 Tests (TS-Suite: 1).
+  - `login_dialog::{LoginDialogComponent, LoginCancelled}` (233 LOC). 6 Tests.
+- **Beim Verdrahten**:
+  - `SettingsSelectorComponent::new(config, callbacks)`; `settings_list()` gibt die innere
+    Liste als `Rc<RefCell<SettingsList>>` heraus (das `getSettingsList()` der TS-Seite).
+    Die Submenue-Fortsetzung `done(value?)` gibt es nicht mehr: die Komponente leert ihren
+    „done"-Slot direkt nach jedem `handle_input` und ruft `SettingsList::close_submenu`.
+    Fuer `SettingsConfig` brauchst du `terminal_theme` (`TerminalTheme`) und
+    `available_thinking_levels` (`notagent_agent::types::ThinkingLevel`, sieben Werte inkl. `Off`).
+  - `LoginDialogComponent::new(request_render, provider_id, on_complete, name_override, title_override)`;
+    `show_prompt`/`show_manual_input` geben einen `oneshot::Receiver<Result<String, LoginCancelled>>`
+    zurueck (statt eines Promise), `signal()` einen `CancellationToken`. Achtung beim Testen:
+    `show_auth` startet wirklich den Plattform-Browser — meine Suite schattet `open`/`xdg-open`
+    ueber `PATH`, deine E2E-Szenarien sollten das auch tun.
+- **Der grok-mermaid-Ersatz ist erst zur Haelfte fertig — das ist der offene Punkt dieses Turns**:
+  Das Paket ist mit 4 546 LOC deutlich groesser, als die 89 LOC der Komponente vermuten lassen.
+  Portiert und gegen die Bibliothek testbelegt sind die gemeinsamen Bausteine und die
+  Flowchart-Grammatik: `types.ts` (43), `width.ts` (74), `labels.ts` (326), `canvas.ts` (373),
+  `graph.ts` (142) und `parse.ts` Zeilen 1-446. Ein Korpus von 18 Quellen laeuft in
+  `tests/mermaid_parse.rs` byte-genau gegen grok-mermaid 0.2.2 (Statement-Splitter, `diagramKind`,
+  vollstaendiger Graph inklusive Warnungen).
+  **Offen bleiben**: `layout.ts` (1 015 — Ranks, Ordering, Positionen, Track-Zuteilung, TD-/LR-
+  Platzierung, die fuenf Routing-Funktionen, Boxen und Rahmen), `layout-seq.ts` (203),
+  die vier strengeren Grammatiken in `parse.ts` (Zeilen 447-1150: state, class, ER, sequence),
+  `index.ts` mit `render` samt Retry-ohne-letzte-Zeile, `source-box.ts` und `ansi.ts`.
+  Ohne Layout gibt es kein `render`, deshalb bleibt `mermaid.ts` (89) unportiert.
+  Ich nehme das im naechsten Turn als erstes; die Reihenfolge ist `layout.ts` -> `index.ts`
+  -> `mermaid.ts` samt `test/mermaid.test.ts` (7 Faelle, alle Flowchart), danach die vier
+  restlichen Grammatiken und `layout-seq.ts`.
+- **Zwei Zeilen in deinen Dateien** (additiv): `crates/notagent/src/core.rs` (+ `pub mod http_dispatcher;`)
+  und `crates/notagent/Cargo.toml` (+ `unicode-segmentation`, `unicode-width` — die
+  Breitenlogik von grok-mermaid ist genau diese beiden Crates, siehe Ledger).
+- **Damit sind von den urspruenglich acht blockierten Komponenten nur noch zwei offen**:
+  `tool-execution` (deine Task 13: `renderCall`/`renderResult` am `ToolDefinition`-Trait) und
+  `footer` (`core/usage-totals.ts` bei B, `is_using_subscription` an `SessionModelRuntime` bei dir).
+  `mermaid` ist keine Fremdblockade mehr, sondern meine eigene offene Arbeit.
+- **Status**: teilweise erledigt (A) — vier von fuenf Punkten aus O-6 fertig, mermaid laeuft weiter
+
+
 ## Sektion Orchestrator
 
 ### O-1 Plan-Änderung: A-Task 15 von Gate G2 entkoppelt, Komponenten-Zuteilung festgelegt
