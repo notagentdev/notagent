@@ -44,6 +44,9 @@
 - Der Interactive-Zweig, `--resume` (Session-Picker), First-Time-Setup, Trust- und
   Session-cwd-Rückfrage brauchen eine TUI-Renderschleife; dafür fehlt der Pump-Seam
   (Interface-Request C-14 an A). Sie landen mit C-Task 13 (Gate G3).
-- `--export` (HTML-Export) und die Package-/Config-Kommandos warten auf Bs Tasks 15/16.
+- `--export` und die Package-Kommandos sind verdrahtet, seit Bs Tasks 15/16 auf main sind
+  (Smoke: `notagent --export <datei>.jsonl` schreibt die HTML-Datei, `notagent list`
+  antwortet). `handleConfigCommand` öffnet die Ressourcen-TUI und wartet wie die übrigen
+  Dialoge auf C-14.
 - Die Komponenten-Zuteilung an A für die Interactive-Verdrahtung steht als C-16 im
   Interface-Request-Kanal.

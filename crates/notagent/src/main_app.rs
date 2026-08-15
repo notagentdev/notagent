@@ -55,6 +55,7 @@ use crate::core::agent_session_services::{
 };
 use crate::core::auth_guidance::format_no_models_available_message;
 use crate::core::auth_storage::{AuthStorage, ReadOnlyAuthStorage};
+use crate::core::export_html::{ExportOptions, export_from_file};
 use crate::core::hooks::dispatch::{HookDispatcher, create_approval_observer};
 use crate::core::hooks::load_hooks;
 use crate::core::hooks::payload::HookSessionContext;
@@ -80,6 +81,7 @@ use crate::migrations::run_migrations;
 use crate::modes::interactive::theme::theme::init_theme;
 use crate::modes::print_mode::{PrintModeOptions, PrintOutputMode, run_print_mode};
 use crate::modes::rpc::rpc_mode::run_rpc_mode;
+use crate::package_manager_cli::{PackageCommandRuntime, handle_package_command};
 use crate::utils::abort::timeout_signal;
 use crate::utils::chalk::{dim, red, yellow};
 use crate::utils::paths::{
@@ -810,6 +812,15 @@ pub async fn main(args: Vec<String>) -> i32 {
     let cwd = current_dir();
     let agent_dir = get_agent_dir().to_string_lossy().into_owned();
 
+    if let Some(exit_code) =
+        handle_package_command(&args, &PackageCommandRuntime::from_process()).await
+    {
+        return exit_code;
+    }
+    // `handleConfigCommand` opens the resource configuration TUI, which is
+    // workstream A's `config-selector` behind the render loop of C-14; it is
+    // wired with the interactive mode (plan task 13).
+
     let parsed = parse_args(&args);
     let mut parsed = parsed;
     if !parsed.diagnostics.is_empty() {
@@ -841,14 +852,25 @@ pub async fn main(args: Vec<String>) -> i32 {
         return 0;
     }
 
-    if parsed.export.is_some() {
-        // `core/export-html` belongs to workstream B (O-4, its plan task 16);
-        // the flag is wired here as soon as it lands.
-        eprintln!(
-            "{}",
-            red("Error: HTML export is not available in this build yet")
-        );
-        return 1;
+    if let Some(export) = parsed.export.as_deref() {
+        let output_path = parsed.messages.first().cloned();
+        match export_from_file(
+            export,
+            ExportOptions {
+                output_path,
+                theme_name: None,
+                tool_renderer: None,
+            },
+        ) {
+            Ok(result) => {
+                console_log(&format!("Exported to: {result}"));
+                return 0;
+            }
+            Err(error) => {
+                eprintln!("{}", red(&format!("Error: {error}")));
+                return 1;
+            }
+        }
     }
 
     let mut app_mode = resolve_app_mode(&parsed, stdin_is_tty(), stdout_is_tty());
