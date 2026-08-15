@@ -263,6 +263,10 @@ pub trait SessionModelRuntime: Send + Sync {
     fn has_configured_auth(&self, provider: &str) -> bool;
     fn check_auth<'a>(&'a self, provider: &'a str) -> BoxFuture<'a, bool>;
     fn is_using_oauth(&self, provider: &str) -> bool;
+    /// `isUsingSubscription` — OAuth against a provider whose OAuth flow is a
+    /// subscription. The footer reads it to mark the cost as covered
+    /// (`components/footer.ts:148`).
+    fn is_using_subscription(&self, provider: &str) -> bool;
     fn get_available_snapshot(&self) -> Vec<Model>;
     fn get_model(&self, provider: &str, id: &str) -> Option<Model>;
 }
@@ -4122,6 +4126,10 @@ impl SessionModelRuntime for crate::core::model_runtime::ModelRuntime {
 
     fn is_using_oauth(&self, provider: &str) -> bool {
         crate::core::model_runtime::ModelRuntime::is_using_oauth(self, provider)
+    }
+
+    fn is_using_subscription(&self, provider: &str) -> bool {
+        crate::core::model_runtime::ModelRuntime::is_using_subscription(self, provider)
     }
 
     fn get_available_snapshot(&self) -> Vec<Model> {

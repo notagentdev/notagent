@@ -6,16 +6,22 @@ use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{TextContent, TextOrImageContent};
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::tools::path_utils::resolve_to_cwd;
+use crate::core::tools::render_utils::{get_text_output, render_tool_path, str_arg};
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
+    ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
+    wrap_tool_definition,
 };
 use crate::core::tools::truncate::{
-    DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head,
+    DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head, truncation_from_details,
 };
+use crate::modes::interactive::components::keybinding_hints::key_hint;
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 pub const LS_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution = SystemPromptContribution {
     snippet: "List directory contents",
@@ -85,6 +91,96 @@ pub struct LsToolOptions {
     pub operations: Option<Arc<dyn LsOperations>>,
 }
 
+// ============================================================================
+// Rendering
+// ============================================================================
+
+fn format_ls_call(args: &Value, theme: &Theme, cwd: &str) -> String {
+    let path_display =
+        render_tool_path(str_arg(args.get("path")).as_deref(), theme, cwd, Some("."));
+    let mut text = format!(
+        "{} {path_display}",
+        theme.fg(ThemeColor::ToolTitle, &theme.bold("ls"))
+    );
+    if let Some(limit) = args.get("limit") {
+        text += &theme.fg(
+            ThemeColor::ToolOutput,
+            &format!(" (limit {})", display_arg(limit)),
+        );
+    }
+    text
+}
+
+/// Preview rows of the result before it is expanded.
+const LS_PREVIEW_LINES: usize = 20;
+
+fn format_ls_result(
+    result: ToolRenderResult<'_>,
+    options: ToolRenderResultOptions,
+    theme: &Theme,
+    show_images: bool,
+) -> String {
+    let output = get_text_output(Some(result.content), show_images)
+        .trim()
+        .to_string();
+    let mut text = String::new();
+    if !output.is_empty() {
+        let lines: Vec<&str> = output.split('\n').collect();
+        let max_lines = if options.expanded {
+            lines.len()
+        } else {
+            LS_PREVIEW_LINES
+        };
+        let display_lines = &lines[..max_lines.min(lines.len())];
+        let remaining = lines.len() as isize - max_lines as isize;
+        text += &format!(
+            "\n{}",
+            display_lines
+                .iter()
+                .map(|line| theme.fg(ThemeColor::ToolOutput, line))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        if remaining > 0 {
+            text += &format!(
+                "{} {}{}",
+                theme.fg(
+                    ThemeColor::Muted,
+                    &format!("\n... ({remaining} more lines,")
+                ),
+                key_hint("app.tools.expand", "to expand"),
+                theme.fg(ThemeColor::Muted, ")")
+            );
+        }
+    }
+
+    let entry_limit = result
+        .details
+        .and_then(|details| details.get("entryLimitReached"))
+        .filter(|value| !value.is_null());
+    let truncation = truncation_from_details(result.details);
+    let truncated = truncation
+        .as_ref()
+        .is_some_and(|truncation| truncation.truncated);
+    if entry_limit.is_some() || truncated {
+        let mut warnings: Vec<String> = Vec::new();
+        if let Some(entry_limit) = entry_limit {
+            warnings.push(format!("{} entries limit", display_arg(entry_limit)));
+        }
+        if let Some(truncation) = truncation.filter(|truncation| truncation.truncated) {
+            warnings.push(format!("{} limit", format_size(truncation.max_bytes)));
+        }
+        text += &format!(
+            "\n{}",
+            theme.fg(
+                ThemeColor::Warning,
+                &format!("[Truncated: {}]", warnings.join(", "))
+            )
+        );
+    }
+    text
+}
+
 pub struct LsToolDefinition {
     cwd: String,
     operations: Arc<dyn LsOperations>,
@@ -126,6 +222,31 @@ impl ToolDefinition for LsToolDefinition {
 
     fn parameters(&self) -> &Value {
         &self.parameters
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        Some(render_text_call(
+            context,
+            &format_ls_call(args, theme, &context.cwd),
+        ))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        Some(render_text_result(
+            context,
+            &format_ls_result(result, options, theme, context.show_images),
+        ))
     }
 
     fn execute<'a>(

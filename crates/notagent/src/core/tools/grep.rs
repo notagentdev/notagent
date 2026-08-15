@@ -9,17 +9,23 @@ use notagent_agent::types::{
     AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{TextContent, TextOrImageContent};
+use notagent_tui::tui::ComponentRef;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::tools::path_utils::resolve_to_cwd;
+use crate::core::tools::render_utils::{get_text_output, invalid_arg_text, shorten_path, str_arg};
 use crate::core::tools::tool_definition::{
-    SystemPromptContribution, ToolContext, ToolDefinition, wrap_tool_definition,
+    SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
+    ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
+    wrap_tool_definition,
 };
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, format_size, truncate_head,
-    truncate_line,
+    truncate_line, truncation_from_details,
 };
+use crate::modes::interactive::components::keybinding_hints::key_hint;
+use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 use crate::utils::tools_manager::{ManagedTool, ensure_tool};
 
 pub const GREP_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
@@ -80,6 +86,124 @@ pub struct GrepToolOptions {
     pub operations: Option<Arc<dyn GrepOperations>>,
 }
 
+// ============================================================================
+// Rendering
+// ============================================================================
+
+fn format_grep_call(args: &Value, theme: &Theme) -> String {
+    let pattern = str_arg(args.get("pattern"));
+    let raw_path = str_arg(args.get("path"));
+    // `rawPath !== null ? shortenPath(rawPath || ".") : null`
+    let path = raw_path
+        .map(|raw_path| shorten_path(Some(if raw_path.is_empty() { "." } else { &raw_path })));
+    let limit = args.get("limit");
+    let invalid_arg = invalid_arg_text(theme);
+    let mut text = theme.fg(ThemeColor::ToolTitle, &theme.bold("grep"))
+        + " "
+        + &match &pattern {
+            None => invalid_arg.clone(),
+            Some(pattern) => theme.fg(ThemeColor::Accent, &format!("/{pattern}/")),
+        }
+        + &theme.fg(
+            ThemeColor::ToolOutput,
+            &format!(
+                " in {}",
+                match &path {
+                    None => invalid_arg.as_str(),
+                    Some(path) => path.as_str(),
+                }
+            ),
+        );
+    // `if (glob)` — an empty or non-string glob adds nothing.
+    if let Some(glob) = str_arg(args.get("glob")).filter(|glob| !glob.is_empty()) {
+        text += &theme.fg(ThemeColor::ToolOutput, &format!(" ({glob})"));
+    }
+    if let Some(limit) = limit {
+        text += &theme.fg(
+            ThemeColor::ToolOutput,
+            &format!(" limit {}", display_arg(limit)),
+        );
+    }
+    text
+}
+
+/// Preview rows of the result before it is expanded.
+const GREP_PREVIEW_LINES: usize = 15;
+
+fn format_grep_result(
+    result: ToolRenderResult<'_>,
+    options: ToolRenderResultOptions,
+    theme: &Theme,
+    show_images: bool,
+) -> String {
+    let output = get_text_output(Some(result.content), show_images)
+        .trim()
+        .to_string();
+    let mut text = String::new();
+    if !output.is_empty() {
+        let lines: Vec<&str> = output.split('\n').collect();
+        let max_lines = if options.expanded {
+            lines.len()
+        } else {
+            GREP_PREVIEW_LINES
+        };
+        let display_lines = &lines[..max_lines.min(lines.len())];
+        let remaining = lines.len() as isize - max_lines as isize;
+        text += &format!(
+            "\n{}",
+            display_lines
+                .iter()
+                .map(|line| theme.fg(ThemeColor::ToolOutput, line))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        if remaining > 0 {
+            text += &format!(
+                "{} {}{}",
+                theme.fg(
+                    ThemeColor::Muted,
+                    &format!("\n... ({remaining} more lines,")
+                ),
+                key_hint("app.tools.expand", "to expand"),
+                theme.fg(ThemeColor::Muted, ")")
+            );
+        }
+    }
+
+    let match_limit = result
+        .details
+        .and_then(|details| details.get("matchLimitReached"))
+        .filter(|value| !value.is_null());
+    let truncation = truncation_from_details(result.details);
+    let lines_truncated = result
+        .details
+        .and_then(|details| details.get("linesTruncated"))
+        .is_some_and(|value| value == &json!(true));
+    let truncated = truncation
+        .as_ref()
+        .is_some_and(|truncation| truncation.truncated);
+    if match_limit.is_some() || truncated || lines_truncated {
+        let mut warnings: Vec<String> = Vec::new();
+        if let Some(match_limit) = match_limit {
+            warnings.push(format!("{} matches limit", display_arg(match_limit)));
+        }
+        if let Some(truncation) = truncation.filter(|truncation| truncation.truncated) {
+            warnings.push(format!("{} limit", format_size(truncation.max_bytes)));
+        }
+        if lines_truncated {
+            warnings.push("some lines truncated".to_string());
+        }
+        text += &format!(
+            "\n{}",
+            theme.fg(
+                ThemeColor::Warning,
+                &format!("[Truncated: {}]", warnings.join(", "))
+            )
+        );
+    }
+    text
+}
+
 pub struct GrepToolDefinition {
     cwd: String,
     operations: Arc<dyn GrepOperations>,
@@ -130,6 +254,28 @@ impl ToolDefinition for GrepToolDefinition {
 
     fn parameters(&self) -> &Value {
         &self.parameters
+    }
+
+    fn render_call(
+        &self,
+        args: &Value,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        Some(render_text_call(context, &format_grep_call(args, theme)))
+    }
+
+    fn render_result(
+        &self,
+        result: ToolRenderResult<'_>,
+        options: ToolRenderResultOptions,
+        theme: &Theme,
+        context: &ToolRenderContext,
+    ) -> Option<ComponentRef> {
+        Some(render_text_result(
+            context,
+            &format_grep_result(result, options, theme, context.show_images),
+        ))
     }
 
     fn execute<'a>(

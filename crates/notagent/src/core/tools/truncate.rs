@@ -34,6 +34,15 @@ pub struct TruncationResult {
     pub max_bytes: usize,
 }
 
+/// The `truncation` field of a tool result's details.
+///
+/// Deviation (class 1): `details` is typed per tool in TypeScript and is JSON
+/// here, so the renderers read the field back instead of holding a reference to
+/// the struct the tool produced.
+pub fn truncation_from_details(details: Option<&serde_json::Value>) -> Option<TruncationResult> {
+    serde_json::from_value(details?.get("truncation")?.clone()).ok()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TruncationOptions {
     pub max_lines: Option<usize>,

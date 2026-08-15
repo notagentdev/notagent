@@ -70,7 +70,7 @@ impl ResourceLoader for EmptyResourceLoader {
     }
 }
 
-/// The six questions the session asks the model runtime, answered from the faux
+/// The seven questions the session asks the model runtime, answered from the faux
 /// provider's model list.
 pub struct FauxModelRuntime {
     pub models: Vec<Model>,
@@ -101,6 +101,10 @@ impl SessionModelRuntime for FauxModelRuntime {
     }
 
     fn is_using_oauth(&self, _provider: &str) -> bool {
+        false
+    }
+
+    fn is_using_subscription(&self, _provider: &str) -> bool {
         false
     }
 

@@ -1,0 +1,844 @@
+[
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                     "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m//\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                        "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": ""
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m//\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                        "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": 42
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                             "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo",
+			"path": "src"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in src\u001b[39m                                                                                   "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo",
+			"path": "{HOME}/projects/app"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in ~/projects/app\u001b[39m                                                                        "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo",
+			"path": null
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                     "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo",
+			"path": 7
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[39m                                                                         "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo",
+			"glob": "*.ts",
+			"limit": 25
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m\u001b[38;2;128;128;128m (*.ts)\u001b[39m\u001b[38;2;128;128;128m limit 25\u001b[39m                                                                     "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo",
+			"glob": "",
+			"limit": null
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m\u001b[38;2;128;128;128m limit null\u001b[39m                                                                          "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "match 1\nmatch 2\nmatch 3\nmatch 4"
+				}
+			]
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                     "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mmatch 1\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 2\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 3\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 4\u001b[39m                                                                                             "
+		]
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "match 1\nmatch 2\nmatch 3\nmatch 4\nmatch 5\nmatch 6\nmatch 7\nmatch 8\nmatch 9\nmatch 10\nmatch 11\nmatch 12\nmatch 13\nmatch 14\nmatch 15\nmatch 16\nmatch 17\nmatch 18\nmatch 19\nmatch 20\nmatch 21\nmatch 22\nmatch 23\nmatch 24\nmatch 25\nmatch 26\nmatch 27\nmatch 28\nmatch 29\nmatch 30"
+				}
+			]
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                     "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mmatch 1\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 2\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 3\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 4\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 5\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 6\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 7\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 8\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 9\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 10\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 11\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 12\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 13\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 14\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 15\u001b[39m\u001b[38;2;128;128;128m                                                                                            ",
+			"\u001b[38;2;128;128;128m... (15 more lines,\u001b[39m \u001b[38;2;102;102;102m\u001b[39m\u001b[38;2;128;128;128m to expand\u001b[39m\u001b[38;2;128;128;128m)\u001b[39m                                                                     "
+		]
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": true,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "match 1\nmatch 2\nmatch 3\nmatch 4\nmatch 5\nmatch 6\nmatch 7\nmatch 8\nmatch 9\nmatch 10\nmatch 11\nmatch 12\nmatch 13\nmatch 14\nmatch 15\nmatch 16\nmatch 17\nmatch 18\nmatch 19\nmatch 20\nmatch 21\nmatch 22\nmatch 23\nmatch 24\nmatch 25\nmatch 26\nmatch 27\nmatch 28\nmatch 29\nmatch 30"
+				}
+			]
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                     "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mmatch 1\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 2\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 3\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 4\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 5\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 6\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 7\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 8\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 9\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mmatch 10\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 11\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 12\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 13\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 14\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 15\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 16\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 17\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 18\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 19\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 20\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 21\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 22\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 23\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 24\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 25\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 26\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 27\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 28\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 29\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mmatch 30\u001b[39m                                                                                            "
+		]
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "a match"
+				}
+			],
+			"details": {
+				"matchLimitReached": 100,
+				"truncation": {
+					"content": "",
+					"truncated": true,
+					"truncatedBy": "bytes",
+					"totalLines": 900,
+					"totalBytes": 90000,
+					"outputLines": 120,
+					"outputBytes": 51200,
+					"lastLinePartial": false,
+					"firstLineExceedsLimit": false,
+					"maxLines": 2000,
+					"maxBytes": 51200
+				},
+				"linesTruncated": true
+			}
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                     "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128ma match\u001b[39m                                                                                             ",
+			"\u001b[38;2;255;255;0m[Truncated: 100 matches limit, 50.0KB limit, some lines truncated]\u001b[39m                                  "
+		]
+	},
+	{
+		"tool": "grep",
+		"args": {
+			"pattern": "foo"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": ""
+				}
+			],
+			"details": {
+				"linesTruncated": true
+			}
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mgrep\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/foo/\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                     "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;255;255;0m[Truncated: some lines truncated]\u001b[39m                                                                   "
+		]
+	},
+	{
+		"tool": "ls",
+		"args": {},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183m.\u001b[39m                                                                                                "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": "src"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc\u001b[39m                                                                                              "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": ""
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183m.\u001b[39m                                                                                                "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": 3
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m                                                                                    "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": "{HOME}/projects"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183m~/projects\u001b[39m                                                                                       "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": "src",
+			"limit": 10
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc\u001b[39m\u001b[38;2;128;128;128m (limit 10)\u001b[39m                                                                                   "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": "src"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry 1\nentry 2\nentry 3\nentry 4\nentry 5\nentry 6\nentry 7\nentry 8\nentry 9\nentry 10\nentry 11\nentry 12\nentry 13\nentry 14\nentry 15\nentry 16\nentry 17\nentry 18\nentry 19\nentry 20\nentry 21\nentry 22\nentry 23\nentry 24\nentry 25"
+				}
+			]
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc\u001b[39m                                                                                              "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mentry 1\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 2\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 3\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 4\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 5\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 6\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 7\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 8\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 9\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 10\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 11\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 12\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 13\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 14\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 15\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 16\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 17\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 18\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 19\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 20\u001b[39m\u001b[38;2;128;128;128m                                                                                            ",
+			"\u001b[38;2;128;128;128m... (5 more lines,\u001b[39m \u001b[38;2;102;102;102m\u001b[39m\u001b[38;2;128;128;128m to expand\u001b[39m\u001b[38;2;128;128;128m)\u001b[39m                                                                      "
+		]
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": "src"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": true,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry 1\nentry 2\nentry 3\nentry 4\nentry 5\nentry 6\nentry 7\nentry 8\nentry 9\nentry 10\nentry 11\nentry 12\nentry 13\nentry 14\nentry 15\nentry 16\nentry 17\nentry 18\nentry 19\nentry 20\nentry 21\nentry 22\nentry 23\nentry 24\nentry 25"
+				}
+			]
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc\u001b[39m                                                                                              "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mentry 1\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 2\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 3\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 4\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 5\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 6\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 7\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 8\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 9\u001b[39m                                                                                             ",
+			"\u001b[38;2;128;128;128mentry 10\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 11\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 12\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 13\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 14\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 15\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 16\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 17\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 18\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 19\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 20\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 21\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 22\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 23\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 24\u001b[39m                                                                                            ",
+			"\u001b[38;2;128;128;128mentry 25\u001b[39m                                                                                            "
+		]
+	},
+	{
+		"tool": "ls",
+		"args": {
+			"path": "src"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "entry"
+				}
+			],
+			"details": {
+				"entryLimitReached": 200,
+				"truncation": {
+					"content": "",
+					"truncated": true,
+					"truncatedBy": "lines",
+					"totalLines": 900,
+					"totalBytes": 40000,
+					"outputLines": 200,
+					"outputBytes": 9000,
+					"lastLinePartial": false,
+					"firstLineExceedsLimit": false,
+					"maxLines": 2000,
+					"maxBytes": 51200
+				}
+			}
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mls\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc\u001b[39m                                                                                              "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128mentry\u001b[39m                                                                                               ",
+			"\u001b[38;2;255;255;0m[Truncated: 200 entries limit, 50.0KB limit]\u001b[39m                                                        "
+		]
+	},
+	{
+		"tool": "find",
+		"args": {
+			"pattern": "*.ts"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                      "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "find",
+		"args": {},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                          "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "find",
+		"args": {
+			"pattern": "*.ts",
+			"path": "src",
+			"limit": 5
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in src\u001b[39m\u001b[38;2;128;128;128m (limit 5)\u001b[39m                                                                          "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "find",
+		"args": {
+			"pattern": false,
+			"path": []
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": null,
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[38;2;128;128;128m in \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[39m                                                                 "
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "find",
+		"args": {
+			"pattern": "*.ts"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "src/file 1\nsrc/file 2\nsrc/file 3\nsrc/file 4\nsrc/file 5\nsrc/file 6\nsrc/file 7\nsrc/file 8\nsrc/file 9\nsrc/file 10\nsrc/file 11\nsrc/file 12\nsrc/file 13\nsrc/file 14\nsrc/file 15\nsrc/file 16\nsrc/file 17\nsrc/file 18\nsrc/file 19\nsrc/file 20\nsrc/file 21\nsrc/file 22\nsrc/file 23\nsrc/file 24\nsrc/file 25"
+				}
+			]
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                      "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128msrc/file 1\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 2\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 3\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 4\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 5\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 6\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 7\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 8\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 9\u001b[39m                                                                                          ",
+			"\u001b[38;2;128;128;128msrc/file 10\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 11\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 12\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 13\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 14\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 15\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 16\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 17\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 18\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 19\u001b[39m                                                                                         ",
+			"\u001b[38;2;128;128;128msrc/file 20\u001b[39m\u001b[38;2;128;128;128m                                                                                         ",
+			"\u001b[38;2;128;128;128m... (5 more lines,\u001b[39m \u001b[38;2;102;102;102m\u001b[39m\u001b[38;2;128;128;128m to expand\u001b[39m\u001b[38;2;128;128;128m)\u001b[39m                                                                      "
+		]
+	},
+	{
+		"tool": "find",
+		"args": {
+			"pattern": "*.ts"
+		},
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"argsComplete": true,
+		"executionStarted": true,
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "src/a.ts"
+				}
+			],
+			"details": {
+				"resultLimitReached": 500,
+				"truncation": {
+					"content": "",
+					"truncated": true,
+					"truncatedBy": "bytes",
+					"totalLines": 900,
+					"totalBytes": 90000,
+					"outputLines": 120,
+					"outputBytes": 51200,
+					"lastLinePartial": false,
+					"firstLineExceedsLimit": false,
+					"maxLines": 2000,
+					"maxBytes": 51200
+				}
+			}
+		},
+		"callLines": [
+			"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                      "
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128msrc/a.ts\u001b[39m                                                                                            ",
+			"\u001b[38;2;255;255;0m[Truncated: 500 results limit, 50.0KB limit]\u001b[39m                                                        "
+		]
+	}
+]
