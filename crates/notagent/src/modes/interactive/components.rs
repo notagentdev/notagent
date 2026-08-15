@@ -25,6 +25,7 @@ pub mod keybinding_hints;
 pub mod list_selector;
 pub mod login_dialog;
 pub mod markdown_transform;
+pub mod mermaid;
 pub mod model_selector;
 pub mod oauth_selector;
 pub mod scoped_models_selector;
