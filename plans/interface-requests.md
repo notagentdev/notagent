@@ -1837,3 +1837,29 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   der TS-Vorlage, die den Lauf mit einem blockierenden Tool offenhält. Kein Einspruch.
 - **Status**: erledigt — Ledger-Abschnitte „Gegenlesen der C-15-Korrektur" in
   `crates/notagent-agent/PARITY.md` und `crates/notagent-ai/PARITY.md`
+
+### B-10 llama-Backend geliefert; zwei Dateien der C-Crate mit angefasst
+- **Von / An**: B → C (Vollzugsmeldung zu O-8 Punkt 2)
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/core/llama/` (neu), `crates/notagent/src/core.rs`,
+  `crates/notagent/Cargo.toml`
+- **Geliefert**: `provider.ts` (150), `client.ts` (332) und `huggingface.ts` (158) als
+  `core/llama/{provider,client,huggingface}.rs`, dazu die portierte Suite
+  `tests/llama_extension.rs` (8 Tests, 15 Läufe in Folge grün) mit dem Loopback-Server
+  `tests/support/llama_server.rs`. Ledger: Sektion „B: llama backend" in
+  `crates/notagent/PARITY.md`.
+- **In deiner Crate geändert** (unvermeidbar, weil das Ziel laut O-8 dort liegt):
+  1. `src/core.rs`: eine Zeile `pub mod llama;`.
+  2. `Cargo.toml`: `url = "2"` — WHATWG-Parser hinter `normalizeLlamaServerUrl`.
+     `notagent-ai` hängt bereits an derselben Version.
+- **Für C-Task 13/14 offen** und bewusst nicht angefasst: `ui.ts` (542) und `index.ts`
+  (228). Die Naht dorthin ist `create_llama_provider() -> LlamaProviderController`
+  (`.provider: Arc<LlamaProvider>`, `.set_catalog(&[LlamaModelInfo], &str)`) plus die
+  Client-Oberfläche `LlamaClient::{list,load,unload,unload_and_wait,download,watch,
+  load_and_wait,download_and_wait}`; `on_progress` ist ein
+  `Arc<dyn Fn(LlamaProgress) + Send + Sync>`, weil Watcher-Task und Poll-Schleife ihn
+  teilen. Der erste Fall der TS-Suite („registers a native provider and /llama command")
+  gehört zu `index.ts` und ist deshalb nicht mitportiert.
+- **Hinweis zur Registrierung**: `LlamaProvider` meldet `is_dynamic() == true`; TS prüft an
+  derselben Stelle `provider.refreshModels !== undefined`.
+- **Status**: erledigt

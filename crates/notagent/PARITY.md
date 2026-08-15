@@ -836,6 +836,37 @@ vollständige Seite, alle Platzhalter ersetzt, Session-Payload dekodierbar), der
 `$`-Expansions-Test, die ANSI-Vokabular-Tabelle und die fünf `share`-Fälle.
 
 
+## B: llama backend
+
+Ownership-Übergabe durch O-8: das llama.cpp-Backend (Provider, Management-Client,
+Hugging-Face-Suche) liegt bei Workstream B, `ui.ts` (542 LOC) und die
+Command-Verdrahtung `index.ts` (228 LOC) bleiben bei C (C-Task 13/14). Die drei
+Dateien liegen unter `crates/notagent/src/core/llama/`; dafür angefasst wurden
+zwei Dateien der C-Crate: `src/core.rs` (`pub mod llama;`) und `Cargo.toml`
+(`url = "2"`, WHATWG-Parser für `normalizeLlamaServerUrl`).
+
+### Lektüre-Protokoll
+
+| Datum | TS-/Referenz-Datei | LOC | gelesen von (Task) |
+|---|---|---|---|
+| 2026-08-15 | packages/coding-agent/src/extensions/llama/provider.ts | 150 | B (O-8) |
+| 2026-08-15 | packages/coding-agent/src/extensions/llama/client.ts | 332 | B (O-8) |
+| 2026-08-15 | packages/coding-agent/src/extensions/llama/huggingface.ts | 158 | B (O-8) |
+| 2026-08-15 | packages/coding-agent/test/llama-extension.test.ts | 295 | B (O-8) |
+| 2026-08-15 | packages/coding-agent/src/extensions/llama/ui.ts, index.ts (Konsumentenbeleg: importierte Symbole, `status.value`-Nutzung) | Auszug | B (O-8) |
+| 2026-08-15 | packages/ai/src/compat.ts (`stream`/`streamSimple`, Zeilen 250-298) | Auszug | B (O-8) |
+
+### Ledger
+
+| TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
+|---|---|---|---|---|
+| src/extensions/llama/client.ts | 332 | src/core/llama/client.rs | verifiziert | Klasse 1: `LlamaModelStatus` bleibt ein `String` — die TS-Union verengt nur zur Übersetzungszeit, `isModelInfo` akzeptiert jede Zeichenkette und `index.ts:214` druckt den Rohwert (`${model.id} is ${model.status.value}`); ein Enum müsste eine Auffangvariante erfinden und könnte einen unbekannten Serverwert nicht unverändert zurückgeben. Ebenso bleibt `status.progress` rohes JSON, weil `parseDownloadProgress` es als `unknown` liest und beide Formen (`{progress: files}` und ein blankes Datei-Record) verträgt. Klasse 1: `normalizeLlamaServerUrl` meldet `Invalid URL` — die Meldung des `TypeError`, den JS für unparsbare Eingaben wirft — auch für Eingaben, die der WHATWG-Parser noch annimmt und die Crate `url` ablehnt (`127.0.0.1:8080`, wo JS `127.0.0.1:` als Protokoll liest und dann die http/https-Meldung wirft). Klasse 1: `LlamaClient` ist `Clone`, damit der Hintergrund-Watcher von `loadAndWait`/`downloadAndWait` einen eigenen besitzt (TS reicht `this` weiter); `onProgress` ist ein `Arc`-Callback, weil Watcher-Task und Poll-Schleife ihn teilen; die von den Closures gesetzten Flags (`eventLoaded`, `eventError`, `finished`, `failure`, `sawDownloading`) sind Atomics bzw. `Mutex` statt eingefangener `let`-Variablen. Klasse 3: `AbortSignal` → `CancellationToken`; `linkSignal(signal, watcher)` plus `watcher.abort()` im `finally` sind zusammen ein Child-Token; `AbortSignal.timeout(15_000)` → Timeout am reqwest-Request; die Abbruchmeldung ist `The operation was aborted` (`utils::abort::AbortError`) statt der jeweiligen DOM-`reason`. Klasse 3: `toFixed` rundet Gleichstände von der Null weg, Rusts `{:.N}` zur geraden Ziffer — `formatBytes` schiebt den Gleichstand deshalb vor dem Formatieren an (1 152 B ⇒ `1.13 KiB`, nicht `1.12 KiB`); die ganzzahlige Byte-Ausgabe geht über `js_number::to_js_string`. bug-compat: der `catch` um `response.json()` verschluckt jeden Body-Fehler, Abbruch mitten im Body eingeschlossen — der Port liest den Body deshalb ungeracet und wertet nur `Result::ok()` aus |
+| src/extensions/llama/huggingface.ts | 158 | src/core/llama/huggingface.rs | verifiziert | Klasse 1: der TS-Komparator der Quantisierungen ist keine totale Ordnung (`Q4_K_M` gegen sich selbst ergäbe `-1`) — Rusts `sort_by` weist so einen Komparator zurück, deshalb Sortierung nach (Größe, Name) plus Vorziehen von `Q4_K_M`. Ergebnisgleich, weil ein Name höchstens einmal vorkommt. Klasse 1: `gated` ist ein Enum ohne serde-Ableitung — die TS-Union mischt `false` mit zwei Zeichenketten und wird nie zurückgeschrieben, es gibt also kein Wire-Format nachzubilden; aus demselben Grund tragen `HuggingFaceModel`/`-Quantization`/`-ModelDetails` keine serde-Ableitung. Klasse 1: `localeCompare` → Byte-Vergleich (die Quantisierungsnamen sind ASCII); `findHuggingFaceToken(env = process.env)` nimmt die Umgebung als Parameter (`find_hugging_face_token_from_process_env` liefert den Default), damit die portierte Suite sie stellen kann. Klasse 3: `node:fs/promises.readFile` → `tokio::fs`, `os.homedir()` → `dirs::home_dir()`; `URLSearchParams` (Leerzeichen als `+`) und `encodeURIComponent` (Leerzeichen als `%20`) sind zwei getrennte Kodierer, weil `search` das eine und der Pfad von `details` das andere braucht |
+| src/extensions/llama/provider.ts | 150 | src/core/llama/provider.rs | verifiziert | Klasse 3: `stream`/`streamSimple` aus `@notagent/ai/compat` sind ausgeschlossen (Master-Plan); der Port ruft direkt `OpenAICompletionsApi` auf — genau das, was `compat.stream` für ein Modell eines Nicht-Builtin-Providers tut (`getBuiltinProviderForModel` trifft `llama.cpp` nicht, also `resolveApiProvider(model.api)`, und `model.api` ist bei llama-Modellen immer `openai-completions`). `withEnvApiKey` bleibt wirkungslos, weil `env-api-keys.ts` keinen Eintrag für `llama.cpp` hat (belegt: `grep -n llama packages/ai/src/env-api-keys.ts` trifft nichts). Klasse 1: das Provider-Objektliteral wird zu einer `Provider`-Implementierung, `createLlamaProvider()` liefert den Controller mit `Arc<LlamaProvider>`; `setCatalog`/`toPiModel` geben `Result` zurück, weil `llamaInferenceUrl` in TS wirft; `refreshModels` ist über `is_dynamic()` als vorhanden gemeldet (TS prüft `provider.refreshModels !== undefined`). Die persistierte `ModelsStoreEntry` setzt wie TS nur `models` und `checkedAt`, `lastModified`/`etag` bleiben leer |
+| test/llama-extension.test.ts | 295 | tests/llama_extension.rs (+ tests/support/llama_server.rs) | verifiziert | 8 Tests. Ausgeschlossen ist der erste TS-Fall („registers a native provider and /llama command") — er lädt `extensions/llama/index.ts` über den Extension-Loader und gehört damit zu C. Klasse 3: `createServer` aus `node:http` → Loopback-Server (`tests/support/llama_server.rs`), wie in `tests/support/mod.rs` begründet; seine einzige Verhaltenszugabe ist, dass die verzögerten SSE-Ereignisse der Lade- und Download-Fälle auf den verbundenen Watcher warten — das nimmt dem `setTimeout(…, 20)` der TS-Vorlage die Race gegen den noch offenen SSE-Verbindungsaufbau. Klasse 1: Zusicherungen, die in TS im Request-Handler stehen (Authorization-Header, Suchparameter), prüfen im Port die aufgezeichneten Requests nach dem Aufruf — ein `panic!` im Verbindungs-Task würde sonst nur als kaputte Antwort sichtbar. Ein neunter Fall (`formats_bytes_like_the_typescript_helper`) pinnt den Byte-Formatierer inklusive der `toFixed`-Gleichstände, den die TS-Suite nur indirekt über eine `detail`-Zeile berührt |
+| src/extensions/llama/ui.ts | 542 | — | offen (C) | O-8: TUI-Hälfte, bleibt bei Workstream C |
+| src/extensions/llama/index.ts | 228 | — | offen (C) | O-8: Command-Verdrahtung und Extension-Registrierung, bleibt bei Workstream C |
+
 ## Ausschlüsse
 
 | TS-Datei/Verzeichnis | Begründung (Master-Plan / Faktenbericht) |
