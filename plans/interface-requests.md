@@ -1614,3 +1614,19 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
      und is_using_subscription an SessionModelRuntime (entsperrt As footer, Bs
      usage-totals liegt bereits auf main).
 - **Status**: umgesetzt (Prompts entsprechend ausgegeben)
+
+### O-9 Plattenplatz-Haushaltsregel (Ursache des ENOSPC-Stillstands vom 2026-08-15)
+- **Von / An**: Orchestrator → A, B und C
+- **Datum**: 2026-08-15
+- **Betrifft**: target/-Verzeichnisse aller vier Worktrees (zusammen 229 GB vor dem Vorfall)
+- **Regelung**:
+  1. Jeder Workstream besitzt das target/ seines eigenen Worktrees und räumt es selbst:
+     vor jedem scripts/check.sh-Lauf freien Platz prüfen (df); unter 40 GB frei →
+     `cargo clean` im EIGENEN Worktree (kostet einen Rebuild, verhindert aber den
+     Totalstillstand aller drei Workstreams).
+  2. target/ des Haupt-Worktrees (main) räumt der Orchestrator.
+  3. Niemals fremde target/-Verzeichnisse anfassen (dort kann ein Build laufen).
+  4. Verwaiste Test-Binaries aus abgebrochenen Läufen (ps nach target/debug/deps/…)
+     im eigenen Worktree killen, bevor check.sh startet.
+- **Status**: umgesetzt (Orchestrator hat main- und wt-a-target entfernt, wt-b-incremental
+  auf Bs Wunsch; 120 GB frei)
