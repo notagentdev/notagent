@@ -5,7 +5,9 @@
 //! samt Raw-Mode, Kitty-Negotiation und Bracketed Paste folgt in Task 4 des
 //! Workstream-A-Plans.
 
+use std::cell::RefCell;
 use std::io::{Read, Write};
+use std::rc::Rc;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
@@ -231,6 +233,9 @@ pub struct ProcessTerminal {
     saved_termios: Option<RawModeState>,
     columns_override: Option<usize>,
     rows_override: Option<usize>,
+    /// Bumped by every `start()`/`stop()`; leases from an older epoch belong to
+    /// a reader thread that no longer exists and are dropped instead of restored.
+    pump_epoch: u64,
 }
 
 impl Default for ProcessTerminal {
@@ -262,6 +267,7 @@ impl ProcessTerminal {
             saved_termios: None,
             columns_override: None,
             rows_override: None,
+            pump_epoch: 0,
         }
     }
 
@@ -315,9 +321,17 @@ impl ProcessTerminal {
     }
 
     /// Feed a chunk of raw stdin data through the buffer and the negotiation.
-    fn handle_stdin_chunk(&mut self, chunk: &[u8]) {
+    ///
+    /// Returns the sequences destined for the input handler instead of calling
+    /// it. Deviation class 1: in TS the handler runs inline
+    /// (`packages/tui/src/terminal.ts:214-233`); a Rust handler re-enters the
+    /// terminal through the TUI (overlays hide the cursor, components write), so
+    /// it must not run while the terminal is borrowed. The order of the
+    /// forwarded sequences is unchanged; only their interleaving with the
+    /// negotiation's own writes inside a single chunk differs.
+    fn handle_stdin_chunk(&mut self, chunk: &[u8]) -> Vec<String> {
         let Some(buffer) = self.stdin_buffer.as_mut() else {
-            return;
+            return Vec::new();
         };
         let events = buffer.process_bytes(chunk);
         self.stdin_deadline = self
@@ -325,30 +339,47 @@ impl ProcessTerminal {
             .as_ref()
             .and_then(StdinBuffer::pending_timeout_ms)
             .map(|ms| Instant::now() + Duration::from_millis(ms));
-        self.dispatch_events(events);
+        self.dispatch_events(events)
     }
 
-    fn dispatch_events(&mut self, events: Vec<StdinEvent>) {
+    fn dispatch_events(&mut self, events: Vec<StdinEvent>) -> Vec<String> {
+        let mut forwards = Vec::new();
         for event in events {
             match event {
                 StdinEvent::Data(sequence) => {
-                    match self.read_keyboard_protocol_negotiation_sequence(&sequence) {
+                    match self.read_keyboard_protocol_negotiation_sequence(&sequence, &mut forwards)
+                    {
                         NegotiationRead::Pending => {
                             self.schedule_keyboard_protocol_negotiation_buffer_flush();
                         }
                         NegotiationRead::Sequence(negotiation) => {
                             self.handle_keyboard_protocol_negotiation_sequence(negotiation);
                         }
-                        NegotiationRead::None => self.forward_input_sequence(&sequence),
+                        NegotiationRead::None => {
+                            forwards.push(normalize_forwarded_input(&sequence))
+                        }
                     }
                 }
                 StdinEvent::Paste(content) => {
                     // Re-wrap paste content with bracketed paste markers for the
                     // existing editor handling.
-                    if let Some(handler) = self.input_handler.as_mut() {
-                        handler(&format!("\x1b[200~{content}\x1b[201~"));
-                    }
+                    forwards.push(format!("\x1b[200~{content}\x1b[201~"));
                 }
+            }
+        }
+        forwards
+    }
+
+    /// Hand the collected sequences to the input handler.
+    ///
+    /// Only for callers that own the terminal exclusively (the test helpers);
+    /// the shared path forwards through [`ProcessTerminalPump`], which releases
+    /// the borrow first.
+    #[cfg(feature = "test-terminal")]
+    fn forward_to_input_handler(&mut self, forwards: Vec<String>) {
+        for sequence in forwards {
+            if let Some(handler) = self.input_handler.as_mut() {
+                handler(&sequence);
             }
         }
     }
@@ -378,7 +409,11 @@ impl ProcessTerminal {
         }
     }
 
-    fn read_keyboard_protocol_negotiation_sequence(&mut self, sequence: &str) -> NegotiationRead {
+    fn read_keyboard_protocol_negotiation_sequence(
+        &mut self,
+        sequence: &str,
+        forwards: &mut Vec<String>,
+    ) -> NegotiationRead {
         if !self.keyboard_protocol_negotiation_buffer.is_empty() {
             let buffered = format!("{}{sequence}", self.keyboard_protocol_negotiation_buffer);
             if let Some(negotiation) = parse_keyboard_protocol_negotiation_sequence(&buffered) {
@@ -389,7 +424,7 @@ impl ProcessTerminal {
                 self.set_keyboard_protocol_negotiation_buffer(&buffered);
                 return NegotiationRead::Pending;
             }
-            self.flush_keyboard_protocol_negotiation_buffer_as_input();
+            self.flush_keyboard_protocol_negotiation_buffer_as_input(forwards);
         }
 
         if let Some(negotiation) = parse_keyboard_protocol_negotiation_sequence(sequence) {
@@ -412,13 +447,13 @@ impl ProcessTerminal {
         self.keyboard_protocol_negotiation_buffer.clear();
     }
 
-    fn flush_keyboard_protocol_negotiation_buffer_as_input(&mut self) {
+    fn flush_keyboard_protocol_negotiation_buffer_as_input(&mut self, forwards: &mut Vec<String>) {
         if self.keyboard_protocol_negotiation_buffer.is_empty() {
             return;
         }
         let sequence = std::mem::take(&mut self.keyboard_protocol_negotiation_buffer);
         self.clear_keyboard_protocol_negotiation_buffer();
-        self.forward_input_sequence(&sequence);
+        forwards.push(normalize_forwarded_input(&sequence));
     }
 
     fn schedule_keyboard_protocol_negotiation_buffer_flush(&mut self) {
@@ -430,19 +465,6 @@ impl ProcessTerminal {
         self.keyboard_protocol_buffer_deadline = Some(
             Instant::now() + Duration::from_millis(KEYBOARD_PROTOCOL_RESPONSE_FRAGMENT_TIMEOUT_MS),
         );
-    }
-
-    fn forward_input_sequence(&mut self, sequence: &str) {
-        let should_detect_native_shift_enter =
-            sequence == "\r" && (is_apple_terminal_session() || cfg!(target_os = "windows"));
-        let input = normalize_native_shift_enter_input(
-            sequence,
-            should_detect_native_shift_enter,
-            should_detect_native_shift_enter && is_native_modifier_pressed(ModifierKey::Shift),
-        );
-        if let Some(handler) = self.input_handler.as_mut() {
-            handler(&input);
-        }
     }
 
     fn enable_modify_other_keys(&mut self) {
@@ -461,110 +483,146 @@ impl ProcessTerminal {
         self.modify_other_keys_active = false;
     }
 
-    /// Wait for the next stdin chunk, resize or pending timeout and dispatch it.
-    ///
-    /// Replaces the Node event loop: handlers run on the caller's thread, so the
-    /// single-threaded component model of the TS version is preserved. The
-    /// blocking stdin read lives on its own thread and feeds a channel.
-    pub async fn pump(&mut self) -> PumpResult {
-        loop {
-            let now = Instant::now();
-            if let Some(deadline) = self.stdin_deadline
-                && deadline <= now
-            {
-                self.stdin_deadline = None;
-                let events = self
-                    .stdin_buffer
-                    .as_mut()
-                    .map(StdinBuffer::flush_timeout)
-                    .unwrap_or_default();
-                self.dispatch_events(events);
-                return PumpResult::Timeout;
-            }
-            if let Some(deadline) = self.keyboard_protocol_buffer_deadline
-                && deadline <= now
-            {
-                self.keyboard_protocol_buffer_deadline = None;
-                self.flush_keyboard_protocol_negotiation_buffer_as_input();
-                return PumpResult::Timeout;
-            }
-            if let Some(deadline) = self.progress_next_keepalive
-                && deadline <= now
-            {
-                self.progress_next_keepalive =
-                    Some(now + Duration::from_millis(TERMINAL_PROGRESS_KEEPALIVE_MS));
-                self.write_out(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
-                continue;
-            }
-
-            let next_deadline = [
-                self.stdin_deadline,
-                self.keyboard_protocol_buffer_deadline,
-                self.progress_next_keepalive,
-            ]
-            .into_iter()
-            .flatten()
-            .min();
-
-            let Some(rx) = self.stdin_rx.as_mut() else {
-                return PumpResult::Eof;
-            };
-
-            #[cfg(unix)]
-            let wake = {
-                let resize = self.resize_signal.as_mut();
-                tokio::select! {
-                    chunk = rx.recv() => match chunk {
-                        Some(chunk) => PumpWake::Chunk(chunk),
-                        None => PumpWake::Eof,
-                    },
-                    Some(()) = async {
-                        match resize {
-                            Some(signal) => signal.recv().await,
-                            None => std::future::pending().await,
-                        }
-                    } => PumpWake::Resize,
-                    () = async {
-                        match next_deadline {
-                            Some(deadline) => tokio::time::sleep_until(deadline).await,
-                            None => std::future::pending().await,
-                        }
-                    } => PumpWake::Deadline,
-                }
-            };
-            #[cfg(not(unix))]
-            let wake = tokio::select! {
-                chunk = rx.recv() => match chunk {
-                    Some(chunk) => PumpWake::Chunk(chunk),
-                    None => PumpWake::Eof,
-                },
-                () = async {
-                    match next_deadline {
-                        Some(deadline) => tokio::time::sleep_until(deadline).await,
-                        None => std::future::pending().await,
-                    }
-                } => PumpWake::Deadline,
-            };
-
-            match wake {
-                PumpWake::Chunk(chunk) => {
-                    self.handle_stdin_chunk(&chunk);
-                    return PumpResult::Input;
-                }
-                PumpWake::Deadline => continue,
-                PumpWake::Resize => {
-                    if let Some(handler) = self.resize_handler.as_mut() {
-                        handler();
-                    }
-                    return PumpResult::Resize;
-                }
-                PumpWake::Eof => return PumpResult::Eof,
-            }
+    /// The timeout that has come due, in the order the pump handles them.
+    pub(crate) fn due_timeout(&self, now: Instant) -> Option<DueTimeout> {
+        if self.stdin_deadline.is_some_and(|deadline| deadline <= now) {
+            return Some(DueTimeout::Stdin);
         }
+        if self
+            .keyboard_protocol_buffer_deadline
+            .is_some_and(|deadline| deadline <= now)
+        {
+            return Some(DueTimeout::Negotiation);
+        }
+        if self
+            .progress_next_keepalive
+            .is_some_and(|deadline| deadline <= now)
+        {
+            return Some(DueTimeout::ProgressKeepalive);
+        }
+        None
+    }
+
+    /// When the earliest pending timeout fires.
+    pub(crate) fn next_timeout(&self) -> Option<Instant> {
+        [
+            self.stdin_deadline,
+            self.keyboard_protocol_buffer_deadline,
+            self.progress_next_keepalive,
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+    }
+
+    /// Flush the buffered escape sequence whose timeout elapsed.
+    pub(crate) fn flush_stdin_timeout(&mut self) -> Vec<String> {
+        self.stdin_deadline = None;
+        let events = self
+            .stdin_buffer
+            .as_mut()
+            .map(StdinBuffer::flush_timeout)
+            .unwrap_or_default();
+        self.dispatch_events(events)
+    }
+
+    /// Flush the negotiation fragment whose 150 ms window elapsed.
+    pub(crate) fn flush_negotiation_timeout(&mut self) -> Vec<String> {
+        self.keyboard_protocol_buffer_deadline = None;
+        let mut forwards = Vec::new();
+        self.flush_keyboard_protocol_negotiation_buffer_as_input(&mut forwards);
+        forwards
+    }
+
+    /// Re-emit the progress sequence some terminals expire after a second.
+    pub(crate) fn fire_progress_keepalive(&mut self, now: Instant) {
+        self.progress_next_keepalive =
+            Some(now + Duration::from_millis(TERMINAL_PROGRESS_KEEPALIVE_MS));
+        self.write_out(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
+    }
+
+    /// Take the input handler out so it can run without a borrow on the
+    /// terminal; the epoch guards the way back.
+    pub(crate) fn take_input_handler(&mut self) -> Option<(u64, InputHandler)> {
+        Some((self.pump_epoch, self.input_handler.take()?))
+    }
+
+    /// Put a handler taken by [`Self::take_input_handler`] back, unless it
+    /// installed a new one or the terminal was restarted in the meantime.
+    pub(crate) fn restore_input_handler(&mut self, epoch: u64, handler: InputHandler) {
+        if epoch == self.pump_epoch && self.input_handler.is_none() {
+            self.input_handler = Some(handler);
+        }
+    }
+
+    pub(crate) fn take_resize_handler(&mut self) -> Option<(u64, ResizeHandler)> {
+        Some((self.pump_epoch, self.resize_handler.take()?))
+    }
+
+    pub(crate) fn restore_resize_handler(&mut self, epoch: u64, handler: ResizeHandler) {
+        if epoch == self.pump_epoch && self.resize_handler.is_none() {
+            self.resize_handler = Some(handler);
+        }
+    }
+
+    /// Lend the stdin channel and the SIGWINCH stream to the pump for one
+    /// `await`, so no `RefCell` borrow is held across it.
+    pub(crate) fn take_pump_lease(&mut self) -> Option<PumpLeaseParts> {
+        let rx = self.stdin_rx.take()?;
+        Some(PumpLeaseParts {
+            epoch: self.pump_epoch,
+            rx,
+            #[cfg(unix)]
+            resize_signal: self.resize_signal.take(),
+        })
+    }
+
+    /// Take the lease back. A lease from before a `start()`/`stop()` is dropped:
+    /// its channel belongs to a reader thread that is gone.
+    pub(crate) fn restore_pump_lease(&mut self, parts: PumpLeaseParts) {
+        if parts.epoch != self.pump_epoch {
+            return;
+        }
+        self.stdin_rx = Some(parts.rx);
+        #[cfg(unix)]
+        {
+            self.resize_signal = parts.resize_signal;
+        }
+    }
+
+    /// Disable the protocols, park the input handler and hand out the stdin
+    /// channel for [`drain_input`](Terminal::drain_input).
+    pub(crate) fn begin_drain(&mut self) -> DrainLease {
+        let should_disable_kitty_protocol =
+            self.keyboard_protocol_pushed || self.kitty_protocol_active;
+        self.clear_keyboard_protocol_negotiation_buffer();
+        if should_disable_kitty_protocol {
+            // Disable the Kitty keyboard protocol first so late key releases do
+            // not generate new escape sequences.
+            self.write_out("\x1b[<u");
+            self.keyboard_protocol_pushed = false;
+            self.kitty_protocol_active = false;
+            set_kitty_protocol_active(false);
+        }
+        self.disable_modify_other_keys();
+        DrainLease {
+            epoch: self.pump_epoch,
+            rx: self.stdin_rx.take(),
+            input_handler: self.input_handler.take(),
+        }
+    }
+
+    /// Put the channel and the input handler back after the drain.
+    pub(crate) fn finish_drain(&mut self, lease: DrainLease) {
+        if lease.epoch != self.pump_epoch {
+            return;
+        }
+        self.stdin_rx = lease.rx;
+        self.input_handler = lease.input_handler;
     }
 }
 
-/// What woke [`ProcessTerminal::pump`].
+/// What woke [`ProcessTerminalPump::pump`].
 enum PumpWake {
     Chunk(Vec<u8>),
     Resize,
@@ -710,6 +768,7 @@ impl Terminal for ProcessTerminal {
                 }
             }
         });
+        self.pump_epoch = self.pump_epoch.wrapping_add(1);
         self.stdin_rx = Some(rx);
 
         // Query the Kitty keyboard protocol and fall back to modifyOtherKeys when
@@ -749,6 +808,7 @@ impl Terminal for ProcessTerminal {
         // Drop the receiver first so the reader thread stops before raw mode is
         // reset; this prevents buffered input (e.g. Ctrl+D) from being
         // re-interpreted by the parent shell.
+        self.pump_epoch = self.pump_epoch.wrapping_add(1);
         self.stdin_rx = None;
         self.input_handler = None;
         self.resize_handler = None;
@@ -766,42 +826,9 @@ impl Terminal for ProcessTerminal {
     /// Drain stdin before exiting so Kitty key release events do not leak to the
     /// parent shell over slow SSH connections.
     async fn drain_input(&mut self, max_ms: Option<u64>, idle_ms: Option<u64>) {
-        let max_ms = max_ms.unwrap_or(1000);
-        let idle_ms = idle_ms.unwrap_or(50);
-
-        let should_disable_kitty_protocol =
-            self.keyboard_protocol_pushed || self.kitty_protocol_active;
-        self.clear_keyboard_protocol_negotiation_buffer();
-        if should_disable_kitty_protocol {
-            // Disable the Kitty keyboard protocol first so late key releases do
-            // not generate new escape sequences.
-            self.write_out("\x1b[<u");
-            self.keyboard_protocol_pushed = false;
-            self.kitty_protocol_active = false;
-            set_kitty_protocol_active(false);
-        }
-        self.disable_modify_other_keys();
-
-        let previous_handler = self.input_handler.take();
-
-        let end_time = Instant::now() + Duration::from_millis(max_ms);
-        if let Some(rx) = self.stdin_rx.as_mut() {
-            loop {
-                let now = Instant::now();
-                if now >= end_time {
-                    break;
-                }
-                let idle = Duration::from_millis(idle_ms).min(end_time - now);
-                match tokio::time::timeout(idle, rx.recv()).await {
-                    // Data arrived — keep draining.
-                    Ok(Some(_)) => {}
-                    // Channel closed or idle window elapsed.
-                    Ok(None) | Err(_) => break,
-                }
-            }
-        }
-
-        self.input_handler = previous_handler;
+        let mut lease = self.begin_drain();
+        drain_stdin(&mut lease.rx, max_ms, idle_ms).await;
+        self.finish_drain(lease);
     }
 
     fn write(&mut self, data: &str) {
@@ -902,6 +929,359 @@ fn enable_windows_vt_input() {
 #[cfg(not(windows))]
 fn enable_windows_vt_input() {}
 
+/// A timeout that has come due.
+pub(crate) enum DueTimeout {
+    /// The `StdinBuffer` escape timeout.
+    Stdin,
+    /// The 150 ms keyboard-protocol fragment window.
+    Negotiation,
+    /// The OSC 9;4 progress keepalive.
+    ProgressKeepalive,
+}
+
+/// Stdin channel and SIGWINCH stream on loan to the pump for one `await`.
+pub(crate) struct PumpLeaseParts {
+    epoch: u64,
+    rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    #[cfg(unix)]
+    resize_signal: Option<tokio::signal::unix::Signal>,
+}
+
+/// Stdin channel and input handler parked for the duration of a drain.
+pub(crate) struct DrainLease {
+    epoch: u64,
+    rx: Option<mpsc::UnboundedReceiver<Vec<u8>>>,
+    input_handler: Option<InputHandler>,
+}
+
+/// Swallow stdin until it stays idle for `idle_ms`, at most `max_ms`.
+///
+/// Port of the loop in `drainInput` (`packages/tui/src/terminal.ts:471-508`);
+/// it lives outside `ProcessTerminal` so the shared handle can run it without
+/// holding a borrow across the `await`.
+async fn drain_stdin(
+    rx: &mut Option<mpsc::UnboundedReceiver<Vec<u8>>>,
+    max_ms: Option<u64>,
+    idle_ms: Option<u64>,
+) {
+    let max_ms = max_ms.unwrap_or(1000);
+    let idle_ms = idle_ms.unwrap_or(50);
+    let end_time = Instant::now() + Duration::from_millis(max_ms);
+    let Some(rx) = rx.as_mut() else {
+        return;
+    };
+    loop {
+        let now = Instant::now();
+        if now >= end_time {
+            break;
+        }
+        let idle = Duration::from_millis(idle_ms).min(end_time - now);
+        match tokio::time::timeout(idle, rx.recv()).await {
+            // Data arrived — keep draining.
+            Ok(Some(_)) => {}
+            // Channel closed or idle window elapsed.
+            Ok(None) | Err(_) => break,
+        }
+    }
+}
+
+/// Apply the platform normalisation a sequence gets on its way to the handler.
+fn normalize_forwarded_input(sequence: &str) -> String {
+    let should_detect_native_shift_enter =
+        sequence == "\r" && (is_apple_terminal_session() || cfg!(target_os = "windows"));
+    normalize_native_shift_enter_input(
+        sequence,
+        should_detect_native_shift_enter,
+        should_detect_native_shift_enter && is_native_modifier_pressed(ModifierKey::Shift),
+    )
+}
+
+/// Drives a terminal's event loop in the caller's task.
+///
+/// Deviation class 1: TS has no counterpart — Node's event loop delivers stdin,
+/// SIGWINCH and the buffer timeouts to `ProcessTerminal` on its own
+/// (`packages/tui/src/terminal.ts:150-233`), and `createStartupTui` therefore
+/// only has to hand the terminal to `TuiMainScreen` and call `start()`
+/// (`packages/coding-agent/src/cli/startup-ui.ts:74-90`). Rust has no ambient
+/// loop, so the caller owns one; a pump is what it drives. Dispatch runs on the
+/// caller's task, so the single-threaded component model of the TS version is
+/// preserved.
+#[async_trait(?Send)]
+pub trait TerminalPump {
+    /// Wait for the next terminal event, dispatch it to the handlers installed
+    /// by [`Terminal::start`] and report what happened.
+    async fn pump(&mut self) -> PumpResult;
+}
+
+/// [`ProcessTerminal`] shared between the TUI, which owns it, and its pump.
+///
+/// Created by [`ProcessTerminal::into_shared`]. Every method takes the borrow
+/// only for its own duration, so a handler running inside the pump can write to
+/// the terminal, read its size and open overlays exactly like the TS original.
+pub struct SharedProcessTerminal(Rc<RefCell<ProcessTerminal>>);
+
+impl SharedProcessTerminal {
+    /// Another handle to the same terminal.
+    pub fn clone_handle(&self) -> Self {
+        Self(Rc::clone(&self.0))
+    }
+
+    /// Whether the modifyOtherKeys fallback is active.
+    pub fn modify_other_keys_active(&self) -> bool {
+        self.0.borrow().modify_other_keys_active()
+    }
+}
+
+impl ProcessTerminal {
+    /// Split the terminal into the handle the TUI owns and the pump that drives
+    /// its event loop (interface request C-14).
+    ///
+    /// ```no_run
+    /// # use notagent_tui::terminal::{ProcessTerminal, TerminalPump};
+    /// # use notagent_tui::tui_main_screen::TuiMainScreen;
+    /// # async fn run() {
+    /// let (terminal, mut pump) = ProcessTerminal::new().into_shared();
+    /// let mut ui = TuiMainScreen::new(Box::new(terminal));
+    /// ui.start();
+    /// loop {
+    ///     tokio::select! {
+    ///         () = ui.core().wait_until_render_due() => ui.render_pending_frame(),
+    ///         _ = pump.pump() => {}
+    ///     }
+    /// }
+    /// # }
+    /// ```
+    pub fn into_shared(self) -> (SharedProcessTerminal, ProcessTerminalPump) {
+        let terminal = Rc::new(RefCell::new(self));
+        (
+            SharedProcessTerminal(Rc::clone(&terminal)),
+            ProcessTerminalPump { terminal },
+        )
+    }
+}
+
+#[async_trait(?Send)]
+impl Terminal for SharedProcessTerminal {
+    fn start(&mut self, on_input: InputHandler, on_resize: ResizeHandler) {
+        self.0.borrow_mut().start(on_input, on_resize);
+    }
+
+    fn stop(&mut self) {
+        self.0.borrow_mut().stop();
+    }
+
+    async fn drain_input(&mut self, max_ms: Option<u64>, idle_ms: Option<u64>) {
+        let mut lease = self.0.borrow_mut().begin_drain();
+        drain_stdin(&mut lease.rx, max_ms, idle_ms).await;
+        self.0.borrow_mut().finish_drain(lease);
+    }
+
+    fn write(&mut self, data: &str) {
+        self.0.borrow_mut().write(data);
+    }
+
+    fn columns(&self) -> usize {
+        self.0.borrow().columns()
+    }
+
+    fn rows(&self) -> usize {
+        self.0.borrow().rows()
+    }
+
+    fn kitty_protocol_active(&self) -> bool {
+        Terminal::kitty_protocol_active(&*self.0.borrow())
+    }
+
+    fn move_by(&mut self, lines: isize) {
+        self.0.borrow_mut().move_by(lines);
+    }
+
+    fn hide_cursor(&mut self) {
+        self.0.borrow_mut().hide_cursor();
+    }
+
+    fn show_cursor(&mut self) {
+        self.0.borrow_mut().show_cursor();
+    }
+
+    fn clear_line(&mut self) {
+        self.0.borrow_mut().clear_line();
+    }
+
+    fn clear_from_cursor(&mut self) {
+        self.0.borrow_mut().clear_from_cursor();
+    }
+
+    fn clear_screen(&mut self) {
+        self.0.borrow_mut().clear_screen();
+    }
+
+    fn set_title(&mut self, title: &str) {
+        self.0.borrow_mut().set_title(title);
+    }
+
+    fn set_progress(&mut self, active: bool) {
+        self.0.borrow_mut().set_progress(active);
+    }
+}
+
+/// Pump of a [`SharedProcessTerminal`].
+///
+/// One `pump()` call waits for the next stdin chunk, SIGWINCH or pending
+/// timeout and dispatches it. The terminal is never borrowed across an `await`:
+/// the stdin channel and the SIGWINCH stream are lent out for the wait and the
+/// handlers run after the borrow is released. Dropping a `pump()` future
+/// (`tokio::select!` cancellation) loses nothing — the lease returns in `Drop`.
+pub struct ProcessTerminalPump {
+    terminal: Rc<RefCell<ProcessTerminal>>,
+}
+
+impl ProcessTerminalPump {
+    fn forward_input(&self, forwards: Vec<String>) {
+        if forwards.is_empty() {
+            return;
+        }
+        let Some((epoch, mut handler)) = self.terminal.borrow_mut().take_input_handler() else {
+            return;
+        };
+        for sequence in &forwards {
+            handler(sequence);
+        }
+        self.terminal
+            .borrow_mut()
+            .restore_input_handler(epoch, handler);
+    }
+
+    fn dispatch_resize(&self) {
+        let Some((epoch, mut handler)) = self.terminal.borrow_mut().take_resize_handler() else {
+            return;
+        };
+        handler();
+        self.terminal
+            .borrow_mut()
+            .restore_resize_handler(epoch, handler);
+    }
+}
+
+#[async_trait(?Send)]
+impl TerminalPump for ProcessTerminalPump {
+    async fn pump(&mut self) -> PumpResult {
+        loop {
+            let now = Instant::now();
+            let due = self.terminal.borrow().due_timeout(now);
+            match due {
+                Some(DueTimeout::Stdin) => {
+                    let forwards = self.terminal.borrow_mut().flush_stdin_timeout();
+                    self.forward_input(forwards);
+                    return PumpResult::Timeout;
+                }
+                Some(DueTimeout::Negotiation) => {
+                    let forwards = self.terminal.borrow_mut().flush_negotiation_timeout();
+                    self.forward_input(forwards);
+                    return PumpResult::Timeout;
+                }
+                Some(DueTimeout::ProgressKeepalive) => {
+                    self.terminal.borrow_mut().fire_progress_keepalive(now);
+                    continue;
+                }
+                None => {}
+            }
+
+            let next_deadline = self.terminal.borrow().next_timeout();
+            let Some(mut lease) = PumpLease::take(&self.terminal) else {
+                return PumpResult::Eof;
+            };
+            let wake = lease.wait(next_deadline).await;
+            drop(lease);
+
+            match wake {
+                PumpWake::Chunk(chunk) => {
+                    let forwards = self.terminal.borrow_mut().handle_stdin_chunk(&chunk);
+                    self.forward_input(forwards);
+                    return PumpResult::Input;
+                }
+                PumpWake::Deadline => continue,
+                PumpWake::Resize => {
+                    self.dispatch_resize();
+                    return PumpResult::Resize;
+                }
+                PumpWake::Eof => return PumpResult::Eof,
+            }
+        }
+    }
+}
+
+/// The stdin channel and SIGWINCH stream while the pump waits on them.
+struct PumpLease<'a> {
+    terminal: &'a Rc<RefCell<ProcessTerminal>>,
+    parts: Option<PumpLeaseParts>,
+}
+
+impl<'a> PumpLease<'a> {
+    fn take(terminal: &'a Rc<RefCell<ProcessTerminal>>) -> Option<Self> {
+        let parts = terminal.borrow_mut().take_pump_lease()?;
+        Some(Self {
+            terminal,
+            parts: Some(parts),
+        })
+    }
+
+    async fn wait(&mut self, next_deadline: Option<Instant>) -> PumpWake {
+        let parts = self
+            .parts
+            .as_mut()
+            .expect("the lease is held for the whole wait");
+        #[cfg(unix)]
+        {
+            let rx = &mut parts.rx;
+            let resize = parts.resize_signal.as_mut();
+            tokio::select! {
+                chunk = rx.recv() => match chunk {
+                    Some(chunk) => PumpWake::Chunk(chunk),
+                    None => PumpWake::Eof,
+                },
+                Some(()) = async {
+                    match resize {
+                        Some(signal) => signal.recv().await,
+                        None => std::future::pending().await,
+                    }
+                } => PumpWake::Resize,
+                () = async {
+                    match next_deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline).await,
+                        None => std::future::pending().await,
+                    }
+                } => PumpWake::Deadline,
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let rx = &mut parts.rx;
+            tokio::select! {
+                chunk = rx.recv() => match chunk {
+                    Some(chunk) => PumpWake::Chunk(chunk),
+                    None => PumpWake::Eof,
+                },
+                () = async {
+                    match next_deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline).await,
+                        None => std::future::pending().await,
+                    }
+                } => PumpWake::Deadline,
+            }
+        }
+    }
+}
+
+impl Drop for PumpLease<'_> {
+    /// Hand the lease back — also when the `pump()` future is cancelled.
+    fn drop(&mut self) {
+        if let Some(parts) = self.parts.take() {
+            self.terminal.borrow_mut().restore_pump_lease(parts);
+        }
+    }
+}
+
 /// Test-only access to the parts the TS suite drives through monkey-patching.
 #[cfg(feature = "test-terminal")]
 impl ProcessTerminal {
@@ -926,29 +1306,70 @@ impl ProcessTerminal {
 
     /// Feed data as if it came from stdin (TS: the captured `data` handler).
     pub fn feed_stdin(&mut self, data: &str) {
-        self.handle_stdin_chunk(data.as_bytes());
+        let forwards = self.handle_stdin_chunk(data.as_bytes());
+        self.forward_to_input_handler(forwards);
     }
 
     /// Fire the pending StdinBuffer timeout (TS: `mock.timers.tick`).
     pub fn fire_stdin_timeout(&mut self) {
-        self.stdin_deadline = None;
-        let events = self
-            .stdin_buffer
-            .as_mut()
-            .map(StdinBuffer::flush_timeout)
-            .unwrap_or_default();
-        self.dispatch_events(events);
+        let forwards = self.flush_stdin_timeout();
+        self.forward_to_input_handler(forwards);
     }
 
     /// Fire the 150 ms negotiation fragment timeout.
     pub fn fire_negotiation_fragment_timeout(&mut self) {
-        self.keyboard_protocol_buffer_deadline = None;
-        self.flush_keyboard_protocol_negotiation_buffer_as_input();
+        let forwards = self.flush_negotiation_timeout();
+        self.forward_to_input_handler(forwards);
     }
 
     /// Pin the reported dimensions (TS test overrides `process.stdout.columns`).
     pub fn set_dimensions_for_tests(&mut self, columns: Option<usize>, rows: Option<usize>) {
         self.columns_override = columns;
         self.rows_override = rows;
+    }
+}
+
+/// Test-only access to the shared handle and its pump.
+#[cfg(feature = "test-terminal")]
+impl SharedProcessTerminal {
+    /// Install the input handler without going through `start()`, which would
+    /// put the real stdin into raw mode.
+    pub fn set_input_handler(&self, handler: InputHandler) {
+        self.0.borrow_mut().set_input_handler(handler);
+    }
+
+    /// Run the protocol negotiation without touching stdin.
+    pub fn begin_keyboard_protocol_negotiation(&self) {
+        self.0.borrow_mut().begin_keyboard_protocol_negotiation();
+    }
+
+    /// Attach a stdin channel the test feeds instead of the reader thread.
+    pub fn attach_test_stdin(&self) -> mpsc::UnboundedSender<Vec<u8>> {
+        self.0.borrow_mut().attach_test_stdin()
+    }
+}
+
+#[cfg(feature = "test-terminal")]
+impl ProcessTerminal {
+    /// Attach a stdin channel the test feeds instead of the reader thread
+    /// (TS: the captured `data` handler of `process.stdin`).
+    pub fn attach_test_stdin(&mut self) -> mpsc::UnboundedSender<Vec<u8>> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.pump_epoch = self.pump_epoch.wrapping_add(1);
+        self.stdin_rx = Some(rx);
+        tx
+    }
+}
+
+#[cfg(feature = "test-terminal")]
+impl ProcessTerminalPump {
+    /// Dispatch a chunk exactly like [`TerminalPump::pump`] does, without stdin.
+    pub fn feed_stdin(&mut self, data: &str) -> PumpResult {
+        let forwards = self
+            .terminal
+            .borrow_mut()
+            .handle_stdin_chunk(data.as_bytes());
+        self.forward_input(forwards);
+        PumpResult::Input
     }
 }

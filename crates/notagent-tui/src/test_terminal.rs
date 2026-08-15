@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use async_trait::async_trait;
 
-use crate::terminal::{InputHandler, ResizeHandler, Terminal};
+use crate::terminal::{InputHandler, PumpResult, ResizeHandler, Terminal, TerminalPump};
 
 /// Aufgezeichnetes Terminal-Ereignis.
 ///
@@ -39,6 +39,11 @@ struct VirtualTerminalState {
     columns: usize,
     rows: usize,
     events: Vec<TerminalEvent>,
+    /// Events a [`VirtualTerminalPump`] hands to the render loop, plus its
+    /// wake-up. The dispatch itself already happened in `send_input`/`resize`;
+    /// the loop only needs to learn that it has to render again.
+    pump_events: std::collections::VecDeque<PumpResult>,
+    pump_notify: Rc<tokio::sync::Notify>,
 }
 
 /// Virtuelles Terminal auf Basis von `vt100`.
@@ -65,6 +70,8 @@ impl VirtualTerminal {
             columns,
             rows,
             events: Vec::new(),
+            pump_events: std::collections::VecDeque::new(),
+            pump_notify: Rc::new(tokio::sync::Notify::new()),
         })))
     }
 
@@ -81,6 +88,7 @@ impl VirtualTerminal {
                 state.input_handler = Some(handler);
             }
         }
+        self.push_pump_event(PumpResult::Input);
     }
 
     /// Ändert die Terminalgröße und ruft den Resize-Handler.
@@ -117,6 +125,7 @@ impl VirtualTerminal {
                 state.resize_handler = Some(handler);
             }
         }
+        self.push_pump_event(PumpResult::Resize);
     }
 
     /// Wartet, bis alle Schreibvorgänge verarbeitet sind.
@@ -223,6 +232,24 @@ impl VirtualTerminal {
         self.0.borrow_mut().events.clear();
     }
 
+    /// Pump for the render loop of [`crate::tui::run_until`].
+    ///
+    /// The virtual terminal dispatches input synchronously in
+    /// [`Self::send_input`], so its pump only reports that something happened
+    /// and wakes the loop for the next frame.
+    pub fn pump_handle(&self) -> VirtualTerminalPump {
+        VirtualTerminalPump(Rc::clone(&self.0))
+    }
+
+    fn push_pump_event(&self, result: PumpResult) {
+        let notify = {
+            let mut state = self.0.borrow_mut();
+            state.pump_events.push_back(result);
+            Rc::clone(&state.pump_notify)
+        };
+        notify.notify_waiters();
+    }
+
     /// Wartet, bis die gedrosselte Render-Pipeline der TUI durchgelaufen ist
     /// (16-ms-Throttle; die TS-Vorlage wartet nextTick + 20 ms + flush).
     pub async fn wait_for_render(&self) {
@@ -248,9 +275,12 @@ impl Terminal for VirtualTerminal {
     fn stop(&mut self) {
         self.0.borrow_mut().events.push(TerminalEvent::Stop);
         self.write("\x1b[?2004l");
-        let mut state = self.0.borrow_mut();
-        state.input_handler = None;
-        state.resize_handler = None;
+        {
+            let mut state = self.0.borrow_mut();
+            state.input_handler = None;
+            state.resize_handler = None;
+        }
+        self.push_pump_event(PumpResult::Eof);
     }
 
     async fn drain_input(&mut self, _max_ms: Option<u64>, _idle_ms: Option<u64>) {
@@ -333,4 +363,26 @@ impl Terminal for VirtualTerminal {
     }
 
     fn set_progress(&mut self, _active: bool) {}
+}
+
+/// Pump of a [`VirtualTerminal`] (see [`VirtualTerminal::pump_handle`]).
+pub struct VirtualTerminalPump(Rc<RefCell<VirtualTerminalState>>);
+
+#[async_trait(?Send)]
+impl TerminalPump for VirtualTerminalPump {
+    async fn pump(&mut self) -> PumpResult {
+        loop {
+            let notify = Rc::clone(&self.0.borrow().pump_notify);
+            let notified = notify.notified();
+            tokio::pin!(notified);
+            // Register before looking into the queue, otherwise an event
+            // arriving in between is lost (see interface request C-15).
+            notified.as_mut().enable();
+            let event = self.0.borrow_mut().pump_events.pop_front();
+            match event {
+                Some(result) => return result,
+                None => notified.await,
+            }
+        }
+    }
 }

@@ -44,6 +44,61 @@ pub fn component_ref<C: Component + 'static>(component: C) -> ComponentRef {
     Rc::new(RefCell::new(component))
 }
 
+/// Renderer a terminal loop can drive: the main screen or the alternate screen.
+///
+/// Deviation class 1: TS needs no such abstraction because `scheduleRender()`
+/// hands the frame to `setTimeout` and the Node event loop calls back into the
+/// renderer (`packages/tui/src/tui.ts:243-258`). Rust has no ambient loop, so
+/// the loop is written once against this trait.
+pub trait RenderLoop {
+    /// Shared state of this renderer.
+    fn core(&self) -> &TuiCore;
+    /// Render the pending frame, if one is pending.
+    fn render_pending_frame(&mut self);
+}
+
+/// Drive rendering and terminal input until `until` resolves, then return its
+/// output.
+///
+/// This is the Rust stand-in for what Node does while a TS dialog awaits its
+/// promise: `startStartupTui` starts the TUI and returns, and the event loop
+/// keeps delivering stdin and rendering until the dialog resolves
+/// (`packages/coding-agent/src/cli/startup-ui.ts:86-90`,
+/// `packages/coding-agent/src/cli/session-picker.ts:20-55`). After stdin hits
+/// EOF the loop keeps rendering, exactly as Node does once the `data` handler
+/// stops firing.
+pub async fn run_until<R, F>(
+    ui: &mut R,
+    pump: &mut dyn crate::terminal::TerminalPump,
+    until: F,
+) -> F::Output
+where
+    R: RenderLoop + ?Sized,
+    F: std::future::Future,
+{
+    tokio::pin!(until);
+    let mut stdin_open = true;
+    loop {
+        let core = ui.core().clone();
+        tokio::select! {
+            biased;
+            output = &mut until => return output,
+            () = core.wait_until_render_due() => ui.render_pending_frame(),
+            result = async {
+                if stdin_open {
+                    pump.pump().await
+                } else {
+                    std::future::pending().await
+                }
+            } => {
+                if result == crate::terminal::PumpResult::Eof {
+                    stdin_open = false;
+                }
+            }
+        }
+    }
+}
+
 /// Component interface — every component implements it.
 ///
 /// Corresponds to `interface Component` (`packages/tui/src/tui.ts:23-46`).
@@ -433,6 +488,9 @@ struct TuiState {
     color_scheme_notifications_enabled: bool,
     pending_osc11_queries: VecDeque<PendingOsc11Query>,
     cell_size_dirty: bool,
+    /// Woken by every render request and by `stop()`, so a loop parked in
+    /// [`TuiCore::wait_until_render_due`] re-evaluates its deadline.
+    render_notify: Rc<tokio::sync::Notify>,
     /// Focus flags that could not be written because the component was busy
     /// handling input; applied as soon as its borrow is released.
     pending_focus_flags: Vec<(ComponentRef, bool)>,
@@ -492,6 +550,7 @@ impl TuiCore {
             color_scheme_notifications_enabled: false,
             pending_osc11_queries: VecDeque::new(),
             cell_size_dirty: false,
+            render_notify: Rc::new(tokio::sync::Notify::new()),
             pending_focus_flags: Vec::new(),
         })))
     }
@@ -1123,6 +1182,7 @@ impl TuiCore {
         state.stopped = true;
         state.render_requested = false;
         state.immediate_render_requested = false;
+        state.render_notify.notify_waiters();
         if state.color_scheme_notifications_enabled {
             state.terminal.write("\x1b[?2031l");
         }
@@ -1132,15 +1192,54 @@ impl TuiCore {
 
     /// Request a frame (throttled to 16 ms).
     pub fn request_render(&self) {
-        let mut state = self.0.borrow_mut();
-        state.render_requested = true;
+        let notify = {
+            let mut state = self.0.borrow_mut();
+            state.render_requested = true;
+            Rc::clone(&state.render_notify)
+        };
+        notify.notify_waiters();
     }
 
     /// Request a frame that preempts the throttle (used after key input).
     pub fn request_immediate_render(&self) {
-        let mut state = self.0.borrow_mut();
-        state.render_requested = true;
-        state.immediate_render_requested = true;
+        let notify = {
+            let mut state = self.0.borrow_mut();
+            state.render_requested = true;
+            state.immediate_render_requested = true;
+            Rc::clone(&state.render_notify)
+        };
+        notify.notify_waiters();
+    }
+
+    /// Wait until the next frame is due.
+    ///
+    /// The render loop's counterpart to [`Self::render_deadline`]: it stays
+    /// pending while nothing is requested and wakes as soon as a request comes
+    /// in, which is what `scheduleRender()`'s `setTimeout` does on the Node
+    /// event loop (`packages/tui/src/tui.ts:243-258`). Cancel-safe: dropping the
+    /// future keeps the request, the next call recomputes the deadline.
+    pub async fn wait_until_render_due(&self) {
+        loop {
+            let notify = Rc::clone(&self.0.borrow().render_notify);
+            let notified = notify.notified();
+            tokio::pin!(notified);
+            // Register before reading the deadline, otherwise a request between
+            // the two is lost and the loop sleeps through its frame.
+            notified.as_mut().enable();
+
+            let Some(deadline) = self.render_deadline() else {
+                notified.await;
+                continue;
+            };
+            let now = Instant::now();
+            if deadline <= now {
+                return;
+            }
+            tokio::select! {
+                () = tokio::time::sleep(deadline - now) => return,
+                () = notified => continue,
+            }
+        }
     }
 
     /// When the next frame is due, or `None` if none is pending.

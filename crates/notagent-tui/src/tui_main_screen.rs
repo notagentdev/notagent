@@ -223,10 +223,21 @@ impl TuiMainScreen {
         self.core.request_render();
     }
 
+    /// Render the frame the render loop reported as due.
+    ///
+    /// Counterpart of [`TuiCore::wait_until_render_due`]: it consumes the
+    /// pending request, so a loop that waits and then calls this cannot spin.
+    pub fn render_pending_frame(&mut self) {
+        if self.core.begin_frame() {
+            self.do_render();
+        }
+    }
+
     /// Render the pending frame once its throttle deadline has passed.
     ///
     /// Replaces the `setTimeout` scheduling of the TS version; the caller's loop
-    /// (or a test) drives it.
+    /// (or a test) drives it. Unlike [`TuiCore::wait_until_render_due`] it
+    /// returns right away when no frame is pending.
     pub async fn wait_for_render(&mut self) {
         let Some(deadline) = self.core.render_deadline() else {
             return;
@@ -866,5 +877,15 @@ impl TuiMainScreen {
                 terminal.hide_cursor();
             }
         });
+    }
+}
+
+impl crate::tui::RenderLoop for TuiMainScreen {
+    fn core(&self) -> &TuiCore {
+        &self.core
+    }
+
+    fn render_pending_frame(&mut self) {
+        TuiMainScreen::render_pending_frame(self);
     }
 }

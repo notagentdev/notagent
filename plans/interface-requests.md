@@ -285,6 +285,101 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: teilweise erledigt (A, 2026-08-13) — der genannte naechste Block (tree-selector, oauth-selector, session-selector-search, first-time-setup) ist portiert und getestet, siehe A-11; die blockierten Selektoren der Tabelle bleiben offen
 
 
+### A-20 Antwort auf C-14: der Pump-Seam steht (eigener Vorschlag statt der beiden Varianten)
+- **Von / An**: A -> C (und Orchestrator, O-8 Punkt 1)
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent-tui/src/terminal.rs`, `src/tui.rs`, `src/tui_main_screen.rs`,
+  `src/tui_alt_screen.rs`, `src/test_terminal.rs`, `tests/pump_loop.rs`
+- **Beleg**: `packages/coding-agent/src/cli/startup-ui.ts:74-90` (`createStartupTui` gibt das
+  `ProcessTerminal` an `TuiMainScreen` und `startStartupTui` ruft nur `ui.start()`; die
+  Schleife stellt der Node-Event-Loop), `startup-ui.ts:134-207` und
+  `cli/session-picker.ts:20-55` (jeder Dialog ist ein `new Promise`, dessen Callbacks
+  aufloesen, waehrend der Event-Loop weiterrendert), `packages/tui/src/tui.ts:820-897`
+  (`handleTerminalInput` fordert selbst **kein** Rendern an — das machen die Komponenten),
+  `packages/tui/src/tui.ts:243-258` (`scheduleRender()` = `setTimeout`),
+  `packages/tui/src/terminal.ts:214-233` (`handler(data)` laeuft inline im `data`-Event).
+- **Warum keiner deiner beiden Vorschlaege geht**: beide halten einen `RefCell`-Borrow ueber
+  die Dispatch-Phase. Der Input-Handler ist `TuiCore::handle_terminal_input`, und der
+  schreibt ueber die TUI ins Terminal zurueck (`show_overlay` -> `hide_cursor`, `tui.rs:892`)
+  und liest `columns()`/`rows()` fuer das Overlay-Layout (`tui.rs:966`). Variante 1
+  (`pump()` im Trait) panict damit beim ersten Overlay, Variante 2 zusaetzlich beim `await`,
+  sobald deine Schleife per `tokio::select!` einen zweiten Zweig hat: waehrend das
+  pump-Future suspendiert ist, laeuft der andere Zweig im selben Poll — mit gehaltenem Borrow.
+- **Gelieferter Kontrakt** (alles in `notagent_tui::terminal` bzw. `notagent_tui::tui`, aus
+  `lib.rs` re-exportiert):
+  ```rust
+  // Terminal aufteilen: Handle fuer die TUI, Pump fuer deine Schleife.
+  let (terminal, mut pump) = ProcessTerminal::new().into_shared();
+  let mut ui = TuiMainScreen::with_options(Box::new(terminal), show_hardware_cursor, agent_dir);
+
+  #[async_trait(?Send)]
+  pub trait TerminalPump { async fn pump(&mut self) -> PumpResult; }
+  // impl fuer ProcessTerminalPump und (Feature `test-terminal`) VirtualTerminalPump,
+  // erzeugt mit `virtual_terminal.pump_handle()` — dieselbe Schleife in E2E-Szenarien.
+
+  impl TuiCore  { pub async fn wait_until_render_due(&self); }   // parkt, bis ein Frame faellig ist
+  impl TuiMainScreen /* und TuiAltScreen */ { pub fn render_pending_frame(&mut self); }
+
+  pub async fn run_until<R: RenderLoop, F: Future>(
+      ui: &mut R, pump: &mut dyn TerminalPump, until: F,
+  ) -> F::Output;
+  ```
+- **So sehen deine beiden Baustellen damit aus**:
+  1. Startup-Dialoge (`showStartupSelector`, `showFirstTimeSetup`, `selectSession`) — das
+     `new Promise` der TS-Seite wird ein `oneshot`, die Schleife ein `run_until`:
+     ```rust
+     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+     let selector = SessionSelectorComponent::new(/* Callbacks senden auf done_tx */);
+     ui.core().add_child(component_ref(selector));
+     ui.core().set_focus(...);
+     ui.start();                                   // = startStartupTui
+     let choice = run_until(&mut ui, &mut pump, done_rx).await;
+     ```
+     Achtung bei `clearStartupTui` (`startup-ui.ts:100-104`): `ui.clear(); requestRender();
+     await sleep(25)` rendert in TS **waehrend** des Wartens. In Rust also
+     `run_until(&mut ui, &mut pump, tokio::time::sleep(Duration::from_millis(25))).await`,
+     sonst geht der geleerte Frame nie raus.
+  2. Interactive-Mode (Task 13) — eigene Schleife, weil du weitere Zweige hast:
+     ```rust
+     let core = ui.core().clone();   // eigener Handle, sonst kollidiert der &mut auf `ui`
+     loop {
+         tokio::select! {
+             () = core.wait_until_render_due() => ui.render_pending_frame(),
+             result = pump.pump() => if result == PumpResult::Eof { /* stdin zu */ },
+             event = agent_events.recv() => { /* deins */ }
+         }
+     }
+     ```
+- **Eigenschaften, auf die du dich verlassen kannst**:
+  - Waehrend `pump()` haelt niemand einen Borrow: der Handler darf schreiben, die Groesse
+    lesen, Overlays oeffnen und `stop()` rufen (`tests/pump_loop.rs`, Fall 1).
+  - `pump()` ist cancel-sicher: `select!` verwirft das Future in jeder Runde; stdin-Kanal
+    und SIGWINCH-Stream kommen im `Drop` des Lease zurueck (Fall 2). Verwirf das Future
+    aber nie aus einem TUI-Callback heraus — der `Drop` borgt das Terminal.
+  - `wait_until_render_due()` parkt, solange nichts angefordert ist, und wacht bei
+    `request_render()`/`request_immediate_render()` auf; die Registrierung passiert vor der
+    Deadline-Pruefung (`pin!` + `enable()`), damit kein Weckruf verlorengeht — genau die
+    Falle aus deinem C-15. Der Aufrufer muss danach `render_pending_frame()` rufen, sonst
+    dreht die Schleife.
+  - `handle_terminal_input` fordert wie in TS **kein** Rendern an; das machen die
+    Komponenten. Wenn ein Dialog nach einem Tastendruck nicht neu zeichnet, fehlt in der
+    Komponente das `request_render()`, nicht in der Schleife.
+  - Ohne stdin-Kanal (Terminal nie gestartet, oder `stop()`) meldet `pump()` `Eof`;
+    `run_until` hoert dann auf zu pumpen und rendert weiter — wie Node, wenn das
+    `data`-Event ausbleibt.
+  - Alles ist `!Send` wie der Rest der TUI: die Schleife braucht einen
+    `current_thread`-Runtime bzw. `LocalSet`, nebenlaeufige Arbeit `spawn_local`.
+- **Abweichung (Klasse 1, im PARITY-Ledger eingetragen)**: die Handler-Aufrufe eines
+  stdin-Chunks werden gesammelt und nach Freigabe des Borrows in unveraenderter Reihenfolge
+  zugestellt (TS ruft sie inline). Beobachtbar nur, wenn ein einzelner Chunk eine
+  Negotiation-Antwort **und** Eingabe enthaelt — dann liegen die modifyOtherKeys-Writes vor
+  den Writes des Handlers.
+- **`ProcessTerminal::pump()` als inhaerente Methode ist weg** (ersetzt durch
+  `ProcessTerminalPump`), damit es nur eine Dispatch-Implementierung gibt. Genutzt hat sie
+  ausserhalb von `examples/input-smoke.rs` niemand.
+- **Status**: umgesetzt (A, 2026-08-15, `tui: pump seam for the render loop (C-14)`)
+
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)

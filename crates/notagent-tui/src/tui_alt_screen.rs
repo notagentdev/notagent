@@ -1914,7 +1914,20 @@ impl TuiAltScreen {
         self.core.request_render();
     }
 
+    /// Render the frame the render loop reported as due.
+    ///
+    /// Counterpart of [`TuiCore::wait_until_render_due`]: it consumes the
+    /// pending request, so a loop that waits and then calls this cannot spin.
+    pub fn render_pending_frame(&mut self) {
+        if self.core.begin_frame() {
+            self.do_render();
+        }
+    }
+
     /// Render the pending frame once its throttle deadline has passed.
+    ///
+    /// Unlike [`TuiCore::wait_until_render_due`] it returns right away when no
+    /// frame is pending.
     pub async fn wait_for_render(&mut self) {
         let Some(deadline) = self.core.render_deadline() else {
             return;
@@ -2095,4 +2108,14 @@ fn base64_encode(bytes: &[u8]) -> String {
         });
     }
     out
+}
+
+impl crate::tui::RenderLoop for TuiAltScreen {
+    fn core(&self) -> &TuiCore {
+        &self.core
+    }
+
+    fn render_pending_frame(&mut self) {
+        TuiAltScreen::render_pending_frame(self);
+    }
 }

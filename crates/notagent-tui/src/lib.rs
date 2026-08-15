@@ -83,7 +83,10 @@ pub use markdown_lexer::{TableCell, Token, inline_tokens, lex};
 // Input buffering for batch splitting
 pub use stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
 // Terminal interface and implementations
-pub use terminal::{InputHandler, ProcessTerminal, ResizeHandler, Terminal};
+pub use terminal::{
+    InputHandler, ProcessTerminal, ProcessTerminalPump, PumpResult, ResizeHandler,
+    SharedProcessTerminal, Terminal, TerminalPump,
+};
 // Terminal colors
 pub use terminal_colors::{
     RgbColor, TerminalColorScheme, is_osc11_background_color_response,
@@ -105,8 +108,9 @@ pub use alt_screen_search::{
 };
 pub use tui::{
     CURSOR_MARKER, Component, ComponentRef, Container, Focusable, OverlayAnchor, OverlayHandle,
-    OverlayMargin, OverlayOptions, OverlayUnfocusOptions, SizeValue, TuiCore, TuiInputListener,
-    TuiInputListenerResult, TuiMode, TuiStopOptions, component_ref, composite_tui_line,
+    OverlayMargin, OverlayOptions, OverlayUnfocusOptions, RenderLoop, SizeValue, TuiCore,
+    TuiInputListener, TuiInputListenerResult, TuiMode, TuiStopOptions, component_ref,
+    composite_tui_line, run_until,
 };
 pub use tui_alt_screen::{TuiAltScreen, TuiAltScreenOptions};
 pub use tui_main_screen::{TuiMainScreen, TuiMainScreenRenderState};
