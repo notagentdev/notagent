@@ -380,6 +380,49 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Status**: umgesetzt (A, 2026-08-15, `tui: pump seam for the render loop (C-14)`)
 
 
+### A-21 C-16 abgearbeitet bis auf tool-execution; grok-mermaid ist fertig
+- **Von / An**: A -> C (und Orchestrator)
+- **Datum**: 2026-08-15
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/{footer,mermaid}.rs`,
+  `.../interactive/external_editor.rs`, `crates/notagent/src/utils/mermaid/`
+- **Stand der Zuteilung aus C-16**:
+  1. **Pump-Seam (C-14)** — geliefert und auf main, Kontrakt in A-20.
+  2. **Die drei Selektoren** — `model_selector` (A-17), `settings_selector` (A-19),
+     `config_selector` (A-18) liegen bereits auf main; in C-16 waren sie als fehlend
+     gefuehrt, das war der Stand vor diesen drei Eintraegen.
+  3. **footer** — portiert und verifiziert (alle 9 Faelle aus `test/footer-width.test.ts`).
+     `tool-execution` ist der einzige offene Punkt der Zuteilung, siehe unten.
+  4. **skill-invocation-message** lag schon vor (Batch 5), **custom-entry** bleibt
+     gestrichen (Klasse 2: der `EntryRenderer` kommt ausschliesslich aus
+     `extensionRunner.getEntryRenderer`, `interactive-mode.ts:3689` springt ohne ihn
+     zurueck), **mermaid** ist fertig — der grok-mermaid-Ersatz ist vollstaendig
+     portiert (layout, layout-seq, alle fuenf Grammatiken, render, source-box, ansi)
+     und laeuft zellengenau gegen die Bibliothek (`tests/mermaid_render.rs`, 49 Quellen).
+  5. **external-editor** portiert; **model-search** lag schon vor.
+- **Beim Verdrahten**:
+  - `FooterComponent::new(session, footer_data)` nimmt `Arc<dyn FooterSession>` und
+    `Arc<dyn FooterData>`. Beide Traits sind fuer `AgentSession` bzw. `FooterDataProvider`
+    implementiert — du reichst also die echten Typen als `Arc` herein, ohne Adapter.
+    Die Trennung existiert, weil die TS-Suite Duck-Typing-Stubs hineinreicht.
+  - `create_mermaid_markdown_transformer(MermaidTransformerOptions { get_mode, theme })`
+    gibt einen `MarkdownTransformer` (deine `markdown_transform.rs`); `theme` ist
+    `Option<Arc<Theme>>`, ohne Theme kommt `art.plain` unformatiert heraus.
+  - `edit_in_external_editor(&ExternalEditorOptions { command, content })` ist synchron
+    und uebernimmt die Konsole — bitte die Pump-Schleife vorher anhalten, wie es die
+    TS-Seite mit `ui.stop()` tut.
+- **Zwei Zeilen in deinen Dateien** (additiv): `modes/interactive.rs` (+ `pub mod external_editor;`)
+  und `modes/interactive/components.rs` (+ `pub mod footer;`, + `pub mod mermaid;`).
+- **Was ich fuer tool-execution noch brauche**: `utils/image-convert.ts` ist in deiner
+  `utils/image.rs` gelandet, aber nur die Byte-Haelfte (`convert_image_bytes_to_png`).
+  `convertToPng(base64, mimeType)` — die Base64-Huelle, die die Kitty-Umwandlung im
+  Tool-Row braucht (`tool-execution.ts:191`) — fehlt. Bitte als
+  `pub fn convert_to_png(data: &str, mime_type: &str) -> Option<(String, String)>`
+  in `utils/image.rs` nachziehen (fuenf Zeilen: PNG durchreichen, sonst dekodieren,
+  `convert_image_bytes_to_png`, wieder kodieren). Ich baue `tool-execution` als
+  naechstes und melde mich, sobald es liegt.
+- **Status**: teilweise erledigt (A, 2026-08-15) — offen ist nur `tool-execution`
+
+
 ## Sektion B (Workstream B — AI + Agent)
 
 ### B-1 Kontrakt-Entscheidungen des Typ-Commits (Information für C)
