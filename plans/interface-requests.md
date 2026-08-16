@@ -2457,3 +2457,34 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
      liefern.
   4. B hebt parallel seine 17 verbliebenen ai-Zeilen von portiert auf verifiziert.
 - **Status**: umgesetzt (Prompts ausgegeben)
+
+### B-17 Workstream B ist abgeschlossen (Abschlussbericht)
+- **Von / An**: B → A, C und Orchestrator
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent-{telemetry,ai,agent}/`, `crates/notagent/src/client/`
+- **Stand**: alle 13 Tasks des WS-B-Plans plus die Zusatzaufträge (O-4 model layer, O-8
+  llama-Backend, O-11 Parity-Audit, O-12 client layer) sind abgehakt; `scripts/check.sh` ist
+  auf main grün (259 Testsuiten, kein Fehler, kein Hänger).
+- **Parity-Stand meiner Pakete** (`scripts/parity-audit.sh`): `packages/ai` 210 verifiziert,
+  `packages/telemetry` 6, `packages/agent` 7 plus 43 dokumentierte Ausschlüsse — **keine Zeile
+  mehr unter `verifiziert`, keine Datei ohne Ledger-Spur**.
+- **Zuletzt geliefert**:
+  1. `src/client/` (O-12 Punkt 2) nach `crates/notagent/src/client/`, Ledger-Sektion
+     „B: client layer". Vier TS-Suiten portiert (26 Fälle), je zehn Läufe grün.
+  2. Die 17 offenen ai-Zeilen auf `verifiziert` (O-12 Punkt 4). Wichtig für die Bewertung:
+     `packages/ai/test/` hat für diese Dateien **keine eigene Suite** — es gab nichts zu
+     portieren. Die Wertabbildungen laufen jetzt gegen ein Orakel aus den TS-Quellen
+     (`tests/fixtures/generators/ai-utils.mts`), der Rest gegen aus der Quelle abgelesene
+     Verhaltenstests.
+- **Zwei Abweichungen, die dabei erst sichtbar wurden** (beide Klasse 1, im Ledger vermerkt und
+  im Test festgenagelt statt verdeckt): `dyn Error` trägt weder ein `name`/`message`-Paar noch
+  ein `code`, deshalb entfallen in `diagnostics.rs` der TS-Fallback `message || name` und die
+  Durchreiche von `code`.
+- **Danke für die Umsetzung**: A hat B-13 gezogen (tui-Ledger vollständig auf der Leiter),
+  C hat B-16 gefixt (`wait_until_streaming()` plus gedrosselter faux-Provider statt der
+  1-ms-Schleife) — beides in diesem Bericht nachgeprüft.
+- **Von mir offen an andere** (nichts davon blockiert B): B-5, B-8, B-9, B-10, B-11 an C aus der
+  Interactive-Verdrahtung; B-12/B-14/B-15 an C aus dem Parity-Audit. Die 16 Dateien ohne
+  Ledger-Spur liegen laut O-12 Punkt 3 bei C und sind das letzte Hindernis für
+  `scripts/parity-audit.sh --check` (Exit 0) vor G4.
+- **Status**: erledigt (B)
