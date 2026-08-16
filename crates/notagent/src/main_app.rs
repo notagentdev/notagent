@@ -93,7 +93,9 @@ use crate::modes::interactive::interactive_mode::{
 use crate::modes::interactive::theme::theme::{init_theme, stop_theme_watcher};
 use crate::modes::print_mode::{PrintModeOptions, PrintOutputMode, run_print_mode};
 use crate::modes::rpc::rpc_mode::run_rpc_mode;
-use crate::package_manager_cli::{PackageCommandRuntime, handle_package_command};
+use crate::package_manager_cli::{
+    PackageCommandRuntime, handle_config_command, handle_package_command,
+};
 use crate::utils::abort::timeout_signal;
 use crate::utils::chalk::{dim, red, yellow};
 use crate::utils::paths::{
@@ -850,9 +852,16 @@ pub async fn main(args: Vec<String>) -> i32 {
     {
         return exit_code;
     }
-    // `handleConfigCommand` opens the resource configuration TUI, which is
-    // workstream A's `config-selector` behind the render loop of C-14; it is
-    // wired with the interactive mode (plan task 13).
+    // `handleConfigCommand` opens the resource configuration TUI. Like the
+    // startup dialogs it is `!Send`, so it runs inside a `LocalSet`.
+    if let Some(exit_code) = run_dialog(handle_config_command(
+        &args,
+        &PackageCommandRuntime::from_process(),
+    ))
+    .await
+    {
+        return exit_code;
+    }
 
     let parsed = parse_args(&args);
     let mut parsed = parsed;

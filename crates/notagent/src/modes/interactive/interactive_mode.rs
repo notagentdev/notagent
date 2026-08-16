@@ -48,8 +48,10 @@ use notagent_ai::types::{
     AssistantMessage, ImageContent, StopReason, TextContent, TextOrImageContent, ToolResultMessage,
     UserContent, UserMessage,
 };
+use notagent_tui::components::markdown::Markdown;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
+use notagent_tui::components::truncated_text::TruncatedText;
 use notagent_tui::keybindings::set_keybindings;
 use notagent_tui::terminal::{ProcessTerminal, Terminal, TerminalPump};
 use notagent_tui::tui::{
@@ -59,24 +61,37 @@ use notagent_tui::tui_main_screen::TuiMainScreen;
 
 use crate::config::{APP_NAME, APP_TITLE, CONFIG_DIR_NAME, VERSION, get_agent_dir};
 use crate::core::agent_session::{
-    AgentSession, AgentSessionEvent, PromptOptions, parse_skill_block,
+    AgentSession, AgentSessionEvent, CompactionReason, ExecuteBashOptions, PromptOptions,
+    QueueBehavior, parse_skill_block,
 };
 use crate::core::agent_session_runtime::AgentSessionRuntime;
+use crate::core::bash_executor::BashResult;
 use crate::core::keybindings::KeybindingsManager;
+use crate::core::messages::create_compaction_summary_message;
 use crate::core::session_manager::{SessionEntry, session_entry_to_context_messages};
 use crate::core::settings_manager::TuiMode;
+use crate::core::tools::truncate::TruncationResult;
 use crate::core::trust_manager::has_trust_requiring_project_resources;
+use crate::modes::interactive::components::armin::ArminComponent;
 use crate::modes::interactive::components::assistant_message::AssistantMessageComponent;
+use crate::modes::interactive::components::bash_execution::BashExecutionComponent;
+use crate::modes::interactive::components::bordered_loader::BorderedLoader;
 use crate::modes::interactive::components::branch_summary_message::BranchSummaryMessageComponent;
 use crate::modes::interactive::components::compaction_summary_message::CompactionSummaryMessageComponent;
 use crate::modes::interactive::components::custom_editor::CustomEditor;
 use crate::modes::interactive::components::custom_message::CustomMessageComponent;
-use crate::modes::interactive::components::footer::FooterComponent;
-use crate::modes::interactive::components::keybinding_hints::{key_hint, key_text, raw_key_hint};
+use crate::modes::interactive::components::dynamic_border::DynamicBorder;
+use crate::modes::interactive::components::earendil_announcement::EarendilAnnouncementComponent;
+use crate::modes::interactive::components::footer::{FooterComponent, format_tokens};
+use crate::modes::interactive::components::keybinding_hints::{
+    key_display_text, key_hint, key_text, raw_key_hint,
+};
+use crate::modes::interactive::components::list_selector::ListSelectorComponent;
 use crate::modes::interactive::components::skill_invocation_message::SkillInvocationMessageComponent;
 use crate::modes::interactive::components::status_indicator::{
-    IdleStatus, StatusIndicator, StatusIndicatorKind,
+    CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
 };
+use crate::modes::interactive::components::to_locale_string;
 use crate::modes::interactive::components::tool_execution::{
     ToolExecutionComponent, ToolExecutionOptions, ToolExecutionResult,
 };
@@ -125,6 +140,35 @@ pub struct InteractiveModeOptions {
     pub tui_mode: Option<TuiMode>,
     /// Only tests: the terminal and its pump instead of a `ProcessTerminal`.
     pub terminal: Option<InteractiveTerminal>,
+}
+
+/// Which queue a message waiting for the end of a compaction belongs to
+/// (`CompactionQueuedMessage` in `interactive-mode.ts:212-215`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompactionQueueMode {
+    Steer,
+    FollowUp,
+}
+
+struct CompactionQueuedMessage {
+    text: String,
+    mode: CompactionQueueMode,
+}
+
+/// A bash run the main loop drives, with what its tail needs.
+struct PendingBash {
+    command: String,
+    exclude_from_context: bool,
+    run: Pin<Box<dyn Future<Output = BashResult>>>,
+}
+
+/// What Escape does while a compaction or a retry is running
+/// (`autoCompactionEscapeHandler`/`retryEscapeHandler`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EscapeTarget {
+    Default,
+    Compaction,
+    Retry,
 }
 
 /// The prompt the main loop currently drives, if any.
@@ -228,6 +272,15 @@ impl RendererCell {
         }
     }
 
+    /// `ui.requestRender(force)` — the forcing variant resets the differential
+    /// render state, which `/reload` and the external editor need.
+    fn request_render(&self, force: bool) {
+        let mut state = self.0.borrow_mut();
+        match &mut state.renderer {
+            ActiveRenderer::Main(screen) => screen.request_render(force),
+        }
+    }
+
     fn render_pending_frame(&self) {
         let mut state = self.0.borrow_mut();
         match &mut state.renderer {
@@ -279,6 +332,10 @@ impl RenderLoop for InteractiveRenderer {
 enum AppAction {
     /// `app.clear` — Ctrl+C.
     Clear,
+    /// `app.message.followUp` — Alt+Enter.
+    FollowUp,
+    /// `app.message.dequeue`.
+    Dequeue,
     /// `app.exit` — Ctrl+D on an empty editor.
     Exit,
     /// `app.interrupt` — Escape.
@@ -369,6 +426,7 @@ pub struct InteractiveMode {
 
     editor: Rc<RefCell<CustomEditor>>,
     footer: Rc<RefCell<FooterComponent>>,
+    footer_data: Arc<crate::core::footer_data_provider::FooterDataProvider>,
     /// Handed to the selectors and the custom editors of the later slices.
     #[allow(dead_code)]
     keybindings: Rc<RefCell<KeybindingsManager>>,
@@ -396,6 +454,19 @@ pub struct InteractiveMode {
     /// `pendingTools` — insertion-ordered like the JavaScript `Map`.
     pending_tools: Vec<(String, Rc<RefCell<ToolExecutionComponent>>)>,
 
+    /// The bash row that is filling up, and the run behind it.
+    bash_component: Option<Rc<RefCell<BashExecutionComponent>>>,
+    pending_bash: Option<PendingBash>,
+    /// Rows shown above the editor while a run is going; they move into the
+    /// transcript with the next submission.
+    pending_bash_components: Vec<Rc<RefCell<BashExecutionComponent>>>,
+    bash_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    bash_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
+    /// Messages submitted while a compaction runs.
+    compaction_queued_messages: Vec<CompactionQueuedMessage>,
+    /// The escape handler the compaction and the retry replace while they run.
+    escape_target: EscapeTarget,
+
     tool_output_expanded: bool,
     hide_thinking_block: bool,
     output_pad: usize,
@@ -409,6 +480,9 @@ pub struct InteractiveMode {
 
     ui_tx: tokio::sync::mpsc::UnboundedSender<UiMessage>,
     ui_rx: Option<tokio::sync::mpsc::UnboundedReceiver<UiMessage>>,
+    /// The event channel outlives every session: a session switch only swaps
+    /// the listener, so the loop never sees its receiver close.
+    agent_tx: tokio::sync::mpsc::UnboundedSender<AgentSessionEvent>,
     agent_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AgentSessionEvent>>,
     /// Kept alive for as long as the mode runs; dropping it unsubscribes.
     agent_subscription: Option<crate::core::agent_session::ListenerHandle>,
@@ -507,6 +581,8 @@ impl InteractiveMode {
         );
 
         let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (agent_tx, agent_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (bash_tx, bash_rx) = tokio::sync::mpsc::unbounded_channel();
 
         Self {
             runtime,
@@ -528,6 +604,7 @@ impl InteractiveMode {
             subagent_panel_container: Rc::new(RefCell::new(Container::new())),
             editor,
             footer,
+            footer_data,
             keybindings,
             theme_controller,
             built_in_header: None,
@@ -543,6 +620,13 @@ impl InteractiveMode {
             streaming_component: None,
             streaming_message: None,
             pending_tools: Vec::new(),
+            bash_component: None,
+            pending_bash: None,
+            pending_bash_components: Vec::new(),
+            bash_tx,
+            bash_rx: Some(bash_rx),
+            compaction_queued_messages: Vec::new(),
+            escape_target: EscapeTarget::Default,
             tool_output_expanded: false,
             hide_thinking_block,
             output_pad,
@@ -552,7 +636,8 @@ impl InteractiveMode {
             exit_code: None,
             ui_tx,
             ui_rx: Some(ui_rx),
-            agent_rx: None,
+            agent_tx,
+            agent_rx: Some(agent_rx),
             agent_subscription: None,
         }
     }
@@ -762,14 +847,20 @@ impl InteractiveMode {
         editor.on_ctrl_d = Some(Box::new(move || {
             let _ = tx.send(UiMessage::Action(AppAction::Exit));
         }));
-        let tx = self.ui_tx.clone();
-        editor.on_action(
-            "app.clear",
-            Box::new(move || {
-                let _ = tx.send(UiMessage::Action(AppAction::Clear));
-                true
-            }),
-        );
+        for (action, message) in [
+            ("app.clear", AppAction::Clear),
+            ("app.message.followUp", AppAction::FollowUp),
+            ("app.message.dequeue", AppAction::Dequeue),
+        ] {
+            let tx = self.ui_tx.clone();
+            editor.on_action(
+                action,
+                Box::new(move || {
+                    let _ = tx.send(UiMessage::Action(message));
+                    true
+                }),
+            );
+        }
         drop(editor);
 
         // The wake-up for everything the editor records instead of calling back:
@@ -787,12 +878,40 @@ impl InteractiveMode {
     /// The session emits from wherever the run happens to be; the events cross
     /// into the single-threaded UI over a channel and are handled in the loop.
     fn subscribe_to_agent(&mut self) {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let handle = self.session().subscribe(Arc::new(move |event| {
+        let tx = self.agent_tx.clone();
+        self.agent_subscription = Some(self.session().subscribe(Arc::new(move |event| {
             let _ = tx.send(event);
-        }));
-        self.agent_rx = Some(rx);
-        self.agent_subscription = Some(handle);
+        })));
+    }
+
+    /// `rebindCurrentSession` (`interactive-mode.ts:1935-1960`).
+    ///
+    /// Deviation (class 1): TypeScript hands the runtime a callback
+    /// (`setRebindSession`) because an extension could switch the session too;
+    /// without extensions every switch starts in this loop, and the callback
+    /// would have to be `Send` and would deadlock against the loop that is
+    /// awaiting the switch. The mode therefore rebinds right where it switched.
+    fn rebind_current_session(&mut self) {
+        // Dropping the handle unsubscribes the listener of the old session.
+        self.agent_subscription = None;
+        self.apply_runtime_settings();
+        self.render_current_session_state();
+        self.subscribe_to_agent();
+        self.update_editor_border_color();
+        self.update_terminal_title();
+    }
+
+    /// `renderCurrentSessionState` (`interactive-mode.ts:1970-1985`).
+    fn render_current_session_state(&mut self) {
+        self.loaded_resources_container.borrow_mut().clear();
+        self.chat_container.borrow_mut().clear();
+        self.pending_messages_container.borrow_mut().clear();
+        self.streaming_component = None;
+        self.streaming_message = None;
+        self.pending_tools.clear();
+        self.last_status_spacer = None;
+        self.last_status_text = None;
+        self.render_initial_messages();
     }
 
     // ------------------------------------------------------------------
@@ -830,6 +949,7 @@ impl InteractiveMode {
 
         let mut ui_rx = self.ui_rx.take().expect("run called once");
         let mut agent_rx = self.agent_rx.take().expect("init subscribed");
+        let mut bash_rx = self.bash_rx.take().expect("run called once");
         let mut prompt: Option<PromptFuture> = None;
 
         loop {
@@ -854,8 +974,9 @@ impl InteractiveMode {
                 }));
             }
 
+            let mut bash = self.pending_bash.take();
             let deadline = self.next_deadline();
-            tokio::select! {
+            let outcome = tokio::select! {
                 biased;
                 result = async {
                     match prompt.as_mut() {
@@ -867,25 +988,54 @@ impl InteractiveMode {
                     if let Err(message) = result {
                         self.show_error(&message);
                     }
+                    None
+                }
+                result = async {
+                    match bash.as_mut() {
+                        Some(bash) => bash.run.as_mut().await,
+                        None => std::future::pending().await,
+                    }
+                } => bash.take().map(|bash| (bash, result)),
+                chunk = bash_rx.recv() => {
+                    // `executeBash`'s chunk callback: the row grows while the
+                    // command runs.
+                    if let (Some(chunk), Some(component)) = (chunk, self.bash_component.clone()) {
+                        component.borrow_mut().append_output(&chunk);
+                        self.ui.request_render();
+                    }
+                    None
                 }
                 message = ui_rx.recv() => {
                     match message {
                         Some(message) => self.handle_ui_message(message).await,
                         None => return 0,
                     }
+                    None
                 }
                 event = agent_rx.recv() => {
                     match event {
                         Some(event) => self.handle_event(event).await,
                         None => return 0,
                     }
+                    None
                 }
                 () = async {
                     match deadline {
                         Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
                         None => std::future::pending().await,
                     }
-                } => self.tick(),
+                } => {
+                    self.tick();
+                    None
+                }
+            };
+
+            // A bash run the select did not finish keeps going in the next pass.
+            if let Some(bash) = bash {
+                self.pending_bash = Some(bash);
+            }
+            if let Some((bash, result)) = outcome {
+                self.finish_bash_command(&bash.command, bash.exclude_from_context, result);
             }
         }
     }
@@ -947,6 +1097,8 @@ impl InteractiveMode {
             UiMessage::TerminalInput => self.drain_editor().await,
             UiMessage::Action(AppAction::Clear) => self.handle_ctrl_c().await,
             UiMessage::Action(AppAction::Exit) => self.handle_ctrl_d().await,
+            UiMessage::Action(AppAction::FollowUp) => self.handle_follow_up().await,
+            UiMessage::Action(AppAction::Dequeue) => self.handle_dequeue(),
             UiMessage::Action(AppAction::Escape) => self.handle_escape(),
             UiMessage::ThemeChanged => {
                 self.ui.invalidate();
@@ -988,6 +1140,34 @@ impl InteractiveMode {
             return;
         }
 
+        if self.handle_slash_command(&text).await {
+            return;
+        }
+
+        // Bash command (`!` runs it, `!!` keeps the output out of the context).
+        if let Some(rest) = text.strip_prefix('!') {
+            let is_excluded = rest.starts_with('!');
+            let command = rest.trim_start_matches('!').trim().to_owned();
+            if !command.is_empty() {
+                if self.session().is_bash_running() {
+                    self.show_warning(
+                        "A bash command is already running. Press Esc to cancel it first.",
+                    );
+                    self.editor.borrow_mut().editor_mut().set_text(&text);
+                    return;
+                }
+                self.editor.borrow_mut().editor_mut().add_to_history(&text);
+                self.handle_bash_command(&command, is_excluded);
+                return;
+            }
+        }
+
+        // Queue input while a compaction runs.
+        if self.session().is_compacting() {
+            self.queue_compaction_message(&text, CompactionQueueMode::Steer);
+            return;
+        }
+
         // If streaming, `prompt()` with steering behaviour queues the message.
         if self.session().is_streaming() {
             self.editor.borrow_mut().editor_mut().add_to_history(&text);
@@ -997,7 +1177,7 @@ impl InteractiveMode {
                 .prompt(
                     &text,
                     PromptOptions {
-                        streaming_behavior: Some(crate::core::agent_session::QueueBehavior::Steer),
+                        streaming_behavior: Some(QueueBehavior::Steer),
                         ..PromptOptions::default()
                     },
                 )
@@ -1005,13 +1185,1212 @@ impl InteractiveMode {
             {
                 self.show_error(&message);
             }
+            self.update_pending_messages_display();
             self.ui.request_render();
             return;
         }
 
+        // Normal submission: the bash rows of this turn move into the transcript.
+        self.flush_pending_bash_components();
         self.pending_user_inputs.push_back(text.clone());
         self.editor.borrow_mut().editor_mut().add_to_history(&text);
+    }
+
+    // ------------------------------------------------------------------
+    // Bash mode
+    // ------------------------------------------------------------------
+
+    /// `handleBashCommand(command, excludeFromContext)`
+    /// (`interactive-mode.ts:6571-6656`), minus the `user_bash` extension event
+    /// and the result it could hand back (class 2).
+    ///
+    /// Deviation (class 1): the run is not awaited here but driven by the main
+    /// loop, because its chunk callback is `Send` and has to cross into the
+    /// loop to reach the `!Send` component — awaiting inline would collect the
+    /// whole output and show it in one go.
+    fn handle_bash_command(&mut self, command: &str, exclude_from_context: bool) {
+        let component = Rc::new(RefCell::new(BashExecutionComponent::new(
+            command,
+            exclude_from_context,
+        )));
+        let is_deferred = self.session().is_streaming();
+        if is_deferred {
+            self.pending_messages_container
+                .borrow_mut()
+                .add_child(Rc::clone(&component) as ComponentRef);
+            self.pending_bash_components.push(Rc::clone(&component));
+        } else {
+            self.chat_container
+                .borrow_mut()
+                .add_child(Rc::clone(&component) as ComponentRef);
+        }
+        self.bash_component = Some(component);
+        self.ui.request_render();
+
+        let session = self.session();
+        let command = command.to_owned();
+        let tx = self.bash_tx.clone();
+        self.pending_bash = Some(PendingBash {
+            command: command.clone(),
+            exclude_from_context,
+            run: Box::pin(async move {
+                session
+                    .execute_bash(
+                        &command,
+                        Some(Arc::new(move |chunk: &str| {
+                            let _ = tx.send(chunk.to_owned());
+                        })),
+                        ExecuteBashOptions {
+                            exclude_from_context,
+                            ..ExecuteBashOptions::default()
+                        },
+                    )
+                    .await
+            }),
+        });
+    }
+
+    /// The tail of `handleBashCommand` after the `await`.
+    fn finish_bash_command(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+        result: BashResult,
+    ) {
+        if let Some(component) = self.bash_component.take() {
+            component.borrow_mut().set_complete(
+                result.exit_code.map(i64::from),
+                result.cancelled,
+                // TypeScript casts an incomplete literal
+                // (`{ truncated: true, content } as TruncationResult`); the row
+                // reads exactly those two fields, the rest is zero here
+                // (deviation class 1).
+                result.truncated.then(|| TruncationResult {
+                    content: result.output.clone(),
+                    truncated: true,
+                    truncated_by: None,
+                    total_lines: 0,
+                    total_bytes: 0,
+                    output_lines: 0,
+                    output_bytes: 0,
+                    last_line_partial: false,
+                    first_line_exceeds_limit: false,
+                    max_lines: 0,
+                    max_bytes: 0,
+                }),
+                result.full_output_path.clone(),
+            );
+        }
+        // `executeBash` records the result itself in the port; TypeScript only
+        // records it on the extension path.
+        let _ = (command, exclude_from_context);
+        // `onSubmit` resets the bash border once the command is done.
+        self.is_bash_mode = false;
+        self.update_editor_border_color();
+        self.ui.request_render();
+    }
+
+    /// `flushPendingBashComponents` (`interactive-mode.ts:6600-6610`).
+    fn flush_pending_bash_components(&mut self) {
+        for component in std::mem::take(&mut self.pending_bash_components) {
+            self.pending_messages_container
+                .borrow_mut()
+                .remove_child(&(Rc::clone(&component) as ComponentRef));
+            self.chat_container
+                .borrow_mut()
+                .add_child(component as ComponentRef);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Queues
+    // ------------------------------------------------------------------
+
+    /// `getAllQueuedMessages` (`interactive-mode.ts:4430-4445`).
+    fn all_queued_messages(&self) -> (Vec<String>, Vec<String>) {
+        let session = self.session();
+        let mut steering = session.get_steering_messages();
+        steering.extend(
+            self.compaction_queued_messages
+                .iter()
+                .filter(|message| message.mode == CompactionQueueMode::Steer)
+                .map(|message| message.text.clone()),
+        );
+        let mut follow_up = session.get_follow_up_messages();
+        follow_up.extend(
+            self.compaction_queued_messages
+                .iter()
+                .filter(|message| message.mode == CompactionQueueMode::FollowUp)
+                .map(|message| message.text.clone()),
+        );
+        (steering, follow_up)
+    }
+
+    /// `clearAllQueues` (`interactive-mode.ts:4447-4460`).
+    fn clear_all_queues(&mut self) -> (Vec<String>, Vec<String>) {
+        let (mut steering, mut follow_up) = self.session().clear_queue();
+        for message in std::mem::take(&mut self.compaction_queued_messages) {
+            match message.mode {
+                CompactionQueueMode::Steer => steering.push(message.text),
+                CompactionQueueMode::FollowUp => follow_up.push(message.text),
+            }
+        }
+        (steering, follow_up)
+    }
+
+    /// `updatePendingMessagesDisplay` (`interactive-mode.ts:4462-4479`).
+    fn update_pending_messages_display(&mut self) {
+        let (steering, follow_up) = self.all_queued_messages();
+        let mut container = self.pending_messages_container.borrow_mut();
+        container.clear();
+        // The bash components live in the same container and outlive the queue.
+        for component in &self.pending_bash_components {
+            container.add_child(Rc::clone(component) as ComponentRef);
+        }
+        if steering.is_empty() && follow_up.is_empty() {
+            return;
+        }
+        container.add_child(component_ref(Spacer::new(1)));
+        for message in &steering {
+            container.add_child(component_ref(TruncatedText::new(
+                theme().fg(ThemeColor::Dim, &format!("Steering: {message}")),
+                1,
+                0,
+            )));
+        }
+        for message in &follow_up {
+            container.add_child(component_ref(TruncatedText::new(
+                theme().fg(ThemeColor::Dim, &format!("Follow-up: {message}")),
+                1,
+                0,
+            )));
+        }
+        let hint = format!(
+            "↳ {} to edit all queued messages",
+            key_display_text("app.message.dequeue")
+        );
+        container.add_child(component_ref(TruncatedText::new(
+            theme().fg(ThemeColor::Dim, &hint),
+            1,
+            0,
+        )));
+    }
+
+    /// `restoreQueuedMessagesToEditor` (`interactive-mode.ts:4481-4500`).
+    fn restore_queued_messages_to_editor(&mut self, abort: bool) -> usize {
+        let (steering, follow_up) = self.clear_all_queues();
+        let mut all_queued = steering;
+        all_queued.extend(follow_up);
+        if all_queued.is_empty() {
+            self.update_pending_messages_display();
+            if abort {
+                self.session().agent().abort();
+            }
+            return 0;
+        }
+        let queued_text = all_queued.join("\n\n");
+        let current_text = self.editor.borrow().editor().get_text();
+        let combined = [queued_text, current_text]
+            .into_iter()
+            .filter(|text| !text.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        self.editor.borrow_mut().editor_mut().set_text(&combined);
+        self.update_pending_messages_display();
+        if abort {
+            self.session().agent().abort();
+        }
+        all_queued.len()
+    }
+
+    /// `handleDequeue` (`interactive-mode.ts:4236-4243`).
+    fn handle_dequeue(&mut self) {
+        let restored = self.restore_queued_messages_to_editor(false);
+        if restored == 0 {
+            self.show_status("No queued messages to restore");
+        } else {
+            self.show_status(&format!(
+                "Restored {restored} queued message{} to editor",
+                if restored > 1 { "s" } else { "" }
+            ));
+        }
+    }
+
+    /// `handleFollowUp` (`interactive-mode.ts:4204-4234`).
+    async fn handle_follow_up(&mut self) {
+        let text = self.editor.borrow().editor().get_expanded_text();
+        let text = text.trim().to_owned();
+        if text.is_empty() {
+            return;
+        }
+
+        if self.session().is_compacting() {
+            self.queue_compaction_message(&text, CompactionQueueMode::FollowUp);
+            return;
+        }
+
+        if self.session().is_streaming() {
+            self.editor.borrow_mut().editor_mut().add_to_history(&text);
+            self.clear_editor_text();
+            let session = self.session();
+            if let Err(message) = session
+                .prompt(
+                    &text,
+                    PromptOptions {
+                        streaming_behavior: Some(QueueBehavior::FollowUp),
+                        ..PromptOptions::default()
+                    },
+                )
+                .await
+            {
+                self.show_error(&message);
+            }
+            self.update_pending_messages_display();
+            self.ui.request_render();
+        } else {
+            // Not streaming: Alt+Enter behaves like Enter.
+            self.clear_editor_text();
+            self.handle_submit(text).await;
+        }
+    }
+
+    /// `queueCompactionMessage` (`interactive-mode.ts:4502-4508`).
+    fn queue_compaction_message(&mut self, text: &str, mode: CompactionQueueMode) {
+        self.compaction_queued_messages
+            .push(CompactionQueuedMessage {
+                text: text.to_owned(),
+                mode,
+            });
+        self.editor.borrow_mut().editor_mut().add_to_history(text);
+        self.clear_editor_text();
+        self.update_pending_messages_display();
+        self.show_status("Queued message for after compaction");
+    }
+
+    /// `flushCompactionQueue` (`interactive-mode.ts:4520-4598`).
+    ///
+    /// `isExtensionCommand` is constantly false without the extension system
+    /// (class 2), which removes the pre-command branches; what stays is the
+    /// first queued message as the prompt and the rest back into the queues.
+    async fn flush_compaction_queue(&mut self, will_retry: bool) {
+        if self.compaction_queued_messages.is_empty() {
+            return;
+        }
+        let queued: Vec<CompactionQueuedMessage> =
+            std::mem::take(&mut self.compaction_queued_messages);
+        self.update_pending_messages_display();
+        let session = self.session();
+
+        let restore = |mode: &mut Self, error: String, queued: Vec<CompactionQueuedMessage>| {
+            mode.session().clear_queue();
+            let count = queued.len();
+            mode.compaction_queued_messages = queued;
+            mode.update_pending_messages_display();
+            mode.show_error(&format!(
+                "Failed to send queued message{}: {error}",
+                if count > 1 { "s" } else { "" }
+            ));
+        };
+
+        if will_retry {
+            // When a retry is pending the messages go into the queues of the
+            // upcoming turn. Both calls are synchronous and infallible in the
+            // port, so the `restoreQueue` branch around them cannot trigger.
+            for message in &queued {
+                match message.mode {
+                    CompactionQueueMode::FollowUp => session.follow_up(&message.text, &[]),
+                    CompactionQueueMode::Steer => session.steer(&message.text, &[]),
+                }
+            }
+            self.update_pending_messages_display();
+            return;
+        }
+
+        let mut queued = queued.into_iter();
+        let first = queued.next().expect("queue is not empty");
+        let rest: Vec<CompactionQueuedMessage> = queued.collect();
+        let prompt = session
+            .prompt(
+                &first.text,
+                PromptOptions {
+                    streaming_behavior: Some(match first.mode {
+                        CompactionQueueMode::Steer => QueueBehavior::Steer,
+                        CompactionQueueMode::FollowUp => QueueBehavior::FollowUp,
+                    }),
+                    ..PromptOptions::default()
+                },
+            )
+            .await;
+        if let Err(error) = prompt {
+            let mut restored = vec![first];
+            restored.extend(rest);
+            restore(self, error, restored);
+            return;
+        }
+        for message in &rest {
+            match message.mode {
+                CompactionQueueMode::FollowUp => session.follow_up(&message.text, &[]),
+                CompactionQueueMode::Steer => session.steer(&message.text, &[]),
+            }
+        }
+        self.update_pending_messages_display();
+    }
+
+    // ------------------------------------------------------------------
+    // Slash commands
+    // ------------------------------------------------------------------
+
+    /// The command table of `onSubmit` (`interactive-mode.ts:3116-3225`), in
+    /// the order TypeScript tests it. `true` means the text was a command and
+    /// must not reach the model.
+    ///
+    /// The commands that open a selector (`/settings`, `/model`,
+    /// `/scoped-models`, `/tasks`, `/fork`, `/clone`, `/tree`, `/trust`,
+    /// `/login`, `/logout`, `/resume`) are recognised here and answered with a
+    /// notice until the selector slice wires them; they must never fall through
+    /// to the model, which is what the fall-through of an unknown `/word` does
+    /// in TypeScript too.
+    async fn handle_slash_command(&mut self, text: &str) -> bool {
+        if !text.starts_with('/') {
+            return false;
+        }
+        let argument = |prefix: &str| -> Option<String> {
+            text.strip_prefix(prefix)
+                .map(|rest| rest.trim().to_owned())
+                .filter(|rest| !rest.is_empty())
+        };
+
+        match text {
+            "/settings" => {
+                self.selector_slice_notice("/settings");
+                self.clear_editor_text();
+            }
+            "/scoped-models" => {
+                self.clear_editor_text();
+                self.selector_slice_notice("/scoped-models");
+            }
+            _ if text == "/model" || text.starts_with("/model ") => {
+                self.clear_editor_text();
+                self.selector_slice_notice("/model");
+            }
+            _ if text == "/export" || text.starts_with("/export ") => {
+                self.handle_export_command(text).await;
+                self.clear_editor_text();
+            }
+            _ if text == "/import" || text.starts_with("/import ") => {
+                self.handle_import_command(text).await;
+                self.clear_editor_text();
+            }
+            "/share" => {
+                self.handle_share_command().await;
+                self.clear_editor_text();
+            }
+            "/copy" => {
+                self.handle_copy_command(false);
+                self.clear_editor_text();
+            }
+            _ if text == "/name" || text.starts_with("/name ") => {
+                self.handle_name_command(text);
+                self.clear_editor_text();
+            }
+            "/session" => {
+                self.handle_session_command();
+                self.clear_editor_text();
+            }
+            "/changelog" => {
+                self.handle_changelog_command();
+                self.clear_editor_text();
+            }
+            "/tasks" | "/task" => {
+                self.selector_slice_notice("/tasks");
+                self.clear_editor_text();
+            }
+            "/hotkeys" => {
+                self.handle_hotkeys_command();
+                self.clear_editor_text();
+            }
+            "/fork" => {
+                self.selector_slice_notice("/fork");
+                self.clear_editor_text();
+            }
+            "/clone" => {
+                self.clear_editor_text();
+                self.selector_slice_notice("/clone");
+            }
+            "/tree" => {
+                self.selector_slice_notice("/tree");
+                self.clear_editor_text();
+            }
+            "/trust" => {
+                self.selector_slice_notice("/trust");
+                self.clear_editor_text();
+            }
+            _ if text == "/login" || text.starts_with("/login ") => {
+                self.clear_editor_text();
+                self.selector_slice_notice("/login");
+            }
+            "/logout" => {
+                self.selector_slice_notice("/logout");
+                self.clear_editor_text();
+            }
+            "/new" => {
+                self.clear_editor_text();
+                self.handle_clear_command().await;
+            }
+            _ if text == "/compact" || text.starts_with("/compact ") => {
+                let instructions = argument("/compact ");
+                self.clear_editor_text();
+                self.handle_compact_command(instructions.as_deref()).await;
+            }
+            "/reload" => {
+                self.clear_editor_text();
+                self.handle_reload_command().await;
+            }
+            "/debug" => {
+                self.handle_debug_command();
+                self.clear_editor_text();
+            }
+            "/arminsayshi" => {
+                self.handle_armin_says_hi();
+                self.clear_editor_text();
+            }
+            "/dementedelves" => {
+                self.handle_demented_delves();
+                self.clear_editor_text();
+            }
+            "/resume" => {
+                self.selector_slice_notice("/resume");
+                self.clear_editor_text();
+            }
+            "/quit" => {
+                self.clear_editor_text();
+                self.shutdown().await;
+            }
+            // Anything else is not a command: skill commands and prompt
+            // templates are expanded by `session.prompt`.
+            _ => return false,
+        }
+        true
+    }
+
+    /// The interim answer of a command whose selector is not wired yet.
+    fn selector_slice_notice(&mut self, command: &str) {
+        self.show_error(&format!(
+            "{command} opens a selector, which lands with the next slice of plan task 13"
+        ));
+    }
+
+    fn clear_editor_text(&mut self) {
         self.editor.borrow_mut().editor_mut().set_text("");
+    }
+
+    /// `handleExportCommand` (`interactive-mode.ts:6058-6072`).
+    async fn handle_export_command(&mut self, text: &str) {
+        let output_path = path_command_argument(text, "/export");
+        let session = self.session();
+        let result = if output_path
+            .as_deref()
+            .is_some_and(|path| path.ends_with(".jsonl"))
+        {
+            session.export_to_jsonl(output_path.as_deref())
+        } else {
+            self.export_to_html(output_path.as_deref())
+        };
+        match result {
+            Ok(path) => self.show_status(&format!("Session exported to: {path}")),
+            Err(message) => self.show_error(&format!("Failed to export session: {message}")),
+        }
+    }
+
+    /// `session.exportToHtml(outputPath)` — the session-side half lives in
+    /// `core::export_html` (workstream B, plan task 16); the binding is here,
+    /// where the TypeScript session method binds it.
+    fn export_to_html(&self, output_path: Option<&str>) -> Result<String, String> {
+        let session = self.session();
+        session.with_session_manager(|manager| {
+            crate::core::export_html::export_session_to_html(
+                manager,
+                None,
+                crate::core::export_html::ExportOptions {
+                    output_path: output_path.map(str::to_owned),
+                    ..crate::core::export_html::ExportOptions::default()
+                },
+            )
+            .map_err(|error| error.to_string())
+        })
+    }
+
+    /// `handleImportCommand` (`interactive-mode.ts:6103-6145`).
+    ///
+    /// Remaining: the `MissingSessionCwdError` branch, which offers the
+    /// fallback cwd and retries. `AgentSessionRuntime::import_from_jsonl`
+    /// flattens its errors into a string, so the branch needs a typed error
+    /// first; noted in `PARITY.md`.
+    async fn handle_import_command(&mut self, text: &str) {
+        let Some(input_path) = path_command_argument(text, "/import") else {
+            self.show_error("Usage: /import <path.jsonl>");
+            return;
+        };
+        let confirmed = self
+            .confirm(
+                "Import session",
+                &format!("Replace current session with {input_path}?"),
+            )
+            .await;
+        if !confirmed {
+            self.show_status("Import cancelled");
+            return;
+        }
+        self.clear_status_indicator(None);
+        match self.runtime.import_from_jsonl(&input_path, None).await {
+            Ok(()) => {
+                self.rebind_current_session();
+                self.show_status(&format!("Session imported from: {input_path}"));
+            }
+            Err(message) => self.show_error(&format!("Failed to import session: {message}")),
+        }
+    }
+
+    /// `handleShareCommand` (`interactive-mode.ts:6147-6239`) — the two `gh`
+    /// calls live in `core::share` (interface request B-9), the loader, the
+    /// editor swap and the temp file are here.
+    async fn handle_share_command(&mut self) {
+        let runner = crate::core::share::ProcessShareCommandRunner;
+        if let Err(error) = crate::core::share::check_gh_auth(&runner) {
+            self.show_error(&error.to_string());
+            return;
+        }
+
+        let temp_file = crate::core::share::share_temp_html_path();
+        if let Err(message) = self.export_to_html(Some(&temp_file.to_string_lossy())) {
+            self.show_error(&format!("Failed to export session: {message}"));
+            return;
+        }
+
+        let loader = Rc::new(RefCell::new(BorderedLoader::new(
+            &theme(),
+            "Creating gist...",
+            None,
+        )));
+        let signal = loader.borrow().signal();
+        {
+            let mut editor_container = self.editor_container.borrow_mut();
+            editor_container.clear();
+            editor_container.add_child(Rc::clone(&loader) as ComponentRef);
+        }
+        self.ui.set_focus(Some(Rc::clone(&loader) as ComponentRef));
+        self.ui.request_render();
+
+        // `loader.onAbort` kills the child; the cancellation token reaches the
+        // runner through the same select the TypeScript gets from `proc.kill()`.
+        let result = tokio::select! {
+            result = crate::core::share::create_secret_gist(&temp_file, &runner) => Some(result),
+            () = signal.cancelled() => None,
+        };
+
+        loader.borrow_mut().dispose();
+        {
+            let mut editor_container = self.editor_container.borrow_mut();
+            editor_container.clear();
+            editor_container.add_child(Rc::clone(&self.editor) as ComponentRef);
+        }
+        self.ui
+            .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
+        let _ = std::fs::remove_file(&temp_file);
+
+        match result {
+            None => self.show_status("Share cancelled"),
+            Some(Ok(gist)) => self.show_status(&format!(
+                "Share URL: {}\nGist: {}",
+                gist.viewer_url, gist.gist_url
+            )),
+            Some(Err(error)) => self.show_error(&error.to_string()),
+        }
+    }
+
+    /// `handleCopyCommand` (`interactive-mode.ts:6241-6258`).
+    fn handle_copy_command(&mut self, _flash_confirmation: bool) {
+        let Some(text) = self.session().get_last_assistant_text() else {
+            self.show_error("No agent messages to copy yet.");
+            return;
+        };
+        match crate::utils::clipboard::copy_to_clipboard(&text) {
+            Ok(()) => self.show_status("Copied last agent message to clipboard"),
+            Err(message) => self.show_error(&message),
+        }
+    }
+
+    /// `handleNameCommand` (`interactive-mode.ts:6260-6282`).
+    fn handle_name_command(&mut self, text: &str) {
+        let name = text
+            .strip_prefix("/name")
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+        let session = self.session();
+        if name.is_empty() {
+            let current = session.with_session_manager(|manager| manager.get_session_name());
+            match current {
+                Some(current) => {
+                    let mut chat = self.chat_container.borrow_mut();
+                    chat.add_child(component_ref(Spacer::new(1)));
+                    chat.add_child(component_ref(Text::new(
+                        theme().fg(ThemeColor::Dim, &format!("Session name: {current}")),
+                        1,
+                        0,
+                    )));
+                }
+                None => self.show_warning("Usage: /name <name>"),
+            }
+            self.ui.request_render();
+            return;
+        }
+
+        session.set_session_name(&name);
+        let session_name = session.with_session_manager(|manager| manager.get_session_name());
+        if session_name.as_deref() != Some(name.as_str()) {
+            self.show_warning(&format!(
+                "Session name was normalized from {} to {}",
+                json_string(&name),
+                match session_name.as_deref() {
+                    Some(normalized) => json_string(normalized),
+                    None => "undefined".to_owned(),
+                }
+            ));
+        }
+        let shown = session_name.unwrap_or(name);
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(Text::new(
+            theme().fg(ThemeColor::Dim, &format!("Session name set: {shown}")),
+            1,
+            0,
+        )));
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `handleSessionCommand` (`interactive-mode.ts:6284-6345`).
+    fn handle_session_command(&mut self) {
+        let session = self.session();
+        let stats = session.get_session_stats();
+        let session_name = session.with_session_manager(|manager| manager.get_session_name());
+        let entries = session.with_session_manager(|manager| manager.get_entries());
+        let model_runtime = self.runtime.services().model_runtime.clone();
+        let cache_waste = crate::core::cache_stats::compute_cache_waste(&entries, &*model_runtime);
+        let usage_breakdown = crate::core::usage_totals::get_usage_cost_breakdown(&entries);
+        let paint = theme();
+        let dim = |text: &str| paint.fg(ThemeColor::Dim, text);
+
+        let mut info = format!("{}\n\n", paint.bold("Session Info"));
+        if let Some(name) = session_name {
+            info.push_str(&format!("{} {name}\n", dim("Name:")));
+        }
+        info.push_str(&format!(
+            "{} {}\n",
+            dim("File:"),
+            stats.session_file.as_deref().unwrap_or("In-memory")
+        ));
+        info.push_str(&format!("{} {}\n\n", dim("ID:"), stats.session_id));
+        info.push_str(&format!("{}\n", paint.bold("Messages")));
+        info.push_str(&format!("{} {}\n", dim("Total:"), stats.total_messages));
+        info.push_str(&format!("{} {}\n", dim("User:"), stats.user_messages));
+        info.push_str(&format!(
+            "{} {}\n",
+            dim("Assistant:"),
+            stats.assistant_messages
+        ));
+        info.push_str(&format!(
+            "{} {} calls, {} results\n\n",
+            dim("Tools:"),
+            stats.tool_calls,
+            stats.tool_results
+        ));
+        info.push_str(&format!("{}\n", paint.bold("Tokens")));
+        let input = stats.tokens.input;
+        let cache_read = stats.tokens.cache_read;
+        let cache_write = stats.tokens.cache_write;
+        let prompt_tokens = input + cache_read + cache_write;
+        info.push_str(&format!(
+            "{} {}\n",
+            dim("Input:"),
+            to_locale_string(prompt_tokens)
+        ));
+        if prompt_tokens > 0 && (cache_read > 0 || cache_write > 0) {
+            let hit_rate = dim(&format!(
+                "({:.1}%)",
+                (cache_read as f64 / prompt_tokens as f64) * 100.0
+            ));
+            info.push_str(&format!(
+                "  {} {} {hit_rate}\n",
+                dim("Cached:"),
+                to_locale_string(cache_read)
+            ));
+            let written = if cache_write > 0 {
+                format!(
+                    " {}",
+                    dim(&format!(
+                        "({} written to cache)",
+                        to_locale_string(cache_write)
+                    ))
+                )
+            } else {
+                String::new()
+            };
+            info.push_str(&format!(
+                "  {} {}{written}\n",
+                dim("Uncached:"),
+                to_locale_string(input + cache_write)
+            ));
+        }
+        info.push_str(&format!(
+            "{} {}\n",
+            dim("Output:"),
+            to_locale_string(stats.tokens.output)
+        ));
+        info.push_str(&format!(
+            "{} {}\n",
+            dim("Total:"),
+            to_locale_string(stats.tokens.total)
+        ));
+
+        if stats.cost > 0.0 || cache_waste.missed_tokens > 0 {
+            info.push_str(&format!("\n{}\n", paint.bold("Cost")));
+            info.push_str(&format!("{} ${:.3}", dim("Total:"), stats.cost));
+            if usage_breakdown.len() > 1 {
+                for entry in &usage_breakdown {
+                    info.push_str(&format!(
+                        "\n  {} ${:.3} {}",
+                        dim(&format!("{}:", entry.key)),
+                        entry.cost,
+                        dim(&format!("({} tokens)", format_tokens(entry.tokens)))
+                    ));
+                }
+            }
+            if cache_waste.missed_tokens > 0 {
+                let miss_label = if cache_waste.miss_count == 1 {
+                    "1 miss".to_owned()
+                } else {
+                    format!("{} misses", cache_waste.miss_count)
+                };
+                let detail = format!(
+                    "{} tokens, {miss_label}",
+                    to_locale_string(cache_waste.missed_tokens)
+                );
+                if cache_waste.missed_cost >= 0.0001 {
+                    info.push_str(&format!(
+                        "\n{} ${:.3} {}",
+                        dim("Cache Re-billed:"),
+                        cache_waste.missed_cost,
+                        dim(&format!("({detail})"))
+                    ));
+                } else {
+                    info.push_str(&format!("\n{} {detail}", dim("Cache Re-billed:")));
+                }
+            }
+        }
+
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(Text::new(info, 1, 0)));
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `handleChangelogCommand` (`interactive-mode.ts:6347-6369`).
+    fn handle_changelog_command(&mut self) {
+        let entries =
+            crate::utils::changelog::parse_changelog(&crate::config::get_changelog_path());
+        let changelog_markdown = if entries.is_empty() {
+            "No changelog entries found.".to_owned()
+        } else {
+            entries
+                .iter()
+                .rev()
+                .map(|entry| {
+                    crate::utils::changelog::normalize_changelog_links_for_entry(
+                        &entry.content,
+                        entry,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        };
+        self.add_bordered_block("What's New", &changelog_markdown, 1);
+    }
+
+    /// `handleHotkeysCommand` (`interactive-mode.ts:6382-6497`).
+    fn handle_hotkeys_command(&mut self) {
+        let key = key_display_text;
+        let hotkeys = format!(
+            "**Navigation**\n\
+             | Key | Action |\n\
+             |-----|--------|\n\
+             | `{}` / `{}` / `{}` / `{}` | Move cursor / browse history |\n\
+             | `{}` / `{}` | Move by word |\n\
+             | `{}` | Start of line |\n\
+             | `{}` | End of line |\n\
+             | `{}` | Jump forward to character |\n\
+             | `{}` | Jump backward to character |\n\
+             | `{}` / `{}` | Scroll by page |\n\
+             \n**Editing**\n\
+             | Key | Action |\n\
+             |-----|--------|\n\
+             | `{}` | Send message |\n\
+             | `{}` | New line{} |\n\
+             | `{}` | Delete word backwards |\n\
+             | `{}` | Delete word forwards |\n\
+             | `{}` | Delete to start of line |\n\
+             | `{}` | Delete to end of line |\n\
+             | `{}` | Paste the most-recently-deleted text |\n\
+             | `{}` | Cycle through the deleted text after pasting |\n\
+             | `{}` | Undo |\n\
+             \n**Other**\n\
+             | Key | Action |\n\
+             |-----|--------|\n\
+             | `{}` | Path completion / accept autocomplete |\n\
+             | `{}` | Cancel autocomplete / abort streaming |\n\
+             | `{}` | Clear editor (first) / exit (second) |\n\
+             | `{}` | Exit (when editor is empty) |\n\
+             | `{}` | Suspend to background |\n\
+             | `{}` | Cycle thinking level |\n\
+             | `{}` / `{}` | Cycle models |\n\
+             | `{}` | Open model selector |\n\
+             | `{}` | Toggle tool output expansion |\n\
+             | `{}` | Toggle thinking block visibility |\n\
+             | `{}` | Edit message in external editor |\n\
+             | `{}` | Copy last assistant message |\n\
+             | `{}` | Queue follow-up message |\n\
+             | `{}` | Restore queued messages |\n\
+             | `{}` | Paste image or text from clipboard |\n\
+             | `/` | Slash commands |\n\
+             | `!` | Run bash command |\n\
+             | `!!` | Run bash command (excluded from context) |",
+            key("tui.editor.cursorUp"),
+            key("tui.editor.cursorDown"),
+            key("tui.editor.cursorLeft"),
+            key("tui.editor.cursorRight"),
+            key("tui.editor.cursorWordLeft"),
+            key("tui.editor.cursorWordRight"),
+            key("tui.editor.cursorLineStart"),
+            key("tui.editor.cursorLineEnd"),
+            key("tui.editor.jumpForward"),
+            key("tui.editor.jumpBackward"),
+            key("tui.editor.pageUp"),
+            key("tui.editor.pageDown"),
+            key("tui.input.submit"),
+            key("tui.input.newLine"),
+            if cfg!(target_os = "windows") {
+                " (Ctrl+Enter on Windows Terminal)"
+            } else {
+                ""
+            },
+            key("tui.editor.deleteWordBackward"),
+            key("tui.editor.deleteWordForward"),
+            key("tui.editor.deleteToLineStart"),
+            key("tui.editor.deleteToLineEnd"),
+            key("tui.editor.yank"),
+            key("tui.editor.yankPop"),
+            key("tui.editor.undo"),
+            key("tui.input.tab"),
+            key("app.interrupt"),
+            key("app.clear"),
+            key("app.exit"),
+            key("app.suspend"),
+            key("app.thinking.cycle"),
+            key("app.model.cycleForward"),
+            key("app.model.cycleBackward"),
+            key("app.model.select"),
+            key("app.tools.expand"),
+            key("app.thinking.toggle"),
+            key("app.editor.external"),
+            key("app.message.copy"),
+            key("app.message.followUp"),
+            key("app.message.dequeue"),
+            key("app.clipboard.pasteImage"),
+        );
+        self.add_bordered_block("Keyboard Shortcuts", &hotkeys, 1);
+    }
+
+    /// The `DynamicBorder`/title/`Markdown`/`DynamicBorder` block `/changelog`
+    /// and `/hotkeys` both draw.
+    fn add_bordered_block(&mut self, title: &str, markdown: &str, markdown_padding_y: usize) {
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(DynamicBorder::new(None)));
+        chat.add_child(component_ref(Text::new(
+            theme().bold(&theme().fg(ThemeColor::Accent, title)),
+            1,
+            0,
+        )));
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(Markdown::new(
+            markdown,
+            1,
+            markdown_padding_y,
+            get_markdown_theme(),
+            None,
+            None,
+        )));
+        chat.add_child(component_ref(DynamicBorder::new(None)));
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `handleClearCommand` (`interactive-mode.ts:6499-6512`).
+    async fn handle_clear_command(&mut self) {
+        self.clear_status_indicator(None);
+        match self.runtime.new_session(None).await {
+            Ok(()) => {
+                self.rebind_current_session();
+                let mut chat = self.chat_container.borrow_mut();
+                chat.add_child(component_ref(Spacer::new(1)));
+                chat.add_child(component_ref(Text::new(
+                    theme().fg(ThemeColor::Accent, "✓ New session started"),
+                    1,
+                    1,
+                )));
+                drop(chat);
+                self.ui.request_render();
+            }
+            Err(message) => self.show_error(&format!("Failed to create session: {message}")),
+        }
+    }
+
+    /// `handleCompactCommand` (`interactive-mode.ts:6658-6664`).
+    async fn handle_compact_command(&mut self, custom_instructions: Option<&str>) {
+        // The result is reported through `compaction_end`; a failure here is the
+        // same event with an error message.
+        let _ = self.session().compact(custom_instructions).await;
+    }
+
+    /// `handleReloadCommand` (`interactive-mode.ts:5968-6056`).
+    ///
+    /// Remaining: `showLoadedResources`, which belongs to the resources slice,
+    /// and `maybeSaveImplicitProjectTrustAfterReload`, which needs the trust
+    /// selector of the selector slice.
+    async fn handle_reload_command(&mut self) {
+        if self.session().is_streaming() {
+            self.show_warning("Wait for the current response to finish before reloading.");
+            return;
+        }
+        if self.session().is_compacting() {
+            self.show_warning("Wait for compaction to finish before reloading.");
+            return;
+        }
+
+        let reload_box = Rc::new(RefCell::new(Container::new()));
+        {
+            let mut container = reload_box.borrow_mut();
+            container.add_child(component_ref(DynamicBorder::new(Some(Rc::new(
+                |text: &str| theme().fg(ThemeColor::Border, text),
+            )))));
+            container.add_child(component_ref(Spacer::new(1)));
+            container.add_child(component_ref(Text::new(
+                theme().fg(
+                    ThemeColor::Muted,
+                    "Reloading keybindings, extensions, skills, prompts, themes, and context files...",
+                ),
+                1,
+                0,
+            )));
+            container.add_child(component_ref(Spacer::new(1)));
+            container.add_child(component_ref(DynamicBorder::new(Some(Rc::new(
+                |text: &str| theme().fg(ThemeColor::Border, text),
+            )))));
+        }
+        {
+            let mut editor_container = self.editor_container.borrow_mut();
+            editor_container.clear();
+            editor_container.add_child(Rc::clone(&reload_box) as ComponentRef);
+        }
+        self.ui
+            .set_focus(Some(Rc::clone(&reload_box) as ComponentRef));
+        self.cell.request_render(true);
+
+        self.session().reload().await;
+        self.hide_thinking_block = self.settings().get_hide_thinking_block();
+        self.output_pad = self.settings().get_output_pad() as usize;
+        self.rebuild_chat_from_messages();
+        self.keybindings.borrow_mut().reload();
+        set_keybindings(self.keybindings.borrow().to_tui());
+        if let Some(header) = self.built_in_header.clone() {
+            header.borrow_mut().set_expanded(self.tool_output_expanded);
+        }
+        let _ = set_registered_themes(self.session().resource_loader().get_themes().0);
+        self.theme_controller.apply_from_settings().await;
+        self.apply_runtime_settings();
+        if let Some(error) = self.runtime.services().model_runtime.get_error() {
+            self.show_error(&format!("models.json error: {error}"));
+        }
+        self.show_status(
+            "Reloaded keybindings, extensions, skills, prompts, themes, and context files",
+        );
+
+        {
+            let mut editor_container = self.editor_container.borrow_mut();
+            editor_container.clear();
+            editor_container.add_child(Rc::clone(&self.editor) as ComponentRef);
+        }
+        self.ui
+            .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
+        self.ui.request_render();
+    }
+
+    /// `applyRuntimeSettings` (`interactive-mode.ts:1911-1933`).
+    fn apply_runtime_settings(&mut self) {
+        let settings = self.settings();
+        self.ui.set_clear_on_shrink(settings.get_clear_on_shrink());
+        self.ui
+            .set_show_hardware_cursor(settings.get_show_hardware_cursor());
+        {
+            let mut editor = self.editor.borrow_mut();
+            let editor = editor.editor_mut();
+            editor.set_padding_x(settings.get_editor_padding_x() as usize);
+            editor.set_autocomplete_max_visible(settings.get_autocomplete_max_visible() as usize);
+        }
+        {
+            let mut footer = self.footer.borrow_mut();
+            footer.set_session(Arc::clone(&self.session())
+                as Arc<dyn crate::modes::interactive::components::footer::FooterSession>);
+            footer.set_auto_compact_enabled(self.session().auto_compaction_enabled());
+        }
+        self.footer_data.set_cwd(&self.cwd());
+        self.hide_thinking_block = settings.get_hide_thinking_block();
+        self.output_pad = settings.get_output_pad() as usize;
+        self.update_editor_border_color();
+    }
+
+    /// `rebuildChatFromMessages` (`interactive-mode.ts:4001-4004`).
+    fn rebuild_chat_from_messages(&mut self) {
+        self.chat_container.borrow_mut().clear();
+        let entries = self
+            .session()
+            .with_session_manager(|manager| manager.build_context_entries());
+        self.render_session_entries(&entries, false);
+    }
+
+    /// `handleDebugCommand` (`interactive-mode.ts:6514-6545`).
+    ///
+    /// Deviation (class 1): TypeScript asks the TUI for the rendered document
+    /// (`this.ui.render(width)`); the port renders the mounted children itself,
+    /// because the renderer keeps that pass private to the frame it writes.
+    fn handle_debug_command(&mut self) {
+        let width = self.ui.columns();
+        let height = self.ui.rows();
+        let lines: Vec<String> = self
+            .ui
+            .children()
+            .iter()
+            .flat_map(|child| child.borrow_mut().render(width))
+            .collect();
+
+        let debug_log_path = crate::config::get_debug_log_path();
+        let mut debug_data = vec![
+            format!("Debug output at {}", chrono::Utc::now().to_rfc3339()),
+            format!("Terminal: {width}x{height}"),
+            format!("Total lines: {}", lines.len()),
+            String::new(),
+            "=== All rendered lines with visible widths ===".to_owned(),
+        ];
+        for (index, line) in lines.iter().enumerate() {
+            debug_data.push(format!(
+                "[{index}] (w={}) {}",
+                notagent_tui::utils::visible_width(line),
+                json_string(line)
+            ));
+        }
+        debug_data.push(String::new());
+        debug_data.push("=== Agent messages (JSONL) ===".to_owned());
+        for message in self.session().messages() {
+            debug_data.push(serde_json::to_string(&message).unwrap_or_default());
+        }
+        debug_data.push(String::new());
+
+        if let Some(parent) = debug_log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&debug_log_path, debug_data.join("\n"));
+
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(Text::new(
+            format!(
+                "{}\n{}",
+                theme().fg(ThemeColor::Accent, "✓ Debug log written"),
+                theme().fg(ThemeColor::Muted, &debug_log_path.to_string_lossy())
+            ),
+            1,
+            1,
+        )));
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `handleArminSaysHi` (`interactive-mode.ts:6547-6551`).
+    fn handle_armin_says_hi(&mut self) {
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(ArminComponent::new()));
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `handleDementedDelves` (`interactive-mode.ts:6553-6557`).
+    fn handle_demented_delves(&mut self) {
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(EarendilAnnouncementComponent::new()));
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `showExtensionConfirm(title, message)` (`interactive-mode.ts:2473-2480`)
+    /// over the list selector `showExtensionSelector` uses.
+    ///
+    /// Deviation (class 1): the dialog blocks this loop until it answers, so the
+    /// events of a run that is still going are handled after it closes. The
+    /// caller's render loop keeps drawing and keeps feeding the dialog, which is
+    /// what the dialog itself needs.
+    async fn confirm(&mut self, title: &str, message: &str) -> bool {
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<Option<String>>();
+        let done_tx = Rc::new(RefCell::new(Some(done_tx)));
+        let select_tx = Rc::clone(&done_tx);
+        let cancel_tx = Rc::clone(&done_tx);
+        let selector = component_ref(ListSelectorComponent::new(
+            format!("{title}\n{message}"),
+            vec!["Yes".to_owned(), "No".to_owned()],
+            Box::new(move |option| {
+                if let Some(sender) = select_tx.borrow_mut().take() {
+                    let _ = sender.send(Some(option));
+                }
+            }),
+            Box::new(move || {
+                if let Some(sender) = cancel_tx.borrow_mut().take() {
+                    let _ = sender.send(None);
+                }
+            }),
+            None,
+        ));
+        {
+            let mut editor_container = self.editor_container.borrow_mut();
+            editor_container.clear();
+            editor_container.add_child(Rc::clone(&selector));
+        }
+        self.ui.set_focus(Some(Rc::clone(&selector)));
+        self.ui.request_render();
+
+        let answer = done_rx.await.unwrap_or(None);
+
+        {
+            let mut editor_container = self.editor_container.borrow_mut();
+            editor_container.clear();
+            editor_container.add_child(Rc::clone(&self.editor) as ComponentRef);
+        }
+        self.ui
+            .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
+        self.ui.request_render();
+        answer.as_deref() == Some("Yes")
     }
 
     /// `handleCtrlC` (`interactive-mode.ts:4010-4018`).
@@ -1034,12 +2413,31 @@ impl InteractiveMode {
         self.shutdown().await;
     }
 
-    /// The escape branch of `setupKeyHandlers` that this slice covers: abort a
-    /// running turn. The bash and double-escape branches follow with their
-    /// slices.
+    /// The escape branch of `setupKeyHandlers` (`interactive-mode.ts:3006-3033`).
+    ///
+    /// The double-escape action (`/tree` or `/fork`) needs the selectors and
+    /// arrives with their slice.
     fn handle_escape(&mut self) {
+        match self.escape_target {
+            // While a compaction or a retry runs, Escape aborts that instead.
+            EscapeTarget::Compaction => {
+                self.session().abort_compaction();
+                return;
+            }
+            EscapeTarget::Retry => {
+                self.session().abort_retry();
+                return;
+            }
+            EscapeTarget::Default => {}
+        }
         if self.session().is_streaming() {
-            self.session().agent().abort();
+            self.restore_queued_messages_to_editor(true);
+        } else if self.session().is_bash_running() {
+            self.session().abort_bash();
+        } else if self.is_bash_mode {
+            self.clear_editor_text();
+            self.is_bash_mode = false;
+            self.update_editor_border_color();
         }
     }
 
@@ -1119,6 +2517,11 @@ impl InteractiveMode {
         match event {
             AgentSessionEvent::Agent(AgentEvent::AgentStart) => {
                 self.pending_tools.clear();
+                // The retry's success event arrives later, but Escape has to
+                // abort the run again from here on.
+                if self.escape_target == EscapeTarget::Retry {
+                    self.escape_target = EscapeTarget::Default;
+                }
                 if self.settings().get_show_terminal_progress() {
                     self.ui
                         .with_terminal(|terminal| terminal.set_progress(true));
@@ -1281,6 +2684,103 @@ impl InteractiveMode {
                     self.streaming_message = None;
                 }
                 self.pending_tools.clear();
+                self.ui.request_render();
+            }
+            AgentSessionEvent::QueueUpdate { .. } => {
+                self.update_pending_messages_display();
+                self.ui.request_render();
+            }
+            AgentSessionEvent::CompactionStart { reason } => {
+                if self.settings().get_show_terminal_progress() {
+                    self.ui
+                        .with_terminal(|terminal| terminal.set_progress(true));
+                }
+                // The editor stays live; submissions are queued while it runs.
+                self.escape_target = EscapeTarget::Compaction;
+                self.show_status_indicator(StatusIndicator::compaction(compaction_status_reason(
+                    reason,
+                )));
+                self.ui.request_render();
+            }
+            AgentSessionEvent::CompactionEnd {
+                reason,
+                result,
+                aborted,
+                will_retry,
+                error_message,
+            } => {
+                if self.settings().get_show_terminal_progress() {
+                    self.ui
+                        .with_terminal(|terminal| terminal.set_progress(false));
+                }
+                if self.escape_target == EscapeTarget::Compaction {
+                    self.escape_target = EscapeTarget::Default;
+                }
+                self.clear_status_indicator(Some(StatusIndicatorKind::Compaction));
+                if aborted {
+                    if reason == CompactionReason::Manual {
+                        self.show_error("Compaction cancelled");
+                    } else {
+                        self.show_status("Auto-compaction cancelled");
+                    }
+                } else if let Some(result) = result {
+                    self.chat_container.borrow_mut().clear();
+                    self.rebuild_chat_from_messages();
+                    self.add_message_to_chat(
+                        &AgentMessage::CompactionSummary(create_compaction_summary_message(
+                            &result.summary,
+                            result.tokens_before,
+                            now_millis(),
+                        )),
+                        false,
+                    );
+                    self.footer.borrow_mut().invalidate();
+                } else if let Some(error_message) = error_message {
+                    if reason == CompactionReason::Manual {
+                        self.show_error(&error_message);
+                    } else {
+                        let mut chat = self.chat_container.borrow_mut();
+                        chat.add_child(component_ref(Spacer::new(1)));
+                        chat.add_child(component_ref(Text::new(
+                            theme().fg(ThemeColor::Error, &error_message),
+                            1,
+                            0,
+                        )));
+                    }
+                }
+                self.flush_compaction_queue(will_retry).await;
+                self.ui.request_render();
+            }
+            AgentSessionEvent::AutoRetryStart {
+                attempt,
+                max_attempts,
+                delay_ms,
+                ..
+            } => {
+                self.escape_target = EscapeTarget::Retry;
+                self.show_status_indicator(StatusIndicator::retry(
+                    attempt as u32,
+                    max_attempts as u32,
+                    delay_ms,
+                ));
+                self.ui.request_render();
+            }
+            AgentSessionEvent::AutoRetryEnd {
+                attempt,
+                success,
+                final_error,
+                ..
+            } => {
+                if self.escape_target == EscapeTarget::Retry {
+                    self.escape_target = EscapeTarget::Default;
+                }
+                self.clear_status_indicator(Some(StatusIndicatorKind::Retry));
+                if !success {
+                    self.show_error(&format!(
+                        "Retry failed after {attempt} attempts: {}",
+                        final_error.unwrap_or_else(|| "Unknown error".to_owned())
+                    ));
+                }
                 self.ui.request_render();
             }
             AgentSessionEvent::SessionInfoChanged { .. } => {
@@ -1703,6 +3203,49 @@ impl InteractiveMode {
         container.clear();
         container.add_child(component_ref(IdleStatus));
     }
+}
+
+/// `getPathCommandArgument(text, command)` (`interactive-mode.ts:6074-6101`).
+fn path_command_argument(text: &str, command: &str) -> Option<String> {
+    if text == command {
+        return None;
+    }
+    let rest = text.strip_prefix(&format!("{command} "))?;
+    let arguments = rest.trim_start();
+    if arguments.is_empty() {
+        return None;
+    }
+    let first = arguments.chars().next()?;
+    if first == '"' || first == '\'' {
+        let closing = arguments[first.len_utf8()..].find(first)?;
+        return Some(arguments[first.len_utf8()..first.len_utf8() + closing].to_owned());
+    }
+    match arguments.find(char::is_whitespace) {
+        Some(index) => Some(arguments[..index].to_owned()),
+        None => Some(arguments.to_owned()),
+    }
+}
+
+/// The reason a compaction reports, as the status line names it.
+fn compaction_status_reason(reason: CompactionReason) -> CompactionStatusReason {
+    match reason {
+        CompactionReason::Manual => CompactionStatusReason::Manual,
+        CompactionReason::Threshold => CompactionStatusReason::Threshold,
+        CompactionReason::Overflow => CompactionStatusReason::Overflow,
+    }
+}
+
+/// `Date.now()` in milliseconds.
+fn now_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as i64)
+        .unwrap_or_default()
+}
+
+/// `JSON.stringify(value)` for a string — the quoting `/name` and `/debug` show.
+fn json_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| format!("\"{value}\""))
 }
 
 const DEFAULT_WORKING_MESSAGE: &str = "Working...";

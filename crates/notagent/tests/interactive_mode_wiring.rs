@@ -104,6 +104,23 @@ impl Driver {
         }
     }
 
+    /// Run the loop until `needle` is gone from the viewport.
+    async fn wait_until_absent(&mut self, needle: &str) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            if !self.terminal.get_viewport().join("\n").contains(needle) {
+                return;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!(
+                    "{needle:?} never disappeared; screen was:\n{}",
+                    self.screen()
+                );
+            }
+            self.settle_for(25).await;
+        }
+    }
+
     async fn send_keys(&mut self, data: &str) {
         self.terminal.send_input(data);
         self.settle_for(30).await;
@@ -245,6 +262,245 @@ async fn ctrl_d_exits_on_an_empty_editor() {
 
         driver.send_keys(KEY_CTRL_D).await;
         assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// Slice 2 — the slash command dispatch
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_and_hotkeys_and_changelog_print_their_blocks() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/session").await;
+        driver.wait_for("Session Info").await;
+
+        driver.submit("/hotkeys").await;
+        driver.wait_for("Keyboard Shortcuts").await;
+
+        driver.submit("/changelog").await;
+        driver.wait_for("What's New").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn name_sets_the_session_name_and_reports_it() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/name release-notes").await;
+        driver.wait_for("Session name set: release-notes").await;
+        assert_eq!(
+            app.session()
+                .with_session_manager(|manager| manager.get_session_name()),
+            Some("release-notes".to_owned())
+        );
+
+        driver.submit("/name").await;
+        driver.wait_for("Session name: release-notes").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn copy_without_an_answer_reports_that_there_is_nothing_to_copy() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/copy").await;
+        driver.wait_for("No agent messages to copy yet.").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn export_writes_the_session_to_the_given_jsonl_path() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux().set_responses(vec![reply("Exported answer")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+        driver.submit("A question").await;
+        driver.wait_for("Exported answer").await;
+
+        let target = app.path("session-export.jsonl");
+        driver.submit(&format!("/export {target}")).await;
+        driver.wait_for("Session exported to:").await;
+
+        let exported = std::fs::read_to_string(&target).expect("exported file");
+        assert!(
+            exported.contains("Exported answer"),
+            "the export carries the transcript: {exported}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn quit_ends_the_mode() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_unknown_slash_word_is_no_command_and_reaches_the_model() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux().set_responses(vec![reply("Answer to the slash")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/not-a-command").await;
+        driver.wait_for("Answer to the slash").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn new_starts_a_fresh_session() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("First session answer")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+        driver.submit("A question").await;
+        driver.wait_for("First session answer").await;
+        let first_session_id = app.session().session_id();
+
+        driver.submit("/new").await;
+        driver.wait_for("New session started").await;
+        assert_ne!(app.runtime().session().session_id(), first_session_id);
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// Slice 3 — bash mode and the queues
+// ---------------------------------------------------------------------------
+
+/// Alt+Enter — `app.message.followUp`.
+const KEY_ALT_ENTER: &str = "\x1b\r";
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_bash_command_runs_and_its_output_lands_in_the_transcript() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("!echo hello-from-bash").await;
+
+        driver.wait_for("hello-from-bash").await;
+        assert!(
+            app.session().messages().iter().any(|message| matches!(
+                message,
+                notagent_agent::types::AgentMessage::BashExecution(bash)
+                    if bash.command == "echo hello-from-bash" && bash.exclude_from_context != Some(true)
+            )),
+            "the run is recorded in the session: {:#?}",
+            app.session().messages()
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_double_bang_keeps_the_output_out_of_the_context() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("!!echo excluded-output").await;
+
+        driver.wait_for("excluded-output").await;
+        assert!(
+            app.session().messages().iter().any(|message| matches!(
+                message,
+                notagent_agent::types::AgentMessage::BashExecution(bash)
+                    if bash.command == "echo excluded-output" && bash.exclude_from_context == Some(true)
+            )),
+            "the run is recorded as excluded: {:#?}",
+            app.session().messages()
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn alt_enter_queues_a_follow_up_while_the_agent_runs() {
+    local(async {
+        // A provider slow enough that the second message arrives mid-run.
+        let app = HeadlessApp::create_slow(20.0).await;
+        app.faux().set_responses(vec![
+            reply("A long first answer that streams token by token for a while"),
+            reply("The queued follow-up answer"),
+        ]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("First question").await;
+        driver.wait_for("Working").await;
+
+        driver.send_keys("a follow-up question").await;
+        driver.send_keys(KEY_ALT_ENTER).await;
+        driver.wait_for("Follow-up: a follow-up question").await;
+
+        driver.wait_for("The queued follow-up answer").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_dequeue_action_puts_the_queued_messages_back_into_the_editor() {
+    local(async {
+        let app = HeadlessApp::create_slow(20.0).await;
+        app.faux().set_responses(vec![
+            reply("A long first answer that streams token by token for a while"),
+            reply("Second answer"),
+        ]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("First question").await;
+        driver.wait_for("Working").await;
+        driver.send_keys("queued text").await;
+        driver.send_keys(KEY_ALT_ENTER).await;
+        driver.wait_for("Follow-up: queued text").await;
+
+        // `app.message.dequeue` is Alt+Up by default.
+        driver.send_keys("\x1b[1;3A").await;
+        driver.wait_for("Restored 1 queued message to editor").await;
+        driver.wait_until_absent("Follow-up: queued text").await;
     })
     .await;
 }

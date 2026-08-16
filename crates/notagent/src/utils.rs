@@ -3,6 +3,8 @@
 pub mod abort;
 pub mod ansi;
 pub mod chalk;
+pub mod changelog;
+pub mod clipboard;
 pub mod frontmatter;
 pub mod fs_watch;
 pub mod git;

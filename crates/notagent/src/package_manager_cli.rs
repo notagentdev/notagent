@@ -7,10 +7,7 @@
 //! * Class 1 — `console.log`/`console.error` go through [`ConsoleIo`] and
 //!   `process.exitCode` becomes the return value, so the ported suite can read
 //!   both the way the TypeScript reads its `console` spies.
-//! * Class 2 — `handleConfigCommand` is not here: it opens the resource
-//!   configuration TUI (`cli/config-selector.ts` → `config-selector.ts`), which
-//!   belongs to workstream A and is not ported yet (interface request B-6). The
-//!   extension pre-pass of `createCommandSettingsManager`
+//! * Class 2 — the extension pre-pass of `createCommandSettingsManager`
 //!   (`loadProjectTrustExtensions`) is gone with the extension system, and so is
 //!   the Windows npm quarantine (`utils/windows-self-update.ts`), which
 //!   protects native npm dependencies a Rust binary does not have.
@@ -25,6 +22,7 @@ use notagent_tui::components::markdown::{Markdown, MarkdownTheme};
 use notagent_tui::tui::Component;
 use tokio_util::sync::CancellationToken;
 
+use crate::cli::config_selector::ConfigSelectorOptions;
 use crate::config::{
     APP_NAME, CONFIG_DIR_NAME, InstallEnv, InstallMethod, PACKAGE_NAME, SelfUpdateCommand,
     SelfUpdatePackageTarget, VERSION, detect_install_method, get_agent_dir,
@@ -41,6 +39,9 @@ use crate::core::project_trust::{
 use crate::core::settings_manager::{SettingsManager, SettingsManagerCreateOptions};
 use crate::core::source_info::SourceScope;
 use crate::core::trust_manager::ProjectTrustStore;
+use crate::modes::interactive::components::config_selector::{
+    ConfigWriteScope, ScopedResolvedPaths,
+};
 use crate::utils::version_check::{
     LatestPiRelease, VersionCheckOptions, get_latest_pi_release, is_newer_package_version,
 };
@@ -834,6 +835,128 @@ fn join(base: &str, part: &str) -> String {
         .join(part)
         .to_string_lossy()
         .into_owned()
+}
+
+const CONFIG_COMMAND_USAGE_SUFFIX: &str = " config [-l] [--approve|--no-approve]";
+
+fn config_command_usage() -> String {
+    format!("{APP_NAME}{CONFIG_COMMAND_USAGE_SUFFIX}")
+}
+
+/// `printConfigCommandHelp()`
+fn print_config_command_help(runtime: &PackageCommandRuntime) {
+    let paint = runtime.paint();
+    runtime.console.log(&format!(
+        "{}\n  {}\n\nOpen the resource configuration TUI to enable or disable package resources.\nWithout -l, starts in global settings (~/{CONFIG_DIR_NAME}/agent/settings.json).\nPress Tab in the TUI to switch between global and project-local modes.\n\nOptions:\n  -l, --local       Edit project overrides ({CONFIG_DIR_NAME}/settings.json)\n  -a, --approve     Trust project-local files for this command with -l\n  -na, --no-approve Ignore project-local files for this command with -l\n",
+        paint.bold("Usage:"),
+        config_command_usage(),
+    ));
+}
+
+/// `handleConfigCommand(args, runtimeOptions)`
+///
+/// `None` means the arguments are not the config command (the TypeScript's
+/// `false`); otherwise the process exit code. TypeScript ends the successful
+/// run with `process.exit(0)` from inside the dialog callback; the port returns
+/// the code so the caller's render loop unwinds first (deviation class 1).
+pub async fn handle_config_command(
+    args: &[String],
+    runtime: &PackageCommandRuntime,
+) -> Option<i32> {
+    let (command, rest) = args.split_first()?;
+    if command != "config" {
+        return None;
+    }
+    let paint = runtime.paint();
+    let console = runtime.console.clone();
+
+    if rest.iter().any(|arg| arg == "-h" || arg == "--help") {
+        print_config_command_help(runtime);
+        return Some(0);
+    }
+
+    let mut local = false;
+    let mut project_trust_override: Option<bool> = None;
+    for arg in rest {
+        match arg.as_str() {
+            "-l" | "--local" => local = true,
+            "-a" | "--approve" => project_trust_override = Some(true),
+            "-na" | "--no-approve" => project_trust_override = Some(false),
+            arg if arg.starts_with('-') => {
+                console.error(&paint.red(&format!("Unknown option {arg} for \"config\".")));
+                console.error(&paint.dim(&format!(
+                    "Use \"{APP_NAME} --help\" or \"{}\".",
+                    config_command_usage()
+                )));
+                return Some(1);
+            }
+            arg => {
+                console.error(&paint.red(&format!("Unexpected argument {arg}.")));
+                console.error(&paint.dim(&format!("Usage: {}", config_command_usage())));
+                return Some(1);
+            }
+        }
+    }
+
+    let (settings_manager, project_trust_warnings) =
+        create_command_settings_manager(runtime, project_trust_override, false).await;
+    report_project_trust_warnings(&project_trust_warnings, runtime);
+    if local && !settings_manager.is_project_trusted() {
+        console.error(
+            &paint.red("Project is not trusted. Use --approve to modify local resource config."),
+        );
+        return Some(1);
+    }
+    report_settings_errors(&settings_manager, "config command", runtime);
+
+    let global_settings_manager = Arc::new(SettingsManager::create(
+        Path::new(&runtime.cwd),
+        Some(Path::new(&runtime.agent_dir)),
+        SettingsManagerCreateOptions {
+            project_trusted: Some(false),
+        },
+    ));
+    let global_resolved_paths = DefaultPackageManager::new(PackageManagerOptions {
+        cwd: runtime.cwd.clone(),
+        agent_dir: runtime.agent_dir.clone(),
+        settings_manager: global_settings_manager,
+        command_runner: runtime.command_runner.clone(),
+    })
+    .resolve(None)
+    .await
+    .unwrap_or_default();
+    let project_resolved_paths = if settings_manager.is_project_trusted() {
+        DefaultPackageManager::new(PackageManagerOptions {
+            cwd: runtime.cwd.clone(),
+            agent_dir: runtime.agent_dir.clone(),
+            settings_manager: Arc::clone(&settings_manager),
+            command_runner: runtime.command_runner.clone(),
+        })
+        .resolve(None)
+        .await
+        .unwrap_or_default()
+    } else {
+        global_resolved_paths.clone()
+    };
+
+    let project_mode_available = settings_manager.is_project_trusted();
+    crate::cli::config_selector::select_config(ConfigSelectorOptions {
+        resolved_paths: ScopedResolvedPaths {
+            global: global_resolved_paths,
+            project: project_resolved_paths,
+        },
+        settings_manager,
+        cwd: &runtime.cwd,
+        agent_dir: &runtime.agent_dir,
+        write_scope: if local {
+            ConfigWriteScope::Project
+        } else {
+            ConfigWriteScope::Global
+        },
+        project_mode_available,
+    })
+    .await;
+    Some(0)
 }
 
 /// `handlePackageCommand(args, runtimeOptions)`
