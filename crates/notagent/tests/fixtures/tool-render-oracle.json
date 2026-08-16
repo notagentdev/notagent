@@ -4754,7 +4754,7 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls -la\u001b[22m\u001b[39m                                                                                            "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m \u001b[38;2;181;206;168m-la\u001b[39m                                                                                            "
 			]
 		],
 		"resultLines": null
@@ -4781,7 +4781,7 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[38;2;128;128;128m...\u001b[39m\u001b[22m\u001b[39m                                                                                               "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;128;128;128m...\u001b[39m                                                                                               "
 			]
 		],
 		"resultLines": null
@@ -4810,7 +4810,7 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[38;2;128;128;128m...\u001b[39m\u001b[22m\u001b[39m                                                                                               "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;128;128;128m...\u001b[39m                                                                                               "
 			]
 		],
 		"resultLines": null
@@ -4839,7 +4839,7 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[22m\u001b[39m                                                                                     "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;204;102;102m[invalid arg]\u001b[39m                                                                                     "
 			]
 		],
 		"resultLines": null
@@ -4869,7 +4869,7 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ npm test\u001b[22m\u001b[39m\u001b[38;2;128;128;128m (timeout 120s)\u001b[39m                                                                           "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mnpm\u001b[39m test                                                                                          "
 			]
 		],
 		"resultLines": null
@@ -4899,7 +4899,7 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ npm test\u001b[22m\u001b[39m                                                                                          "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mnpm\u001b[39m test                                                                                          "
 			]
 		],
 		"resultLines": null
@@ -4929,7 +4929,7 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ npm test\u001b[22m\u001b[39m                                                                                          "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mnpm\u001b[39m test                                                                                          "
 			]
 		],
 		"resultLines": null
@@ -4965,7 +4965,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m                                                                                                "
 			]
 		],
 		"resultLines": [
@@ -5005,7 +5005,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m                                                                                                "
 			]
 		],
 		"resultLines": [
@@ -5049,7 +5049,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m                                                                                                "
 			]
 		],
 		"resultLines": [
@@ -5099,7 +5099,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m                                                                                                "
 			]
 		],
 		"resultLines": [
@@ -5154,7 +5154,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m                                                                                                "
 			]
 		],
 		"resultLines": [
@@ -5212,7 +5212,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m                                                                                                "
 			]
 		],
 		"resultLines": [
@@ -5256,7 +5256,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ ls\u001b[22m\u001b[39m                                                                                                "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170mls\u001b[39m                                                                                                "
 			]
 		],
 		"resultLines": [
@@ -5300,7 +5300,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ sleep 1\u001b[22m\u001b[39m                                                                                           "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170msleep\u001b[39m 1                                                                                           "
 			]
 		],
 		"resultLines": [
@@ -5344,7 +5344,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1m$ sleep 1\u001b[22m\u001b[39m                                                                                           "
+				"\u001b[38;2;212;212;212m\u001b[1m$ \u001b[22m\u001b[39m\u001b[38;2;220;220;170msleep\u001b[39m 1                                                                                           "
 			]
 		],
 		"resultLines": [

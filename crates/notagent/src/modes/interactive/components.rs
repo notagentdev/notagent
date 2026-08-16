@@ -31,6 +31,7 @@ pub mod mermaid;
 pub mod model_selector;
 pub mod oauth_selector;
 pub mod scoped_models_selector;
+pub mod search_block;
 pub mod session_selector;
 pub mod session_selector_search;
 pub mod settings_selector;

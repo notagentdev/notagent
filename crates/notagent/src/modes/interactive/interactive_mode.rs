@@ -138,6 +138,7 @@ use crate::modes::interactive::components::oauth_selector::{
 use crate::modes::interactive::components::scoped_models_selector::{
     ModelsCallbacks, ModelsConfig, RefreshStatusKind, ScopedModelsSelectorComponent,
 };
+use crate::modes::interactive::components::search_block::{SearchBlockComponent, is_search_tool};
 use crate::modes::interactive::components::session_selector::{
     LoadRequest, SessionScope, SessionSelectorComponent, SessionSelectorOptions,
 };
@@ -933,7 +934,26 @@ expandable!(
     BranchSummaryMessageComponent,
     CustomMessageComponent,
     BashExecutionComponent,
+    SearchBlockComponent,
 );
+
+/// Whether a finished assistant message ends a run of searches: it carries
+/// visible text and announced no search call of its own (v0.1.8 search block).
+fn assistant_message_ends_search_run(message: &notagent_ai::types::AssistantMessage) -> bool {
+    let has_visible_text = message.content.iter().any(|content| {
+        matches!(
+            content,
+            notagent_ai::types::AssistantContent::Text(text) if !text.text.trim().is_empty()
+        )
+    });
+    let announced_search = message.content.iter().any(|content| {
+        matches!(
+            content,
+            notagent_ai::types::AssistantContent::ToolCall(call) if is_search_tool(&call.name)
+        )
+    });
+    has_visible_text && !announced_search
+}
 
 /// `class ExpandableText extends Text` (`interactive-mode.ts:190-216`).
 struct ExpandableText {
@@ -1054,6 +1074,16 @@ pub struct InteractiveMode {
     pending_tools: Vec<(String, Rc<RefCell<ToolExecutionComponent>>)>,
     /// Every tool row in the transcript, for the settings that reach into them.
     chat_tool_rows: Vec<Rc<RefCell<ToolExecutionComponent>>>,
+    /// The open search block collecting consecutive search calls, and every
+    /// block of the session for completion routing (takeover of the
+    /// reference's explore grouping, user decision 2026-08-17, v0.1.8).
+    search_block: Option<Rc<RefCell<SearchBlockComponent>>>,
+    chat_search_blocks: Vec<Rc<RefCell<SearchBlockComponent>>>,
+    /// Subagent lifecycle entries already written to the transcript, keyed by
+    /// task id (user decision 2026-08-17, v0.1.8: one "started" and one
+    /// "done"/"failed" line per subagent).
+    announced_subagent_starts: std::collections::HashSet<String>,
+    announced_subagent_ends: std::collections::HashSet<String>,
     /// Every expandable child of the transcript (`app.tools.expand`).
     chat_expandables: Vec<Rc<RefCell<dyn Expandable>>>,
     last_escape_time: Option<Instant>,
@@ -1310,6 +1340,10 @@ impl InteractiveMode {
             streaming_message: None,
             pending_tools: Vec::new(),
             chat_tool_rows: Vec::new(),
+            search_block: None,
+            chat_search_blocks: Vec::new(),
+            announced_subagent_starts: std::collections::HashSet::new(),
+            announced_subagent_ends: std::collections::HashSet::new(),
             chat_expandables: Vec::new(),
             last_escape_time: None,
             bash_component: None,
@@ -3103,6 +3137,7 @@ impl InteractiveMode {
             .map(|manager| manager.list(true, None))
             .unwrap_or_default();
         self.refresh_subagent_panel(&all_tasks);
+        self.announce_subagent_transitions(&all_tasks);
 
         self.has_foreground_tasks.set(
             all_tasks
@@ -3133,6 +3168,70 @@ impl InteractiveMode {
             return;
         }
         self.tasks_panel_signature = signature;
+        self.ui.request_render();
+    }
+
+    /// Transcript entries for the subagent lifecycle (user decision
+    /// 2026-08-17, v0.1.8): one line when a subagent starts, one when it
+    /// ends. Marker colours follow the tasks panel — grey while running,
+    /// green on clean completion, red for everything that ended badly.
+    /// Driven by the same one-second tick that feeds the panel, so a
+    /// subagent of any origin (foreground, background, resumed) shows up.
+    fn announce_subagent_transitions(&mut self, tasks: &[TaskInfo]) {
+        use crate::core::tasks::types::is_terminal_task_status;
+        use crate::modes::interactive::components::subagent_panel::format_elapsed;
+        use crate::modes::interactive::components::tasks_panel::single_line;
+
+        for task in tasks {
+            let TaskInfo::Subagent(info) = task else {
+                continue;
+            };
+            let base = &info.base;
+            let theme_instance = theme();
+            if self.announced_subagent_starts.insert(base.task_id.clone()) {
+                let line = format!(
+                    " {} {} {}  {}",
+                    theme_instance.fg(ThemeColor::Dim, "○"),
+                    theme_instance.fg(ThemeColor::Text, "subagent started"),
+                    theme_instance.fg(ThemeColor::Text, &info.mode_id),
+                    theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
+                );
+                self.append_subagent_entry(line);
+            }
+            if is_terminal_task_status(base.status)
+                && self.announced_subagent_ends.insert(base.task_id.clone())
+            {
+                let clean = base.status == crate::core::tasks::types::TaskStatus::Completed;
+                let (marker_colour, label) = if clean {
+                    (ThemeColor::Success, "subagent done")
+                } else {
+                    (ThemeColor::Error, "subagent failed")
+                };
+                let ended_at = base
+                    .ended_at
+                    .unwrap_or_else(crate::modes::interactive::components::tasks_panel::now_ms);
+                let line = format!(
+                    " {} {} {}  {}",
+                    theme_instance.fg(marker_colour, "○"),
+                    theme_instance.fg(ThemeColor::Text, label),
+                    theme_instance.fg(ThemeColor::Text, &info.mode_id),
+                    theme_instance.fg(ThemeColor::Dim, &format_elapsed(base.started_at, ended_at)),
+                );
+                self.append_subagent_entry(line);
+            }
+        }
+    }
+
+    /// Appends one lifecycle line to the transcript. It is a non-search
+    /// addition, so it also ends an open search block.
+    fn append_subagent_entry(&mut self, line: String) {
+        self.close_search_block();
+        let mut chat = self.chat_container.borrow_mut();
+        if !chat.children.is_empty() {
+            chat.add_child(component_ref(Spacer::new(1)));
+        }
+        chat.add_child(component_ref(Text::new(line, 0, 0)));
+        drop(chat);
         self.ui.request_render();
     }
 
@@ -7358,6 +7457,14 @@ impl InteractiveMode {
                         }
                         self.maybe_show_cache_miss_notice(&message);
                     }
+                    // Visible assistant text between searches ends the block —
+                    // unless this very message announced search calls (its
+                    // text preceded the searches it started).
+                    if assistant_message_ends_search_run(&message)
+                        || matches!(message.stop_reason, StopReason::Aborted | StopReason::Error)
+                    {
+                        self.close_search_block();
+                    }
                     self.streaming_component = None;
                     self.streaming_message = None;
                     self.footer.borrow_mut().invalidate();
@@ -7404,6 +7511,16 @@ impl InteractiveMode {
                         .update_result(tool_result(result, is_error), false);
                     self.pending_tools.retain(|(id, _)| id != &tool_call_id);
                     self.ui.request_render();
+                } else if is_search_tool(&tool_name) {
+                    // Search calls live in a block, not in a tool row; the
+                    // block may already be closed, so route by call id.
+                    for block in self.chat_search_blocks.iter().rev() {
+                        if block.borrow().has_call(&tool_call_id) {
+                            block.borrow_mut().complete_call(&tool_call_id, is_error);
+                            self.ui.request_render();
+                            break;
+                        }
+                    }
                 }
                 // Fed from the result rather than from the store: a list whose
                 // items are all completed is gone from the store by now.
@@ -7560,6 +7677,20 @@ impl InteractiveMode {
         if tool_name == "todo_write" {
             return;
         }
+        // Consecutive search calls collapse into one "Searching…/Searched"
+        // block instead of individual rows (takeover of the reference's
+        // explore grouping, user decision 2026-08-17, v0.1.8). A repeated
+        // call id replaces its entry, so the streaming double-announce stays
+        // one row.
+        if is_search_tool(tool_name) {
+            let block = self.open_search_block(false);
+            block
+                .borrow_mut()
+                .push_call(tool_name, tool_call_id.to_owned(), &args);
+            return;
+        }
+        // Any other tool row ends the run of searches.
+        self.close_search_block();
         let component = Rc::new(RefCell::new(self.create_tool_component(
             tool_name,
             tool_call_id,
@@ -7576,6 +7707,38 @@ impl InteractiveMode {
             .push(Rc::clone(&component) as Rc<RefCell<dyn Expandable>>);
         self.pending_tools
             .push((tool_call_id.to_owned(), component));
+    }
+
+    /// Ends the run of consecutive searches: the block freezes with its final
+    /// success or error background.
+    fn close_search_block(&mut self) {
+        if let Some(block) = self.search_block.take() {
+            block.borrow_mut().close();
+        }
+    }
+
+    /// The open search block, or a fresh one appended to the chat.
+    fn open_search_block(&mut self, replayed: bool) -> Rc<RefCell<SearchBlockComponent>> {
+        if let Some(block) = self
+            .search_block
+            .as_ref()
+            .filter(|block| block.borrow().is_open())
+        {
+            return Rc::clone(block);
+        }
+        let block = Rc::new(RefCell::new(SearchBlockComponent::new()));
+        if replayed {
+            block.borrow_mut().mark_replayed();
+        }
+        block.borrow_mut().set_expanded(self.tool_output_expanded);
+        self.chat_container
+            .borrow_mut()
+            .add_child(Rc::clone(&block) as ComponentRef);
+        self.chat_expandables
+            .push(Rc::clone(&block) as Rc<RefCell<dyn Expandable>>);
+        self.chat_search_blocks.push(Rc::clone(&block));
+        self.search_block = Some(Rc::clone(&block));
+        block
     }
 
     fn create_tool_component(
@@ -7651,6 +7814,9 @@ impl InteractiveMode {
             match item {
                 AgentMessage::Assistant(message) => {
                     self.add_message_to_chat(item, populate_history);
+                    if assistant_message_ends_search_run(message) {
+                        self.close_search_block();
+                    }
                     for content in message.content.iter() {
                         let notagent_ai::types::AssistantContent::ToolCall(call) = content else {
                             continue;
@@ -7660,6 +7826,24 @@ impl InteractiveMode {
                         if call.name == "todo_write" {
                             continue;
                         }
+                        // Restored searches group like live ones; the block is
+                        // replayed history and closes at the end of the items.
+                        if is_search_tool(&call.name) {
+                            let block = self.open_search_block(true);
+                            block.borrow_mut().push_call(
+                                &call.name,
+                                call.id.clone(),
+                                &serde_json::Value::Object(call.arguments.clone()),
+                            );
+                            if matches!(
+                                message.stop_reason,
+                                StopReason::Aborted | StopReason::Error
+                            ) {
+                                block.borrow_mut().complete_call(&call.id, true);
+                            }
+                            continue;
+                        }
+                        self.close_search_block();
                         let component = Rc::new(RefCell::new(self.create_tool_component(
                             &call.name,
                             &call.id,
@@ -7709,18 +7893,36 @@ impl InteractiveMode {
                         component
                             .borrow_mut()
                             .update_result(result_from_message(result), false);
+                    } else {
+                        // Search results have no row; route them to the block
+                        // carrying the call.
+                        for block in self.chat_search_blocks.iter().rev() {
+                            if block.borrow().has_call(&result.tool_call_id) {
+                                block
+                                    .borrow_mut()
+                                    .complete_call(&result.tool_call_id, result.is_error);
+                                break;
+                            }
+                        }
                     }
                 }
                 message => self.add_message_to_chat(message, populate_history),
             }
         }
 
+        // Restored history is over; whatever block is still open freezes.
+        self.close_search_block();
         self.pending_tools.extend(rendered_pending);
         self.ui.request_render();
     }
 
     /// `addMessageToChat` (`interactive-mode.ts:3710-3815`).
     fn add_message_to_chat(&mut self, message: &AgentMessage, populate_history: bool) {
+        // A new message row between searches ends the block (the streamed
+        // assistant path closes it at MessageEnd instead).
+        if !matches!(message, AgentMessage::Assistant(_)) {
+            self.close_search_block();
+        }
         match message {
             AgentMessage::User(message) => {
                 let text = user_message_text(message);

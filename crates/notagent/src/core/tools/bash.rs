@@ -33,8 +33,7 @@ use crate::core::tools::output_accumulator::{
 use crate::core::tools::render_utils::{get_text_output, invalid_arg_text, str_arg};
 use crate::core::tools::tool_definition::{
     RenderFuture, SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext,
-    ToolRenderResult, ToolRenderResultOptions, display_arg, tool_render_state,
-    wrap_tool_definition,
+    ToolRenderResult, ToolRenderResultOptions, tool_render_state, wrap_tool_definition,
 };
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, format_size, truncation_from_details,
@@ -1001,35 +1000,62 @@ fn format_duration(elapsed: Duration) -> String {
     format!("{:.1}s", elapsed.as_secs_f64())
 }
 
-fn format_bash_call(args: &Value, theme: &Theme) -> String {
+/// The `$ command` header, restyled after the reference's bash toolbox
+/// (takeover from ../notagent-main-rust, user decision 2026-08-17, v0.1.8):
+/// a bold `$ ` prompt, the command syntax-coloured, and — while the command
+/// runs — a `[Running: 5s / timeout: 1m]` indicator in place of the TS
+/// original's static `(timeout Ns)` suffix.
+fn format_bash_call(args: &Value, theme: &Theme, running_for: Option<Duration>) -> String {
     let command = str_arg(args.get("command"));
-    // `timeout ?` — every falsy value hides the suffix.
-    let timeout_suffix = match args.get("timeout") {
-        Some(timeout) if is_truthy_timeout(timeout) => theme.fg(
-            ThemeColor::Muted,
-            &format!(" (timeout {}s)", display_arg(timeout)),
-        ),
-        _ => String::new(),
-    };
+    let prompt = theme.fg(ThemeColor::ToolTitle, &theme.bold("$ "));
     let command_display = match &command {
         None => invalid_arg_text(theme),
         Some(command) if command.is_empty() => theme.fg(ThemeColor::ToolOutput, "..."),
-        Some(command) => command.clone(),
+        Some(command) => render_shell_command(command),
     };
-    theme.fg(
-        ThemeColor::ToolTitle,
-        &theme.bold(&format!("$ {command_display}")),
-    ) + &timeout_suffix
+    let mut header = format!("{prompt}{command_display}");
+    if let Some(elapsed) = running_for {
+        let elapsed_secs = elapsed.as_secs();
+        let elapsed_text = if elapsed_secs >= 60 {
+            format!("{}m {}s", elapsed_secs / 60, elapsed_secs % 60)
+        } else {
+            format!("{elapsed_secs}s")
+        };
+        let default_timeout = if args
+            .get("run_in_background")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            DEFAULT_BACKGROUND_TIMEOUT_S
+        } else {
+            DEFAULT_TIMEOUT_S
+        };
+        let timeout_secs = args
+            .get("timeout")
+            .and_then(Value::as_f64)
+            .filter(|timeout| *timeout > 0.0)
+            .unwrap_or(default_timeout) as u64;
+        let timeout_text = if timeout_secs >= 60 {
+            if timeout_secs.is_multiple_of(60) {
+                format!("{}m", timeout_secs / 60)
+            } else {
+                format!("{}m {}s", timeout_secs / 60, timeout_secs % 60)
+            }
+        } else {
+            format!("{timeout_secs}s")
+        };
+        header.push_str(&theme.fg(
+            ThemeColor::Muted,
+            &format!(" [Running: {elapsed_text} / timeout: {timeout_text}]"),
+        ));
+    }
+    header
 }
 
-fn is_truthy_timeout(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(value) => *value,
-        Value::Number(number) => number.as_f64().is_some_and(|number| number != 0.0),
-        Value::String(text) => !text.is_empty(),
-        Value::Array(_) | Value::Object(_) => true,
-    }
+/// The command through the tree-sitter bash highlighter, in the reference's
+/// manner; a command the parser rejects renders plain.
+fn render_shell_command(command: &str) -> String {
+    crate::modes::interactive::theme::theme::highlight_code(command, Some("bash")).join("\n")
 }
 
 fn rebuild_bash_result_component(
@@ -1214,7 +1240,13 @@ impl ToolDefinition for BashToolDefinition {
             state.started_at = Some(Instant::now());
             state.ended_at = None;
         }
-        let text = format_bash_call(args, theme);
+        // The running indicator lives on the call line, as in the reference;
+        // it disappears the moment the result records an end time.
+        let running_for = state
+            .started_at
+            .filter(|_| state.ended_at.is_none())
+            .map(|started_at| started_at.elapsed());
+        let text = format_bash_call(args, theme, running_for);
         let component = state
             .call
             .get_or_insert_with(|| Rc::new(RefCell::new(Text::new("", 0, 0))));
