@@ -26,8 +26,8 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/memory.ts` | 219 | `memory.rs` | verifiziert (Task 2) | Klasse 1: Zustand hinter `Arc<Mutex<..>>` statt Closure-Variablen; `getSpans()` liefert ebenso losgelöste Kopien. Die JS-`try/catch`-Blöcke gegen unlesbare Payloads entfallen (Rust-Werte können beim Lesen nicht werfen) |
 | `src/noop.ts` | 20 | `noop.rs` | verifiziert (Task 2) | Klasse 1: `Object.freeze` entfällt; der geteilte inerte Span ist ein `OnceLock`-Singleton |
 | `src/testing/conformance.ts` | 315 | `testing/conformance.rs` | verifiziert (Task 2) | Klasse 1: 6 der 9 Fälle portiert; drei Fälle prüfen ausschließlich JS-`Proxy`-Objekte, deren Lesezugriffe werfen — in Rust gegenstandslos (siehe Ausschlüsse). Der Nebenläufigkeitsfall nutzt im Suite-Code das objekt-sichere Primitiv; die echte Nebenläufigkeit des Wrappers prüft `tests/conformance.rs::concurrent_children_record_independent_parentage` |
-| `src/testing/types.ts` | 18 | `testing/types.rs` | portiert (Task 2) | Klasse 1: `AsyncDisposable` entfällt; Aufräumen über `Drop` |
-| `src/testing/index.ts` | 6 | `testing.rs` | portiert (Task 2) | |
+| `src/testing/types.ts` | 18 | `testing/types.rs` | verifiziert (Task 2) | Klasse 1: `AsyncDisposable` entfällt; Aufräumen über `Drop` |
+| `src/testing/index.ts` | 6 | `testing.rs` | verifiziert (Task 2) | |
 | `test/telemetry.test.ts` | 197 | `tests/conformance.rs` | Tests portiert (Task 2) | Klasse 1: Die `expectTypeOf`/`@ts-expect-error`-Blöcke prüfen ausschließlich TS-Typinferenz und haben kein Laufzeitverhalten |
 | `test/conformance.test.ts` | 46 | `tests/conformance.rs` | Tests portiert (Task 2) | |
 
@@ -42,8 +42,8 @@ Ledger geführt und portiert. Es gibt keine weiteren Dateien im Paket.
 | `src/memory.ts` | 219 | `memory.rs` | verifiziert (Task 2) |
 | `src/noop.ts` | 20 | `noop.rs` | verifiziert (Task 2) |
 | `src/testing/conformance.ts` | 315 | `testing/conformance.rs` | verifiziert (Task 2) |
-| `src/testing/types.ts` | 18 | `testing/types.rs` | portiert (Task 2) |
-| `src/testing/index.ts` | 6 | `testing.rs` | portiert (Task 2) |
+| `src/testing/types.ts` | 18 | `testing/types.rs` | verifiziert (Task 2) |
+| `src/testing/index.ts` | 6 | `testing.rs` | verifiziert (Task 2) |
 | `test/telemetry.test.ts` | 197 | `tests/conformance.rs` | portiert (Task 2) |
 | `test/conformance.test.ts` | 46 | `tests/conformance.rs` | portiert (Task 2) |
 

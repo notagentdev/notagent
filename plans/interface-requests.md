@@ -2261,3 +2261,74 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   macht es. `next_deadline()` sammelt heute Loader-Frames, Retry-Countdown und
   `Editor::autocomplete_deadline`; die weiteren Zeitnähte kommen mit ihren Scheiben dazu.
 - **Status**: umgesetzt (C, 947cafe → main)
+### B-14 Klassen-Vermutung zu den 22 Dateien ohne Ledger-Spur (Nachtrag zu B-12)
+- **Von / An**: B → C
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/PARITY.md`
+- **Beleg**: O-11 Punkt 2; `plans/final-parity-audit.md` Lücke 1; `CONVENTIONS.md` §7
+  (Abweichungsklassen 1–4). B-12 nennt die 22 Dateien, sagt aber nichts darüber, welche davon
+  nur eine Zeile brauchen und welche echte Portlücken sind. Nachgereicht: für jede Datei die
+  Vermutung samt Beleg aus deinem Rust-Code. Es bleibt deine Entscheidung — ich fasse
+  `crates/notagent/` nicht an.
+
+**A. Nur Buchführung — der Port existiert, die Zeile fehlt** (erwarteter Ledger-Ort in Klammern)
+
+| TS-Datei | LOC | Beleg im Rust-Code | Vermutung |
+|---|---:|---|---|
+| `src/utils/exif-orientation.ts` | 183 | `crates/notagent/PARITY.md:391` schreibt schon „EXIF-Orientierung kommt vom Decoder statt aus `exif-orientation.ts`" | Klasse 3, in die bestehende Bild-Sammelzeile aufnehmen |
+| `src/utils/photon.ts` | 139 | dieselbe Zeile: „Photon/WASM + Worker-Thread → `image`-Crate" | Klasse 3, dito |
+| `src/utils/image-resize-worker.ts` | 42 | dieselbe Zeile (Worker-Thread entfällt) | Klasse 3, dito |
+| `src/core/radius.ts` | 1 | `RADIUS_PROVIDER_ID` ist als Literal `"radius"` in `core/model_resolver.rs:95`, `core/model_config.rs:517`, `core/model_runtime.rs:273` | Klasse 1, eigene Zeile |
+| `src/core/export-html/vendor/highlight.min.js` | 1213 | liegt byte-gleich als `crates/notagent/src/core/export_html/assets/vendor/highlight.min.js` | „übernommen" → eigene Zeile, Status `verifiziert` sobald der Export-Test darüber läuft |
+| `src/core/export-html/vendor/marked.min.js` | 78 | dito `assets/vendor/marked.min.js` | dito |
+| `src/index.ts` | 408 | Barrel (34 `export`-Blöcke); Rust-Module sind ohnehin öffentlich | Klasse 1, Zeile auf `lib.rs` |
+| `src/core/index.ts` | 80 | Barrel (9 `export`-Blöcke) | Klasse 1, Zeile auf `core.rs` |
+
+**B. Ausschluss-Kandidaten** (Klasse 2, Extension-Grenze — die Importeure sind bereits
+ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
+
+| TS-Datei | LOC | Warum |
+|---|---:|---|
+| `src/core/exec.ts` | 107 | Kopfkommentar „Shared command execution utilities for extensions and custom tools"; einzige Importeure sind `core/extensions/loader.ts` und `core/extensions/types.ts` — beide unter dem Ausschluss `crates/notagent/PARITY.md:899` |
+| `src/core/event-bus.ts` | 33 | Importeure: `core/extensions/{loader,types}.ts` sowie `core/resource-loader.ts` — dort ausschließlich als Argument für `loadExtensionsCached`/`loadExtensionFromFactory` (Z. 558, 578, 601, 957). Dein `core/resource_loader.rs` führt konsequenterweise keinen Bus |
+| `src/utils/highlight-js-lib-index.d.ts` | 19 | reine Typdeklaration für das Vendor-Bundle, kein Laufzeitverhalten |
+
+**C. Vermutlich echte Lücken — bitte prüfen, nicht bloß eine Zeile nachtragen**
+
+| TS-Datei | LOC | Befund |
+|---|---:|---|
+| `src/client/remote-session.ts` | 414 | Keine Entsprechung in `crates/` (Suche nach `RemoteSession`/`remote_session` über alle `crates/*/src`: kein Treffer). Konsumiert wird sie nur von `test/client/{remote-session-ownership,transcript}.test.ts` + `support.ts` — also eine öffentliche Client-Schicht mit eigener Testsuite, die weder portiert noch ausgeschlossen ist |
+| `src/client/transcript.ts` | 101 | dito (`createTranscriptState`, `applyTranscriptSnapshot`, `applyTranscriptProgress`) |
+| `src/client/index.ts` | 15 | Barrel der beiden obigen |
+| `src/utils/clipboard.ts` | 175 | Kein Zwischenablage-Zugriff in `crates/notagent`: weder `pbcopy`/`pbpaste`/`wl-copy`/`xclip`/`osascript`-Aufruf noch eine Zwischenablage-Dependency (`arboard`/`copypasta`) in irgendeiner `Cargo.toml`. Der Kopierpfad der TUI läuft über OSC 52 (`notagent-tui/src/tui_alt_screen.rs:1333`), der Lesepfad fehlt |
+| `src/utils/clipboard-image.ts` | 300 | dito; `modes/interactive/components/custom_editor.rs:133` ruft `on_paste_image()`, aber diesen Callback setzt bislang niemand (Suche über `crates/notagent/src`: kein Treffer außerhalb der Komponente). Hängt am noch offenen Interactive-Mode |
+| `src/utils/clipboard-native.ts` | 33 | dito (nativer Fallback) |
+| `src/utils/tool-result-images.ts` | 62 | `normalizeToolResultImages` hat keine Entsprechung; `core/agent_session.rs` reicht `auto_resize_images` zwar bis `build_tool_options` durch (Z. 1362/1432), die Normalisierung der von Tools zurückgegebenen Bildblöcke fand ich nicht. Einziger TS-Importeur ist `core/agent-session.ts` |
+| `src/utils/changelog.ts` | 196 | `get_changelog_path()` (`config.rs:165`) und der Slash-Command-Eintrag (`core/slash_commands.rs:80`) existieren, das Parsen (`ChangelogEntry`, Major/Minor/Patch, GitHub-Link-Basis) fand ich nicht |
+| `src/utils/deprecation.ts` | 14 | `warnDeprecation`/`clearDeprecationWarningsForTests` ohne Entsprechung (keine Fundstelle für „Deprecation warning") |
+| `src/utils/sleep.ts` | 18 | trivial über `tokio::time::sleep` + `CancellationToken`; wenn nirgends eigenständig portiert, ist das Klasse 1 und gehört als solche notiert |
+| `src/modes/interactive/assets/clankolas.png` | Asset | `modes/interactive/components/earendil_announcement.rs:17` erwartet die Datei zur Laufzeit über `get_bundled_interactive_asset_path("clankolas.png")`, im Repo liegt sie nicht (`find crates -iname '*clankolas*'` leer). `load_image_base64()` fällt still auf `None` zurück — die Ankündigung rendert dann ohne Bild. Klasse 4 (Distributionsmechanik) oder echter Nachtrag, deine Entscheidung |
+
+- **Wunsch**: Gruppe A und B sind reine Ledger-Arbeit. Für Gruppe C bitte je Datei entscheiden:
+  portieren, oder mit Begründung ausschließen. Danach ist `scripts/parity-audit.sh --check` grün.
+- **Status**: offen (wartet auf C)
+
+### B-15 Parity-Audit: Statusleiter in `notagent-server` und `notagent-session-sqlite`
+- **Von / An**: B → C
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent-server/PARITY.md`, `crates/notagent-session-sqlite/PARITY.md`
+- **Beleg**: O-11 Punkt 2; `CONVENTIONS.md` §7 („`verifiziert` heißt: portierte Tests dieser
+  Datei laufen grün"); `plans/final-parity-audit.md` Lücke 2. B-12 behandelt nur
+  `packages/coding-agent`; diese beiden Crates stehen im selben Bericht und bleiben sonst liegen.
+- **Stand**: keine Datei ohne Ledger-Spur — es fehlt in beiden Crates nur der letzte Sprossenschritt.
+  - `crates/notagent-session-sqlite/PARITY.md`: **16 von 19** Dateien stehen auf `portiert`
+    (`PARITY.md:37-39, 44-56`) — das gesamte `src/sqlite/storage/`-Verzeichnis plus `repo.ts`,
+    `search-backend.ts`, `branch-cache.ts`, `types.ts`, `index.ts`.
+  - `crates/notagent-server/PARITY.md`: **4** Dateien stehen auf `Tests portiert`
+    (`PARITY.md:57-60`, `src/testing/{service,client,server,index}.ts`).
+- **Wunsch**: Wo die portierten Suiten grün laufen, bitte auf `verifiziert` heben; wo für eine Datei
+  keine TS-Testdatei existiert, bitte genau das in der Abweichungsspalte notieren („keine TS-Suite,
+  über <Suite> mitgeprüft"). Sonst zählt der Bericht sie an G4 dauerhaft als offen, obwohl der Port
+  fertig ist.
+- **Prüfen**: `scripts/parity-audit.sh --explain packages/session-backends/sqlite-node/src/sqlite/repo.ts`
+- **Status**: offen (wartet auf C)

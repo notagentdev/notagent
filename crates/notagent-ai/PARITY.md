@@ -251,7 +251,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/utils/sanitize-unicode.ts` | 25 | `utils/sanitize_unicode.rs` | portiert (Task 3) | Klasse 1: Rust-Strings können keine unpaarigen Surrogate enthalten; die Funktion ist die Identität, die UTF-16-Variante bleibt für Provider-Payloads |
 | `src/utils/abort.ts` + `abort-signals.ts` | 91 | `utils/abort.rs` | portiert (Task 3) | Klasse 3: `AbortController` → `CancellationToken`; `combineAbortSignals` leitet über eine Task weiter, `cleanup()` bricht sie ab |
 | `src/utils/fetch.rs` (Rust-eigen) | — | `utils/fetch.rs` | portiert (Task 8) | Klasse 3: `ReqwestFetch` als Default-Implementierung von `FetchFn`; Antwortkörper als Chunk-Strom für den SSE-Decoder |
-| `src/utils/error-body.ts` | 149 | `utils/error_body.rs` | portiert (Task 3) | Klasse 3: Statt SDK-Feldnamen zu erraten, liefert die HTTP-Schicht `RawProviderError`; Tests folgen in Task 13 |
+| `src/utils/error-body.ts` | 149 | `utils/error_body.rs` | verifiziert (Task 3) | Klasse 3: Statt SDK-Feldnamen zu erraten, liefert die HTTP-Schicht `RawProviderError`. `tests/error_body.rs` portiert `test/error-body.test.ts` (226 LOC) vollständig |
 | `src/utils/deferred-tools.ts` | 39 | `utils/deferred_tools.rs` | portiert (Task 3) | Tests folgen in Task 13 |
 | `src/utils/provider-env.ts` | 52 | `utils/provider_env.rs` | portiert (Task 3) | Klasse 4: Der Bun-Sandbox-Fallback (`/proc/self/environ`, oven-sh/bun#27802) entfällt |
 | `src/utils/node-http-proxy.ts` | 112 | `utils/node_http_proxy.rs` | verifiziert (Task 3) | Klasse 3: liefert die Proxy-URL für reqwest statt eines undici-Agents |
@@ -290,7 +290,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/cli.ts` | 119 | `src/bin/notagent-ai.rs` | verifiziert (Task 11) | Klasse 4: der npm-Bin (`dist/cli.js`) wird ein Cargo-Bin-Target; die Usage-Zeile nennt entsprechend `notagent-ai` statt `npx @notagent/ai`. Klasse 1: `readline` wird ein gepufferter Stdin-Reader; die Ausgaben von `list`/`help` sind zeichengleich mit dem TS-Original (verglichen) |
 | `src/providers/faux.ts` | 708 | `providers/faux.rs` | verifiziert (Task 11) | Klasse 1: Skript-Schritte als Enum (`Message`/`Factory`) statt einer TS-Union aus Wert und Funktion; Zustand hinter `Arc<Mutex<..>>`. Klasse 1: `structuredClone` der Submission-Options entfällt — beim Auflösen eines Deferred-Handles zählt nur der Kontext, wie in TS nach dem Entfernen von `deferred`/`signal`/`onResponse` |
 | `src/models.ts` | 944 | `models.rs` | portiert (Task 4) | Klasse 1: `Provider`/`Models` werden Traits bzw. eine Struktur; `provider.refreshModels !== undefined` ist zur Laufzeit nicht prüfbar und wird zu `Provider::is_dynamic()`. Klasse 1: Publikationsketten und Refresh-Controller nutzen async-Mutex und `CancellationToken` statt Promise-Ketten und `AbortController`. Klasse 1: `getAuth` ist in `get_auth_for_provider`/`get_auth_for_model` geteilt (kein Overloading). `login` persistiert außerhalb des Abbruchpfads, damit ein Abbruch während des Schreibens die Credential nicht verliert |
-| `src/models-store.ts` | 45 | `models_store.rs` | portiert (Task 4) | |
+| `src/models-store.ts` | 45 | `models_store.rs` | verifiziert (Task 4) | `tests/models.rs` fährt `InMemoryModelsStore`/`ModelsStore` durch die portierte models-Suite |
 | `src/api/anthropic-messages.ts` (SSE-Decoder, Z. 300-430) | 130 | `api/sse.rs` | verifiziert (Task 8) | Laut Plan als generisches Modul herausgezogen, weil alle SSE-APIs es nutzen. Differenziell gegen die TS-Funktionen geprüft (355 Fälle, jede Bruchstelle) |
 | `src/api/anthropic-messages.ts` (Antwortseite: Event-Zustandsmaschine, Usage, StopReason) | ~450 von 1352 | `api/anthropic_messages.rs` | verifiziert (Task 8) | Master-Architektur: Scratch-Felder (`index`, `partialJson`) leben im Streaming-State und erreichen die Content-Typen nicht; Snapshots werden je Event geklont. Request-Bau und HTTP-Transport folgen im selben Task |
 | `src/api/anthropic-messages.ts` (Transport: HTTP, SSE-Anbindung, Fehlerpfade) | ~300 von 1352 | `api/anthropic_messages.rs` (Transport-Abschnitt) | verifiziert (Task 8) | Klasse 3: reqwest statt SDK-Client; `assertRequestAuth`, Bearer- vs. x-api-key-Auth, `onPayload`/`onResponse`, HTTP-Fehlerkörper und die Terminalprüfungen wie im Original. Der Request läuft wie in TS in `retryProviderRequest` (SDK mit `maxRetries: 0`), sodass `onResponse` nur die endgültige Antwort sieht |
@@ -427,7 +427,7 @@ der Status.
 | `src/index.ts` | 47 | `lib.rs` | verifiziert (Task 13) | Oberfläche deckungsgleich |
 | `src/legacy-api-aliases.ts` | 108 | — | ausgeschlossen | Master-Plan, Scope-Tabelle |
 | `src/model-catalog.ts` | 27 | `model_catalog.rs` | verifiziert (Task 5) | siehe Ledger |
-| `src/models-store.ts` | 45 | `models_store.rs` | portiert (Task 4) | siehe Ledger |
+| `src/models-store.ts` | 45 | `models_store.rs` | verifiziert (Task 4) | siehe Ledger |
 | `src/models.generated.ts` | 124 | `model_catalog.rs` | portiert (Task 5) | siehe Ledger |
 | `src/models.ts` | 944 | `models.rs` | portiert (Task 4) | siehe Ledger |
 | `src/oauth.ts` | 10 | `lib.rs` | portiert (Task 13) | reiner Typ-Reexport |
@@ -524,7 +524,7 @@ der Status.
 | `src/utils/abort.ts` | 50 | `utils/abort.rs` | portiert |  |
 | `src/utils/deferred-tools.ts` | 39 | `utils/deferred_tools.rs` | portiert (Task 3) | siehe Ledger |
 | `src/utils/diagnostics.ts` | 45 | `utils/diagnostics.rs` | portiert (Task 3) | siehe Ledger |
-| `src/utils/error-body.ts` | 149 | `utils/error_body.rs` | portiert (Task 3) | siehe Ledger |
+| `src/utils/error-body.ts` | 149 | `utils/error_body.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/estimate.ts` | 143 | `utils/estimate.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/event-stream.ts` | 88 | `utils/event_stream.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/hash.ts` | 13 | `utils/hash.rs` | portiert (Task 3) | siehe Ledger |
