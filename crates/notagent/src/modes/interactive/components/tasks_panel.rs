@@ -45,12 +45,14 @@ const INDENT: &str = " ";
 /// Smallest gap between a row's label and the elapsed figure on its right.
 const MIN_GAP: usize = 2;
 
-/// The `○` in front of a row carries the state: green while running, dim once
-/// completed, red for everything that ended badly.
+/// The `○` in front of a row carries the state: grey while running, green once
+/// completed cleanly, red for everything that ended badly (failed, timed out,
+/// killed, lost). User decision 2026-08-16 (v0.1.5); the reference roster
+/// coloured running work green instead.
 fn status_colour(status: TaskStatus) -> ThemeColor {
     match status {
-        TaskStatus::Running => ThemeColor::Success,
-        TaskStatus::Completed => ThemeColor::Dim,
+        TaskStatus::Running => ThemeColor::Dim,
+        TaskStatus::Completed => ThemeColor::Success,
         _ => ThemeColor::Error,
     }
 }

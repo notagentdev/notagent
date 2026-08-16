@@ -14,7 +14,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::core::tasks::types::{ShellTaskInfo, TaskInfo, TaskInfoBase, TaskStatus};
 use notagent::modes::interactive::components::tasks_panel::{TasksPanel, TasksPanelScope};
-use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::modes::interactive::theme::theme::{ThemeColor, init_theme, theme};
 use notagent::utils::ansi::strip_ansi;
 use notagent_tui::tui::Component;
 
@@ -149,6 +149,41 @@ fn renders_in_the_roster_style_of_the_reference() {
         "marker, id and label: {row}"
     );
     assert!(row.trim_end().ends_with("1s"), "elapsed flush right: {row}");
+}
+
+#[test]
+fn colours_the_marker_grey_running_green_completed_red_failed() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_scope(TasksPanelScope::All);
+    panel.set_tasks(vec![
+        shell("bash-11112222", TaskStatus::Running, "running", 0),
+        shell("bash-33334444", TaskStatus::Completed, "done", 0),
+        shell("bash-55556666", TaskStatus::Killed, "killed", 0),
+        shell("bash-77778888", TaskStatus::Failed, "failed", 0),
+    ]);
+    let lines = panel.render(100).join("\n");
+    let marker = |colour: ThemeColor| theme().fg(colour, "○");
+    // The default test theme emits real colours; without this the containment
+    // checks below would pass vacuously.
+    assert_ne!(
+        marker(ThemeColor::Dim),
+        marker(ThemeColor::Success),
+        "theme must render distinguishable colours"
+    );
+    let row = |id: &str| {
+        lines
+            .lines()
+            .find(|line| line.contains(id))
+            .unwrap_or_else(|| panic!("row {id} is drawn:\n{lines}"))
+            .to_owned()
+    };
+    // User decision 2026-08-16: grey while running, green on clean completion,
+    // red for failed and killed alike.
+    assert!(row("bash-11112222").contains(&marker(ThemeColor::Dim)));
+    assert!(row("bash-33334444").contains(&marker(ThemeColor::Success)));
+    assert!(row("bash-55556666").contains(&marker(ThemeColor::Error)));
+    assert!(row("bash-77778888").contains(&marker(ThemeColor::Error)));
 }
 
 // --- the scope ring -----------------------------------------------------------------
