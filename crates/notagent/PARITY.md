@@ -365,6 +365,15 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-16 | packages/coding-agent/src/package-manager-cli.ts (Zeilen 88-106, 605-676: `handleConfigCommand` und seine Hilfstexte) | 90 | C-Task 13 (Scheibe 2) |
 | 2026-08-16 | packages/coding-agent/src/modes/interactive/interactive-mode.ts (Zeilen 2417-2500, 4204-4260, 4430-4610, 6571-6656: Bestätigungsdialog, Follow-up/Dequeue, Queue-Anzeige und -Wiederherstellung, Compaction-Queue, `handleBashCommand`) | 460 | C-Task 13 (Scheibe 3) |
 
+| 2026-08-16 | packages/coding-agent/src/client/remote-session.ts | 414 | B-O-12 |
+| 2026-08-16 | packages/coding-agent/src/client/transcript.ts | 101 | B-O-12 |
+| 2026-08-16 | packages/coding-agent/src/client/index.ts | 15 | B-O-12 |
+| 2026-08-16 | packages/coding-agent/test/client/support.ts | 111 | B-O-12 |
+| 2026-08-16 | packages/coding-agent/test/client/transcript.test.ts | 220 | B-O-12 |
+| 2026-08-16 | packages/coding-agent/test/client/remote-session.test.ts | 196 | B-O-12 |
+| 2026-08-16 | packages/coding-agent/test/client/remote-session-lifecycle.test.ts | 190 | B-O-12 |
+| 2026-08-16 | packages/coding-agent/test/client/remote-session-ownership.test.ts | 174 | B-O-12 |
+
 ## Ledger
 
 | TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
@@ -916,6 +925,50 @@ zwei Dateien der C-Crate: `src/core.rs` (`pub mod llama;`) und `Cargo.toml`
 | test/llama-extension.test.ts | 295 | tests/llama_extension.rs (+ tests/support/llama_server.rs) | verifiziert | 8 Tests. Ausgeschlossen ist der erste TS-Fall („registers a native provider and /llama command") — er lädt `extensions/llama/index.ts` über den Extension-Loader und gehört damit zu C. Klasse 3: `createServer` aus `node:http` → Loopback-Server (`tests/support/llama_server.rs`), wie in `tests/support/mod.rs` begründet; seine einzige Verhaltenszugabe ist, dass die verzögerten SSE-Ereignisse der Lade- und Download-Fälle auf den verbundenen Watcher warten — das nimmt dem `setTimeout(…, 20)` der TS-Vorlage die Race gegen den noch offenen SSE-Verbindungsaufbau. Klasse 1: Zusicherungen, die in TS im Request-Handler stehen (Authorization-Header, Suchparameter), prüfen im Port die aufgezeichneten Requests nach dem Aufruf — ein `panic!` im Verbindungs-Task würde sonst nur als kaputte Antwort sichtbar. Ein neunter Fall (`formats_bytes_like_the_typescript_helper`) pinnt den Byte-Formatierer inklusive der `toFixed`-Gleichstände, den die TS-Suite nur indirekt über eine `detail`-Zeile berührt |
 | src/extensions/llama/ui.ts | 542 | — | offen (C) | O-8: TUI-Hälfte, bleibt bei Workstream C |
 | src/extensions/llama/index.ts | 228 | — | offen (C) | O-8: Command-Verdrahtung und Extension-Registrierung, bleibt bei Workstream C |
+
+## B: client layer
+
+Ownership-Übergabe durch `plans/interface-requests.md` O-12 Punkt 2: `src/client/` stand in
+keiner Task (Planlücke), gehört aber zum 1:1-Umfang — es ist der öffentliche Subpath
+`@notagent/coding-agent/client`. Workstream B hat es nach `crates/notagent/src/client/`
+portiert, weil es auf notagent-client/-protocol sitzt und vom Interactive-Mode unabhängig ist.
+
+Klasse-1-Grundsatzentscheidungen dieser Sektion:
+
+- Die TS-Zustandsobjekte (`RemoteSessionLifecycle`, `TranscriptState`) sind `readonly`, und die
+  Funktionen liefern neue Werte statt zu mutieren. Der Port nimmt den Zustand per Wert und gibt
+  ihn zurück; derselbe Vertrag, ohne Klon-Disziplin im Aufrufer.
+- `#activeOperationStates` ist in TS eine Menge von *Objektidentitäten* (`this.#lifecycle === busy`).
+  Rust-Werte haben keine Identität, deshalb trägt jeder Busy-Zustand ein monoton wachsendes
+  Token; die Vergleiche laufen über das Token.
+- Ein werfender Listener wird zum panickenden Listener, abgefangen per `catch_unwind` und an
+  `on_listener_error` gemeldet — dasselbe Muster wie `crates/notagent-client/src/state.rs`.
+- `Symbol.asyncDispose` entfällt; `dispose()` ist der explizite Ersatz (wie bei `SessionHandle`).
+- Die statischen Fabriken `RemoteSession.open`/`.create` heißen `open_session`/`create_session`,
+  weil Rust den Namen nicht mit den gleichnamigen Instanzmethoden teilen kann.
+
+Klasse 3 (Tech-Substitution): Promises werden `Shared<BoxFuture<..>>` wie in
+`crates/notagent-client/src/promise.rs`. Weil ein Rust-Future nur läuft, solange jemand ihn
+pollt, eine JS-Promise aber von selbst weiterläuft, treiben `begin` und `track_attachment` ihre
+Arbeit über `tokio::spawn`. Ohne das bliebe die Aufräumarbeit stehen, sobald die auslösende
+Operation beim Dispose aufgibt — genau das prüft
+`dispose_immediately_preempts_pending_work_and_awaits_attachment_cleanup`. Die synchronen
+Prologe der TS-Methoden bleiben synchron (Attach-, Prompt- und Detach-Requests gehen raus,
+bevor der Aufrufer awaitet), weil `notagent-client` seine Requests ebenso schon beim Aufruf
+absetzt; die Testsuiten hängen daran.
+
+| TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
+|---|---|---|---|---|
+| src/client/transcript.ts | 101 | src/client/transcript.rs | verifiziert | Klasse 1: `structuredClone` → `clone()`; `Map`/`Set` → `HashMap`/`HashSet`, die Reihenfolge trägt wie in TS die eigene `progress_order`-Liste. Klasse 1: `isJsonValue` prüft in Rust nur noch die Endlichkeit — ein `serde_json::Value` kann weder ein Nicht-Plain-Objekt noch `NaN` tragen; die Endlichkeitsprüfung bleibt, weil `1e999` zu `f64::INFINITY` parst |
+| src/client/remote-session.ts | 414 | src/client/remote_session.rs | verifiziert | Klasse 1: Token statt Objektidentität für `#activeOperationStates`/`#lifecycle`; `AggregateError` → `RemoteSessionError::Aggregate`; `RemoteSessionDisposedError` bleibt eine eigene Variante, weil `settleRemoteSessionDisposal` genau diese Klasse herausfiltert. Klasse 3: `Promise.race` gegen das Dispose-Signal → `tokio::select!` auf einem `oneshot`; `Promise.allSettled` → `futures::future::join_all`; Operationen laufen auf eigenen Tasks weiter (siehe Sektionskopf) |
+| src/client/index.ts | 15 | src/client.rs | verifiziert | Klasse 1: Rust-Module sind ohnehin öffentlich; `client.rs` re-exportiert dieselben zwölf Symbole flach wie das Barrel |
+| test/client/support.ts | 111 | tests/client_support/mod.rs | Tests portiert | Klasse 1: `sessionSnapshot(id, overrides)` wird `session_snapshot(id)` plus Feldzuweisungen. Der Byte-Server ist derselbe wie in `crates/notagent-client/tests/support/mod.rs` — er spricht das echte Wire-Format, der Port wird also über denselben Encode/Decode-Pfad geprüft |
+| test/client/transcript.test.ts | 220 | tests/client_transcript.rs | verifiziert | 8 Fälle in Quellreihenfolge |
+| test/client/remote-session.test.ts | 196 | tests/client_remote_session.rs | verifiziert | 7 Fälle. Klasse 1: der werfende Listener wird ein panickender; der Panic-Hook ist für diesen Fall stummgeschaltet |
+| test/client/remote-session-lifecycle.test.ts | 190 | tests/client_remote_session_lifecycle.rs | verifiziert | 5 Fälle. Klasse 1: `await Promise.resolve()` → `tokio::task::yield_now().await` |
+| test/client/remote-session-ownership.test.ts | 174 | tests/client_remote_session_ownership.rs | verifiziert | 6 Fälle. Klasse 1: `expect(secondDisposal).toBe(firstDisposal)` prüft Promise-Identität, die es in Rust nicht gibt — geprüft wird stattdessen die beobachtbare Hälfte: der zweite `dispose()` schickt kein weiteres Detach und liefert dasselbe Ergebnis |
+
+Alle vier Suiten liefen je zehnmal in Folge grün (O-12 Punkt 1: kein flakiger check.sh).
 
 ## Ausschlüsse
 

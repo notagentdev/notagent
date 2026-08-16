@@ -4,6 +4,9 @@
 
 pub mod cli;
 
+// Client layer (`src/client/`), ported by workstream B under O-12.
+pub mod client;
+
 pub mod config;
 
 pub mod core;
