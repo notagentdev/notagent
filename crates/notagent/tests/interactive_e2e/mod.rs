@@ -18,4 +18,5 @@ mod resize;
 mod selectors;
 mod startup;
 mod theme_switch;
+mod todo_hide;
 mod tool_display;

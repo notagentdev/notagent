@@ -2078,6 +2078,13 @@ impl InteractiveMode {
             self.handle_task_browser_action(id, TaskBrowserAction::ClearNotice);
         }
         let mut needs_render = false;
+        // The 5-second hide of an all-completed todo list: `hide_deadline`
+        // only wakes the loop (next_deadline); the visibility flips here —
+        // the same missing-half pattern the autocomplete pump had.
+        if self.todo_visibility.tick() {
+            self.todo_panel.borrow_mut().set_todos(Vec::new());
+            needs_render = true;
+        }
         if let Some(indicator) = self.active_status_indicator.clone() {
             let mut indicator = indicator.borrow_mut();
             if indicator

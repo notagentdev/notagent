@@ -2819,3 +2819,22 @@ eigene Ledger-Zeile bekommen (sie stand nur im Lektüre-Protokoll), und die
 `#[ignore]`), `gate-g4` auf `d6b0cd8` (3 861 Tests in 249 Suiten grün, Smoke-Report,
 Abschluss-Audit mit 0 Dateien ohne Ledger-Spur).
 - **Status**: umgesetzt (C, 2026-08-16)
+
+### O-13 Laufzeitbefunde nach v0.1.1: die dritte fehlende Deadline-Hälfte
+- **Von / An**: Orchestrator → Wartung (dokumentiert für die nächste Session)
+- **Datum**: 2026-08-16
+- **Befunde aus echter Nutzung**: 1. Slash-Autocomplete tot (Pump fehlte — gefixt v0.1.1).
+  2. Todo-Liste verschwand nie nach 5 s (TodoVisibility::tick nie gerufen — gefixt, mit
+  E2E-Regressionsszenario todo_hide). 3. NOCH OFFEN, kosmetisch: die Tool-Zeilen-Naht
+  ToolExecutionComponent::render_deadline/render_work (A-25) wird von next_deadline/tick
+  nicht angesteuert — Elapsed-Anzeige/Diff-Preview aktualisieren nur bei ohnehin
+  stattfindenden Renders. Braucht eine Registry der aktiven Rows im Loop.
+- **Muster**: dreimal dieselbe Klasse — Deadline in next_deadline registriert, die
+  zugehörige Aktion in tick()/Loop vergessen. Bei künftiger Arbeit an Zeitnähten beide
+  Hälften im selben Commit verdrahten und per E2E-Szenario belegen.
+- **Unreproduziert**: der gemeldete Eingabe-Freeze nach langem Turn (weder mit 3000-Zeilen-
+  Bash-Ausgabe noch im faux-Turn mit Todos + Tippen danach). Verdachtsmomente: Provider-
+  Fehler/Retry-Pfad, Codex-WebSocket-Transport, 331k-Token-Transkript. Nächster Schritt
+  bei Wiederauftreten: prüfen, ob Escape/ctrl+o noch reagieren (Fokus-Verlust vs.
+  Loop-Stillstand).
+- **Status**: offen (Punkt 3 + Freeze-Beobachtung)
