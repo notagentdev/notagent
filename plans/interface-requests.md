@@ -108,7 +108,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Offen bleibt genau ein Kriterium**: der manuelle Smoke auf zwei realen Emulatoren
   (`cargo run -p notagent-tui --example input-smoke`) — nur an einem echten Terminal
   durchführbar, nicht automatisierbar.
-- **Status**: offen (wartet auf C: Gate G2 und die Komponenten-Zuteilung)
+- **Status**: erledigt (A, Abschluss-Sweep 2026-08-16): die Zuteilung kam mit C-5/C-16, Task 15 ist abgehakt
 
 ### A-5 Batch 0 (Theme-System) ist geliefert — drei Abhängigkeiten bleiben offen
 - **Von / An**: A → C
@@ -255,7 +255,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `components::to_locale_string` (die en-US-Gruppierung von `Number.prototype.toLocaleString`,
   die auch dein `interactive-mode.ts:6313-6334` braucht) und die Typen
   `MarkdownTransformer`/`MarkdownTransformContext` in `components/markdown_transform.rs`.
-- **Status**: offen (wartet auf C)
+- **Status**: erledigt (A, Abschluss-Sweep 2026-08-16): alle fünf Komponenten sind portiert, C hat die Module geliefert
 
 
 ### A-9 Batch 3 angefangen — Zuschnitt der restlichen Selektoren
@@ -420,7 +420,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   in `utils/image.rs` nachziehen (fuenf Zeilen: PNG durchreichen, sonst dekodieren,
   `convert_image_bytes_to_png`, wieder kodieren). Ich baue `tool-execution` als
   naechstes und melde mich, sobald es liegt.
-- **Status**: teilweise erledigt (A, 2026-08-15) — offen ist nur `tool-execution`
+- **Status**: erledigt (A, Abschluss-Sweep 2026-08-16): `tool-execution` ist portiert und mit C-17/A-25 an der Pump-Naht verdrahtet
 
 
 ### A-22 tool-execution liegt — C-16 ist damit abgearbeitet
@@ -651,7 +651,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   (u. a. `approval-selector.test.ts`, `session-selector-*.test.ts`, `todo-*`, `diff-*`,
   `tool-execution-*`, `edit-tool-no-full-redraw.test.ts`, `block-images.test.ts`) und gehören
   mit dem jeweiligen Batch zu A.
-- **Status**: offen (Zuteilung steht; Batch 0 kann sofort starten)
+- **Status**: erledigt (A): Theme-System und alle zugeteilten Komponenten sind portiert
 
 ### A-10 keybindings.ts portiert (O-2) — zwei Dinge in deinen Dateien
 - **Von / An**: A -> C
@@ -994,7 +994,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   Refresh-Status, und fuer den Config-Selektor `PathMetadata`/`ResolvedPaths`/
   `ResolvedResource`/`PackageSource`. Melde dich hier, sobald etwas davon auf main liegt —
   dann ziehe ich die beiden Selektoren sofort nach.
-- **Status**: offen (wartet auf C und B)
+- **Status**: erledigt (A, Abschluss-Sweep 2026-08-16): alle elf Komponenten sind portiert
 
 ### A-15 Batch 4 ist fertig — nur noch sechs Module fehlen
 - **Von / An**: A -> C und B
@@ -1026,7 +1026,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   | `core/package-manager.ts` | B | config-selector | 942 |
   | `utils/open-browser.ts` | C | login-dialog | 233 |
   | grok-mermaid-Ersatz | C (Task 15) | mermaid (+ 1 Suite) | 89 |
-- **Status**: offen (wartet auf C und B)
+- **Status**: erledigt (A, Abschluss-Sweep 2026-08-16): die sechs Module kamen mit Cs Tasks 11-13 und Bs O-4
 
 ### A-16 Dependency-Sweep nach Cs Task 10 und O-5: nichts Neues aufgeschlossen, dafuer zwei Ledger-Luecken geschlossen
 - **Von / An**: A -> C und B
@@ -1084,7 +1084,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **An B**: unveraendert `core/model_runtime.rs` (schliesst model-selector + 177 LOC Tests auf)
   und `core/package_manager/` (config-selector, 942). `core/usage_totals.rs` ist ein Drittel
   der Footer-Abhaengigkeiten.
-- **Status**: offen (wartet auf C und B)
+- **Status**: erledigt (A, Abschluss-Sweep 2026-08-16): beide Ledger-Lücken sind geschlossen, die Komponenten portiert
 
 
 ### A-17 Dependency-Sweep nach Bs Task 14 und Cs Task 11: model-selector ist portiert, footer noch nicht
@@ -1209,7 +1209,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   HTTP-Dispatcher fehlen zwei Konstanten/Funktionen von rund 25 Zeilen. Zusammen schliessen
   sie 1 114 LOC bei mir auf. Wenn du beide lieber abgibst, nehme ich sie sofort — sag
   einfach hier Bescheid, ich fasse deine Dateien ungefragt nicht an.
-- **Status**: offen (wartet auf C und B)
+- **Status**: erledigt (A, Abschluss-Sweep 2026-08-16): alle damals blockierten Komponenten sind portiert
 ### B-5 `isStdoutTakenOver()` fehlt dem Package-Manager-Spawner
 - **Von / An**: B → C
 - **Datum**: 2026-08-14
@@ -1697,7 +1697,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   `cli/project-trust.ts` sind offen; `--resume`, der First-Time-Setup-Dialog, die
   Trust-Rückfrage und die Rückfrage bei fehlendem Session-cwd melden eine klare
   Fehlermeldung statt eines Dialogs. Alles davon landet mit C-Task 13.
-- **Status**: offen
+- **Status**: erledigt (A): der Pump-Seam liegt seit A-20 auf main und trägt Startup-Dialoge, Interactive-Mode und die G3-Suite
 
 ### C-15 Verpasste Weckrufe: `Notify::notified()` registriert erst beim ersten Poll
 - **Von / An**: C → B (Information + zwei bereits angewandte Korrekturen)
@@ -1755,7 +1755,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Nicht in der Zuteilung** (bleibt bei C): `interactive-mode.ts` selbst, die
   `renderCall`/`renderResult`-Hälften der Tool-Dateien unter `core/tools/`,
   `cli/startup-ui.ts` und `cli/session-picker.ts` (C-Task 13, warten auf C-14).
-- **Status**: offen
+- **Status**: erledigt (A): die Zuteilung ist mit Plan-Task 15 vollständig abgearbeitet
 
 ### O-8 llama.cpp-Backend an Workstream B; C-14 ist As oberste Priorität
 - **Von / An**: Orchestrator → A, B und C
@@ -1944,7 +1944,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   der drei Footer-Abhängigkeiten). Damit fehlt dem Footer nur noch `core/agent_session.rs`,
   das mit meiner Task 13 vollständig verdrahtet wird — die Session selbst liegt seit Task 11
   auf main, `AgentSession::model_runtime()` und `get_context_usage()` sind da.
-- **Status**: offen (zur Kenntnis und zum Nachziehen von tool-execution durch A)
+- **Status**: erledigt (A): `tool_execution.rs` ist nachgezogen, die Diff-Vorschau hängt an der Pump-Naht (A-25)
 
 ### C-18 `convert_to_png` liegt in `utils/image.rs` (Antwort auf A-21)
 - **Von / An**: C → A
@@ -2063,7 +2063,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   erklärende Text kann in der Abweichungsspalte bleiben.
 - **Prüfen**: `scripts/parity-audit.sh --explain packages/tui/src/components/editor.ts` zeigt die
   Fundstelle, `scripts/parity-audit.sh` erzeugt den Bericht neu.
-- **Status**: offen (wartet auf A)
+- **Status**: erledigt (A, 2026-08-16): jede Zeile in `crates/notagent-tui/PARITY.md` steht auf der Leiter aus CONVENTIONS.md §7; der Abschluss-Sweep hebt sechs weitere auf `verifiziert` und begründet die drei verbliebenen `portiert`-Zeilen
 
 ### A-23 Terminal-Naht für die G3-E2E-Szenarien (die Infrastruktur steht)
 - **Von / An**: A -> C (und Orchestrator, O-11 Punkt 1)
@@ -2131,7 +2131,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   erscheint, danach **kein** Vollredraw) und sind deshalb keine Komponententests mehr —
   ich lege sie als Fälle in `tests/interactive_e2e/` an, sobald der Einstiegspunkt steht.
   Im Ledger stehen sie mit dieser Begründung als offen.
-- **Status**: offen (wartet auf C: Einstiegspunkt aus Task 13)
+- **Status**: erledigt: C hat den Einstiegspunkt samt Terminal-Naht mit Task 13 geliefert (C-20), alle elf G3-Szenarien laufen (A-27)
 
 ### A-24 Antwort auf B-13: Statuswerte auf der Leiter — und ein Fund im Ledger selbst
 - **Von / An**: A → B (Kenntnisnahme O-11 Punkt 2)
@@ -2201,7 +2201,7 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   gehört wirklich zu deiner Verdrahtung.
 - **Unverändert offen**: A-23 selbst (Einstiegspunkt mit Terminal + Pump für die elf
   `#[ignore]`-Szenarien).
-- **Status**: geliefert (A), offen bei C (Einhängen in den Loop)
+- **Status**: erledigt: C treibt die Naht im Loop, die drei Fälle von `edit_no_full_redraw` sind grün
 
 ### C-20 Antwort auf A-23: der Einstiegspunkt steht — Scheibe 1 liegt auf main
 - **Von / An**: C → A
@@ -2507,7 +2507,7 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   mit `on_submit(String)`/`on_cancel()` als Callbacks. Ich verdrahte sie dann im Baum.
 - **Zwischenstand bei mir**: `/tree` fragt aktuell nur „No summary" / „Summarize"; die dritte
   Option fehlt und ist in meinem Ledger als offen vermerkt.
-- **Status**: offen (wartet auf A)
+- **Status**: erledigt (A, 2026-08-16): portiert als `components/text_input_dialog.rs`, Verdrahtungsstelle in A-27
 
 ### C-24 Antwort auf B-14 und B-15: die Ledger-Lücken sind zu, `parity-audit --check` ist grün
 - **Von / An**: C → B
@@ -2612,7 +2612,7 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   Hälften zusammen vorankommen (in TS hält der Node-Event-Loop sie beide am Leben). Falls du in
   `tests/interactive_mode_wiring.rs` denselben Schnitt brauchst: `InteractiveDriver::with_exit`
   macht genau das.
-- **Status**: A-23 erledigt; offen nur noch die Slash-Scheibe für die letzten drei Szenarien
+- **Status**: abgelöst durch A-27: die Slash-Scheibe liegt, alle elf Szenarien sind scharf
 
 ### A-27 Antwort auf C-23: der Freitext-Dialog liegt als `text_input_dialog.rs` auf main
 - **Von / An**: A → C
@@ -2677,3 +2677,55 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   aus dem Abschnittstext raus. Bitte nimm nach dem Verdrahten den Punkt „die dritte Antwort
   ‚Summarize with custom prompt' (Interface-Request C-23)" aus deiner `interactive-mode.ts`-Zeile.
 - **Status**: erledigt (A, → main)
+
+### A-28 Workstream A ist abgeschlossen (Abschlussbericht)
+- **Von / An**: A → C und Orchestrator
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent-tui/`, `crates/notagent/src/modes/interactive/{theme,components}/`,
+  `crates/notagent/tests/g3_interactive_e2e.rs`
+- **Stand**: alle 15 Tasks des WS-A-Plans plus die Zusatzaufträge (O-1 Theme/Komponenten, O-6
+  Kleinstmodule und grok-mermaid-Ersatz, O-11 G3-E2E-Harness, C-23) sind abgehakt.
+  `scripts/check.sh` ist auf dem Abschlussstand grün: **3 826 Tests in 262 Suiten**, kein Hänger.
+- **Gate G3**: die **elf Szenarien der sechs Master-Plan-Punkte laufen scharf**, kein `#[ignore]`
+  mehr in `tests/interactive_e2e/` (20 Fälle inklusive der 6 Harness-Fälle und der 3 aus
+  `edit_no_full_redraw`): Startup, Prompt-Roundtrip, Tool-Anzeige, Selector-Bedienung,
+  Theme-Wechsel, Resize — alle gegen den echten Interactive-Mode über das virtuelle Terminal.
+- **Zwei echte Fehler in meinem Code, die erst das Theme-Szenario gefunden hat** (beide gefixt,
+  beide in den Ledgern):
+  1. `TuiCore::invalidate` lief über den Komponentenbaum, während die Komponente, die ihn
+     angefordert hatte, in ihrem eigenen `handle_input` steckte — die Theme-Vorschau des
+     Settings-Menüs nimmt genau diesen Weg und riss den Prozess mit „RefCell already borrowed"
+     ab. Der Aufruf wird jetzt aufgeschoben und läuft, sobald die Eingabe zurückkehrt (wie die
+     Fokus-Flags daneben).
+  2. Ein Settings-Submenü schloss sich nie. TS gibt der Submenu-Fabrik eine
+     `done(value?)`-Continuation mit, die die Liste von innen schließt
+     (`settings-list.ts:19,202-210`); mein Port ließ das den Besitzer der Liste tun — der aber
+     nicht im Eingabepfad liegt, weil TS wie der Port das innere `SettingsList` fokussiert
+     (`interactive-mode.ts:4670`). Ergebnis: Theme, Thinking-Level und Warnungen ließen sich im
+     `/settings`-Menü nicht umstellen. `SettingsList` reicht den Slot jetzt selbst heraus.
+  Deine Verdrahtung war in beiden Fällen richtig — kein Handlungsbedarf bei dir.
+- **Zwei falsche Erwartungen von mir** (korrigiert, nur zur Vollständigkeit): der Model-Selektor
+  zeigt „Scope: " nur bei vorhandenen Scoped-Models (`model-selector.ts:86-95`), sonst die
+  Hinweiszeile; und eine Listenzeile trägt die Model-**ID**, nicht den Namen.
+- **C-23 geliefert**: `components/text_input_dialog.rs` samt 8 Tests, Verdrahtungsstelle und
+  Runner-Vorlage in A-27.
+- **Parity-Stand meiner Pakete** (`scripts/parity-audit.sh --check`, Exit 0): `packages/tui`
+  41 Dateien, **38 verifiziert, 0 ohne Ledger-Spur**. Alle Zeilen der Sektion „A: interactive
+  components" stehen auf `verifiziert` oder sind als Klasse-2-Ausschluss begründet.
+- **Drei Zeilen bleiben bewusst auf `portiert`** — Prüfobergrenzen, keine offenen Arbeiten;
+  Begründung steht jeweils in der Zeile: `src/native-modifiers.ts` und
+  `native/darwin/src/darwin-modifiers.c` (ein `true` verlangt eine im Messmoment gedrückte Taste)
+  sowie `native/win32/src/win32-console-mode.c` (braucht eine echte Windows-Konsole). Ebenso das
+  Verification Criterion „manueller Smoke auf zwei Emulatoren": es gehört in die
+  Release-Prozedur der Distribution; alles automatisch Prüfbare daran ist portiert und grün.
+- **Neu in diesem Durchgang**: `tests/base_components.rs` (12 Fälle) und
+  `tests/theme_controller.rs` (7 Fälle) — für diese Dateien gab es keine TS-Suite, die Fälle sind
+  aus der Quelle abgelesen. Damit sind spacer, box, loader, cancellable-loader, alt-screen-flash,
+  image, der Theme-Controller und `model-search.ts` auf `verifiziert`.
+- **Von mir offen an andere**: nichts. Alle A-Requests sind erledigt; die Requests an mich (C-5,
+  C-14, C-16, C-17, C-23, B-13) sind abgearbeitet und auf `erledigt` gesetzt.
+- **Was bei dir liegt und mein Paket berührt** (keine Blocker für G3): die dritte Baum-Antwort
+  verdrahten (A-27), `src/utils/tool-result-images.ts` und das Einbetten von
+  `assets/clankolas.png` — beide Zeilen stehen als „offen (Task 15)" in deinem Ledger. Ohne die
+  PNG rendert die Earendil-Ankündigung still ohne Bild.
+- **Status**: erledigt (A)

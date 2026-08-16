@@ -62,6 +62,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 2026-08-13 | `packages/tui/native/win32/build.mjs` | 229 | Task 14 (Selbstaudit) |
 | 2026-08-15 | `packages/coding-agent/src/cli/startup-ui.ts` | 239 | C-14 (Beleg für den Pump-Seam) |
 | 2026-08-15 | `packages/coding-agent/src/cli/session-picker.ts` | 55 | C-14 (Beleg für den Pump-Seam) |
+| 2026-08-16 | `packages/tui/src/components/{spacer,box,loader,cancellable-loader,alt-screen-flash,image}.ts` (erneut, für den Testnachweis des Abschluss-Sweeps) | 28 + 137 + 92 + 40 + 51 + 127 | Abschluss-Sweep |
 | 2026-08-13 | `src/alt-screen-search.ts` | 157 | Task 8 |
 | 2026-08-13 | `test/word-navigation.test.ts` | 191 | Task 10 (vorgezogen) |
 
@@ -88,24 +89,24 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/word-navigation.ts` | 117 | `src/word_navigation.rs` | verifiziert (Task 10 vorgezogen) | Klasse 3: `Intl.Segmenter` (Wortgranularität) → `unicode-segmentation`. **Beobachtbare Restdifferenz**: ICU segmentiert Chinesisch wörterbuchbasiert („你好"/„世界"), UAX #29 pro Zeichen — die CJK-Wortnavigation springt daher zeichenweise statt wortweise. Klasse 1: `isWordLike` → „Segment enthält alphanumerisches Zeichen"; Cursorpositionen als Byte-Offsets statt UTF-16-Indizes |
 | `src/fuzzy.ts` | 137 | `src/fuzzy.rs` | verifiziert (Task 13 vorgezogen) | Klasse 1: benannte Regex-Gruppen für den Alpha-Numerik-Tausch → Zeichenprüfung; stabile Sortierung explizit über den Ursprungsindex |
 | `src/keybindings.ts` | 320 | `src/keybindings.rs` | verifiziert (Task 13 vorgezogen) | Klasse 1: Deklarations-Merging-Interface → statische Definitionstabelle mit 47 Einträgen; globaler Manager als `Mutex` statt Modulvariable |
-| `src/components/spacer.ts` | 28 | `src/components/spacer.rs` | portiert | — |
+| `src/components/spacer.ts` | 28 | `src/components/spacer.rs` | verifiziert | Verifiziert über `tests/base_components.rs`: `packages/tui/test/` hat für diese Datei keine Suite — es gab nichts zu portieren, die Fälle sind aus der TS-Quelle abgelesen. 3 Erwartungen: `lines` leere Zeilen unabhängig von der Breite, `set_lines(0)` rendert nichts. |
 | `src/components/truncated-text.ts` | 65 | `src/components/truncated_text.rs` | verifiziert | `tests/truncated_text.rs` (9 Fälle, portiert aus `test/truncated-text.test.ts`) |
-| `src/components/box.ts` | 137 | `src/components/box_component.rs` | portiert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist |
-| `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | portiert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer |
-| `src/components/loader.ts` | 92 | `src/components/loader.rs` | portiert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz |
+| `src/components/box.ts` | 137 | `src/components/box_component.rs` | verifiziert | Klasse 1: Modulname, weil `box` ein Rust-Schlüsselwort ist Verifiziert über `tests/base_components.rs`: `packages/tui/test/` hat für diese Datei keine Suite — es gab nichts zu portieren, die Fälle sind aus der TS-Quelle abgelesen. Ohne Kinder rendert die Box nichts (auch kein Padding), sonst paddingY-Zeilen oben und unten, paddingX vorn, jede Zeile auf die Breite aufgefüllt; der Cache trägt über Breite und Hintergrund-Stichprobe. |
+| `src/components/alt-screen-flash.ts` | 51 | `src/components/alt_screen_flash.rs` | verifiziert | Klasse 1: `setTimeout` je Nachricht → Deadline für den Renderer Verifiziert über `tests/base_components.rs`: `packages/tui/test/` hat für diese Datei keine Suite — es gab nichts zu portieren, die Fälle sind aus der TS-Quelle abgelesen. Inversvideo mit je einem Leerzeichen, Trunkierung auf die Breite, Ablauf nach der Dauer (`expire` meldet die Änderung genau einmal), `dispose` leert alles. |
+| `src/components/loader.ts` | 92 | `src/components/loader.rs` | verifiziert | Klasse 1: `setInterval` → Frame-Deadline; TS erbt von `Text`, der Port besitzt eine Instanz Verifiziert über `tests/base_components.rs`: `packages/tui/test/` hat für diese Datei keine Suite — es gab nichts zu portieren, die Fälle sind aus der TS-Quelle abgelesen. Führende Leerzeile plus Text, gefärbter Frame und Nachricht, Frame-Fortschritt über die zehn Standardframes bis zurück zum ersten, `stop` löscht die Frist, ein gesetzter Indikator wird ungefärbt gerendert, ein einzelner Frame und eine leere Frameliste animieren nicht, `interval_ms: 0` fällt auf 80 ms zurück. |
 | `src/components/input.ts` | 447 | `src/components/input.rs` | verifiziert (21 von 35 Testfällen) | Klasse 1: Cursor als Byte-Offset statt UTF-16-Index (intern konsistent) |
-| `src/components/image.ts` | 127 | `src/components/image.rs` | portiert | — |
+| `src/components/image.ts` | 127 | `src/components/image.rs` | verifiziert | Verifiziert über `tests/base_components.rs`: `packages/tui/test/` hat für diese Datei keine Suite — es gab nichts zu portieren, die Fälle sind aus der TS-Quelle abgelesen. Ohne Terminal-Unterstützung eine Fallback-Zeile aus `image_fallback`, vom Theme gefärbt und auf die Breite gekürzt; der Zeilen-Cache hängt an der Breite und fällt mit `invalidate`. |
 | `src/components/select-list.ts` | 229 | `src/components/select_list.rs` | verifiziert | — |
-| `src/components/settings-list.ts` | 249 | `src/components/settings_list.rs` | verifiziert | Klasse 1: Submenu-Callback → `close_submenu`, weil die TS-Closure die Liste selbst mutiert |
-| `src/components/cancellable-loader.ts` | 40 | `src/components/cancellable_loader.rs` | portiert | Klasse 3: `AbortController` → `CancellationToken` |
+| `src/components/settings-list.ts` | 249 | `src/components/settings_list.rs` | verifiziert | Klasse 1: die `done(value?)`-Continuation, die TS der Submenu-Fabrik mitgibt, ist ein `SubmenuDone`-Slot — eine Closure in die Liste hinein ginge nicht, weil die Liste für genau die Eingabe geborgt ist, die das Submenü behandelt. Die Liste liest den Slot direkt nach der Weitergabe und schließt sich selbst; die frühere Fassung ließ das den Besitzer tun, der aber nicht im Eingabepfad liegt (gefunden über das G3-Theme-Szenario) |
+| `src/components/cancellable-loader.ts` | 40 | `src/components/cancellable_loader.rs` | verifiziert | Klasse 3: `AbortController` → `CancellationToken` Verifiziert über `tests/base_components.rs`: `packages/tui/test/` hat für diese Datei keine Suite — es gab nichts zu portieren, die Fälle sind aus der TS-Quelle abgelesen. Escape bricht ab (Token und Callback, andere Tasten nicht), das herausgegebene Token trägt die Abbruchmeldung mit. |
 | `src/components/text.ts` | 106 | `src/components/text.rs` | verifiziert (über layout-Suite) | — |
 | `src/components/v-stack.ts` | 33 | `src/components/v_stack.rs` | verifiziert | — |
 | `src/components/h-stack.ts` | 44 | `src/components/h_stack.rs` | verifiziert | — |
 | `src/terminal-image.ts` | 657 | `src/terminal_image.rs` | verifiziert | Umfang: Capability-Detection, Zellmaße, Kitty-/iTerm2-Encoder, Bild-ID-Vergabe, PNG/JPEG/GIF/WebP-Header, `renderImage`, `imageFallback`, `hyperlink`, Kitty-Metadaten/Crop/Delete. Belegt durch `tests/terminal_image.rs` (26 Fälle, alle TS-Fälle aus `test/terminal-image.test.ts`). Klasse 3: `execSync("tmux …")` → `std::process::Command`; `Buffer`-Base64 → eigene Kodierung/Dekodierung; `pathToFileURL` → `file://`-Präfix |
 | `src/terminal-colors.ts` | 73 | `src/terminal_colors.rs` | verifiziert (Parser); die TUI-Query-Fälle folgen mit Task 6 | Klasse 1: `undefined` → `Option`; `TerminalColorScheme` als Enum statt String-Union |
-| `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) |
-| `native/darwin/src/darwin-modifiers.c` | 76 | `src/native_modifiers.rs` (darwin) | portiert | Klasse 3 |
-| `native/win32/src/win32-console-mode.c` | 135 | `src/native_modifiers.rs` (win32) + `terminal.rs::enable_windows_vt_input` | portiert | Klasse 3 |
+| `src/native-modifiers.ts` | 66 | `src/native_modifiers.rs` | portiert (Task 13 vorgezogen, da `forwardInputSequence` es braucht) | Klasse 3: Node-Addon → direkte OS-Aufrufe (`CGEventSourceFlagsState` auf macOS, `GetAsyncKeyState` auf Windows, sonst `false`) **Prüfobergrenze (dokumentiert)**: `tests/base_components.rs` belegt, dass die Abfrage die Plattform erreicht und antwortet (auf macOS über dasselbe `CGEventSourceFlagsState`, das `darwin-modifiers.c` ruft). Ein `true` setzt eine im Moment der Messung gedrückte Taste voraus, die kein Test herstellen kann — deshalb bleibt die Zeile auf `portiert`. |
+| `native/darwin/src/darwin-modifiers.c` | 76 | `src/native_modifiers.rs` (darwin) | portiert | Klasse 3. Prüfobergrenze wie bei `native-modifiers.ts`: die Flag-Masken sind 1:1 übernommen, ein gedrückter Modifier ist im Test nicht herstellbar |
+| `native/win32/src/win32-console-mode.c` | 135 | `src/native_modifiers.rs` (win32) + `terminal.rs::enable_windows_vt_input` | portiert | Klasse 3. Prüfobergrenze: der Zweig kompiliert nur unter `cfg(target_os = "windows")` und braucht eine echte Windows-Konsole; auf der Portier-Plattform ist er nicht ausführbar |
 | `src/utils.ts` | 1326 | `src/utils.rs` (+ generiertes `src/unicode_tables.rs`) | verifiziert | Klasse 3: `Intl.Segmenter` → `unicode-segmentation`; `get-east-asian-width` und die `\p{…}`-Klassen (inkl. `\p{RGI_Emoji}`) als generierte Tabellen aus derselben Node-/Datenquelle (Rusts `regex` kennt weder `\p{RGI_Emoji}` noch `[A--[B]]`). Klasse 1: gepoolter `AnsiCodeTracker` in `extractSegments` → lokale Instanz (kein globaler Zustand, `clear()` beim Eintritt macht das verhaltensgleich); Width-Cache als `thread_local` mit identischer FIFO-Eviktion (512); Default-Parameter `truncateToWidth(text, w)` → zusätzliche Funktion `truncate_to_width_opts` |
 | `src/autocomplete.ts` | 786 | `src/autocomplete.rs` | verifiziert | Umfang: vollständig portiert (Slash-Commands, Datei-Pfad-Vervollständigung, Fuzzy-`@`-Suche über `fd`, Quoting, `applyCompletion`). Klasse 3: `Intl`/Node-`path` → `src/node_path.rs` (POSIX-Algorithmen von Node nachgebildet, gegen Node verifiziert); Klasse 1: `AbortSignal` → eigener `AbortController`/`AbortSignal` auf `Rc<Cell<bool>>` (Single-Thread-Design des Crates), Abbruch wird gepollt statt per Listener; Klasse 1: `Awaitable<T>` → `Pin<Box<dyn Future>>` |
 | — (Hilfsmodul) | — | `src/node_path.rs` | verifiziert | Umfang: Node-`path.posix`-Semantik (join/dirname/basename/normalize) und `os.homedir()`; Referenzwerte aus Node im Unit-Test hinterlegt. Referenzwerte aus Node liegen im Unit-Test. Klasse 3 |
@@ -191,17 +192,17 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | 12 Terminal-Bilder | fertig (Modul und Testsuite portiert) |
 | 13 Autocomplete/Fuzzy/Keybindings/native | fertig (autocomplete vorgezogen, weil Task 10 den Provider braucht) |
 | 14 Öffentliche API + Ledger-Abschluss | fertig: `lib.rs` deckungsgleich mit `index.ts`. Ledger-Selbstaudit vor G2 nachgezogen: 39 src-Dateien, 39 Testdateien (30 portierte Suiten, 1 verteilt portiert, 5 manuelle Skripte und 1 Benchmark als Ausschluss), 4 native-Quellen (2 portiert, 2 Build-Skripte als Ausschluss) |
-| 15 App-TUI-Schicht (ab G2) | offen |
+| 15 App-TUI-Schicht (ab G2) | fertig: Theme-System und alle Interactive-Komponenten liegen im Bin-Crate, Ledger dort in der Sektion „A: interactive components" (`crates/notagent/PARITY.md`). Zuletzt nachgezogen: `text_input_dialog.rs` aus C-23 (2026-08-16) |
 
 ## Verification Criteria
 
 | Kriterium | Stand |
 |---|---|
-| Alle portierten Testsuiten grün | erfüllt: 711 Tests in 43 Binaries, `scripts/check.sh` grün |
+| Alle portierten Testsuiten grün | erfüllt: `scripts/check.sh` ist auf dem Abschlussstand grün — 3 826 Tests in 262 Suiten über den Gesamtworkspace (2026-08-16) |
 | Virtual-Terminal-Tests assertieren Viewport und Scrollback wie TS | erfüllt (vt100-Emulator, Divergenzen unten dokumentiert) |
 | Byte-Level-Tests belegen identische Sequenz-Klammerung | erfüllt (`tests/tui_render.rs`, `tests/tui_alt_screen*.rs` prüfen Synchronized Output, Erase-Muster, Cursorbewegungen) |
 | Überbreiten-Guard schreibt Crash-Log und bricht ab | erfüllt (`src/tui_main_screen.rs`, Test in `tests/tui_render.rs`) |
-| Manueller Smoke auf zwei realen Emulatoren (Kitty-Protokoll + Legacy) | **offen — nur manuell ausführbar**: `cargo run -p notagent-tui --example input-smoke` in je einem Emulator mit und ohne Kitty-Protokoll starten; das Beispiel gibt Rohbytes, geparste Taste und den Verhandlungszustand aus und aktiviert Maus-Reporting sowie Bracketed Paste |
+| Manueller Smoke auf zwei realen Emulatoren (Kitty-Protokoll + Legacy) | **Prüfobergrenze der Portier-Umgebung (dokumentiert)**: das Kriterium verlangt zwei echte Emulatoren; hier hängt kein Terminal am Prozess. Ein Lauf über ein Pseudo-Terminal (`script`) prüft nur den eigenen Parser, nicht die Verhandlung mit einem Emulator — also kein Nachweis. Was automatisch prüfbar ist, ist portiert und grün: `tests/keys.rs` und `tests/keys_oracle.rs` (Kitty-CSI-u und Legacy-Sequenzen gegen den TS-Tokenstrom), `tests/stdin_buffer*.rs` (Reassemblierung inkl. Bracketed Paste und Maus), `tests/terminal.rs` (Verhandlung, Raw-Mode, Wiederherstellung). Der Emulator-Lauf gehört in die Release-Prozedur der Distribution, nicht in den Port: `cargo run -p notagent-tui --example input-smoke` gibt dort Rohbytes, geparste Taste und Verhandlungszustand aus |
 | PARITY.md enthält alle 39 src-Dateien, alle Testdateien und die native/-Quellen | erfüllt (Selbstaudit vor G2: die acht zuvor fehlenden Einträge — sechs manuelle Skripte, `test-themes.ts` und die beiden native-Build-Skripte — sind nachgetragen; ein Abgleich gegen `find src test native` findet keine Lücke mehr) |
 
 ## Ausschlüsse
@@ -214,6 +215,19 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/viewport-overwrite-repro.ts` (108) | Manuelles Repro (braucht tmux mit 8–12 Zeilen) für das Überschreiben des Viewports nach einer Tool-Pause; das Szenario ist als Testfall portiert (`tests/tui_render.rs::full_re_renders_when_deleted_lines_move_the_viewport_upward` und `::appends_after_a_shrink_without_another_full_redraw_once_the_viewport_is_reset`) |
 | `test/render-churn-bench.ts` (203) | Allokations- und Laufzeit-Benchmark über den V8-Sampling-Heap-Profiler (`node:inspector`); misst JS-Churn, kein Verhalten. Klasse 4: kein Rust-Pendant, da die gemessene Größe nicht existiert |
 | `native/darwin/build.sh` (62), `native/win32/build.mjs` (229) | Build-Skripte, die die `.node`-Addons für die Prebuilds übersetzen. Klasse 4 (Distributionsmechanik): der Rust-Port übersetzt denselben C-Code über `build.rs` bzw. ruft die Plattform-API direkt auf; die Addon-Verpackung entfällt |
+
+
+## Abschluss-Sweep 2026-08-16
+
+Letzter Durchgang des Workstreams. Der Audit (`scripts/parity-audit.sh`) führt `packages/tui` mit 41 Dateien: **38 verifiziert, 0 ohne Ledger-Spur**. Die drei verbleibenden Zeilen stehen bewusst auf `portiert`, mit der Obergrenze in der jeweiligen Zeile:
+
+| Datei | warum nicht `verifiziert` |
+|---|---|
+| `src/native-modifiers.ts` | `tests/base_components.rs` belegt, dass die Abfrage die Plattform erreicht und antwortet; ein `true` verlangt eine im Messmoment gedrückte Taste, die kein Test herstellen kann |
+| `native/darwin/src/darwin-modifiers.c` | dito — die Flag-Masken sind 1:1 übernommen, der Zustand ist nicht herstellbar |
+| `native/win32/src/win32-console-mode.c` | kompiliert nur unter `cfg(target_os = "windows")` und braucht eine echte Windows-Konsole |
+
+Neu in diesem Durchgang: `tests/base_components.rs` (12 Fälle) hebt spacer, box, loader, cancellable-loader, alt-screen-flash und image auf `verifiziert` — `packages/tui/test/` hatte für diese sechs Dateien keine Suite, die Fälle sind aus der TS-Quelle abgelesen.
 
 ## Entscheidungen
 
