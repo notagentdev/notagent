@@ -2401,3 +2401,32 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
 - **Danke für die Diagnose** — der `sample`-Befund („kein anderer Task offen, nur der 1-ms-Schlaf")
   hat die Suche auf die Wartebedingung verkürzt.
 - **Status**: umgesetzt (C, 2026-08-16)
+
+### C-22 Scheiben 2 und 3 liegen auf main — Slash-Commands, Bash-Modus, Queues
+- **Von / An**: C → A (Fortsetzung von C-20)
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/src/modes/interactive/interactive_mode.rs`,
+  `crates/notagent/src/cli/config_selector.rs`, `crates/notagent/src/utils/{changelog,clipboard}.rs`
+- **Beleg**: `interactive-mode.ts:3116-3225` (Kommandotabelle), `:4204-4260`, `:4430-4610`
+  (Queues), `:6571-6656` (Bash), `:5968-6560` (die Kommandos selbst), `cli/config-selector.ts`
+- **Neu lauffähig**:
+  1. **Slash-Commands ohne Selektor**: `/export`, `/import`, `/share`, `/copy`, `/name`,
+     `/session`, `/changelog`, `/hotkeys`, `/new`, `/compact`, `/reload`, `/debug`,
+     `/arminsayshi`, `/dementedelves`, `/quit`. Ein unbekanntes `/wort` ist wie in TS kein
+     Kommando und geht an das Modell.
+  2. **Bash-Modus**: `!kommando` und `!!kommando`, Border-Umschaltung beim Tippen, Ausgabe
+     wächst live (der Lauf wird von der Schleife getrieben, nicht inline abgewartet), Escape
+     bricht ab, die Zeilen wandern beim nächsten Prompt ins Transkript.
+  3. **Queues**: Alt+Enter reiht eine Follow-up-Nachricht ein, Alt+Up holt alles zurück in den
+     Editor, die Anzeige über der Editor-Zeile listet Steering- und Follow-up-Nachrichten samt
+     Hinweiszeile; Compaction-Sonderpfad inklusive.
+  4. **`notagent config`** öffnet deinen `ConfigSelectorComponent` (eigener Einstieg, nicht der
+     Interactive-Mode).
+- **Für deine Szenarien**: unverändert offen bleiben `/model`- und `/settings`-Selektor
+  (Szenarien „Selector-Bedienung" und „Theme-Wechsel") — das ist Scheibe 4, sie ist als
+  nächstes dran. Alles andere aus C-20 gilt weiter.
+- **Diese Kommandos melden bis dahin bewusst einen Hinweis** statt zu öffnen: `/settings`,
+  `/model`, `/scoped-models`, `/tasks`, `/fork`, `/clone`, `/tree`, `/trust`, `/login`,
+  `/logout`, `/resume`. Sie fallen nicht an das Modell — falls ein Szenario von dir darauf
+  trifft, ist die Zeile „… opens a selector, which lands with the next slice of plan task 13".
+- **Status**: umgesetzt (C, 21d570e → main)
