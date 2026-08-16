@@ -106,6 +106,7 @@ aus `tools/index.ts` vorgezogen, weil Modes ohne sie nicht ladbar sind.
 | 2026-08-13 | packages/coding-agent/test/custom-message.test.ts | 44 | A-Task 15 (Batch 2) |
 | 2026-08-13 | packages/coding-agent/test/bash-execution-width.test.ts | 80 | A-Task 15 (Batch 2) |
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/extension-selector.ts | 112 | A-Task 15 (Batch 3) |
+| 2026-08-16 | packages/coding-agent/src/modes/interactive/components/extension-editor.ts | 132 | C-23 (Baum-Antwort „Summarize with custom prompt") |
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/thinking-selector.ts | 75 | A-Task 15 (Batch 3) |
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/theme-selector.ts | 67 | A-Task 15 (Batch 3) |
 | 2026-08-13 | packages/coding-agent/src/modes/interactive/components/show-images-selector.ts | 50 | A-Task 15 (Batch 3) |
@@ -604,9 +605,10 @@ besitzt `crates/notagent/src/modes/interactive/theme/` und (ab Batch 1)
 
 Stand 2026-08-15 (Abschluss von Plan-Task 15): die Zuteilung ist abgearbeitet. Jede
 Datei unter `components/` und `modes/interactive/` ist portiert oder als Klasse 2
-gestrichen — `custom-entry.ts` (Entry-Renderer kommen nur aus dem Extension-Runner),
-`extension-editor.ts` und `extension-input.ts`; `extension-selector.ts` lebt unter
-neutralem Namen als `list_selector.rs` weiter, `index.ts` ist `components.rs`.
+gestrichen — `custom-entry.ts` (Entry-Renderer kommen nur aus dem Extension-Runner)
+und `extension-input.ts`; `extension-selector.ts` und (seit C-23, 2026-08-16)
+`extension-editor.ts` leben unter neutralem Namen als `list_selector.rs` bzw.
+`text_input_dialog.rs` weiter, `index.ts` ist `components.rs`.
 Bei C bleiben `interactive-mode.ts` und die `renderCall`/`renderResult`-Hälften der
 Tool-Dateien unter `core/tools/`.
 
@@ -666,6 +668,7 @@ Tool-Dateien unter `core/tools/`.
 | — (neu) | — | tests/render_diff_oracle.rs | verifiziert | 20 Diff-Texte byteweise gegen die TS-Komponente (dark, truecolor, `FORCE_COLOR=1`). Generator `tools/gen-render-diff-oracle.mjs` |
 | — (neu) | — | tests/summary_messages.rs | verifiziert | 3 Tests für die beiden Summary-Komponenten (Collapse/Expand, Tausendertrennung, Bold-Label), die die TS-Suite nicht abdeckt |
 | src/modes/interactive/components/extension-selector.ts | 112 | src/modes/interactive/components/list_selector.rs | verifiziert | Klasse 2: umbenannt zu `ListSelectorComponent` (Interface-Request C-5) — die Komponente ist ein generischer Listen-Selektor, den vier Kern-Stellen benutzen; das Wort „extension" verschwindet mit dem Extension-System. Klasse 1: der `tui`-Parameter der Optionen entfällt, weil der Countdown gepollt wird (`countdown_deadline()`/`tick_countdown()`) |
+| src/modes/interactive/components/extension-editor.ts | 132 | src/modes/interactive/components/text_input_dialog.rs | verifiziert | Klasse 2: umbenannt zu `TextInputDialogComponent` (Interface-Request C-23) — wie beim Selektor hat auch der Editor einen Nicht-Extension-Aufrufer: die Baum-Antwort „Summarize with custom prompt" ruft `showExtensionEditor("Custom summarization instructions")` (`interactive-mode.ts:5285-5292`, `:2549-2577`). Klasse 1: (a) `Editor` meldet einen Submit über `take_submitted` statt über `onSubmit`, der Dialog leert die Queue direkt nach der Weitergabe der Taste; (b) `tui.stop()`/`tui.start()` um den externen Editor ist ein `ExternalEditorRunner`, den der Besitzer stellt — der Neustart hängt am Input-Pump des Modus (`RendererCell`), an den eine Komponente nicht kommt; die Kommando-Auflösung (`VISUAL`/`EDITOR`/`nano`) bleibt in der Komponente. 8 Tests in `tests/text_input_dialog.rs` (die TS-Datei hat keine eigene Suite): Titel/Hinweise/Rahmen, Prefill, Enter submittet und Escape bricht ab, externer Editor mit und ohne Ergebnis, ohne Runner, die Kommando-Rückfallkette, Fokus-Durchreiche |
 | src/modes/interactive/components/thinking-selector.ts | 75 | src/modes/interactive/components/thinking_selector.rs | verifiziert | Klasse 1: `Record<ThinkingLevel, string>` → `match`; Vererbung von `Container` → Komposition |
 | src/modes/interactive/components/theme-selector.ts | 67 | src/modes/interactive/components/theme_selector.rs | verifiziert | Klasse 1: Vererbung → Komposition |
 | src/modes/interactive/components/show-images-selector.ts | 50 | src/modes/interactive/components/show_images_selector.rs | verifiziert | Klasse 1: Vererbung → Komposition |

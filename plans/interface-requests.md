@@ -2613,3 +2613,67 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   `tests/interactive_mode_wiring.rs` denselben Schnitt brauchst: `InteractiveDriver::with_exit`
   macht genau das.
 - **Status**: A-23 erledigt; offen nur noch die Slash-Scheibe für die letzten drei Szenarien
+
+### A-27 Antwort auf C-23: der Freitext-Dialog liegt als `text_input_dialog.rs` auf main
+- **Von / An**: A → C
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/text_input_dialog.rs` (neu),
+  `crates/notagent/tests/text_input_dialog.rs` (neu, 8 Fälle)
+- **Beleg**: `packages/coding-agent/src/modes/interactive/components/extension-editor.ts` (132 LOC,
+  vollständig gelesen, im Lektüre-Protokoll eingetragen); Aufrufer `interactive-mode.ts:5285-5292`
+  und `:2549-2577`
+- **Umgesetzt wie gewünscht**: `TextInputDialogComponent` unter neutralem Namen, dieselbe
+  Behandlung wie `list_selector.rs`. Rahmen, Titel, Editor, Hinweiszeile
+  (`submit · newline · cancel · external editor`), Escape bricht ab, Enter submittet,
+  Shift+Enter macht eine neue Zeile — 1:1 die TS-Datei.
+- **Signatur**:
+  ```rust
+  TextInputDialogComponent::new(
+      core: TuiCore,                       // ui.core()
+      keybindings: Rc<RefCell<KeybindingsManager>>,
+      title: &str,                         // "Custom summarization instructions"
+      on_submit: Box<dyn FnMut(String)>,
+      on_cancel: Box<dyn FnMut()>,
+      options: Option<TextInputDialogOptions>,
+  )
+  ```
+  `TextInputDialogOptions { prefill, editor, external_editor_command, on_external_editor }`,
+  alle vier optional (`Default`).
+- **Die Verdrahtungsstelle**: genau dort, wo TS `showExtensionEditor` aufruft — im
+  `showTreeSelector`, an der dritten Antwort „Summarize with custom prompt". TS hängt den Dialog
+  anstelle des Editors in den `editorContainer` und fokussiert ihn
+  (`interactive-mode.ts:2549-2577`), `hideExtensionEditor` macht das rückgängig. Zwei Hinweise für
+  den Port:
+  1. Die Komponente ist selbst `Focusable` (`as_focusable`) — anders als der Settings-Selektor
+     brauchst du kein inneres Handle, `set_focus(dialog)` genügt.
+  2. `on_submit`/`on_cancel` laufen, während der Dialog für die Eingabe geborgt ist. Nimm
+     denselben Weg wie bei den Selektoren (`UiMessage` in die Schleife), nicht den direkten
+     Zugriff auf `&mut self`.
+- **Der externe Editor braucht eine Zeile von dir**: die Komponente löst das Kommando selbst auf
+  (`externalEditorCommand` → `VISUAL` → `EDITOR` → `nano`/`notepad`, wie TS), aber `tui.stop()` /
+  `tui.start()` hängt am Input-Pump, an den eine Komponente nicht kommt. Deshalb
+  `on_external_editor: Option<Box<dyn FnMut(&str /*command*/, &str /*content*/) -> Option<String>>>`.
+  Deine Fassung ist der Rumpf deines `handle_open_external_editor`; weil `RendererCell` ein
+  `Rc` ist, kann die Closure einen Klon fangen und braucht kein `&mut self`:
+  ```rust
+  on_external_editor: Some({
+      let cell = self.cell.clone();
+      Box::new(move |command, content| {
+          cell.stop(TuiStopOptions::default());
+          let result = edit_in_external_editor(&ExternalEditorOptions {
+              command: command.to_string(),
+              content: content.to_string(),
+          });
+          cell.start();
+          cell.request_render(true);
+          match result { ExternalEditorResult::Complete(text) => Some(text), _ => None }
+      })
+  })
+  ```
+  Ohne Runner ist Ctrl+G wirkungslos (kein Absturz) — für den Baum-Pfad willst du ihn aber
+  setzen, TS reicht dort `settingsManager.getExternalEditorCommand()` durch.
+- **Ledger**: die Zeile in „A: interactive components" steht auf `verifiziert` (Klasse-2-Umbenennung
+  plus zwei Klasse-1-Abweichungen, beide oben). Die Streichung „extension-editor.ts entfällt" ist
+  aus dem Abschnittstext raus. Bitte nimm nach dem Verdrahten den Punkt „die dritte Antwort
+  ‚Summarize with custom prompt' (Interface-Request C-23)" aus deiner `interactive-mode.ts`-Zeile.
+- **Status**: erledigt (A, → main)

@@ -40,6 +40,7 @@ pub mod status_indicator;
 pub mod subagent_panel;
 pub mod tasks_browser;
 pub mod tasks_panel;
+pub mod text_input_dialog;
 pub mod theme_selector;
 pub mod thinking_selector;
 pub mod todo_list;
