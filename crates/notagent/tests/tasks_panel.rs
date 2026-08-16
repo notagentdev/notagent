@@ -1,6 +1,10 @@
 //! Port of `packages/coding-agent/test/tasks-panel.test.ts` (115 LOC).
 //!
-//! The panel above the editor.
+//! The panel below the footer, restyled after the roster of
+//! `notagent-main-rust` (user decision 2026-08-16): blank separator, bulleted
+//! head line, `○` markers, elapsed time flush right. The behavioural tests of
+//! the TS suite (cost, scope ring, ordering) carry over unchanged; only the
+//! row-count bound and the styling test know the new look.
 //!
 //! The property worth protecting is that it costs nothing when there is nothing
 //! to say: a row spent telling every user "no background tasks" is a row taken
@@ -11,6 +15,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use notagent::core::tasks::types::{ShellTaskInfo, TaskInfo, TaskInfoBase, TaskStatus};
 use notagent::modes::interactive::components::tasks_panel::{TasksPanel, TasksPanelScope};
 use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::utils::ansi::strip_ansi;
 use notagent_tui::tui::Component;
 
 /// The global theme is a process global.
@@ -109,9 +114,41 @@ fn caps_how_much_of_the_screen_a_fan_out_can_take() {
             })
             .collect(),
     );
-    // Heading, the capped rows, and one line saying what was left out.
-    assert!(panel.render(100).len() <= 10);
+    // Separator, heading, the capped rows, and one line saying what was left
+    // out.
+    assert!(panel.render(100).len() <= 11);
     assert!(rendered(&mut panel).contains("more"));
+}
+
+#[test]
+fn renders_in_the_roster_style_of_the_reference() {
+    let _guard = theme_lock();
+    let mut panel = TasksPanel::new();
+    panel.set_scope(TasksPanelScope::All);
+    // Completed, so the elapsed time is ended_at - started_at = 1s and the
+    // test does not race the wall clock.
+    panel.set_tasks(vec![shell(
+        "bash-11112222",
+        TaskStatus::Completed,
+        "a build",
+        0,
+    )]);
+    let lines = panel.render(60);
+    assert_eq!(
+        lines[0], "",
+        "a blank row separates the panel from the footer"
+    );
+    let heading = strip_ansi(&lines[1]);
+    assert!(
+        heading.contains("● background tasks"),
+        "bulleted head line: {heading}"
+    );
+    let row = strip_ansi(&lines[2]);
+    assert!(
+        row.contains("○ bash-11112222") && row.contains("a build"),
+        "marker, id and label: {row}"
+    );
+    assert!(row.trim_end().ends_with("1s"), "elapsed flush right: {row}");
 }
 
 // --- the scope ring -----------------------------------------------------------------

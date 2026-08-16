@@ -31,17 +31,24 @@ async fn a_completed_todo_list_hides_after_five_seconds() {
         driver.wait_for("notagent").await;
 
         driver.submit("erledige alles").await;
-        // The all-completed list arrives from the tool call and is shown once.
+        // The all-completed list arrives from the tool call and is shown once
+        // — in the dock panel only: since 2026-08-16 `todo_write` gets no
+        // transcript row (user decision, like notagent-main-rust).
         driver.wait_for("Aufräumen").await;
         driver.wait_for("Alles erledigt.").await;
+        assert!(
+            !driver.screen().contains("todo_write"),
+            "the tool call has no transcript row:\n{}",
+            driver.screen()
+        );
 
         // The editor still accepts input after the turn.
         driver.send_keys("tippt noch").await;
         driver.wait_for("tippt noch").await;
 
-        // The dock renders completed rows with a filled bullet; the transcript
-        // row keeps the todo text forever, so the bullet is the marker that
-        // must leave the visible screen when the five-second hide fires.
+        // The dock renders completed rows with a filled bullet, and it is the
+        // only place the list appears — so the bullet is the marker that must
+        // leave the visible screen when the five-second hide fires.
         assert!(
             driver.screen().contains('●'),
             "the completed list is shown once before it hides:\n{}",

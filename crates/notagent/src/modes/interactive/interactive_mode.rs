@@ -1462,6 +1462,9 @@ impl InteractiveMode {
             },
         ));
         let mut dock = VStack::new(StackOptions::default());
+        // Deviation from the TS order (user decision 2026-08-16): the tasks
+        // panel sits below the footer, like the roster in notagent-main-rust,
+        // instead of above the editor.
         for (component, min_size) in [
             (
                 Rc::clone(&self.pending_messages_container) as ComponentRef,
@@ -1469,11 +1472,11 @@ impl InteractiveMode {
             ),
             (Rc::clone(&self.status_container) as ComponentRef, 0),
             (Rc::clone(&self.todo_panel_container) as ComponentRef, 0),
-            (Rc::clone(&self.tasks_panel_container) as ComponentRef, 0),
             (Rc::clone(&self.widget_container_above) as ComponentRef, 0),
             (Rc::clone(&self.editor_container) as ComponentRef, 3),
             (Rc::clone(&self.widget_container_below) as ComponentRef, 0),
             (Rc::clone(&self.footer_container) as ComponentRef, 1),
+            (Rc::clone(&self.tasks_panel_container) as ComponentRef, 0),
             (Rc::clone(&self.subagent_panel_container) as ComponentRef, 0),
         ] {
             dock.add_child_with(
@@ -1512,11 +1515,11 @@ impl InteractiveMode {
             Rc::clone(&self.pending_messages_container) as ComponentRef,
             Rc::clone(&self.status_container) as ComponentRef,
             Rc::clone(&self.todo_panel_container) as ComponentRef,
-            Rc::clone(&self.tasks_panel_container) as ComponentRef,
             Rc::clone(&self.widget_container_above) as ComponentRef,
             Rc::clone(&self.editor_container) as ComponentRef,
             Rc::clone(&self.widget_container_below) as ComponentRef,
             Rc::clone(&self.footer_container) as ComponentRef,
+            Rc::clone(&self.tasks_panel_container) as ComponentRef,
             Rc::clone(&self.subagent_panel_container) as ComponentRef,
         ];
         for child in children {
@@ -7387,6 +7390,14 @@ impl InteractiveMode {
     }
 
     fn add_tool_component(&mut self, tool_name: &str, tool_call_id: &str, args: serde_json::Value) {
+        // Deviation from the TS original (user decision 2026-08-16, like
+        // notagent-main-rust): `todo_write` gets no transcript row — the dock
+        // panel below the chat already shows the resulting list, and a row
+        // would say the same twice. The execution-end handler feeds the panel
+        // regardless of whether a row exists.
+        if tool_name == "todo_write" {
+            return;
+        }
         let component = Rc::new(RefCell::new(self.create_tool_component(
             tool_name,
             tool_call_id,
@@ -7482,6 +7493,11 @@ impl InteractiveMode {
                         let notagent_ai::types::AssistantContent::ToolCall(call) = content else {
                             continue;
                         };
+                        // No transcript row for `todo_write` on restore either
+                        // — same deviation as `add_tool_component`.
+                        if call.name == "todo_write" {
+                            continue;
+                        }
                         let component = Rc::new(RefCell::new(self.create_tool_component(
                             &call.name,
                             &call.id,

@@ -1,20 +1,25 @@
 //! The panel that makes background work visible.
 //!
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/tasks-panel.ts` (106 LOC).
+//! Port of
+//! `packages/coding-agent/src/modes/interactive/components/tasks-panel.ts` (106 LOC),
+//! with a deliberate deviation (user decision 2026-08-16): the panel sits
+//! below the footer instead of above the editor, and its rows follow the
+//! roster style of `notagent-main-rust` (`notagent_tui/src/agent_roster.rs`)
+//! — a blank separator, a bulleted head line, `○` markers whose colour
+//! carries the state, and the elapsed time flush right. The scope ring and
+//! the ordering are unchanged from the TS original.
 //!
 //! A detached process the user cannot see is worse than one they had to wait
 //! for: it is still spending their machine, still holding their port, and the
 //! only evidence it exists is a line of tool output that scrolled away. So a
-//! running task is on screen for as long as it runs, above the editor, where
-//! the eye already is.
+//! running task is on screen for as long as it runs.
 //!
 //! It renders nothing at all when there is nothing to show. A panel that
 //! occupied a row to say "no tasks" would cost every user a line of terminal
 //! for a fact almost all of them do not need.
 
 use notagent_tui::tui::Component;
-use notagent_tui::utils::truncate_to_width_opts;
+use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
 use crate::core::tasks::types::{TaskInfo, TaskStatus, is_terminal_task_status};
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
@@ -34,10 +39,18 @@ pub enum TasksPanelScope {
 /// Most rows the panel will ever occupy, so a fan-out cannot eat the screen.
 const MAX_ROWS: usize = 8;
 
+/// Left indent of every panel line, matching the reference roster's gutter.
+const INDENT: &str = " ";
+
+/// Smallest gap between a row's label and the elapsed figure on its right.
+const MIN_GAP: usize = 2;
+
+/// The `○` in front of a row carries the state: green while running, dim once
+/// completed, red for everything that ended badly.
 fn status_colour(status: TaskStatus) -> ThemeColor {
     match status {
         TaskStatus::Running => ThemeColor::Success,
-        TaskStatus::Completed => ThemeColor::Muted,
+        TaskStatus::Completed => ThemeColor::Dim,
         _ => ThemeColor::Error,
     }
 }
@@ -65,19 +78,19 @@ pub(crate) fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
+/// Formats an elapsed duration the way the reference roster does: `42s`,
+/// `3m 12s`, `1h 4m`. Whole seconds, floored, like `Duration::as_secs`.
 fn elapsed(info: &TaskInfo, now: i64) -> String {
     let base = info.base();
-    let seconds = (((base.ended_at.unwrap_or(now) - base.started_at) as f64) / 1000.0)
-        .round()
-        .max(0.0) as i64;
-    if seconds < 60 {
-        return format!("{seconds}s");
+    let total_secs = ((base.ended_at.unwrap_or(now) - base.started_at).max(0) / 1000) as u64;
+    let (hours, minutes, seconds) = (total_secs / 3600, (total_secs % 3600) / 60, total_secs % 60);
+    if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds}s")
+    } else {
+        format!("{seconds}s")
     }
-    let minutes = seconds / 60;
-    if minutes < 60 {
-        return format!("{minutes}m");
-    }
-    format!("{}h", minutes / 60)
 }
 
 /// The panel itself.
@@ -169,54 +182,51 @@ impl Component for TasksPanel {
         }
 
         let now = now_ms();
+        // One row per task, roster style: marker and id on the left, the
+        // dimmed label giving way in the middle, the elapsed time flush right.
         let mut rows: Vec<String> = visible
             .iter()
             .take(MAX_ROWS)
             .map(|info| {
                 let base = info.base();
-                let marker = theme_instance.fg(
-                    status_colour(base.status),
-                    if base.status == TaskStatus::Running {
-                        "●"
-                    } else {
-                        "○"
-                    },
-                );
-                let id = theme_instance.fg(
-                    if matches!(info, TaskInfo::Subagent(_)) {
-                        ThemeColor::Accent
-                    } else {
-                        ThemeColor::ToolTitle
-                    },
-                    &format!("{:<14}", base.task_id),
-                );
-                let status = theme_instance.fg(
-                    status_colour(base.status),
-                    &format!("{:<10}", base.status.as_str()),
-                );
-                let time =
-                    theme_instance.fg(ThemeColor::Muted, &format!("{:>4}", elapsed(info, now)));
-                let label = truncate_to_width_opts(
-                    &single_line(&base.description),
-                    width.saturating_sub(36).max(8),
-                    "…",
-                    false,
-                );
-                truncate_to_width_opts(
-                    &format!(
-                        "{marker} {id} {status} {time}  {}",
-                        theme_instance.fg(ThemeColor::Text, &label)
-                    ),
-                    width,
-                    "…",
-                    false,
-                )
+                let marker = theme_instance.fg(status_colour(base.status), "○");
+                let figures = theme_instance.fg(ThemeColor::Dim, &elapsed(info, now));
+                let figures_width = visible_width(&figures);
+                let id = theme_instance.fg(ThemeColor::Text, &base.task_id);
+                let head = format!("{INDENT}{marker} {id}");
+                let head_width = visible_width(&head);
+
+                let label_budget = width
+                    .saturating_sub(head_width)
+                    .saturating_sub(figures_width)
+                    .saturating_sub(MIN_GAP + 1);
+                let label = single_line(&base.description);
+                let label = if label.is_empty() || label_budget == 0 {
+                    String::new()
+                } else {
+                    format!(
+                        " {}",
+                        theme_instance.fg(
+                            ThemeColor::Dim,
+                            &truncate_to_width_opts(&label, label_budget, "…", false)
+                        )
+                    )
+                };
+
+                let left = format!("{head}{label}");
+                let gap = width
+                    .saturating_sub(visible_width(&left))
+                    .saturating_sub(figures_width)
+                    .max(MIN_GAP);
+                format!("{left}{}{figures}", " ".repeat(gap))
             })
             .collect();
 
         let hidden = visible.len() - rows.len();
         if hidden > 0 {
-            rows.push(theme_instance.fg(ThemeColor::Muted, &format!("  … and {hidden} more")));
+            let text = theme_instance.fg(ThemeColor::Dim, &format!("… and {hidden} more"));
+            let pad = width.saturating_sub(visible_width(&text));
+            rows.push(format!("{}{text}", " ".repeat(pad)));
         }
 
         let running = self
@@ -224,15 +234,23 @@ impl Component for TasksPanel {
             .iter()
             .filter(|info| !is_terminal_task_status(info.base().status))
             .count();
-        let heading = theme_instance.fg(
-            ThemeColor::Muted,
-            &if self.scope == TasksPanelScope::All {
-                format!("background tasks ({running} running)")
-            } else {
-                format!("background tasks ({running})")
-            },
+        let heading = format!(
+            "{INDENT}{} {}",
+            theme_instance.fg(ThemeColor::Accent, "●"),
+            theme_instance.fg(
+                ThemeColor::Text,
+                &if self.scope == TasksPanelScope::All {
+                    format!("background tasks ({running} running)")
+                } else {
+                    format!("background tasks ({running})")
+                }
+            ),
         );
-        let mut lines = vec![truncate_to_width_opts(&heading, width, "…", false)];
+        // The blank line separates the panel from the footer above it.
+        let mut lines = vec![
+            String::new(),
+            truncate_to_width_opts(&heading, width, "…", false),
+        ];
         lines.extend(rows);
         lines
     }
