@@ -8,6 +8,7 @@
 //! through `createToolHtmlRenderer` uses the pure line-trimming half that stayed
 //! in this crate (see `core/export_html/tool_renderer.rs`).
 
+use notagent::core::export_html::ToolHtmlRenderer;
 use notagent::core::export_html::ansi_to_html::{ansi_lines_to_html, ansi_to_html};
 use notagent::core::export_html::tool_renderer::rendered_result_from_lines;
 use notagent::core::export_html::{ExportOptions, TEMPLATE_CSS, TEMPLATE_JS, export_from_file};
@@ -300,4 +301,116 @@ fn reproduces_the_dollar_expansion_of_string_replace() {
     assert!(TEMPLATE_JS.contains("$${totalCost.toFixed(3)}"));
     assert!(html.contains("${totalCost.toFixed(3)}"));
     assert!(!html.contains("$${totalCost.toFixed(3)}"));
+}
+
+// ---------------------------------------------------------------------------
+// createToolHtmlRenderer — the factory workstream C added with task 16 (B-8)
+// ---------------------------------------------------------------------------
+
+/// A tool whose two renderers answer with a fixed component, like the fake tool
+/// of the TypeScript case.
+struct FakeTool {
+    parameters: serde_json::Value,
+}
+
+impl notagent::core::tools::tool_definition::ToolDefinition for FakeTool {
+    fn name(&self) -> &str {
+        "custom"
+    }
+    fn label(&self) -> &str {
+        "custom"
+    }
+    fn description(&self) -> &str {
+        "custom"
+    }
+    fn parameters(&self) -> &serde_json::Value {
+        &self.parameters
+    }
+    fn execute<'a>(
+        &'a self,
+        _tool_call_id: &'a str,
+        _params: serde_json::Value,
+        _signal: Option<tokio_util::sync::CancellationToken>,
+        _on_update: Option<notagent_agent::types::AgentToolUpdateCallback>,
+        _context: Option<notagent::core::tools::tool_definition::ToolContext>,
+    ) -> notagent_agent::types::BoxFuture<
+        'a,
+        Result<notagent_agent::types::AgentToolResult, notagent_agent::types::ToolExecutionError>,
+    > {
+        Box::pin(async { Ok(notagent_agent::types::AgentToolResult::default()) })
+    }
+    fn render_call(
+        &self,
+        _args: &serde_json::Value,
+        _theme: &notagent::modes::interactive::theme::theme::Theme,
+        _context: &notagent::core::tools::tool_definition::ToolRenderContext,
+    ) -> Option<notagent_tui::tui::ComponentRef> {
+        Some(notagent_tui::tui::component_ref(
+            notagent_tui::components::text::Text::new("custom call", 0, 0),
+        ))
+    }
+    fn render_result(
+        &self,
+        _result: notagent::core::tools::tool_definition::ToolRenderResult<'_>,
+        options: notagent::core::tools::tool_definition::ToolRenderResultOptions,
+        _theme: &notagent::modes::interactive::theme::theme::Theme,
+        _context: &notagent::core::tools::tool_definition::ToolRenderContext,
+    ) -> Option<notagent_tui::tui::ComponentRef> {
+        let text = if options.expanded {
+            "\n\u{1b}[31mone\u{1b}[0m\ntwo\n"
+        } else {
+            "\none\n"
+        };
+        Some(notagent_tui::tui::component_ref(
+            notagent_tui::components::text::Text::new(text, 0, 0),
+        ))
+    }
+}
+
+#[test]
+fn the_tool_renderer_drives_the_tool_definitions_of_the_session() {
+    notagent::modes::interactive::theme::theme::init_theme(Some("dark"), false);
+    let renderer = notagent::core::export_html::tool_renderer::ToolDefinitionHtmlRenderer::new(
+        Box::new(|name: &str| {
+            (name == "custom").then(|| {
+                std::sync::Arc::new(FakeTool {
+                    parameters: serde_json::json!({ "type": "object" }),
+                })
+                    as std::sync::Arc<dyn notagent::core::tools::tool_definition::ToolDefinition>
+            })
+        }),
+        notagent::modes::interactive::theme::theme::theme(),
+        "/tmp".to_owned(),
+    );
+
+    let call = renderer
+        .render_call("id", "custom", &serde_json::json!({}))
+        .expect("the tool renders its call");
+    assert!(
+        call.starts_with(r#"<div class="ansi-line">custom call"#) && call.ends_with("</div>"),
+        "the call component's line becomes one ansi-line div (the `Text` component pads to the export width): {call}"
+    );
+    // A tool nobody knows falls back to the structured rendering.
+    assert_eq!(
+        renderer.render_call("id", "unknown", &serde_json::json!({})),
+        None
+    );
+
+    let rendered = renderer
+        .render_result("id", "custom", &[], &serde_json::Value::Null, false)
+        .expect("the tool renders its result");
+    let expanded = rendered.expanded.expect("an expanded rendering");
+    assert!(
+        expanded.starts_with(r#"<div class="ansi-line"><span style="color:#800000">one"#)
+            && expanded.matches(r#"<div class="ansi-line">"#).count() == 2
+            && expanded.contains("two"),
+        "two lines survive, the spacing lines around them do not, and the colour is kept: {expanded}"
+    );
+    let collapsed = rendered
+        .collapsed
+        .expect("a collapsed rendering that differs");
+    assert!(
+        collapsed.starts_with(r#"<div class="ansi-line">one"#) && !collapsed.contains("two"),
+        "the collapsed rendering is kept when it differs: {collapsed}"
+    );
 }

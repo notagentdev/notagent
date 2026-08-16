@@ -575,6 +575,12 @@ async fn refresh_model_catalogs(
             ..CreateModelRuntimeOptions::default()
         })
         .await?;
+        // `handlePackageCommand(args, { extensionFactories })` (`main.ts:663`)
+        // hands the built-in extensions to the package command as well, so the
+        // llama.cpp catalog is part of `update --models` there too.
+        let llama = crate::core::llama::provider::create_llama_provider();
+        let _ = model_runtime.register_native_provider(std::sync::Arc::clone(&llama.provider)
+            as std::sync::Arc<dyn notagent_ai::models::Provider>);
         let result = model_runtime
             .refresh(ModelsRefreshOptions {
                 allow_network: Some(true),

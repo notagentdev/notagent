@@ -90,6 +90,7 @@ use crate::core::messages::create_compaction_summary_message;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::agent_session_runtime::SessionOpenError;
+use crate::core::export_html::tool_renderer::ToolDefinitionHtmlRenderer;
 use crate::core::model_registry::ModelRegistry;
 use crate::core::model_resolver::{
     ModelScopeDiagnosticCode, default_model_for_provider, find_exact_model_reference_match,
@@ -6078,13 +6079,26 @@ impl InteractiveMode {
     /// where the TypeScript session method binds it.
     fn export_to_html(&self, output_path: Option<&str>) -> Result<String, String> {
         let session = self.session();
+        // `exportToHtml` (`agent-session.ts:3680-3696`): the tool rows are
+        // pre-rendered through the same renderers the transcript uses, so the
+        // page shows what the session showed.
+        let definitions = Arc::clone(&session);
+        let renderer = ToolDefinitionHtmlRenderer::new(
+            Box::new(move |name: &str| definitions.get_tool_definition(name)),
+            theme(),
+            self.cwd(),
+        );
+        let theme_name = self.settings().get_theme().filter(|name| {
+            crate::modes::interactive::theme::theme::get_theme_by_name(name).is_some()
+        });
         session.with_session_manager(|manager| {
             crate::core::export_html::export_session_to_html(
                 manager,
                 None,
                 crate::core::export_html::ExportOptions {
                     output_path: output_path.map(str::to_owned),
-                    ..crate::core::export_html::ExportOptions::default()
+                    theme_name,
+                    tool_renderer: Some(&renderer),
                 },
             )
             .map_err(|error| error.to_string())

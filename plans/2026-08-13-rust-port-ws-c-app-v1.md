@@ -174,7 +174,24 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (und die vi
 > `tests/agent_session_tool_result_images.rs`, 3 neue in `tests/interactive_mode_wiring.rs`
 > (implizites Projektvertrauen nach `/reload`, `/import` einer Sitzung ohne existierendes cwd,
 > Shutdown-Token) und die erweiterte Bildprüfung in `tests/panels.rs`.
-- [ ] 16. Gate-Abnahmen und Abschluss-Audit durchführen: G1/G2/G3/G4-Kriterien aus dem Master prüfen und taggen; an G4 den Smoke-Test analog TS-Release-Prozedur ausführen (--help, --version, --list-models, -p gegen faux und einen echten Provider des Nutzers, interaktive Session in tmux mit Prompt-Roundtrip) und in plans/g4-smoke-report.md protokollieren; Abschluss-Drift-Audit über alle Ledger (jede TS-src-Datei erfasst) in plans/final-parity-audit.md; PARITY.md aller fünf C-Crates finalisieren. Rationale: messbarer Abschluss gemäß Master-Plan Task 9 und 10.
+- [x] 16. Gate-Abnahmen und Abschluss-Audit durchführen: G1/G2/G3/G4-Kriterien aus dem Master prüfen und taggen; an G4 den Smoke-Test analog TS-Release-Prozedur ausführen (--help, --version, --list-models, -p gegen faux und einen echten Provider des Nutzers, interaktive Session in tmux mit Prompt-Roundtrip) und in plans/g4-smoke-report.md protokollieren; Abschluss-Drift-Audit über alle Ledger (jede TS-src-Datei erfasst) in plans/final-parity-audit.md; PARITY.md aller fünf C-Crates finalisieren. Rationale: messbarer Abschluss gemäß Master-Plan Task 9 und 10.
+
+> **Abschluss Task 16 (2026-08-16):** G3 und G4 sind in einem Durchgang abgenommen, weil
+> Workstream A seine G3-Szenarien und die C-23-Komponente zusammen geliefert hat.
+> **G3:** `tests/g3_interactive_e2e.rs` fährt 20 Fälle über das virtuelle Terminal, kein
+> `#[ignore]` mehr; die letzte offene Verdrahtungsstelle (dritte Baum-Antwort
+> „Summarize with custom prompt") liegt auf As `text_input_dialog.rs`. Tag `gate-g3`.
+> **G4:** `scripts/check.sh` grün auf main (3 861 Tests in 249 Suiten), Smoke-Test in
+> `plans/g4-smoke-report.md` (12 Schritte über die gebaute Binary — Hilfe, Version,
+> Modelle, Katalog-Refresh, Print, JSON, interaktiv gegen einen lokalen llama.cpp-Router
+> **und** gegen einen echten Provider, `/llama`), Abschluss-Audit in
+> `plans/final-parity-audit.md` (0 Dateien ohne Ledger-Spur, 544 `verifiziert`,
+> 85 Ausschlüsse, 3 dokumentierte Prüfobergrenzen von A). Tag `gate-g4`.
+> **Im Audit nachgezogen:** 63 Ledger-Zeilen von `portiert` auf `verifiziert` mit
+> benannter Suite, zwei Extension-Hüllen in die Ausschluss-Tabelle, sechs überholte
+> Doppel-Zeilen aufgelöst, `createToolHtmlRenderer` (B-8) portiert und verdrahtet, dazu
+> die beiden Dateien ohne jede Suite (`cli/file-processor.ts`, `core/output-guard.ts`)
+> mit neuen Tests belegt.
 
 ## Verification Criteria
 

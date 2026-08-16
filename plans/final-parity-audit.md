@@ -4,7 +4,7 @@ Maschinell erzeugt von `scripts/parity-audit.sh` (Werkzeug: `tools/parity-audit.
 Der Bericht prüft jede Datei unter `packages/*/src` des TS-Repos gegen alle `crates/*/PARITY.md`-Ledger.
 Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine Bewertung.
 
-- Lauf: 2026-08-16, Repo-Commit `b6cb050`
+- Lauf: 2026-08-16, Repo-Commit `2a168f1`
 - TS-Repo: `/Users/dev/projects/notagent-main`
 - Gelesene Ledger: 9 (`notagent`, `notagent-agent`, `notagent-ai`, `notagent-client`, `notagent-protocol`, `notagent-server`, `notagent-session-sqlite`, `notagent-telemetry`, `notagent-tui`)
 - src-Verzeichnisse: 12, Dateien gesamt: 632
@@ -13,10 +13,10 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 
 | Kategorie | Dateien | Bedeutung |
 |---|---:|---|
-| verifiziert | 472 | Ledger-Zeile mit Status `verifiziert` |
-| ausgeschlossen | 75 | in einer `Ausschlüsse`-Tabelle eines Ledgers geführt |
+| verifiziert | 544 | Ledger-Zeile mit Status `verifiziert` |
+| ausgeschlossen | 77 | in einer `Ausschlüsse`-Tabelle eines Ledgers geführt |
 | Rahmen-Ausschluss | 8 | im Master-Plan ausgeschlossen, ohne eigenes Ledger |
-| Ledger < verifiziert | 77 | Ledger-Zeile vorhanden, Status `gelesen`/`portiert`/`Tests portiert` |
+| Ledger < verifiziert | 3 | Ledger-Zeile vorhanden, Status `gelesen`/`portiert`/`Tests portiert` |
 | ohne Nachweis | 0 | keine Spur in irgendeinem Ledger — harte Lücke |
 
 ## Je Paket
@@ -26,7 +26,7 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 | `packages/agent` | B | 50 | 8 | 42 | 0 | 0 | 0 |
 | `packages/ai` | B | 215 | 210 | 5 | 0 | 0 | 0 |
 | `packages/client` | C | 10 | 10 | 0 | 0 | 0 | 0 |
-| `packages/coding-agent` | C | 258 | 156 | 28 | 0 | 74 | 0 |
+| `packages/coding-agent` | C | 258 | 228 | 30 | 0 | 0 | 0 |
 | `packages/evals` | — | 8 | 0 | 0 | 8 | 0 | 0 |
 | `packages/protocol` | C | 8 | 8 | 0 | 0 | 0 | 0 |
 | `packages/server` | C | 17 | 17 | 0 | 0 | 0 | 0 |
@@ -44,80 +44,6 @@ Für diese Dateien fehlt der grüne Testnachweis (Status-Leiter aus `CONVENTIONS
 
 | Datei | bester Status | Beleg | Art |
 |---|---|---|---|
-| `packages/coding-agent/src/cli.ts` | portiert | `crates/notagent/PARITY.md:540` | datei |
-| `packages/coding-agent/src/cli/args.ts` | portiert | `crates/notagent/PARITY.md:538` | datei |
-| `packages/coding-agent/src/cli/config-selector.ts` | portiert | `crates/notagent/PARITY.md:581` | datei |
-| `packages/coding-agent/src/cli/file-processor.ts` | portiert | `crates/notagent/PARITY.md:547` | datei |
-| `packages/coding-agent/src/config.ts` | portiert | `crates/notagent/PARITY.md:384` | datei |
-| `packages/coding-agent/src/core/agent-session-runtime.ts` | portiert | `crates/notagent/PARITY.md:536` | datei |
-| `packages/coding-agent/src/core/agent-session-services.ts` | portiert | `crates/notagent/PARITY.md:535` | datei |
-| `packages/coding-agent/src/core/agent-session.ts` | portiert | `crates/notagent/PARITY.md:524` | datei |
-| `packages/coding-agent/src/core/auth-guidance.ts` | gelesen | `crates/notagent/PARITY.md:757` | datei |
-| `packages/coding-agent/src/core/auth-storage.ts` | portiert | `crates/notagent/PARITY.md:397` | datei |
-| `packages/coding-agent/src/core/bash-executor.ts` | portiert | `crates/notagent/PARITY.md:428` | datei |
-| `packages/coding-agent/src/core/export-html/template.css` | unklar | `crates/notagent/PARITY.md:901` | datei |
-| `packages/coding-agent/src/core/export-html/template.html` | gelesen | `crates/notagent/PARITY.md:873` | datei |
-| `packages/coding-agent/src/core/export-html/template.js` | unklar | `crates/notagent/PARITY.md:901` | datei |
-| `packages/coding-agent/src/core/export-html/tool-renderer.ts` | gelesen | `crates/notagent/PARITY.md:872` | datei |
-| `packages/coding-agent/src/core/hooks/events.ts` | portiert | `crates/notagent/PARITY.md:468` | datei |
-| `packages/coding-agent/src/core/hooks/extension.ts` | gelesen | `crates/notagent/PARITY.md:263` | datei |
-| `packages/coding-agent/src/core/hooks/hooks.ts` | portiert | `crates/notagent/PARITY.md:469` | datei |
-| `packages/coding-agent/src/core/hooks/payload.ts` | portiert | `crates/notagent/PARITY.md:470` | datei |
-| `packages/coding-agent/src/core/hooks/runner.ts` | portiert | `crates/notagent/PARITY.md:471` | datei |
-| `packages/coding-agent/src/core/hooks/runtime.ts` | portiert | `crates/notagent/PARITY.md:472` | datei |
-| `packages/coding-agent/src/core/http-dispatcher.ts` | portiert | `crates/notagent/PARITY.md:700` | datei |
-| `packages/coding-agent/src/core/messages.ts` | portiert | `crates/notagent/PARITY.md:401` | datei |
-| `packages/coding-agent/src/core/mini-read/index.ts` | portiert | `crates/notagent/PARITY.md:433` | datei |
-| `packages/coding-agent/src/core/mini-read/languages.ts` | portiert | `crates/notagent/PARITY.md:434` | datei |
-| `packages/coding-agent/src/core/mini-read/minify-edit.ts` | portiert | `crates/notagent/PARITY.md:432` | datei |
-| `packages/coding-agent/src/core/mini-read/minify.ts` | portiert | `crates/notagent/PARITY.md:431` | datei |
-| `packages/coding-agent/src/core/modes/cycle.ts` | portiert | `crates/notagent/PARITY.md:455` | datei |
-| `packages/coding-agent/src/core/modes/indicator.ts` | portiert | `crates/notagent/PARITY.md:456` | datei |
-| `packages/coding-agent/src/core/modes/modes.ts` | portiert | `crates/notagent/PARITY.md:453` | datei |
-| `packages/coding-agent/src/core/modes/shells.ts` | portiert | `crates/notagent/PARITY.md:454` | datei |
-| `packages/coding-agent/src/core/output-guard.ts` | portiert | `crates/notagent/PARITY.md:555` | datei |
-| `packages/coding-agent/src/core/permissions/chain.ts` | portiert | `crates/notagent/PARITY.md:461` | datei |
-| `packages/coding-agent/src/core/permissions/coordinator.ts` | portiert | `crates/notagent/PARITY.md:465` | datei |
-| `packages/coding-agent/src/core/permissions/extension.ts` | gelesen | `crates/notagent/PARITY.md:257` | datei |
-| `packages/coding-agent/src/core/permissions/hook.ts` | portiert | `crates/notagent/PARITY.md:466` | datei |
-| `packages/coding-agent/src/core/permissions/policies.ts` | portiert | `crates/notagent/PARITY.md:462` | datei |
-| `packages/coding-agent/src/core/permissions/policy.ts` | portiert | `crates/notagent/PARITY.md:460` | datei |
-| `packages/coding-agent/src/core/permissions/request.ts` | portiert | `crates/notagent/PARITY.md:464` | datei |
-| `packages/coding-agent/src/core/permissions/user-rules.ts` | portiert | `crates/notagent/PARITY.md:463` | datei |
-| `packages/coding-agent/src/core/project-trust.ts` | portiert | `crates/notagent/PARITY.md:474` | datei |
-| `packages/coding-agent/src/core/resolve-config-value.ts` | portiert | `crates/notagent/PARITY.md:390` | datei |
-| `packages/coding-agent/src/core/resource-loader.ts` | portiert | `crates/notagent/PARITY.md:516` | datei |
-| `packages/coding-agent/src/core/sdk.ts` | portiert | `crates/notagent/PARITY.md:532` | datei |
-| `packages/coding-agent/src/core/session-manager.ts` | portiert | `crates/notagent/PARITY.md:400` | datei |
-| `packages/coding-agent/src/core/settings-manager.ts` | portiert | `crates/notagent/PARITY.md:386` | datei |
-| `packages/coding-agent/src/core/source-info.ts` | portiert | `crates/notagent/PARITY.md:451` | datei |
-| `packages/coding-agent/src/core/todos/render.ts` | portiert | `crates/notagent/PARITY.md:442` | datei |
-| `packages/coding-agent/src/core/todos/todos.ts` | portiert | `crates/notagent/PARITY.md:441` | datei |
-| `packages/coding-agent/src/core/tools/bash.ts` | portiert | `crates/notagent/PARITY.md:426` | datei |
-| `packages/coding-agent/src/core/tools/file-mutation-queue.ts` | portiert | `crates/notagent/PARITY.md:421` | datei |
-| `packages/coding-agent/src/core/tools/output-accumulator.ts` | portiert | `crates/notagent/PARITY.md:408` | datei |
-| `packages/coding-agent/src/core/tools/path-utils.ts` | portiert | `crates/notagent/PARITY.md:404` | datei |
-| `packages/coding-agent/src/core/tools/truncate.ts` | portiert | `crates/notagent/PARITY.md:403` | datei |
-| `packages/coding-agent/src/core/trust-manager.ts` | portiert | `crates/notagent/PARITY.md:475` | datei |
-| `packages/coding-agent/src/main.ts` | portiert | `crates/notagent/PARITY.md:543` | datei |
-| `packages/coding-agent/src/migrations.ts` | portiert | `crates/notagent/PARITY.md:388` | datei |
-| `packages/coding-agent/src/modes/index.ts` | portiert | `crates/notagent/PARITY.md:559` | datei |
-| `packages/coding-agent/src/modes/interactive/interactive-mode.ts` | portiert | `crates/notagent/PARITY.md:576` | datei |
-| `packages/coding-agent/src/modes/rpc/rpc-mode.ts` | portiert | `crates/notagent/PARITY.md:564` | datei |
-| `packages/coding-agent/src/modes/rpc/rpc-types.ts` | portiert | `crates/notagent/PARITY.md:563` | datei |
-| `packages/coding-agent/src/package-manager-cli.ts` | portiert | `crates/notagent/PARITY.md:582` | datei |
-| `packages/coding-agent/src/rpc-entry.ts` | portiert | `crates/notagent/PARITY.md:541` | datei |
-| `packages/coding-agent/src/utils/abort.ts` | portiert | `crates/notagent/PARITY.md:395` | datei |
-| `packages/coding-agent/src/utils/ansi.ts` | portiert | `crates/notagent/PARITY.md:394` | datei |
-| `packages/coding-agent/src/utils/child-process.ts` | portiert | `crates/notagent/PARITY.md:427` | datei |
-| `packages/coding-agent/src/utils/frontmatter.ts` | portiert | `crates/notagent/PARITY.md:458` | datei |
-| `packages/coding-agent/src/utils/html.ts` | portiert | `crates/notagent/PARITY.md:449` | datei |
-| `packages/coding-agent/src/utils/management-http.ts` | portiert | `crates/notagent/PARITY.md:412` | datei |
-| `packages/coding-agent/src/utils/mime.ts` | portiert | `crates/notagent/PARITY.md:417` | datei |
-| `packages/coding-agent/src/utils/paths.ts` | portiert | `crates/notagent/PARITY.md:392` | datei |
-| `packages/coding-agent/src/utils/shell.ts` | portiert | `crates/notagent/PARITY.md:391` | datei |
-| `packages/coding-agent/src/utils/syntax-highlight.ts` | portiert | `crates/notagent/PARITY.md:448` | datei |
-| `packages/coding-agent/src/utils/tools-manager.ts` | portiert | `crates/notagent/PARITY.md:411` | datei |
 | `packages/tui/native/darwin/src/darwin-modifiers.c` | portiert | `crates/notagent-tui/PARITY.md:108` | datei |
 | `packages/tui/native/win32/src/win32-console-mode.c` | portiert | `crates/notagent-tui/PARITY.md:109` | datei |
 | `packages/tui/src/native-modifiers.ts` | portiert | `crates/notagent-tui/PARITY.md:107` | datei |
@@ -130,18 +56,6 @@ Statusspalte; die Prüfung stuft sie höchstens als `portiert` ein. Formalbefund
 
 | Ledger | Zeile | Statustext | eingestuft als | Dateien |
 |---|---:|---|---|---:|
-| `crates/notagent/PARITY.md` | 413 | offen | unklar | 1 |
-| `crates/notagent/PARITY.md` | 414 | offen | unklar | 1 |
-| `crates/notagent/PARITY.md` | 443 | offen | unklar | 1 |
-| `crates/notagent/PARITY.md` | 467 | nativ ersetzt | unklar | 1 |
-| `crates/notagent/PARITY.md` | 473 | nativ ersetzt | unklar | 1 |
-| `crates/notagent/PARITY.md` | 553 | offen (Task 13) | unklar | 1 |
-| `crates/notagent/PARITY.md` | 554 | teilweise entfallen, Rest Task 13 | portiert | 1 |
-| `crates/notagent/PARITY.md` | 595 | übertragen an B (O-12 Punkt 2) | unklar | 3 |
-| `crates/notagent/PARITY.md` | 700 | teilweise portiert | portiert | 1 |
-| `crates/notagent/PARITY.md` | 900 | teilportiert | unklar | 1 |
-| `crates/notagent/PARITY.md` | 901 | übernommen | unklar | 3 |
-| `crates/notagent/PARITY.md` | 907 | nachgezogen | unklar | 1 |
 | `crates/notagent-ai/PARITY.md` | 422 | übernommen (Task 10) | unklar | 1 |
 | `crates/notagent-ai/PARITY.md` | 716 | (leer) | unklar | 1 |
 | `crates/notagent-ai/PARITY.md` | 717 | (leer) | unklar | 1 |
@@ -164,14 +78,14 @@ Prüfung nicht aus).
 | `crates/notagent-ai/PARITY.md:260` | `src/providers/data/` | verifiziert | 40 |
 | `crates/notagent-agent/PARITY.md:51` | `src/harness/**` | ausgeschlossen | 38 |
 | `crates/notagent-ai/PARITY.md:273` | `src/api/*.lazy.ts` | verifiziert | 11 |
-| `crates/notagent/PARITY.md:1014` | `src/cli/experimental/` | ausgeschlossen | 8 |
-| `crates/notagent/PARITY.md:1011` | `src/core/extensions/` | ausgeschlossen | 5 |
-| `crates/notagent/PARITY.md:1014` | `src/bun/` | ausgeschlossen | 3 |
+| `crates/notagent/PARITY.md:1015` | `src/cli/experimental/` | ausgeschlossen | 8 |
+| `crates/notagent/PARITY.md:1012` | `src/core/extensions/` | ausgeschlossen | 5 |
+| `crates/notagent/PARITY.md:1015` | `src/bun/` | ausgeschlossen | 3 |
 | `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/auto/10-*.md` | verifiziert | 1 |
 | `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/manual/10-*.md` | verifiziert | 1 |
 | `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/plan/10-*.md` | verifiziert | 1 |
 | `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/yolo/10-*.md` | verifiziert | 1 |
-| `crates/notagent/PARITY.md:1011` | `src/extensions/` | ausgeschlossen | 1 |
+| `crates/notagent/PARITY.md:1012` | `src/extensions/` | ausgeschlossen | 1 |
 
 ## Rahmen-Ausschlüsse aus dem Master-Plan
 
@@ -208,3 +122,79 @@ Buchführung eine Aussage zu der Datei enthält.
 Erneut laufen lassen: `scripts/parity-audit.sh` (Optionen: `--ts-repo`, `--out`, `--check`, `--quiet`,
 `--explain <datei>`). `--check` endet mit Exit-Code 1, solange Dateien ohne jede Ledger-Spur bleiben —
 für Gate G4. `--explain packages/…/foo.ts` zeigt jede Ledger-Spur einer einzelnen Datei.
+
+---
+
+# G4-Abnahme (von Hand, Workstream C als Gate-Verwalter, 2026-08-16)
+
+## 1. Zahlen des Laufs oben
+
+| Kategorie | Dateien | Bewertung |
+|---|---:|---|
+| verifiziert | 544 | 86 % aller 632 src-Dateien |
+| dokumentierter Ausschluss (Ledger + Master-Plan) | 85 | 13 % |
+| Ledger-Zeile unter `verifiziert` | 3 | siehe Punkt 2 |
+| ohne jede Ledger-Spur | 0 | `scripts/parity-audit.sh --out /tmp/parity.md --check` endet mit Exit 0 |
+
+## 2. Die drei Dateien unter `verifiziert` — Prüfobergrenze, kein offener Port
+
+`packages/tui/src/native-modifiers.ts`, `native/darwin/src/darwin-modifiers.c` und
+`native/win32/src/win32-console-mode.c`. Workstream A führt sie mit Status `portiert` und
+einer eigenen Tabelle „Prüfobergrenzen" (`crates/notagent-tui/PARITY.md:224-228`):
+
+- Der Aufruf erreicht die Plattform und antwortet — das belegt `tests/base_components.rs`.
+- Ein `true` verlangt eine **im Messmoment gedrückte** Modifier-Taste; die kann kein Test
+  herstellen, weder in TypeScript noch in Rust (die TS-Seite hat für diese drei Dateien
+  ebenfalls keine Suite).
+- Der Windows-Zweig kompiliert nur unter `cfg(target_os = "windows")` und braucht eine echte
+  Windows-Konsole; diese Maschine ist macOS.
+
+Bewertung: das ist die im Master-Plan (Risiko 3, Contingency) vorgesehene dokumentierte
+Plattformgrenze, kein Portmangel. Alle anderen Dateien tragen `verifiziert` oder einen
+Ausschluss.
+
+## 3. „Lücke 3" nach der Bereinigung
+
+Die neun Zeilen aus Cs Ledger sind aufgelöst: sechs waren überholte Doppel-Zeilen aus der
+Task, in der die Datei noch offen war (der Nachweis stand längst in einer zweiten Zeile), zwei
+sind die nativ ersetzten Extension-Hüllen und stehen jetzt in der Ausschluss-Tabelle, eine
+war die an B übertragene Client-Schicht. Was bleibt, sind acht Zeilen aus dreispaltigen
+**Nachtrags-** und **Prüfobergrenzen-Tabellen** von A und B, die die Prüfung als Ledger-Zeilen
+ohne Statusspalte liest — Formalbefund des Parsers, keine Aussage über einen Port.
+
+## 4. Feature-Checkliste gegen die sechs Faktendokumente
+
+| Faktendokument | Prüfpunkt | Beleg |
+|---|---|---|
+| `coding-agent-core.md` | 16 Tools mit Registry und Presets | `core/tools/`, Suiten `bash_tool`, `bash_background`, `minified_tools`, `mini_read_multi_edit`, `todo_and_skill_tools`, `task_tool(s)`, `render_utils`, `tool_render_oracle` |
+| | Session-JSONL v3, 9 Entry-Typen, Branching, Kontextaufbau | `core/session_manager.rs`, `tests/session_manager.rs` mit den TS-Fixtures |
+| | Modes/Permissions/Hooks nativ | `core/modes*`, `core/permissions/`, `core/hooks/`; `tests/modes.rs`, `tests/permissions.rs`, `tests/permission_end_to_end.rs`, `tests/hooks.rs`, `tests/hook_dispatch.rs` |
+| | Tasks und Delegation echt parallel | `core/tasks/`, `core/delegation/`; `tests/tasks_parallel.rs` (Wanduhrzeit), `tests/delegation_*.rs` |
+| | Compaction mit beiden Prompts und Overflow-Recovery | `core/compaction/`, `tests/compaction.rs`, `tests/agent_session_compaction.rs` |
+| | CLI-Flags und Subkommandos | `cli/args.rs`, `tests/args.rs`; Smoke-Schritte 2-5 |
+| | Print/JSON/RPC | `modes/`, `tests/headless_end_to_end.rs`, `tests/rpc_*.rs`; Smoke-Schritte 6-8 |
+| `extension-boundary.md` §2 | Permissions nativ statt Extension | Ausschluss-Tabelle + `permissions/gate.rs` im Agent-Loop |
+| | Hooks nativ statt Extension (16 Namen, nur PreToolUse blockiert) | `hooks/dispatch.rs`; `tests/hook_dispatch.rs` prüft alle 16 Namen; `PostToolUse` seit Task 15 aus dem `after_tool_call` der Session |
+| | llama.cpp-Provider + `/llama` | `core/llama/`, `modes/interactive/llama_command.rs`; `tests/llama_extension.rs`, `tests/llama_command.rs`; Smoke-Schritt 11 |
+| §3 Integrationspunkte | jeder Punkt nativ ersetzt oder als entfallend geführt | die Ledger-Zeilen der genannten Dateien; die Extension-eigenen Punkte stehen in der Ausschluss-Tabelle |
+| `ai-and-agent.md` | Provider, APIs, Streaming, Agent-Loop | Workstream B, `crates/notagent-ai/PARITY.md` und `crates/notagent-agent/PARITY.md` |
+| `tui.md` | Renderer, Layout, Komponenten, Editor, Keybindings | Workstream A, `crates/notagent-tui/PARITY.md`; G3-Szenarien in `tests/g3_interactive_e2e.rs` |
+| `protocol-…-evals.md` | protocol/client/server/sqlite | die vier Crates, alle Ledger vollständig `verifiziert`; evals ist Master-Plan-Ausschluss |
+| `rust-minify-reference.md` | Minify nach der Rust-Referenz, byte-genau | `core/mini_read/`, Unit-Tests plus `tests/minified_tools.rs` und die Testbench-Fälle |
+
+## 5. Gate-Kriterien
+
+**G3 — Interaktive Parität**
+- Interactive-Mode vollständig verdrahtet: Editor, Slash-Commands (alle aus der Faktenliste,
+  inklusive `/llama` und der beiden Easter Eggs), Selektoren, Themes, Keybindings (45
+  Actions), Footer, Panels, Fullscreen — Plan-Tasks 13 bis 16 abgehakt.
+- End-to-End über das virtuelle Terminal: `tests/g3_interactive_e2e.rs` — **20 Fälle grün,
+  kein `#[ignore]`**; dazu 40 Fälle in `tests/interactive_mode_wiring.rs`.
+- `scripts/check.sh` grün auf main.
+
+**G4 — Release-Parität**
+- Alle portierten Suiten grün im Gesamtworkspace: **3 861 Tests in 249 Suiten**, `check.sh`
+  (fmt, clippy `-D warnings`, test) mit Exit 0.
+- Parity-Ledger aller neun Crates vollständig: 0 Dateien ohne Nachweis, `--check` Exit 0.
+- Feature-Checkliste gegen alle sechs Faktendokumente: Abschnitt 4.
+- Manueller Smoke-Test: `plans/g4-smoke-report.md`, 12 Schritte, kein Fehlschlag.
