@@ -2081,7 +2081,7 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "notagent"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "base64",
@@ -2135,7 +2135,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-agent"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "notagent-ai",
  "notagent-telemetry",
@@ -2148,7 +2148,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-ai"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aws-config",
  "aws-sdk-bedrockruntime",
@@ -2177,7 +2177,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-client"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures",
  "notagent-protocol",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-protocol"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2197,7 +2197,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "futures",
@@ -2214,7 +2214,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-session-sqlite"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2232,7 +2232,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-telemetry"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "notagent-tui"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "libc",
