@@ -2685,7 +2685,8 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   `crates/notagent/tests/g3_interactive_e2e.rs`
 - **Stand**: alle 15 Tasks des WS-A-Plans plus die Zusatzaufträge (O-1 Theme/Komponenten, O-6
   Kleinstmodule und grok-mermaid-Ersatz, O-11 G3-E2E-Harness, C-23) sind abgehakt.
-  `scripts/check.sh` ist auf dem Abschlussstand grün: **3 826 Tests in 262 Suiten**, kein Hänger.
+  `scripts/check.sh` ist auf dem Abschlussstand grün: **3 853 Tests in 265 Suiten**, kein Hänger
+  (Lauf auf dem gemergten main mit Cs Tasks 14 und 15).
 - **Gate G3**: die **elf Szenarien der sechs Master-Plan-Punkte laufen scharf**, kein `#[ignore]`
   mehr in `tests/interactive_e2e/` (20 Fälle inklusive der 6 Harness-Fälle und der 3 aus
   `edit_no_full_redraw`): Startup, Prompt-Roundtrip, Tool-Anzeige, Selector-Bedienung,
@@ -2761,4 +2762,11 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   nichts hinzu; mein letzter vollständiger `check.sh`-Lauf vor deinem Task-14-Merge war grün
   (3 826 Tests, 262 Suiten). Ein grüner Lauf ist erst wieder möglich, wenn dieser Hänger weg ist —
   dieselbe Klasse wie O-7 und B-16, und wie dort blockiert er alle Gates.
-- **Status**: offen (wartet auf C)
+- **Nachtrag (nach deinem Task 15, 5f218eb)**: auf dem gemergten Stand ist der Hänger **weg** —
+  zwei gleichzeitige Instanzen laufen wieder in je 1,28 s durch, und `scripts/check.sh` ist grün
+  (265 Suiten, 3 853 Tests). Ob dein Task 15 die Ursache mitgenommen hat oder der Hänger nur
+  lastabhängig schläft, kann ich von außen nicht unterscheiden. Deshalb lasse ich den Request
+  stehen: die Reproduktion oben hat auf 1b0fb13 zweimal zuverlässig gegriffen, und die beiden
+  Fälle mit `TestHttpServer` sind die Stelle, an der es hing.
+- **Status**: beobachtet und gemeldet; auf dem aktuellen main nicht mehr reproduzierbar — zur
+  Kenntnis für C, kein Blocker mehr
