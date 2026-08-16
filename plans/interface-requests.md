@@ -2332,3 +2332,48 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   fertig ist.
 - **Prüfen**: `scripts/parity-audit.sh --explain packages/session-backends/sqlite-node/src/sqlite/repo.ts`
 - **Status**: offen (wartet auf C)
+
+### B-16 `agent_session_prompt.rs` hängt sporadisch und blockiert `scripts/check.sh` auf main
+- **Von / An**: B → C
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/tests/agent_session_prompt.rs:242-244`
+  (`refuses_a_prompt_during_streaming_without_a_queue_behaviour`)
+- **Beleg**: eigener `scripts/check.sh`-Lauf auf `3a21fa1` (also reines main, meine beiden
+  Commits berühren nur `.md`-Dateien). Der Lauf blieb 51 Minuten in genau diesem Test stehen:
+
+  ```
+  test the_last_assistant_text_is_what_copy_would_take ... ok
+  test prompts_while_idle_and_records_a_single_text_response ... ok
+  test refuses_a_prompt_during_streaming_without_a_queue_behaviour has been running for over 60 seconds
+  ```
+
+  Alle übrigen 11 Tests der Datei laufen grün, ebenso alles davor im Workspace.
+- **Messung**: das Testbinary 10× isoliert gestartet (`--exact`, 20 s Limit): **4 Hänger,
+  6 grün**. Zum Vergleich `queues_a_prompt_during_streaming_when_told_how` (gleiche
+  Warteschleife): 5 von 5 grün. Es ist also ein Rennen, kein permanenter Deadlock.
+- **Befund aus dem Stack** (`sample` auf den hängenden Prozess, 50 min Laufzeit, 0:28 CPU):
+  Der Test-Thread parkt im tokio-Time-Driver, der current_thread-Scheduler hat sonst nichts
+  Lauffähiges — es läuft nur noch der 1-ms-Schlaf der Warteschleife. Kein anderer Task ist
+  offen, insbesondere ist der per `tokio::spawn` gestartete `prompt("first")` nicht mehr in
+  Arbeit.
+- **Verdacht**: die Schleife hat kein Abbruchkriterium für den Fall, dass der Turn schon vorbei ist.
+
+  ```rust
+  let running = tokio::spawn(async move { session.prompt("first", ...).await.expect("prompt"); });
+  while !harness.session.is_streaming() {           // Z. 242
+      tokio::time::sleep(Duration::from_millis(1)).await;
+  }
+  ```
+
+  `#[tokio::test]` gibt einen current_thread-Scheduler. Der erste `sleep().await` ist der erste
+  Yield-Punkt — läuft der gespawnte Task dort komplett durch (der faux-Provider antwortet ohne
+  echtes I/O), ist `is_streaming()` danach für immer `false` und die Schleife dreht endlos.
+  Das deckt sich mit dem Stack und mit der niedrigen, gleichmäßigen CPU-Last.
+- **Wunsch**: ein Abbruchkriterium in beiden Warteschleifen (Z. 242 und Z. 269) — entweder eine
+  Deadline (`tokio::time::timeout` um die Schleife, Panic statt Hänger) oder ein Signal, das der
+  Harness setzt, sobald der Turn begonnen hat, sodass „schon fertig" von „noch nicht gestartet"
+  unterscheidbar wird. Ein Hänger ohne Abbruch kostet jeden Workstream einen vollen check.sh-Lauf;
+  Agent A ist mir heute Nacht in dasselbe Binary gelaufen.
+- **Hinweis**: Ich fasse `crates/notagent/` nicht an — der Befund liegt bei dir. Der Testinhalt
+  selbst ist korrekt portiert, es geht ausschließlich um die Wartebedingung des Harness.
+- **Status**: offen (wartet auf C)
