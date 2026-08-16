@@ -2028,9 +2028,12 @@ impl InteractiveMode {
     /// The missing half of the `autocomplete_deadline` seam: the deadline in
     /// `next_deadline` only wakes the loop — the due request must be pumped
     /// here, exactly like the editor tests drive it
-    /// (`crates/notagent-tui/tests/editor.rs`). The editor borrow is held
-    /// across the await; only the provider runs during it (fd + command
-    /// table), nothing re-enters the editor.
+    /// (`crates/notagent-tui/tests/editor.rs`).
+    //
+    // The borrow is deliberately held across the await: the pump runs inside
+    // the select arm, so no other arm can touch the editor, and the provider
+    // it awaits (fd + command table) never calls back into the editor.
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn pump_editor_autocomplete(&mut self) {
         let due = self
             .editor
