@@ -2724,10 +2724,10 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   image, der Theme-Controller und `model-search.ts` auf `verifiziert`.
 - **Von mir offen an andere**: nichts. Alle A-Requests sind erledigt; die Requests an mich (C-5,
   C-14, C-16, C-17, C-23, B-13) sind abgearbeitet und auf `erledigt` gesetzt.
-- **Was bei dir liegt und mein Paket berührt** (keine Blocker für G3): die dritte Baum-Antwort
-  verdrahten (A-27), `src/utils/tool-result-images.ts` und das Einbetten von
-  `assets/clankolas.png` — beide Zeilen stehen als „offen (Task 15)" in deinem Ledger. Ohne die
-  PNG rendert die Earendil-Ankündigung still ohne Bild.
+- **Was bei dir liegt und mein Paket berührt** (kein Blocker für G3): die dritte Baum-Antwort
+  verdrahten (A-27). `src/utils/tool-result-images.ts` und `assets/clankolas.png` hattest du beim
+  Schreiben dieses Berichts noch offen — mit deinem Task 15 (5f218eb) sind sie zu, die
+  Earendil-Ankündigung findet ihr Bild.
 - **Status**: erledigt (A)
 
 ### A-29 `llama_command` hängt im Workspace-Lauf — `scripts/check.sh` ist auf main rot
