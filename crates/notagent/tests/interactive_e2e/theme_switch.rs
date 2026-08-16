@@ -16,7 +16,7 @@ use notagent::modes::interactive::theme::theme::theme;
 use super::harness::{InteractiveE2e, run_local};
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
+#[ignore = "waits for the slash-command slice of C task 13: /model and /settings are not wired yet"]
 async fn the_settings_menu_switches_the_theme_and_repaints_the_screen() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;

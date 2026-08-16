@@ -9,13 +9,11 @@
 //! `run_until(ui, pump, until)` drives rendering and input while a scenario
 //! waits for something to appear on screen.
 //!
-//! The third piece is the entry point of the interactive mode. It is not on
-//! main yet (C, plan task 13), and the iron rule of O-11 is that A tests only
-//! against merged wiring and never implements interactive-mode itself.
-//! [`InteractiveE2e::start`] is the single place where it plugs in: it is the
-//! only function in this directory that is not implemented, every scenario
-//! reads as it will run, and each of them carries `#[ignore]` with the reason.
-//! The seam A needs from C is interface request A-23.
+//! The third piece is the entry point of the interactive mode, on main since
+//! C's task 13: [`InteractiveE2e::start`] hands the terminal and its pump to
+//! `create_interactive_mode` (the seam of A-23) and drives the mode's future on
+//! this loop. A scenario whose wiring is not in C's current slice still carries
+//! `#[ignore]` with the piece it waits for.
 //!
 //! [`InteractiveDriver::from_parts`] takes the same three pieces from anywhere,
 //! so `harness_check` exercises every driver method today against a plain
@@ -31,6 +29,10 @@ use notagent_ai::providers::faux::FauxCore;
 use notagent_tui::terminal::TerminalPump;
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{RenderLoop, run_until};
+
+use notagent::modes::interactive::interactive_mode::{
+    InteractiveModeOptions, InteractiveTerminal, create_interactive_mode,
+};
 
 use crate::app_runtime::HeadlessApp;
 
@@ -110,29 +112,27 @@ impl InteractiveE2e {
 
     /// Hand the terminal to the interactive mode and return the driver.
     ///
-    /// Not implemented: `crates/notagent/src/modes/interactive/` has the
-    /// components and the theme system, but no `interactive_mode` — the main
-    /// loop is C plan task 13 (`main_app.rs` still refuses `AppMode::Interactive`
-    /// with "interactive mode is not wired up in this build yet"). Two things
-    /// are needed here, both requested in A-23:
-    ///
-    /// 1. an entry point that takes the `AgentSessionRuntime` of the app
-    ///    runtime, and
-    /// 2. the terminal seam TS already has — `createInteractiveTui` accepts an
-    ///    optional `terminal` (`interactive-mode.ts:344-354`) precisely so a
-    ///    test can pass a `VirtualTerminal`; in Rust the pump belongs with it,
-    ///    because `into_shared()` splits terminal and pump (A-20).
-    ///
-    /// As soon as that exists this function builds the mode, hands over
-    /// `self.terminal.clone()` plus `self.terminal.pump_handle()`, and returns
-    /// [`InteractiveDriver::from_parts`] with the mode's renderer.
+    /// The seam of A-23, delivered with C's task 13: `create_interactive_mode`
+    /// takes the terminal and its pump instead of building a `ProcessTerminal`
+    /// (`InteractiveTerminal`, the port of the optional `terminal` of
+    /// `createInteractiveTui`, `interactive-mode.ts:344-354`), and hands back
+    /// the renderer, the pump and the mode's future — the three pieces
+    /// [`InteractiveDriver`] needs.
     pub async fn start(self) -> InteractiveDriver {
-        panic!(
-            "the interactive mode has no entry point on main yet (C, plan task 13); \
-             the harness holds the terminal and the app runtime and needs the seam \
-             from interface request A-23 to hand them over. Until then every \
-             scenario under tests/interactive_e2e/ stays #[ignore]d."
-        )
+        let InteractiveE2e { app, terminal } = self;
+        let handle = create_interactive_mode(
+            app.runtime(),
+            InteractiveModeOptions {
+                terminal: Some(InteractiveTerminal {
+                    terminal: Box::new(terminal.clone()),
+                    pump: Box::new(terminal.pump_handle()),
+                }),
+                ..InteractiveModeOptions::default()
+            },
+        );
+        InteractiveDriver::from_parts(handle.renderer, handle.pump, terminal)
+            .with_app(app)
+            .with_exit(handle.run)
     }
 }
 
@@ -149,8 +149,11 @@ pub struct InteractiveDriver {
     /// Kept alive for the lifetime of the driver: the app owns the temporary
     /// project directory the session works in.
     app: Option<HeadlessApp>,
-    /// The mode's own future, which resolves with its exit code.
-    exit: Option<std::pin::Pin<Box<dyn Future<Output = i32>>>>,
+    /// The running mode, spawned on the `LocalSet` of [`run_local`]: it has to
+    /// make progress whenever the driver awaits anything, because the mode
+    /// initialises, reacts to input and answers the session inside this future
+    /// while the loop only renders and pumps.
+    exit: Option<tokio::task::JoinHandle<i32>>,
 }
 
 impl InteractiveDriver {
@@ -174,11 +177,17 @@ impl InteractiveDriver {
         self
     }
 
-    /// The future of the running mode. [`Self::wait_for_exit`] drives the
-    /// render loop until it resolves.
+    /// Start the mode beside the loop.
+    ///
+    /// It runs as a local task rather than something the driver awaits itself:
+    /// a scenario spends its time in [`Self::settle`], and the mode has to keep
+    /// running there — it is what puts the header on screen, hands input to the
+    /// components and drives a prompt. `LocalSet::run_until` polls the task
+    /// whenever the scenario awaits, so both halves advance together.
+    /// [`Self::wait_for_exit`] then waits for its exit code.
     #[must_use]
     pub fn with_exit(mut self, exit: impl Future<Output = i32> + 'static) -> Self {
-        self.exit = Some(Box::pin(exit));
+        self.exit = Some(tokio::task::spawn_local(exit));
         self
     }
 
@@ -210,7 +219,9 @@ impl InteractiveDriver {
             .exit
             .take()
             .expect("the driver was built without the mode's exit future");
-        self.run_until(exit).await
+        self.run_until(exit)
+            .await
+            .expect("the interactive mode panicked")
     }
 
     /// Ask for a frame — what a component does after it changed.
@@ -329,6 +340,44 @@ impl InteractiveDriver {
                 );
             }
         }
+    }
+
+    /// Keep the loop running until `needle` is on screen, across the
+    /// renderer's hard wraps.
+    ///
+    /// A long absolute path does not fit into 80 columns, and the main screen
+    /// breaks it over two rows (`…/does-not-e` + `xist.txt`), so the literal
+    /// needle is nowhere in the buffer although the user plainly reads it. This
+    /// searches the rows joined back together; use it only where the wrap is
+    /// the point, and [`Self::wait_for`] everywhere else.
+    pub async fn wait_for_across_wraps(&mut self, needle: &str) -> String {
+        let deadline = Instant::now() + WAIT_TIMEOUT;
+        loop {
+            self.settle().await;
+            let joined = self.joined_rows();
+            if joined.contains(needle) {
+                return joined;
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "{:?} never appeared within {:?}, wraps included.\n--- screen ---\n{}",
+                    needle,
+                    WAIT_TIMEOUT,
+                    self.screen()
+                );
+            }
+        }
+    }
+
+    /// Every row of the buffer joined without separators, padding and the
+    /// one-column indent of the transcript removed — the inverse of the
+    /// renderer's hard wrap.
+    pub fn joined_rows(&self) -> String {
+        self.scrollback()
+            .lines()
+            .map(str::trim)
+            .collect::<Vec<_>>()
+            .join("")
     }
 
     /// Keep the loop running until `needle` is gone — a closed overlay, a

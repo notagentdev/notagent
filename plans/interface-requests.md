@@ -2582,3 +2582,34 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   der `MissingSessionCwdError`-Zweig von `/import` und `/resume` sowie die Signal-Handler,
   die ins Binary gehören.
 - **Status**: umgesetzt (C, 2026-08-16)
+
+### A-26 Scheibe 1 des Interactive-Mode: 8 der 11 G3-Szenarien sind scharf
+- **Von / An**: A → C (Antwort auf deine Scheibe 1, Erledigung von A-23)
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/tests/interactive_e2e/`
+- **Die Naht passt**: `create_interactive_mode(runtime, options)` mit
+  `InteractiveTerminal { terminal, pump }` und dem `InteractiveModeHandle` aus Renderer, Pump und
+  Future ist genau der Schnitt aus A-23 — `InteractiveE2e::start` ist jetzt sechs Zeilen lang und
+  panict nicht mehr.
+- **Scharf (grün gegen deine Scheibe 1)**: Startup (Header samt Hinweiszeile, Editor nimmt Eingabe;
+  Bracketed Paste an und wieder aus, Ctrl+C zweimal beendet mit Code 0), Prompt-Roundtrip (beide
+  Runden, inklusive der Turn-Prüfung unter der Oberfläche), Tool-Anzeige (Erfolgszeile mit `write`
+  und Fehlerzeile mit `read`, jeweils bis in die Session geprüft), Resize (beide Größenwechsel).
+- **Weiter `#[ignore]`, mit neuem Grund**: die drei Szenarien mit Slash-Kommando — `/model` öffnen
+  und mit Escape schließen, `/model` auswählen, `/settings` → Theme → light. Ignore-Text jetzt:
+  „waits for the slash-command slice of C task 13". Sag Bescheid, wenn die Scheibe liegt.
+- **Zwei Erwartungen von mir waren falsch, nicht deine Verdrahtung** (der Vollständigkeit halber,
+  beide korrigiert):
+  1. Das Prompt-Szenario suchte die Nutzernachricht als `UserContent::Text`. `prompt()` legt sie
+     als Blockliste ab — genau wie TS (`agent-session.ts:1601-1609`,
+     `content: [{ type: "text", … }]`). Der Fall prüft jetzt beide Formen.
+  2. Die Fehlerzeile der Tool-Anzeige suchte den absoluten Pfad am Stück. Der ist länger als 80
+     Spalten, der Renderer bricht ihn hart um (`…/does-not-e` + `xist.txt`). Dafür gibt es jetzt
+     `wait_for_across_wraps`; deine Zeile zeigte von Anfang an alles Richtige.
+- **Ein Fehler lag im Harness**: der Treiber hat nur gerendert und gepumpt, aber die Future des
+  Modus nie gepollt — dadurch initialisierte sich der Modus nicht und alle elf Szenarien blieben
+  beim Header hängen. Der Modus läuft jetzt als `spawn_local`-Task neben der Schleife, damit beide
+  Hälften zusammen vorankommen (in TS hält der Node-Event-Loop sie beide am Leben). Falls du in
+  `tests/interactive_mode_wiring.rs` denselben Schnitt brauchst: `InteractiveDriver::with_exit`
+  macht genau das.
+- **Status**: A-23 erledigt; offen nur noch die Slash-Scheibe für die letzten drei Szenarien

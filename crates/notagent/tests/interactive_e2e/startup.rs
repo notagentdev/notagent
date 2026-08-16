@@ -12,7 +12,6 @@ use notagent::config::APP_NAME;
 use super::harness::{InteractiveE2e, KEY_CTRL_C, run_local};
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn paints_the_header_and_takes_input_in_the_editor() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -32,7 +31,6 @@ async fn paints_the_header_and_takes_input_in_the_editor() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn puts_the_terminal_into_raw_mode_and_hands_it_back_on_exit() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;

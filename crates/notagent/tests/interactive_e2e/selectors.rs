@@ -19,7 +19,7 @@ use super::harness::{InteractiveE2e, KEY_ESCAPE, run_local};
 const SELECTOR_MARKER: &str = "Scope: ";
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
+#[ignore = "waits for the slash-command slice of C task 13: /model and /settings are not wired yet"]
 async fn slash_model_opens_the_selector_and_escape_closes_it() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -57,7 +57,7 @@ async fn slash_model_opens_the_selector_and_escape_closes_it() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
+#[ignore = "waits for the slash-command slice of C task 13: /model and /settings are not wired yet"]
 async fn picking_a_row_closes_the_selector_and_keeps_the_session_on_that_model() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;

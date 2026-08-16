@@ -13,7 +13,6 @@ use super::harness::{InteractiveE2e, run_local};
 use crate::app_runtime::{reply, tool_call_reply};
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn a_tool_call_shows_up_as_a_tool_row_and_does_its_work() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -34,7 +33,7 @@ async fn a_tool_call_shows_up_as_a_tool_row_and_does_its_work() {
         // The row of the `write` tool names the tool and its target; the
         // answer of the next step closes the turn.
         driver.wait_for("write").await;
-        driver.wait_for("notes.txt").await;
+        driver.wait_for_across_wraps("notes.txt").await;
         driver.wait_for("Wrote the file.").await;
 
         assert_eq!(
@@ -59,7 +58,6 @@ async fn a_tool_call_shows_up_as_a_tool_row_and_does_its_work() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn a_failing_tool_call_shows_the_error_in_the_row() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -76,7 +74,12 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
 
         driver.submit("read the missing file").await;
 
-        driver.wait_for("does-not-exist.txt").await;
+        // The row names the tool, its target and the error the tool returned.
+        // The path is the one assertion that has to survive the wrap: it is
+        // longer than the 80 columns of the terminal.
+        driver.wait_for("read").await;
+        driver.wait_for_across_wraps("does-not-exist.txt").await;
+        driver.assert_shows("No such file or directory");
         driver.wait_for("The file is missing.").await;
     })
     .await;

@@ -12,7 +12,6 @@ use super::harness::{InteractiveE2e, run_local};
 use crate::app_runtime::reply;
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn a_typed_prompt_reaches_the_session_and_the_answer_reaches_the_screen() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -34,12 +33,20 @@ async fn a_typed_prompt_reaches_the_session_and_the_answer_reaches_the_screen() 
             Some("Hello from the faux provider.")
         );
         assert!(
-            session.messages().iter().any(|message| matches!(
-                message,
-                notagent_agent::types::AgentMessage::User(user)
-                    if matches!(&user.content,
-                        notagent_ai::types::UserContent::Text(text) if text.contains("say hello"))
-            )),
+            session.messages().iter().any(|message| {
+                let notagent_agent::types::AgentMessage::User(user) = message else {
+                    return false;
+                };
+                // `prompt()` wraps the text in a block list, as TS does
+                // (`agent-session.ts:1601-1609`: `content: [{type: "text", …}]`).
+                match &user.content {
+                    notagent_ai::types::UserContent::Text(text) => text.contains("say hello"),
+                    notagent_ai::types::UserContent::Blocks(blocks) => blocks.iter().any(|block| {
+                        matches!(block, notagent_ai::types::TextOrImageContent::Text(text)
+                            if text.text.contains("say hello"))
+                    }),
+                }
+            }),
             "the prompt is part of the transcript: {:#?}",
             session.messages()
         );
@@ -48,7 +55,6 @@ async fn a_typed_prompt_reaches_the_session_and_the_answer_reaches_the_screen() 
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn the_editor_is_empty_again_and_takes_the_next_prompt() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;

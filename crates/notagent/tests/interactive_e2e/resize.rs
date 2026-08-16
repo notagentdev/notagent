@@ -12,7 +12,6 @@ use super::harness::{InteractiveE2e, run_local};
 use crate::app_runtime::reply;
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn the_screen_is_laid_out_again_at_the_new_width() {
     run_local(async {
         let e2e = InteractiveE2e::with_size(100, 30).await;
@@ -41,7 +40,6 @@ async fn the_screen_is_laid_out_again_at_the_new_width() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for C task 13: the interactive-mode entry point and its terminal seam (A-23)"]
 async fn the_editor_keeps_its_text_across_a_resize() {
     run_local(async {
         let e2e = InteractiveE2e::with_size(100, 30).await;
