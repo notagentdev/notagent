@@ -221,6 +221,9 @@ settings_struct!(
     subagent_model: String,
     /// Port addition (v0.1.7): gate of the `find_codebase` tool; absent = on.
     find_codebase_enabled: bool,
+    /// Port addition (v0.1.9): chat-block style, "standard" | "badge";
+    /// absent = badge (user decision 2026-08-17).
+    block_style: String,
     default_thinking_level: Value,
     transport: Value,
     steering_mode: Value,
@@ -989,6 +992,22 @@ impl SettingsManager {
             ("defaultProvider", Value::from(provider)),
             ("defaultModel", Value::from(model_id)),
         ]);
+    }
+
+    /// Chat-block style (port addition, v0.1.9): `"standard"` is the filled
+    /// surface, anything else — including absent — is the badge style, the
+    /// default by user decision.
+    pub fn get_block_style_badge(&self) -> bool {
+        self.settings_snapshot()
+            .block_style
+            .is_none_or(|style| style != "standard")
+    }
+
+    pub fn set_block_style_setting(&self, badge: bool) {
+        self.set_global_field(
+            "blockStyle",
+            Value::from(if badge { "badge" } else { "standard" }),
+        );
     }
 
     /// The `find_codebase` gate (port addition, v0.1.7). Absent means

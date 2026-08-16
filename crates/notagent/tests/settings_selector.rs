@@ -48,6 +48,8 @@ type Calls = Rc<RefCell<Vec<(&'static str, String)>>>;
 fn config() -> SettingsConfig {
     SettingsConfig {
         auto_compact: true,
+        // Port addition (v0.1.9), not in the TS oracle fixture.
+        block_style_badge: true,
         show_images: false,
         image_width_cells: 80,
         auto_resize_images: true,

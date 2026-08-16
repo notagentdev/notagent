@@ -3827,6 +3827,7 @@ impl InteractiveMode {
             fullscreen_exit_output: settings.get_fullscreen_exit_output(),
             fullscreen_scrollbar: scroll_view_scrollbar(settings.get_fullscreen_scrollbar()),
             warnings: settings.get_warnings(),
+            block_style_badge: settings.get_block_style_badge(),
         };
 
         let callbacks = SettingsCallbacks {
@@ -3836,6 +3837,19 @@ impl InteractiveMode {
                 Box::new(move |enabled| {
                     session.set_auto_compaction_enabled(enabled);
                     effect(&tx, id, SettingsEffect::AutoCompact(enabled));
+                })
+            },
+            on_block_style_change: {
+                let settings = Arc::clone(&settings);
+                let ui = self.ui.clone();
+                Box::new(move |badge| {
+                    settings.set_block_style_setting(badge);
+                    crate::modes::interactive::theme::theme::set_block_style(if badge {
+                        crate::modes::interactive::theme::theme::BlockStyle::Badge
+                    } else {
+                        crate::modes::interactive::theme::theme::BlockStyle::Standard
+                    });
+                    ui.request_render();
                 })
             },
             on_show_images_change: {

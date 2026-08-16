@@ -20,7 +20,10 @@ use notagent_tui::tui::Component;
 use notagent_tui::utils::truncate_to_width_opts;
 
 use crate::modes::interactive::components::tasks_panel::single_line;
-use crate::modes::interactive::theme::theme::{ThemeBg, ThemeColor, theme};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, ThemeBg, ThemeColor, badge, block_style, format_elapsed_live,
+    format_elapsed_precise, theme,
+};
 
 const PREVIEW_ROWS: usize = 4;
 
@@ -86,6 +89,11 @@ pub struct SearchBlockComponent {
     expanded: bool,
     /// Replayed blocks come from a restored session: closed on arrival.
     replayed: bool,
+    /// When the block started collecting calls; drives the badge runtime.
+    started: std::time::Instant,
+    /// Total runtime, frozen when the block closes. Replayed blocks carry no
+    /// meaningful runtime and stay `None`.
+    finished: Option<std::time::Duration>,
 }
 
 impl SearchBlockComponent {
@@ -98,7 +106,15 @@ impl SearchBlockComponent {
             open: true,
             expanded: false,
             replayed: false,
+            started: std::time::Instant::now(),
+            finished: None,
         }
+    }
+
+    /// Whether calls are still running, i.e. the badge runtime still counts.
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        !self.replayed && (self.open || self.entries.iter().any(|entry| !entry.complete))
     }
 
     /// Marks the block as replayed history.
@@ -141,6 +157,9 @@ impl SearchBlockComponent {
     /// Closes the block so its final success or error background is shown.
     pub fn close(&mut self) {
         self.open = false;
+        if self.finished.is_none() && !self.replayed {
+            self.finished = Some(self.started.elapsed());
+        }
     }
 
     /// Returns whether this block is still accepting consecutive search calls.
@@ -214,16 +233,43 @@ impl Component for SearchBlockComponent {
             truncate_to_width_opts(&line, width, "…", false)
         };
 
-        let header_label = if self.open {
-            "Searching..."
+        // In the badge style the block sheds surface and padding rows; the
+        // state moves into the SEARCHING/SEARCHED badge, with the runtime
+        // beside it (the reference's `BlockStyle::Bar` rendering).
+        let badge_style = block_style() == BlockStyle::Badge;
+        let mut lines = if badge_style {
+            let label = if self.open || self.entries.iter().any(|entry| !entry.complete) {
+                "Searching"
+            } else {
+                "Searched"
+            };
+            let mut badge_line = format!(" {}", badge(&theme_instance, self.background(), label));
+            let runtime_text = if self.is_running() {
+                format_elapsed_live(self.started.elapsed())
+            } else {
+                self.finished.map(format_elapsed_precise)
+            };
+            if let Some(runtime_text) = runtime_text {
+                badge_line.push_str(&format!(
+                    " {}{}{}",
+                    theme_instance.fg(ThemeColor::Dim, "("),
+                    theme_instance.fg(ThemeColor::Muted, &runtime_text),
+                    theme_instance.fg(ThemeColor::Dim, ")")
+                ));
+            }
+            vec![badge_line]
         } else {
-            "Searched"
+            let header_label = if self.open {
+                "Searching..."
+            } else {
+                "Searched"
+            };
+            vec![
+                String::new(),
+                format!(" {}", theme_instance.bold(header_label)),
+                String::new(),
+            ]
         };
-        let mut lines = vec![
-            String::new(),
-            format!(" {}", theme_instance.bold(header_label)),
-            String::new(),
-        ];
         let visible_entries = if self.expanded {
             &self.entries[..]
         } else {
@@ -235,13 +281,16 @@ impl Component for SearchBlockComponent {
             lines.push(format!(" {}", theme_instance.fg(ThemeColor::Muted, "...")));
         }
         lines.extend(visible_entries.iter().map(render_entry));
-        if hidden_entries > 0 {
+        let hint = (hidden_entries > 0).then(|| {
             let hint = if self.expanded {
                 "(ctrl+o to collapse)".to_string()
             } else {
                 format!("({hidden_entries} more, ctrl+o to expand)")
             };
-            lines.push(format!(" {}", theme_instance.fg(ThemeColor::Muted, &hint)));
+            format!(" {}", theme_instance.fg(ThemeColor::Muted, &hint))
+        });
+        if !badge_style && let Some(hint) = hint.clone() {
+            lines.push(hint);
         }
         let summary = self.summary();
         if !summary.is_empty() {
@@ -250,17 +299,26 @@ impl Component for SearchBlockComponent {
                 theme_instance.fg(ThemeColor::Muted, &summary)
             ));
         }
-        lines.push(String::new());
+        // In the badge style the info line closes the block, below the
+        // summary; the filled layout keeps it above, unchanged.
+        if badge_style && let Some(hint) = hint {
+            lines.push(hint);
+        }
 
-        // The block surface: every row except the leading spacer is painted
-        // to the full width in the state background.
-        let background = self.background();
         let mut rendered = vec![String::new()];
-        rendered.extend(
-            lines
-                .into_iter()
-                .map(|line| paint_row(&theme_instance, background, &line, width)),
-        );
+        if badge_style {
+            rendered.extend(lines);
+        } else {
+            lines.push(String::new());
+            // The block surface: every row except the leading spacer is
+            // painted to the full width in the state background.
+            let background = self.background();
+            rendered.extend(
+                lines
+                    .into_iter()
+                    .map(|line| paint_row(&theme_instance, background, &line, width)),
+            );
+        }
         rendered
     }
 
@@ -289,7 +347,7 @@ mod tests {
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     use super::*;
-    use crate::modes::interactive::theme::theme::init_theme;
+    use crate::modes::interactive::theme::theme::{init_theme, set_block_style};
     use crate::utils::ansi::strip_ansi;
 
     fn theme_lock() -> MutexGuard<'static, ()> {
@@ -299,6 +357,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         init_theme(None, false);
+        // The block style is a process global (default: badge); the layout
+        // tests pin the standard surface unless they say otherwise.
+        set_block_style(BlockStyle::Standard);
         guard
     }
 
@@ -459,6 +520,90 @@ mod tests {
         assert_eq!(block.background(), ThemeBg::ToolPendingBg);
         block.close();
         assert_eq!(block.background(), ThemeBg::ToolErrorBg);
+    }
+
+    #[test]
+    fn the_badge_style_leads_with_the_state_badge_and_sheds_the_surface() {
+        let _guard = theme_lock();
+        set_block_style(BlockStyle::Badge);
+        let mut block = SearchBlockComponent::new();
+        block.push_call(
+            "find_codebase",
+            "failed".to_string(),
+            &serde_json::json!({"query": "workspace lock"}),
+        );
+        block.complete_call("failed", true);
+        block.close();
+        let actual = rendered(&mut block);
+        // Spacer, badge with the final sub-second runtime, the entry directly
+        // below — no surface padding rows.
+        let expected = vec![
+            "",
+            "  SEARCHED  (0ms)",
+            " Searched code workspace lock",
+            " 1 search, 1 failed",
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn the_badge_says_searching_while_calls_still_run() {
+        let _guard = theme_lock();
+        set_block_style(BlockStyle::Badge);
+        let mut block = SearchBlockComponent::new();
+        block.push_call(
+            "grep",
+            "search-1".to_string(),
+            &serde_json::json!({"pattern": "config"}),
+        );
+        let actual = rendered(&mut block).join("\n");
+        assert!(actual.contains("SEARCHING"), "{actual}");
+        assert!(!actual.contains("SEARCHED "), "{actual}");
+    }
+
+    #[test]
+    fn the_badge_style_info_line_closes_the_block_below_the_summary() {
+        let _guard = theme_lock();
+        set_block_style(BlockStyle::Badge);
+        let mut block = SearchBlockComponent::new();
+        for index in 0..5 {
+            let call_id = format!("call-{index}");
+            block.push_call(
+                "find_filesystem",
+                call_id.clone(),
+                &serde_json::json!({"pattern": format!("pattern-{index}")}),
+            );
+            block.complete_call(&call_id, false);
+        }
+        block.close();
+        let collapsed = rendered(&mut block);
+        assert_eq!(
+            collapsed.last().map(String::as_str),
+            Some(" (1 more, ctrl+o to expand)"),
+            "{collapsed:?}"
+        );
+        assert!(
+            collapsed[collapsed.len() - 2].contains("5 searches"),
+            "summary right above the info line: {collapsed:?}"
+        );
+    }
+
+    #[test]
+    fn a_replayed_block_shows_no_runtime() {
+        let _guard = theme_lock();
+        set_block_style(BlockStyle::Badge);
+        let mut block = SearchBlockComponent::new();
+        block.mark_replayed();
+        block.push_call(
+            "grep",
+            "call-1".to_string(),
+            &serde_json::json!({"pattern": "config"}),
+        );
+        block.complete_call("call-1", false);
+        block.close();
+        let actual = rendered(&mut block).join("\n");
+        assert!(actual.contains("SEARCHED"), "{actual}");
+        assert!(!actual.contains("ms)"), "{actual}");
     }
 
     #[test]

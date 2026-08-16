@@ -40,7 +40,9 @@ use crate::core::tools::truncate::{
 };
 use crate::modes::interactive::components::keybinding_hints::key_hint;
 use crate::modes::interactive::components::visual_truncate::truncate_to_visual_lines;
-use crate::modes::interactive::theme::theme::{Theme, ThemeColor, theme};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, Theme, ThemeColor, block_style, format_elapsed_live, format_elapsed_precise, theme,
+};
 use crate::utils::shell::{
     CommandTransport, ShellConfig, get_shell_config, get_shell_env, kill_process_tree,
     terminate_process_tree, track_detached_child_pid, untrack_detached_child_pid,
@@ -1152,26 +1154,33 @@ fn rebuild_bash_result_component(
     }
 
     if let Some(started_at) = started_at {
-        let label = if options.is_partial {
-            "Elapsed"
-        } else {
-            "Took"
-        };
         let end_time = ended_at.unwrap_or_else(Instant::now);
-        component.borrow_mut().add_child(component_ref(Text::new(
-            format!(
-                "\n{}",
-                theme.fg(
-                    ThemeColor::Muted,
-                    &format!(
-                        "{label} {}",
-                        format_duration(end_time.saturating_duration_since(started_at))
-                    )
-                )
-            ),
-            0,
-            0,
-        )));
+        let elapsed = end_time.saturating_duration_since(started_at);
+        // Badge style (v0.1.9, reference `format_bash_result`): the timing
+        // reads `(1.2s)` — live it stays invisible below one second, final it
+        // reads as ms only under a second. The standard style keeps the TS
+        // original's `Elapsed/Took X.Xs` line.
+        let timing = if block_style() == BlockStyle::Badge {
+            if options.is_partial {
+                format_elapsed_live(elapsed).map(|text| format!("({text})"))
+            } else {
+                Some(format!("({})", format_elapsed_precise(elapsed)))
+            }
+        } else {
+            let label = if options.is_partial {
+                "Elapsed"
+            } else {
+                "Took"
+            };
+            Some(format!("{label} {}", format_duration(elapsed)))
+        };
+        if let Some(timing) = timing {
+            component.borrow_mut().add_child(component_ref(Text::new(
+                format!("\n{}", theme.fg(ThemeColor::Muted, &timing)),
+                0,
+                0,
+            )));
+        }
     }
 }
 

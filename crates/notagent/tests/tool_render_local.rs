@@ -15,7 +15,7 @@ use notagent::core::tools::tool_definition::{
     ToolRenderContext, ToolRenderResult, ToolRenderResultOptions, tool_render_state,
 };
 use notagent::core::tools::{ToolName, create_tool_definition};
-use notagent::modes::interactive::theme::theme::{init_theme, theme};
+use notagent::modes::interactive::theme::theme::{BlockStyle, init_theme, set_block_style, theme};
 use notagent::utils::ansi::strip_ansi;
 use notagent_ai::types::{TextContent, TextOrImageContent};
 use notagent_tui::{TerminalCapabilities, reset_capabilities_cache, set_capabilities};
@@ -35,6 +35,9 @@ fn prepare() {
         hyperlinks: false,
     });
     init_theme(Some("dark"), false);
+    // These pins are the TS-parity look: the standard style, not the badge
+    // default (v0.1.9).
+    set_block_style(BlockStyle::Standard);
 }
 
 fn rendered(component: &notagent_tui::tui::ComponentRef, width: usize) -> String {

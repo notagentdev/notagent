@@ -170,12 +170,16 @@ pub struct SettingsConfig {
     pub fullscreen_exit_output: FullscreenExitOutput,
     pub fullscreen_scrollbar: ScrollViewScrollbar,
     pub warnings: WarningSettings,
+    /// Chat-block style (port addition, v0.1.9): true = badge (the default,
+    /// user decision 2026-08-17), false = standard filled surface.
+    pub block_style_badge: bool,
 }
 
 impl Default for SettingsConfig {
     fn default() -> Self {
         Self {
             auto_compact: false,
+            block_style_badge: true,
             show_images: false,
             image_width_cells: 0,
             auto_resize_images: false,
@@ -215,6 +219,8 @@ impl Default for SettingsConfig {
 /// `SettingsCallbacks`.
 pub struct SettingsCallbacks {
     pub on_auto_compact_change: Box<dyn FnMut(bool)>,
+    /// Chat-block style toggle (v0.1.9): true = badge.
+    pub on_block_style_change: Box<dyn FnMut(bool)>,
     pub on_show_images_change: Box<dyn FnMut(bool)>,
     pub on_image_width_cells_change: Box<dyn FnMut(u64)>,
     pub on_auto_resize_images_change: Box<dyn FnMut(bool)>,
@@ -252,6 +258,7 @@ impl Default for SettingsCallbacks {
     fn default() -> Self {
         Self {
             on_auto_compact_change: Box::new(|_| {}),
+            on_block_style_change: Box::new(|_| {}),
             on_show_images_change: Box::new(|_| {}),
             on_image_width_cells_change: Box::new(|_| {}),
             on_auto_resize_images_change: Box::new(|_| {}),
@@ -923,6 +930,20 @@ impl SettingsSelectorComponent {
                 submenu: None,
             },
             SettingItem {
+                id: "block-style".to_string(),
+                label: "Block style".to_string(),
+                description: Some(
+                    "How chat blocks render: 'badge' leads with a state badge, 'standard' fills the block background".to_string(),
+                ),
+                current_value: if config.block_style_badge {
+                    "badge".to_string()
+                } else {
+                    "standard".to_string()
+                },
+                values: Some(vec!["badge".to_string(), "standard".to_string()]),
+                submenu: None,
+            },
+            SettingItem {
                 id: "steering-mode".to_string(),
                 label: "Steering mode".to_string(),
                 description: Some(
@@ -1380,6 +1401,7 @@ impl SettingsSelectorComponent {
                 let mut callbacks = change_callbacks.borrow_mut();
                 match id {
                     "autocompact" => (callbacks.on_auto_compact_change)(new_value == "true"),
+                    "block-style" => (callbacks.on_block_style_change)(new_value == "badge"),
                     "show-images" => (callbacks.on_show_images_change)(new_value == "true"),
                     "image-width-cells" => {
                         (callbacks.on_image_width_cells_change)(parse_int(new_value))

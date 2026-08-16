@@ -337,6 +337,75 @@ pub const ALL_THEME_BGS: [ThemeBg; 8] = [
     ThemeBg::ToolErrorBg,
 ];
 
+/// The two chat-block styles (port addition, user decision 2026-08-17,
+/// v0.1.9; takeover of the reference's `BlockStyle`): `Standard` washes the
+/// block colour across the full width, `Badge` leads with a state badge and
+/// leaves the terminal background untouched. Held as a process global like
+/// the theme itself; the `blockStyle` setting feeds it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BlockStyle {
+    Standard,
+    /// The default (user decision): badge chips instead of filled surfaces.
+    #[default]
+    Badge,
+}
+
+static BLOCK_STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(1);
+
+pub fn block_style() -> BlockStyle {
+    if BLOCK_STYLE.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+        BlockStyle::Standard
+    } else {
+        BlockStyle::Badge
+    }
+}
+
+pub fn set_block_style(style: BlockStyle) {
+    BLOCK_STYLE.store(
+        match style {
+            BlockStyle::Standard => 0,
+            BlockStyle::Badge => 1,
+        },
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+/// A state badge: the label uppercased on the state background, the
+/// reference's `block_paint::badge` reduced to our theme surface.
+pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
+    theme.bg(
+        background,
+        &theme.bold(&format!(" {} ", label.to_uppercase().replace('_', " "))),
+    )
+}
+
+/// Elapsed time for a running badge: invisible below one second — a
+/// counting-up ms display is noise (the reference's `format_elapsed_live`).
+pub fn format_elapsed_live(elapsed: std::time::Duration) -> Option<String> {
+    (elapsed >= std::time::Duration::from_secs(1)).then(|| format_badge_elapsed(elapsed))
+}
+
+/// Final badge runtime: sub-second durations read as milliseconds.
+pub fn format_elapsed_precise(elapsed: std::time::Duration) -> String {
+    if elapsed < std::time::Duration::from_secs(1) {
+        format!("{}ms", elapsed.as_millis())
+    } else {
+        format_badge_elapsed(elapsed)
+    }
+}
+
+fn format_badge_elapsed(elapsed: std::time::Duration) -> String {
+    let total_secs = elapsed.as_secs();
+    let (hours, minutes, seconds) = (total_secs / 3600, (total_secs % 3600) / 60, total_secs % 60);
+    if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds}s")
+    } else {
+        format!("{seconds}s")
+    }
+}
+
 /// `bgColorKeys` of `createTheme`.
 fn is_bg_color_key(key: &str) -> bool {
     matches!(
