@@ -33,6 +33,12 @@ pub(crate) fn migrate_auth_to_auth_json_in(agent_dir: &Path) -> Vec<String> {
     let mut migrated: Map<String, Value> = Map::new();
     let mut providers: Vec<String> = Vec::new();
 
+    // Gather first, destroy later. Deviation from the TS original (user
+    // decision 2026-08-16, v0.1.4): the TS code renames oauth.json and strips
+    // settings.json BEFORE writing auth.json and ignores a failing write,
+    // which can lose the credentials. Here nothing is touched until auth.json
+    // is durably on disk; on failure the migration simply retries next start.
+    let mut oauth_migrated = false;
     if oauth_path.exists()
         && let Ok(content) = std::fs::read_to_string(&oauth_path)
         && let Ok(Value::Object(oauth)) = serde_json::from_str::<Value>(&content)
@@ -48,9 +54,10 @@ pub(crate) fn migrate_auth_to_auth_json_in(agent_dir: &Path) -> Vec<String> {
             migrated.insert(provider.clone(), Value::Object(entry));
             providers.push(provider);
         }
-        let _ = std::fs::rename(&oauth_path, oauth_path.with_extension("json.migrated"));
+        oauth_migrated = true;
     }
 
+    let mut settings_rewrite: Option<String> = None;
     if settings_path.exists()
         && let Ok(content) = std::fs::read_to_string(&settings_path)
         && let Ok(Value::Object(mut settings)) = serde_json::from_str::<Value>(&content)
@@ -68,32 +75,34 @@ pub(crate) fn migrate_auth_to_auth_json_in(agent_dir: &Path) -> Vec<String> {
             }
         }
         settings.remove("apiKeys");
-        if let Ok(serialized) = serde_json::to_string_pretty(&Value::Object(settings)) {
-            let _ = std::fs::write(&settings_path, serialized);
-        }
+        settings_rewrite = serde_json::to_string_pretty(&Value::Object(settings)).ok();
     }
 
-    if !migrated.is_empty() {
-        if let Some(directory) = auth_path.parent() {
-            let _ = std::fs::create_dir_all(directory);
-        }
-        if let Ok(serialized) = serde_json::to_string_pretty(&Value::Object(migrated)) {
-            let _ = std::fs::write(&auth_path, serialized);
-            set_owner_only(&auth_path);
-        }
+    if migrated.is_empty() {
+        return providers;
+    }
+
+    if let Some(directory) = auth_path.parent() {
+        let _ = std::fs::create_dir_all(directory);
+    }
+    let Ok(serialized) = serde_json::to_string_pretty(&Value::Object(migrated)) else {
+        return Vec::new();
+    };
+    if crate::utils::atomic_write::write_secret_file_atomic(&auth_path, &serialized, 0o600).is_err()
+    {
+        return Vec::new();
+    }
+
+    // auth.json is durable — now the sources may go.
+    if oauth_migrated {
+        let _ = std::fs::rename(&oauth_path, oauth_path.with_extension("json.migrated"));
+    }
+    if let Some(serialized) = settings_rewrite {
+        let _ = std::fs::write(&settings_path, serialized);
     }
 
     providers
 }
-
-#[cfg(unix)]
-fn set_owner_only(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-}
-
-#[cfg(not(unix))]
-fn set_owner_only(_path: &Path) {}
 
 /// Port of the session directory encoding in `session-manager.ts`.
 pub(crate) fn encode_cwd_directory(cwd: &str) -> String {

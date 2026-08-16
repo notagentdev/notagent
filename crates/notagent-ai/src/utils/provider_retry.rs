@@ -86,16 +86,21 @@ fn retry_delay_ms(
 
     if let Some(retry_after) = error.header("retry-after") {
         let delay_ms = match retry_after.trim().parse::<f64>() {
-            Ok(seconds) if !seconds.is_nan() => seconds * 1000.0,
+            Ok(seconds) if !seconds.is_nan() => Some(seconds * 1000.0),
             // `Date.parse(retryAfter) - Date.now()` for the HTTP-date form.
-            _ => match DateTime::parse_from_rfc2822(retry_after.trim()) {
-                Ok(target) => {
+            _ => DateTime::parse_from_rfc2822(retry_after.trim())
+                .ok()
+                .map(|target| {
                     (target.timestamp_millis() - chrono::Utc::now().timestamp_millis()) as f64
-                }
-                Err(_) => f64::NAN,
-            },
+                }),
         };
-        return validate_server_retry_delay_ms(delay_ms, max_retry_delay_ms, &error.message());
+        // Deviation from the TS original (user decision 2026-08-16, v0.1.4):
+        // an unparseable header produced NaN there, which slipped through the
+        // `delayMs > max` validation and slept 0ms — a retry with no backoff
+        // at all. Falling through to the exponential delay keeps the pacing.
+        if let Some(delay_ms) = delay_ms {
+            return validate_server_retry_delay_ms(delay_ms, max_retry_delay_ms, &error.message());
+        }
     }
 
     let exponential_delay = (0.5f64 * 2f64.powi(retry_index as i32)).min(8.0) * 1000.0;

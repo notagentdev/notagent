@@ -710,7 +710,18 @@ impl ToolDefinition for EditToolDefinition {
                     .read_file(&absolute_path)
                     .await
                     .map_err(ToolExecutionError::new)?;
-                let raw_content = String::from_utf8_lossy(&bytes).into_owned();
+                // Deviation from the TS original (user decision 2026-08-16,
+                // v0.1.4): Node decodes invalid UTF-8 lossily and the TS tool
+                // writes the U+FFFD replacements back, permanently corrupting
+                // bytes the edit never touched. Refusing is the only safe
+                // answer a byte-exact port can give.
+                let raw_content = String::from_utf8(bytes).map_err(|_| {
+                    ToolExecutionError::new(format!(
+                        "Could not edit file: {path}. The file is not valid UTF-8 \
+                         (binary or unsupported encoding); editing it would corrupt \
+                         bytes outside the edited range."
+                    ))
+                })?;
                 throw_if_aborted()?;
 
                 // The model never includes an invisible BOM in oldText.
@@ -841,6 +852,37 @@ mod tests {
         assert!(patch.contains("-Hello, world!"));
         assert!(patch.contains("+Hello, testing!"));
         assert_eq!(details["firstChangedLine"], json!(1));
+    }
+
+    #[tokio::test]
+    async fn refuses_a_file_that_is_not_valid_utf8() {
+        let directory = TempDir::new();
+        // A Latin-1 "café" — the 0xE9 byte is invalid UTF-8.
+        std::fs::write(
+            directory.path.join("latin1.txt"),
+            [0x63, 0x61, 0x66, 0xE9, 0x0A],
+        )
+        .expect("write");
+        let tool = create_edit_tool_definition(&directory.cwd(), None);
+        let error = tool
+            .execute(
+                "call-1",
+                json!({
+                    "path": "latin1.txt",
+                    "edits": [{ "oldText": "caf", "newText": "bar" }],
+                }),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect_err("must refuse instead of corrupting");
+        assert!(error.to_string().contains("not valid UTF-8"), "{error}");
+        // The file is untouched — no U+FFFD replacement bytes were written.
+        assert_eq!(
+            std::fs::read(directory.path.join("latin1.txt")).expect("read"),
+            [0x63, 0x61, 0x66, 0xE9, 0x0A]
+        );
     }
 
     #[tokio::test]

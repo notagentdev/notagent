@@ -67,14 +67,17 @@ fn parse_proxy_target_url(target_url: &str) -> Option<TargetUrl> {
         }
         _ => (authority.to_string(), 0),
     };
+    // The WHATWG parser lowercases scheme and host; without this,
+    // `HTTPS://EXAMPLE.COM` would slip past a lowercased `no_proxy` list.
+    let protocol = protocol.to_ascii_lowercase();
     let port = if port == 0 {
-        default_proxy_port(protocol)
+        default_proxy_port(&protocol)
     } else {
         port
     };
     Some(TargetUrl {
-        protocol: protocol.to_string(),
-        hostname,
+        protocol,
+        hostname: hostname.to_ascii_lowercase(),
         port,
     })
 }

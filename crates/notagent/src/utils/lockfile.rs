@@ -127,7 +127,15 @@ impl LockGuard {
                 let _ = handle.join();
             }
         }
-        let _ = std::fs::remove_dir_all(&self.lock_path);
+        // A compromised lock is no longer ours: the directory either vanished
+        // or belongs to whoever took it over. proper-lockfile refuses the
+        // release in this state ("Lock is not acquired/owned by you") instead
+        // of deleting the successor's lock — removing it here would let a
+        // third process acquire while the successor still believes it holds
+        // the lock.
+        if !self.compromised.load(Ordering::SeqCst) {
+            let _ = std::fs::remove_dir_all(&self.lock_path);
+        }
     }
 }
 
@@ -403,6 +411,30 @@ mod tests {
             Some(LockError::Compromised("Lock file was deleted".to_owned()))
         );
         assert!(guard.is_compromised());
+    }
+
+    #[test]
+    fn a_compromised_guard_leaves_the_successors_lock_alone() {
+        let (_directory, file) = temp_file();
+        let options = LockOptions {
+            stale: Duration::from_secs(5),
+            update: Some(Duration::from_millis(100)),
+            on_compromised: None,
+        };
+        let guard = try_lock(&file, &options).expect("lock");
+        // Steal the lock the way a stale takeover does: remove and re-create.
+        std::fs::remove_dir_all(lock_path_for(&file)).expect("steal");
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !guard.is_compromised() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(guard.is_compromised());
+        std::fs::create_dir(lock_path_for(&file)).expect("successor acquires");
+        guard.release();
+        assert!(
+            lock_path_for(&file).is_dir(),
+            "the compromised guard must not delete the successor's lock"
+        );
     }
 
     #[test]

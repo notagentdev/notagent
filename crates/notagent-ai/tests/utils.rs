@@ -239,6 +239,23 @@ fn respects_no_proxy_exclusions() {
 }
 
 #[test]
+fn no_proxy_matches_case_insensitively_like_the_whatwg_parser() {
+    // The WHATWG `URL` in TS lowercases scheme and host; the Rust parser must
+    // do the same or `HTTPS://EXAMPLE.COM` slips past `no_proxy=example.com`.
+    let env = proxy_env(&[
+        ("HTTPS_PROXY", "http://proxy.example:8080"),
+        ("NO_PROXY", "bedrock-runtime.us-east-1.amazonaws.com"),
+    ]);
+    assert_eq!(
+        resolve_http_proxy_url_for_target(
+            "HTTPS://BEDROCK-RUNTIME.US-EAST-1.AMAZONAWS.COM",
+            Some(&env)
+        ),
+        Ok(None)
+    );
+}
+
+#[test]
 fn resolves_http_and_https_proxy_urls() {
     let env = proxy_env(&[("HTTPS_PROXY", "http://proxy.example:8080")]);
     assert_eq!(

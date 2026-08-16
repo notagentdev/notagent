@@ -109,13 +109,21 @@ impl PiServerInner {
         if self.started.load(Ordering::SeqCst) {
             return Err(ServerError::other("PiServer is already started"));
         }
-        if self.starting.load(Ordering::SeqCst) {
+        // One winner only: TS gets this atomicity for free from the
+        // single-threaded event loop (`this.startPromise` is assigned in the
+        // same tick as the checks); with two atomics a load-then-store pair
+        // would let two concurrent `start()` calls both pass.
+        if self
+            .starting
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             return Err(ServerError::other("PiServer is already starting"));
         }
         if self.is_closing() {
+            self.starting.store(false, Ordering::SeqCst);
             return Err(ServerError::other("PiServer is closing or closed"));
         }
-        self.starting.store(true, Ordering::SeqCst);
         let mut started: Vec<SharedListener> = Vec::new();
         for listener in &self.listeners {
             let server = Arc::clone(self);

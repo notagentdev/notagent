@@ -182,7 +182,11 @@ where
             .unwrap_or_else(|| "Unknown error".to_string());
         last_retry = Some((attempt, error_message.clone()));
         let policy = policy.expect("max_attempts > 0 implies a policy");
-        let delay_ms = policy.base_delay_ms * 2u64.pow(attempt - 1);
+        // Saturating on purpose: with `retry.n` ≥ 65 the TS float just grows
+        // while `u64::pow` would panic in debug and wrap in release.
+        let delay_ms = policy
+            .base_delay_ms
+            .saturating_mul(2u64.saturating_pow(attempt - 1));
         if let Some(callback) =
             callbacks.and_then(|callbacks| callbacks.on_retry_scheduled.as_ref())
         {

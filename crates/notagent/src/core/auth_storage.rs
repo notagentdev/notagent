@@ -244,13 +244,12 @@ fn create_dir_all_with_mode(directory: &Path) -> std::io::Result<()> {
 }
 
 fn write_auth_file(path: &Path, contents: &str) -> std::io::Result<()> {
-    std::fs::write(path, contents)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(AUTH_FILE_MODE))?;
-    }
-    Ok(())
+    // Deviation from the TS original (user decision 2026-08-16, v0.1.4): TS
+    // truncates auth.json in place with `writeFileSync`; a crash or ENOSPC
+    // mid-write loses every credential. The atomic variant cannot — the old
+    // file stays intact until the new one is fully on disk. The caller holds
+    // the inter-process lock, which the fixed temp name relies on.
+    crate::utils::atomic_write::write_secret_file_atomic(path, contents, AUTH_FILE_MODE)
 }
 
 impl AuthStorageBackend for FileAuthStorageBackend {

@@ -4,7 +4,7 @@ Maschinell erzeugt von `scripts/parity-audit.sh` (Werkzeug: `tools/parity-audit.
 Der Bericht prüft jede Datei unter `packages/*/src` des TS-Repos gegen alle `crates/*/PARITY.md`-Ledger.
 Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine Bewertung.
 
-- Lauf: 2026-08-16, Repo-Commit `16ad74d`
+- Lauf: 2026-08-16, Repo-Commit `a6b9693`
 - TS-Repo: `/Users/dev/projects/notagent-main`
 - Gelesene Ledger: 9 (`notagent`, `notagent-agent`, `notagent-ai`, `notagent-client`, `notagent-protocol`, `notagent-server`, `notagent-session-sqlite`, `notagent-telemetry`, `notagent-tui`)
 - src-Verzeichnisse: 12, Dateien gesamt: 632
@@ -78,14 +78,14 @@ Prüfung nicht aus).
 | `crates/notagent-ai/PARITY.md:260` | `src/providers/data/` | verifiziert | 40 |
 | `crates/notagent-agent/PARITY.md:51` | `src/harness/**` | ausgeschlossen | 38 |
 | `crates/notagent-ai/PARITY.md:273` | `src/api/*.lazy.ts` | verifiziert | 11 |
-| `crates/notagent/PARITY.md:1015` | `src/cli/experimental/` | ausgeschlossen | 8 |
-| `crates/notagent/PARITY.md:1012` | `src/core/extensions/` | ausgeschlossen | 5 |
-| `crates/notagent/PARITY.md:1015` | `src/bun/` | ausgeschlossen | 3 |
-| `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/auto/10-*.md` | verifiziert | 1 |
-| `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/manual/10-*.md` | verifiziert | 1 |
-| `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/plan/10-*.md` | verifiziert | 1 |
-| `crates/notagent/PARITY.md:457` | `src/core/modes/builtin/yolo/10-*.md` | verifiziert | 1 |
-| `crates/notagent/PARITY.md:1012` | `src/extensions/` | ausgeschlossen | 1 |
+| `crates/notagent/PARITY.md:1016` | `src/cli/experimental/` | ausgeschlossen | 8 |
+| `crates/notagent/PARITY.md:1013` | `src/core/extensions/` | ausgeschlossen | 5 |
+| `crates/notagent/PARITY.md:1016` | `src/bun/` | ausgeschlossen | 3 |
+| `crates/notagent/PARITY.md:458` | `src/core/modes/builtin/auto/10-*.md` | verifiziert | 1 |
+| `crates/notagent/PARITY.md:458` | `src/core/modes/builtin/manual/10-*.md` | verifiziert | 1 |
+| `crates/notagent/PARITY.md:458` | `src/core/modes/builtin/plan/10-*.md` | verifiziert | 1 |
+| `crates/notagent/PARITY.md:458` | `src/core/modes/builtin/yolo/10-*.md` | verifiziert | 1 |
+| `crates/notagent/PARITY.md:1013` | `src/extensions/` | ausgeschlossen | 1 |
 
 ## Rahmen-Ausschlüsse aus dem Master-Plan
 

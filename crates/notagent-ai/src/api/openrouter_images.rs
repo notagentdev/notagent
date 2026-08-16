@@ -276,7 +276,11 @@ async fn run_request(
                     let status = response.status;
                     let status_text = response.status_text.clone();
                     let headers = response.headers.clone();
-                    let body = read_body(response.body).await;
+                    // On the error path the status is the story; a body that
+                    // breaks mid-stream degrades to a note instead of failing.
+                    let body = read_body(response.body)
+                        .await
+                        .unwrap_or_else(|error| format!("(failed to read error body: {error})"));
                     return Err(ImagesRequestError {
                         raw: RawProviderError {
                             status: Some(status),
@@ -318,7 +322,7 @@ async fn run_request(
         .await;
     }
 
-    let body = read_body(response.body).await;
+    let body = read_body(response.body).await.map_err(plain)?;
     let parsed: Value = serde_json::from_str(&body).map_err(|error| plain(error.to_string()))?;
 
     output.response_id = parsed.get("id").and_then(Value::as_str).map(str::to_string);
@@ -386,15 +390,21 @@ fn parse_data_url(url: &str) -> Option<(String, String)> {
     (!data.is_empty()).then(|| (mime_type.to_string(), data.to_string()))
 }
 
-async fn read_body(body: FetchBody) -> String {
+async fn read_body(body: FetchBody) -> Result<String, String> {
     match body {
-        FetchBody::Bytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        FetchBody::Bytes(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
         FetchBody::Stream(mut receiver) => {
             let mut text = String::new();
-            while let Some(Ok(chunk)) = receiver.recv().await {
-                text.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(chunk) = receiver.recv().await {
+                match chunk {
+                    Ok(chunk) => text.push_str(&String::from_utf8_lossy(&chunk)),
+                    // The TS SDK's body read rejects on a broken stream; a
+                    // truncated body must not pass as the response — it would
+                    // surface as a misleading JSON parse error.
+                    Err(error) => return Err(error.to_string()),
+                }
             }
-            text
+            Ok(text)
         }
     }
 }
