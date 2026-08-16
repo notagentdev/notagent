@@ -2202,3 +2202,62 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
 - **Unverändert offen**: A-23 selbst (Einstiegspunkt mit Terminal + Pump für die elf
   `#[ignore]`-Szenarien).
 - **Status**: geliefert (A), offen bei C (Einhängen in den Loop)
+
+### C-20 Antwort auf A-23: der Einstiegspunkt steht — Scheibe 1 liegt auf main
+- **Von / An**: C → A
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/src/modes/interactive/interactive_mode.rs`, `crates/notagent/src/main_app.rs`
+- **Beleg**: `packages/coding-agent/src/modes/interactive/interactive-mode.ts:344-354`
+  (`InteractiveTuiOptions.terminal`), `:1025-1117` (`run`), `:3113-3306` (`onSubmit`),
+  `:3313-3652` (`handleEvent`), `main.ts:1011-1045`; A-20 (Pump-Seam), A-23 (dein Wunsch).
+- **Die Signatur** (drei Punkte deines Wunschs, in einem Stück):
+  ```rust
+  pub struct InteractiveTerminal { pub terminal: Box<dyn Terminal>, pub pump: Box<dyn TerminalPump> }
+
+  pub struct InteractiveModeOptions {
+      /* die Felder aus interactive-mode.ts:325-342 */
+      pub terminal: Option<InteractiveTerminal>,   // None => ProcessTerminal::new().into_shared()
+      ..Default::default()
+  }
+
+  pub struct InteractiveModeHandle {
+      pub renderer: Box<dyn RenderLoop>,          // (1) für run_until
+      pub pump: Box<dyn TerminalPump>,            // (2) deiner, wenn du einen reingibst
+      pub run: Pin<Box<dyn Future<Output = i32>>>,// (3) löst mit dem Exit-Code auf
+  }
+
+  pub fn create_interactive_mode(
+      runtime: Arc<AgentSessionRuntime>, options: InteractiveModeOptions,
+  ) -> InteractiveModeHandle;
+  ```
+  `create_interactive_mode` ist synchron (der TS-Konstruktor ist es auch); der erste Frame
+  geht raus, sobald du `run` treibst. `renderer` bleibt über einen späteren
+  Fullscreen-Wechsel hinweg gültig — dahinter liegt eine Zelle, die der Modus tauscht, und
+  `render_pending_frame` zieht den neuen `core` nach. `InteractiveDriver::from_parts` bekommt
+  also genau `parts.renderer`, `parts.pump` und `terminal.clone()`, `with_exit(parts.run)`.
+- **Was Scheibe 1 fährt** (der Rest kommt in vier weiteren Scheiben, jede einzeln gemergt):
+  Startbild (Header mit Logo und Kurzhilfe, Editor mit Rahmen, Footer, Idle-Status),
+  Prompt-Roundtrip inklusive Streaming-Assistant-Komponente und Tool-Zeilen
+  (`tool_execution_start/update/end`), Transkript-Aufbau beim Start (`renderInitialMessages`
+  inkl. Trust-Warnung und „Session compacted"-Zeile), Ctrl+C (erstes leert den Editor,
+  zweites innerhalb 500 ms beendet mit Code 0), Ctrl+D auf leerem Editor, Escape bricht
+  einen laufenden Turn ab, Terminal-Titel, Theme-Wechselmeldungen.
+- **Damit sollten diese Szenarien laufen**: Startup (Header + Editor, Terminalübernahme und
+  -rückgabe), Prompt-Roundtrip (beide Runden), Tool-Anzeige (Erfolgs- und Fehlerzeile).
+  Noch NICHT: Selector-Bedienung (`/model`), Theme-Wechsel über `/settings` — der
+  Slash-Command-Dispatch ist Scheibe 2, die Selektoren sind Scheibe 4. Resize sollte gehen
+  (das macht der Renderer), ist aber von mir nicht geprüft.
+- **Was ich selbst geprüft habe**: `tests/interactive_mode_wiring.rs`, fünf Fälle über das
+  virtuelle Terminal am App-Runtime der G2-Suiten (Startbild, Prompt-Roundtrip, zwei
+  Prompts nacheinander, Ctrl+C-Doppeldruck, Ctrl+D). Die Suite ist bewusst schmal: die
+  G3-Szenarien gehören dir, ich belege nur die Naht und die jeweils frische Scheibe.
+- **Zwei Dinge, auf die deine Erwartungen treffen könnten**:
+  1. Die Kurzhilfe im Header ist die kompakte Fassung — die Marken sind `notagent v<version>`,
+     `/ commands`, `! bash`; die ausführliche Liste erscheint erst mit `app.tools.expand`
+     (Scheibe 5).
+  2. `run` läuft, solange nichts beendet; `wait_for_exit` braucht also einen der beiden
+     Exit-Wege (Ctrl+C zweimal, Ctrl+D leer). `/quit` kommt mit Scheibe 2.
+- **Zu deiner Antwort auf C-17** (wer `render_deadline` treibt): angenommen, die Schleife
+  macht es. `next_deadline()` sammelt heute Loader-Frames, Retry-Countdown und
+  `Editor::autocomplete_deadline`; die weiteren Zeitnähte kommen mit ihren Scheiben dazu.
+- **Status**: umgesetzt (C, 947cafe → main)
