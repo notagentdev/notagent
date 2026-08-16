@@ -6,11 +6,11 @@
 //! with its own nested light/dark selects.
 //!
 //! Deviations:
-//!   * Class 1: TypeScript hands every submenu a `done(value?)` continuation.
-//!     The ported `SettingsList` instead exposes `close_submenu(Option<&str>)`
-//!     for its owner, because a submenu cannot hold a callback into the list
-//!     that owns it. Each level therefore keeps a "done" slot that the submenu
-//!     fills and the owner drains right after dispatching input.
+//!   * Class 1: TypeScript hands every submenu a `done(value?)` continuation
+//!     it may call from inside the input it is handling. A submenu cannot hold
+//!     a callback into the list that owns it, so the ported `SettingsList`
+//!     hands out a [`SubmenuDone`] slot instead and reads it the moment that
+//!     input returns (`settings_list.rs`).
 //!   * Class 1: for the same reason `ThemeSubmenu` cannot rebuild itself from
 //!     inside a select callback — the callbacks record the requested change in
 //!     a shared cell and the submenu applies it after the dispatch.
@@ -33,7 +33,7 @@ use notagent_ai::types::Transport;
 use notagent_tui::components::scroll_view::ScrollViewScrollbar;
 use notagent_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use notagent_tui::components::settings_list::{
-    SettingItem, SettingsList, SettingsListOptions, SubmenuFactory,
+    SettingItem, SettingsList, SettingsListOptions, SubmenuDone, SubmenuFactory,
 };
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
@@ -290,13 +290,8 @@ impl Default for SettingsCallbacks {
 /// A callback receiving the value under the cursor.
 pub type ValueCallback = Box<dyn FnMut(&str)>;
 
-/// The `done(value?)` continuation of a submenu: `Some(None)` is `done()`,
-/// `Some(Some(value))` is `done(value)`.
-type DoneSlot = Rc<RefCell<Option<Option<String>>>>;
-
-fn done_slot() -> DoneSlot {
-    Rc::new(RefCell::new(None))
-}
+/// The `done(value?)` continuation a submenu is handed by its list.
+type DoneSlot = SubmenuDone;
 
 // ============================================================================
 // Warning submenu
@@ -572,8 +567,6 @@ struct ThemeSubmenu {
     input_component: Option<ComponentRef>,
     /// The settings list of the automatic menu, when that menu is open.
     automatic_list: Option<Rc<RefCell<SettingsList>>>,
-    /// `done` of `automatic_list`'s own submenus (light/dark theme selects).
-    inner_done: DoneSlot,
     pending: Rc<RefCell<Option<ThemeMenuChange>>>,
     state: Rc<RefCell<ThemeState>>,
     callbacks: Rc<RefCell<SettingsCallbacks>>,
@@ -621,7 +614,6 @@ impl ThemeSubmenu {
             content: None,
             input_component: None,
             automatic_list: None,
-            inner_done: done_slot(),
             pending: Rc::new(RefCell::new(None)),
             state: Rc::new(RefCell::new(state)),
             callbacks,
@@ -817,15 +809,14 @@ impl ThemeSubmenu {
         let available_themes = self.available_themes.clone();
         let state = Rc::clone(&self.state);
         let callbacks = Rc::clone(&self.callbacks);
-        let inner_done = Rc::clone(&self.inner_done);
 
-        Rc::new(move |current_value| {
+        Rc::new(move |current_value, done| {
             let select_state = Rc::clone(&state);
             let select_callbacks = Rc::clone(&callbacks);
-            let select_done = Rc::clone(&inner_done);
+            let select_done = Rc::clone(&done);
             let cancel_state = Rc::clone(&state);
             let cancel_callbacks = Rc::clone(&callbacks);
-            let cancel_done = Rc::clone(&inner_done);
+            let cancel_done = done;
             let preview_callbacks = Rc::clone(&callbacks);
 
             component_ref(SelectSubmenu::new(
@@ -863,15 +854,6 @@ impl ThemeSubmenu {
 
     /// Apply what a callback recorded while the submenu was borrowed.
     fn drain_pending(&mut self) {
-        // The light/dark selects already wrote the new value into the shared
-        // state; closing the row updates the value column of the list.
-        let inner = self.inner_done.borrow_mut().take();
-        if let Some(result) = inner
-            && let Some(list) = self.automatic_list.clone()
-        {
-            list.borrow_mut().close_submenu(result.as_deref());
-        }
-
         let pending = self.pending.borrow_mut().take();
         match pending {
             Some(ThemeMenuChange::ShowSingle) => self.show_single_menu(),
@@ -919,13 +901,11 @@ fn bool_value(value: bool) -> String {
 pub struct SettingsSelectorComponent {
     container: Container,
     settings_list: Rc<RefCell<SettingsList>>,
-    done: DoneSlot,
 }
 
 impl SettingsSelectorComponent {
     pub fn new(config: SettingsConfig, callbacks: SettingsCallbacks) -> Self {
         let callbacks = Rc::new(RefCell::new(callbacks));
-        let done = done_slot();
 
         let supports_images = get_capabilities().images.is_some();
         let follow_up_key = key_display_text("app.message.followUp");
@@ -1096,11 +1076,10 @@ impl SettingsSelectorComponent {
                 submenu: Some({
                     let warnings = Rc::clone(&current_warnings);
                     let callbacks = Rc::clone(&callbacks);
-                    let done = Rc::clone(&done);
-                    Rc::new(move |_current_value: &str| {
+                    Rc::new(move |_current_value: &str, done: SubmenuDone| {
                         let change_warnings = Rc::clone(&warnings);
                         let change_callbacks = Rc::clone(&callbacks);
-                        let cancel_done = Rc::clone(&done);
+                        let cancel_done = done;
                         component_ref(WarningSettingsSubmenu::new(
                             &warnings.borrow().clone(),
                             Box::new(move |updated| {
@@ -1123,11 +1102,10 @@ impl SettingsSelectorComponent {
                 submenu: Some({
                     let levels = config.available_thinking_levels.clone();
                     let callbacks = Rc::clone(&callbacks);
-                    let done = Rc::clone(&done);
-                    Rc::new(move |current_value: &str| {
+                    Rc::new(move |current_value: &str, done: SubmenuDone| {
                         let select_callbacks = Rc::clone(&callbacks);
                         let select_done = Rc::clone(&done);
-                        let cancel_done = Rc::clone(&done);
+                        let cancel_done = done;
                         component_ref(SelectSubmenu::new(
                             "Thinking Level",
                             "Select reasoning depth for thinking-capable models",
@@ -1198,14 +1176,13 @@ impl SettingsSelectorComponent {
                     let terminal_theme = config.terminal_theme;
                     let available_themes = config.available_themes.clone();
                     let callbacks = Rc::clone(&callbacks);
-                    let done = Rc::clone(&done);
-                    Rc::new(move |current_value: &str| {
+                    Rc::new(move |current_value: &str, done: SubmenuDone| {
                         component_ref(ThemeSubmenu::new(
                             current_value,
                             terminal_theme,
                             available_themes.clone(),
                             Rc::clone(&callbacks),
-                            Rc::clone(&done),
+                            done,
                         ))
                     }) as SubmenuFactory
                 }),
@@ -1514,7 +1491,6 @@ impl SettingsSelectorComponent {
         Self {
             container,
             settings_list,
-            done,
         }
     }
 
@@ -1550,11 +1526,5 @@ impl Component for SettingsSelectorComponent {
 
     fn handle_input(&mut self, data: &str) {
         self.settings_list.borrow_mut().handle_input(data);
-        let done = self.done.borrow_mut().take();
-        if let Some(result) = done {
-            self.settings_list
-                .borrow_mut()
-                .close_submenu(result.as_deref());
-        }
     }
 }

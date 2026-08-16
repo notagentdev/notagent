@@ -2,6 +2,7 @@
 //!
 //! 1:1 port of `packages/tui/src/components/settings-list.ts` (249 LOC).
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::components::input::Input;
@@ -10,8 +11,19 @@ use crate::keybindings::keybindings_match;
 use crate::tui::{Component, ComponentRef};
 use crate::utils::{truncate_to_width, truncate_to_width_opts, visible_width, wrap_text_with_ansi};
 
-/// Factory opening a submenu for an item.
-pub type SubmenuFactory = Rc<dyn Fn(&str) -> ComponentRef>;
+/// The `done(selectedValue?)` continuation TS hands to a submenu
+/// (`settings-list.ts:19`): `Some(Some(value))` is `done(value)`, `Some(None)`
+/// is the bare `done()` of a cancel, `None` means the submenu is still open.
+///
+/// Deviation class 1: TS calls the continuation directly, which would re-enter
+/// the list while it is mutably borrowed for the very input that reaches the
+/// submenu. The submenu therefore writes into the slot and the list reads it
+/// the moment that input returns — before anything can observe the difference.
+pub type SubmenuDone = Rc<RefCell<Option<Option<String>>>>;
+
+/// Factory opening a submenu for an item; the port of
+/// `submenu?: (currentValue, done) => Component`.
+pub type SubmenuFactory = Rc<dyn Fn(&str, SubmenuDone) -> ComponentRef>;
 
 /// One settings row.
 #[derive(Clone)]
@@ -73,6 +85,8 @@ pub struct SettingsList {
     search_enabled: bool,
     submenu_component: Option<ComponentRef>,
     submenu_item_index: Option<usize>,
+    /// The continuation handed to the open submenu.
+    submenu_done: SubmenuDone,
 }
 
 impl SettingsList {
@@ -97,6 +111,7 @@ impl SettingsList {
             search_enabled: options.enable_search,
             submenu_component: None,
             submenu_item_index: None,
+            submenu_done: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -107,8 +122,9 @@ impl SettingsList {
         }
     }
 
-    /// Close an open submenu, optionally applying its result.
-    pub fn close_submenu(&mut self, selected_value: Option<&str>) {
+    /// Close an open submenu, optionally applying its result — the body of the
+    /// `done` continuation of `activate_item`.
+    fn close_submenu(&mut self, selected_value: Option<&str>) {
         if let Some(value) = selected_value
             && let Some(index) = self.submenu_item_index
         {
@@ -255,7 +271,9 @@ impl SettingsList {
         if let Some(submenu) = item.submenu.clone() {
             // Open the submenu; the current value lets it pre-select correctly.
             self.submenu_item_index = Some(index);
-            self.submenu_component = Some(submenu(&item.current_value));
+            *self.submenu_done.borrow_mut() = None;
+            self.submenu_component =
+                Some(submenu(&item.current_value, Rc::clone(&self.submenu_done)));
             return;
         }
         if let Some(values) = item.values.clone()
@@ -294,9 +312,14 @@ impl Component for SettingsList {
     }
 
     fn handle_input(&mut self, data: &str) {
-        // While a submenu is open all input goes to it.
+        // While a submenu is open all input goes to it. Its `done` lands in the
+        // slot; TS closes the submenu from inside the call itself.
         if let Some(submenu) = self.submenu_component.clone() {
             submenu.borrow_mut().handle_input(data);
+            let done = self.submenu_done.borrow_mut().take();
+            if let Some(selected_value) = done {
+                self.close_submenu(selected_value.as_deref());
+            }
             return;
         }
 

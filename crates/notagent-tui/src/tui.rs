@@ -494,6 +494,12 @@ struct TuiState {
     /// Focus flags that could not be written because the component was busy
     /// handling input; applied as soon as its borrow is released.
     pending_focus_flags: Vec<(ComponentRef, bool)>,
+    /// Set while a component is inside its own `handle_input`, so nested calls
+    /// know its borrow is held.
+    dispatching_input: bool,
+    /// An [`TuiCore::invalidate`] that arrived during that dispatch and runs
+    /// as soon as the borrow is released.
+    pending_invalidate: bool,
 }
 
 /// Shared TUI state — the port of `TuiBase`.
@@ -552,6 +558,8 @@ impl TuiCore {
             cell_size_dirty: false,
             render_notify: Rc::new(tokio::sync::Notify::new()),
             pending_focus_flags: Vec::new(),
+            dispatching_input: false,
+            pending_invalidate: false,
         })))
     }
 
@@ -768,6 +776,15 @@ impl TuiCore {
                 .pending_focus_flags
                 .push((component.clone(), focused)),
         }
+    }
+
+    /// Run an [`Self::invalidate`] that was queued while a component was
+    /// handling input.
+    fn flush_pending_invalidate(&self) {
+        if !std::mem::take(&mut self.0.borrow_mut().pending_invalidate) {
+            return;
+        }
+        self.invalidate();
     }
 
     /// Apply focus flags queued while a component was handling input.
@@ -1073,7 +1090,19 @@ impl TuiCore {
     }
 
     /// Invalidate all mounted components and overlays.
+    ///
+    /// A component can reach this from inside its own `handle_input` — the
+    /// theme preview of the settings menu does, through the theme controller
+    /// (`theme-controller.ts:82-88`). It is then mutably borrowed and the walk
+    /// below would borrow it a second time, so the call is queued and runs the
+    /// moment the dispatch returns (deviation class 1, the same treatment as
+    /// [`Self::write_focus_flag`]: TS has no borrow rules, and nothing renders
+    /// between the two points).
     pub fn invalidate(&self) {
+        if self.0.borrow().dispatching_input {
+            self.0.borrow_mut().pending_invalidate = true;
+            return;
+        }
         let roots = self.0.borrow().children.clone();
         for root in roots {
             root.borrow_mut().invalidate();
@@ -1340,8 +1369,11 @@ impl TuiCore {
             if is_key_release(&data) && !wants_key_release {
                 return;
             }
+            self.0.borrow_mut().dispatching_input = true;
             focused.borrow_mut().handle_input(&data);
+            self.0.borrow_mut().dispatching_input = false;
             self.flush_pending_focus_flags();
+            self.flush_pending_invalidate();
             // Keyboard input is latency sensitive: skip the throttled path.
             self.request_immediate_render();
         }

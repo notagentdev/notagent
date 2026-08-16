@@ -7,19 +7,23 @@
 //! what runs here is the path from a typed slash command to the overlay and
 //! back.
 //!
-//! `"Scope: "` is the marker for "the overlay is open": the model selector
-//! draws that line above its list, and nothing else on the screen does. The
-//! model name alone would not do — the footer shows it too.
+//! `"Model Name: "` is the marker for "the overlay is open": the selector
+//! writes that line under its list for the highlighted row, and nothing else
+//! on this screen does. The bare model name would not do — the footer shows it
+//! too. Neither would the scope line: `"Scope: "` only exists when the
+//! settings hold scoped models (`model-selector.ts:86-95` builds it in that
+//! branch and the warning "Only showing models from configured providers." in
+//! the other), and the app runtime of this suite has none.
 
 use notagent::config::APP_NAME;
 
 use super::harness::{InteractiveE2e, KEY_ESCAPE, run_local};
 
-/// The scope line of the model selector (`model_selector.rs`, `"Scope: "`).
-const SELECTOR_MARKER: &str = "Scope: ";
+/// The detail line the model selector writes for the highlighted row
+/// (`model_selector.rs:490`).
+const SELECTOR_MARKER: &str = "Model Name: ";
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for the slash-command slice of C task 13: /model and /settings are not wired yet"]
 async fn slash_model_opens_the_selector_and_escape_closes_it() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -57,7 +61,6 @@ async fn slash_model_opens_the_selector_and_escape_closes_it() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for the slash-command slice of C task 13: /model and /settings are not wired yet"]
 async fn picking_a_row_closes_the_selector_and_keeps_the_session_on_that_model() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -71,7 +74,10 @@ async fn picking_a_row_closes_the_selector_and_keeps_the_session_on_that_model()
 
         driver.submit("/model").await;
         driver.wait_for(SELECTOR_MARKER).await;
-        driver.choose(&before.name).await;
+        // A row carries the model *id*, not its name (`model-selector.ts:266-277`:
+        // `${id} [${provider}]` plus the check mark on the current one); the name
+        // only stands in the detail line under the list.
+        driver.choose(&before.id).await;
 
         // The faux provider offers one model, so picking a row lands on the
         // model the session already runs on; what the case pins is that the

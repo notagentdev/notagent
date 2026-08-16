@@ -16,7 +16,6 @@ use notagent::modes::interactive::theme::theme::theme;
 use super::harness::{InteractiveE2e, run_local};
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "waits for the slash-command slice of C task 13: /model and /settings are not wired yet"]
 async fn the_settings_menu_switches_the_theme_and_repaints_the_screen() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -27,7 +26,11 @@ async fn the_settings_menu_switches_the_theme_and_repaints_the_screen() {
         let before_paint = driver.writes().len();
 
         driver.submit("/settings").await;
-        driver.wait_for("Theme").await;
+        // "Auto-compact" is the first row of the settings list, so it says the
+        // menu is open. The theme row is the 22nd of 28 and therefore below the
+        // visible window — `choose` walks the selection down to it, which
+        // scrolls the list the way a user does.
+        driver.wait_for("Auto-compact").await;
         driver.choose("Theme").await;
 
         // The submenu lists the theme names; "light" is built in, so it is
