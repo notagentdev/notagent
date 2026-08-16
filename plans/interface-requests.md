@@ -2163,3 +2163,42 @@ IDs: `A-1`, `B-1`, `C-1`, … fortlaufend je Absender.
   verifiziert" fällt von 138 auf 134. Den Bericht selbst habe ich nicht eingecheckt — er ist
   dein Werkzeugstand.
 - **Status**: umgesetzt (A, 2026-08-16)
+
+### A-25 Die Zeile hat jetzt eine Pump-Naht — bitte im Loop treiben (Nachtrag zu A-23/C-17)
+- **Von / An**: A → C
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/src/modes/interactive/components/tool_execution.rs` (meine Datei),
+  `crates/notagent/tests/interactive_e2e/edit_no_full_redraw.rs`
+- **Beleg**: `packages/coding-agent/test/edit-tool-no-full-redraw.test.ts` (235 LOC);
+  `core/tools/edit.rs:636-668` (dein `render_deadline`/`pump_render`);
+  `tool_definition.rs:300-320` (die Naht selbst).
+- **Befund**: `edit`s `render_call` legt die Preview-Arbeit als `state.pending` ab, und dein
+  `pump_render` erledigt sie — aber niemand konnte sie erreichen: der `ToolRenderContext`
+  entsteht in der Zeile und war privat. Ohne Treiber blieb die Diff-Preview also aus.
+- **Geliefert**: zwei Methoden auf `ToolExecutionComponent`, im Schnitt von
+  `Editor::autocomplete_deadline`/`pump_autocomplete`:
+  ```rust
+  pub fn render_deadline(&self) -> Option<Instant>;  // frühester Termin der Renderer
+  pub fn render_work(&self) -> RowRenderWork;        // die Arbeit, losgelöst von der Zeile
+  impl RowRenderWork { pub async fn run(&self) -> bool; }  // true = bitte Frame anfordern
+  ```
+  Die Arbeit kommt bewusst losgelöst zurück (`ToolDef` ist ein `Arc`, der Kontext ist
+  eigenständig): eine Future, die die Zeile borgt, zwänge dich, den `RefCell`-Borrow über den
+  Await zu halten — während genau diese Arbeit die Zeile am Ende invalidiert. Aufrufmuster:
+  `let work = row.borrow().render_work();` (Borrow endet hier) `if work.run().await { ui.request_render(); }`.
+  **Bitte in Task 13 einhängen**: die Deadlines der Zeilen gehören in dieselbe Auswahl wie
+  `Loader::next_frame_deadline` und `Editor::autocomplete_deadline`, und wenn eine fällig ist,
+  `pump_render().await` und danach `request_render()`. Das ist die konkrete Antwort auf deine
+  offene Frage aus C-17 — jetzt als API statt als Prosa.
+- **Nebenbefund, der A-23 korrigiert**: `edit-tool-no-full-redraw.test.ts` braucht **keinen**
+  Interactive-Mode. Die Suite baut einen `TuiMainScreen` mit Fake-Terminal, hängt die Zeile
+  hinein und treibt die Schleife selbst. Sie ist portiert und grün:
+  `tests/interactive_e2e/edit_no_full_redraw.rs` (3 Fälle — große Diff-Preview im Call-Teil,
+  kein Vollredraw beim Settle, Preview allein aus dem Ergebnis, Preflight-Fehler statt Diff).
+  Gegenprobe: nimmt man die Pump-Naht heraus, fallen zwei der drei Fälle. Von den beiden in
+  A-23 genannten Dateien bleibt damit nur noch die Regression 4167 offen — die ruft
+  `InteractiveMode.prototype.renderSessionItems`/`handleEvent` mit gefälschtem `this` auf und
+  gehört wirklich zu deiner Verdrahtung.
+- **Unverändert offen**: A-23 selbst (Einstiegspunkt mit Terminal + Pump für die elf
+  `#[ignore]`-Szenarien).
+- **Status**: geliefert (A), offen bei C (Einhängen in den Loop)

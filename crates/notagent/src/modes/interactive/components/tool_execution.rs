@@ -19,6 +19,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::Instant;
 
 use notagent_ai::types::TextOrImageContent;
 use notagent_tui::components::box_component::BoxComponent;
@@ -300,6 +301,34 @@ impl ToolExecutionComponent {
         (self.request_render)();
     }
 
+    /// When the row has render work of its own that is due later
+    /// (`ToolDefinition::render_deadline`).
+    ///
+    /// The renderers of a row cannot drive their own timers — a callback would
+    /// need `&mut` on the row while the renderer holds it — so they report the
+    /// moment and the render loop comes back for it, exactly as
+    /// `Loader::next_frame_deadline` and `Editor::autocomplete_deadline` do.
+    pub fn render_deadline(&self) -> Option<Instant> {
+        let context = self.render_context(self.call_renderer_component.clone());
+        self.definitions_in_order()
+            .filter_map(|definition| definition.render_deadline(&context))
+            .min()
+    }
+
+    /// The render-side work this row's renderers handed back, detached from
+    /// the row.
+    ///
+    /// The component cannot lend out a future that borrows it: the loop would
+    /// have to hold the row's `RefCell` borrow across the await, while the work
+    /// invalidates that very row when it finishes. `ToolDef` is an `Arc` and the
+    /// context is owned, so both travel with the work instead.
+    pub fn render_work(&self) -> RowRenderWork {
+        RowRenderWork {
+            definitions: self.definitions_in_order().cloned().collect(),
+            context: self.render_context(self.call_renderer_component.clone()),
+        }
+    }
+
     pub fn set_expanded(&mut self, expanded: bool) {
         self.expanded = expanded;
         self.update_display();
@@ -482,6 +511,32 @@ impl ToolExecutionComponent {
             text.push_str(&format!("\n{output}"));
         }
         text
+    }
+}
+
+/// The render work of one tool row, ready to be awaited by the render loop.
+///
+/// This is the other half of the seam described on
+/// [`ToolDefinition::pump_render`]: where TS continues a promise inside
+/// `renderCall` (`edit` computes its diff preview that way), the port hands the
+/// future to the loop, which awaits it on the TUI thread. The renderer
+/// invalidates the row itself when it is done.
+pub struct RowRenderWork {
+    definitions: Vec<ToolDef>,
+    context: ToolRenderContext,
+}
+
+impl RowRenderWork {
+    /// Run what the first renderer with pending work handed back, and report
+    /// whether anything ran, so the caller knows to ask for a frame.
+    pub async fn run(&self) -> bool {
+        for definition in &self.definitions {
+            if let Some(work) = definition.pump_render(&self.context) {
+                work.await;
+                return true;
+            }
+        }
+        false
     }
 }
 
