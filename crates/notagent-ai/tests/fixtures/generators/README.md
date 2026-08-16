@@ -93,3 +93,14 @@ identity, base url, the advertised auth methods and the catalog before any refre
 `builtinProviders()` order. `createProvider` hides the api map behind a closure, so the
 fixture carries the distinct `model.api` values instead; `tests/providers.rs` asserts
 that each of them dispatches.
+
+`ai-utils.mts` covers the modules of `packages/ai` that have no dedicated TS suite of
+their own (`utils/{hash,headers,sanitize-unicode,provider-env,deferred-tools,diagnostics}.ts`,
+`api/github-copilot-headers.ts`, `auth/context.ts`, `image-models.ts`). It imports each one
+directly and records inputs and outputs, so `tests/ai_utils_oracle.rs` compares against the
+TypeScript code rather than a hand-written expectation. Node 26 loads the `.ts` sources
+without a build step; strings with lone surrogates travel as UTF-16 code-unit arrays.
+
+| Script | Fixture | Run with |
+|---|---|---|
+| `ai-utils.mts` | `ai-utils.jsonl` | `node ai-utils.mts > ../ai-utils.jsonl` |

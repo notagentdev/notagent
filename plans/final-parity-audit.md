@@ -4,7 +4,7 @@ Maschinell erzeugt von `scripts/parity-audit.sh` (Werkzeug: `tools/parity-audit.
 Der Bericht prüft jede Datei unter `packages/*/src` des TS-Repos gegen alle `crates/*/PARITY.md`-Ledger.
 Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine Bewertung.
 
-- Lauf: 2026-08-16, Repo-Commit `1a30192`
+- Lauf: 2026-08-16, Repo-Commit `e7ba006`
 - TS-Repo: `/Users/dev/projects/notagent-main`
 - Gelesene Ledger: 9 (`notagent`, `notagent-agent`, `notagent-ai`, `notagent-client`, `notagent-protocol`, `notagent-server`, `notagent-session-sqlite`, `notagent-telemetry`, `notagent-tui`)
 - src-Verzeichnisse: 12, Dateien gesamt: 632
@@ -13,10 +13,10 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 
 | Kategorie | Dateien | Bedeutung |
 |---|---:|---|
-| verifiziert | 405 | Ledger-Zeile mit Status `verifiziert` |
+| verifiziert | 422 | Ledger-Zeile mit Status `verifiziert` |
 | ausgeschlossen | 73 | in einer `Ausschlüsse`-Tabelle eines Ledgers geführt |
 | Rahmen-Ausschluss | 8 | im Master-Plan ausgeschlossen, ohne eigenes Ledger |
-| Ledger < verifiziert | 130 | Ledger-Zeile vorhanden, Status `gelesen`/`portiert`/`Tests portiert` |
+| Ledger < verifiziert | 113 | Ledger-Zeile vorhanden, Status `gelesen`/`portiert`/`Tests portiert` |
 | ohne Nachweis | 16 | keine Spur in irgendeinem Ledger — harte Lücke |
 
 ## Je Paket
@@ -24,7 +24,7 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 | TS-Paket | Owner | Dateien | verifiziert | ausgeschl. | Rahmen | < verifiziert | ohne Nachweis |
 |---|---|---:|---:|---:|---:|---:|---:|
 | `packages/agent` | B | 50 | 7 | 43 | 0 | 0 | 0 |
-| `packages/ai` | B | 215 | 193 | 5 | 0 | 17 | 0 |
+| `packages/ai` | B | 215 | 210 | 5 | 0 | 0 | 0 |
 | `packages/client` | C | 10 | 10 | 0 | 0 | 0 | 0 |
 | `packages/coding-agent` | C | 258 | 133 | 25 | 0 | 84 | 16 |
 | `packages/evals` | — | 8 | 0 | 0 | 8 | 0 | 0 |
@@ -66,23 +66,6 @@ Für diese Dateien fehlt der grüne Testnachweis (Status-Leiter aus `CONVENTIONS
 
 | Datei | bester Status | Beleg | Art |
 |---|---|---|---|
-| `packages/ai/src/api/github-copilot-headers.ts` | portiert | `crates/notagent-ai/PARITY.md:300` | datei |
-| `packages/ai/src/api/lazy.ts` | portiert | `crates/notagent-ai/PARITY.md:303` | datei |
-| `packages/ai/src/auth/context.ts` | portiert | `crates/notagent-ai/PARITY.md:307` | datei |
-| `packages/ai/src/auth/helpers.ts` | portiert | `crates/notagent-ai/PARITY.md:344` | datei |
-| `packages/ai/src/auth/types.ts` | portiert | `crates/notagent-ai/PARITY.md:304` | datei |
-| `packages/ai/src/compat/extension-oauth-types.ts` | portiert | `crates/notagent-ai/PARITY.md:288` | datei |
-| `packages/ai/src/image-models.ts` | portiert | `crates/notagent-ai/PARITY.md:423` | datei |
-| `packages/ai/src/models.generated.ts` | portiert | `crates/notagent-ai/PARITY.md:259` | datei |
-| `packages/ai/src/oauth.ts` | portiert | `crates/notagent-ai/PARITY.md:433` | datei |
-| `packages/ai/src/utils/abort-signals.ts` | portiert | `crates/notagent-ai/PARITY.md:252` | datei |
-| `packages/ai/src/utils/abort.ts` | portiert | `crates/notagent-ai/PARITY.md:252` | datei |
-| `packages/ai/src/utils/deferred-tools.ts` | portiert | `crates/notagent-ai/PARITY.md:255` | datei |
-| `packages/ai/src/utils/diagnostics.ts` | portiert | `crates/notagent-ai/PARITY.md:239` | datei |
-| `packages/ai/src/utils/hash.ts` | portiert | `crates/notagent-ai/PARITY.md:249` | datei |
-| `packages/ai/src/utils/headers.ts` | portiert | `crates/notagent-ai/PARITY.md:250` | datei |
-| `packages/ai/src/utils/provider-env.ts` | portiert | `crates/notagent-ai/PARITY.md:256` | datei |
-| `packages/ai/src/utils/sanitize-unicode.ts` | portiert | `crates/notagent-ai/PARITY.md:251` | datei |
 | `packages/coding-agent/src/cli.ts` | portiert | `crates/notagent/PARITY.md:537` | datei |
 | `packages/coding-agent/src/cli/args.ts` | portiert | `crates/notagent/PARITY.md:535` | datei |
 | `packages/coding-agent/src/cli/config-selector.ts` | portiert | `crates/notagent/PARITY.md:578` | datei |

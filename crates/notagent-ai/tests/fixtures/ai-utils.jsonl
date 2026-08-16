@@ -1,0 +1,63 @@
+{"kind":"shortHash","input":"","output":"k4n83c7h0j2b"}
+{"kind":"shortHash","input":"a","output":"m8735310ae7sx"}
+{"kind":"shortHash","input":"hello world","output":"n7rb4n1m39uz8"}
+{"kind":"shortHash","input":"https://api.openai.com/v1/responses","output":"15p1r1349y64l"}
+{"kind":"shortHash","input":"gruesse-aus-utf16","output":"1q4vvvv10syg65"}
+{"kind":"shortHash","input":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","output":"zykls21ciz8e3"}
+{"kind":"shortHash","input":"0","output":"1t916k51bg9odz"}
+{"kind":"shortHash","input":" ","output":"9sehtbgmr8ro"}
+{"kind":"shortHashUnits","input":[228,55357,56832,28450],"output":"g216oiumfc0s"}
+{"kind":"shortHashUnits","input":[20013,25991],"output":"f26w1mfqykoa"}
+{"kind":"shortHashUnits","input":[55357,56832],"output":"13wj7r7usi372"}
+{"kind":"sanitizeSurrogates","input":[72,101,108,108,111,32,55357,56904,32,87,111,114,108,100],"output":[72,101,108,108,111,32,55357,56904,32,87,111,114,108,100]}
+{"kind":"sanitizeSurrogates","input":[84,101,120,116,32,55357,32,104,101,114,101],"output":[84,101,120,116,32,32,104,101,114,101]}
+{"kind":"sanitizeSurrogates","input":[84,101,120,116,32,56395,32,104,101,114,101],"output":[84,101,120,116,32,32,104,101,114,101]}
+{"kind":"sanitizeSurrogates","input":[55357,56832],"output":[55357,56832]}
+{"kind":"sanitizeSurrogates","input":[55357,55357,56832],"output":[55357,56832]}
+{"kind":"sanitizeSurrogates","input":[112,108,97,105,110],"output":[112,108,97,105,110]}
+{"kind":"headersToRecord","input":[["content-type","application/json"],["x-api-key","secret"]],"output":{"content-type":"application/json","x-api-key":"secret"}}
+{"kind":"headersToRecord","input":[],"output":{}}
+{"kind":"providerHeadersToRecord","input":null,"output":null}
+{"kind":"providerHeadersToRecord","input":{},"output":null}
+{"kind":"providerHeadersToRecord","input":{"x-one":"1","x-two":null},"output":{"x-one":"1"}}
+{"kind":"providerHeadersToRecord","input":{"x-only-null":null},"output":null}
+{"kind":"providerHeadersToRecord","input":{"x-a":"a","x-b":"b"},"output":{"x-a":"a","x-b":"b"}}
+{"kind":"getProviderEnvValue","name":"NOTAGENT_ORACLE_SET","env":null,"output":"from-process"}
+{"kind":"getProviderEnvValue","name":"NOTAGENT_ORACLE_SET","env":{"NOTAGENT_ORACLE_SET":"from-scope"},"output":"from-scope"}
+{"kind":"getProviderEnvValue","name":"NOTAGENT_ORACLE_SET","env":{"NOTAGENT_ORACLE_SET":""},"output":"from-process"}
+{"kind":"getProviderEnvValue","name":"NOTAGENT_ORACLE_EMPTY","env":null,"output":null}
+{"kind":"getProviderEnvValue","name":"NOTAGENT_ORACLE_MISSING","env":null,"output":null}
+{"kind":"getProviderEnvValue","name":"NOTAGENT_ORACLE_MISSING","env":{"NOTAGENT_ORACLE_MISSING":"only-scoped"},"output":"only-scoped"}
+{"kind":"splitDeferredTools","label":"disabled keeps every tool immediate","enabled":false,"tools":["read","bash"],"messages":[],"immediate":["read","bash"],"deferred":[]}
+{"kind":"splitDeferredTools","label":"no transcript hints","enabled":true,"tools":["read","bash"],"messages":[],"immediate":["read","bash"],"deferred":[]}
+{"kind":"splitDeferredTools","label":"added tool name that was never called is deferred","enabled":true,"tools":["read","bash"],"messages":[{"role":"toolResult","addedToolNames":["bash"]}],"immediate":["read"],"deferred":["bash"]}
+{"kind":"splitDeferredTools","label":"a used tool stays immediate","enabled":true,"tools":["read","bash"],"messages":[{"role":"assistant","content":[{"type":"toolCall","name":"bash"}]},{"role":"toolResult","addedToolNames":["bash"]}],"immediate":["read","bash"],"deferred":[]}
+{"kind":"splitDeferredTools","label":"duplicates collapse to the last definition","enabled":true,"tools":["read","read","bash"],"messages":[{"role":"toolResult","addedToolNames":["read"]}],"immediate":["bash"],"deferred":["read"]}
+{"kind":"diagnostics","label":"error with message","formatted":"boom","error":{"name":"Error","message":"boom","code":null,"hasStack":true}}
+{"kind":"diagnostics","label":"error without message","formatted":"EmptyError","error":{"name":"EmptyError","message":"EmptyError","code":null,"hasStack":true}}
+{"kind":"diagnostics","label":"string","formatted":"just a string","error":{"name":"ThrownValue","message":"just a string","code":null,"hasStack":false}}
+{"kind":"diagnostics","label":"number","formatted":"42","error":{"name":"ThrownValue","message":"42","code":null,"hasStack":false}}
+{"kind":"diagnostics","label":"null","formatted":"null","error":{"name":"ThrownValue","message":"null","code":null,"hasStack":false}}
+{"kind":"diagnostics","label":"undefined","formatted":"undefined","error":{"name":"ThrownValue","message":"undefined","code":null,"hasStack":false}}
+{"kind":"diagnostics","label":"object with custom toString","formatted":"custom","error":{"name":"ThrownValue","message":"custom","code":null,"hasStack":false}}
+{"kind":"diagnostics","label":"error with a string code","formatted":"no entry","error":{"name":"Error","message":"no entry","code":"ENOENT","hasStack":true}}
+{"kind":"diagnostics","label":"error with a numeric code","formatted":"errno","error":{"name":"Error","message":"errno","code":13,"hasStack":true}}
+{"kind":"diagnostics","label":"error with a non-scalar code","formatted":"weird","error":{"name":"Error","message":"weird","code":null,"hasStack":true}}
+{"kind":"copilotHeaders","label":"empty","messages":[],"initiator":"user","hasVisionInput":false,"headers":{"X-Initiator":"user","Openai-Intent":"conversation-edits"}}
+{"kind":"copilotHeaders","label":"last is user","messages":[{"role":"user","content":"hi"}],"initiator":"user","hasVisionInput":false,"headers":{"X-Initiator":"user","Openai-Intent":"conversation-edits"}}
+{"kind":"copilotHeaders","label":"last is assistant","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":[]}],"initiator":"agent","hasVisionInput":false,"headers":{"X-Initiator":"agent","Openai-Intent":"conversation-edits"}}
+{"kind":"copilotHeaders","label":"last is toolResult","messages":[{"role":"toolResult","content":[]}],"initiator":"agent","hasVisionInput":false,"headers":{"X-Initiator":"agent","Openai-Intent":"conversation-edits"}}
+{"kind":"copilotHeaders","label":"user image","messages":[{"role":"user","content":[{"type":"image","data":"","mimeType":"image/png"}]}],"initiator":"user","hasVisionInput":true,"headers":{"X-Initiator":"user","Openai-Intent":"conversation-edits","Copilot-Vision-Request":"true"}}
+{"kind":"copilotHeaders","label":"toolResult image","messages":[{"role":"toolResult","content":[{"type":"image","data":"","mimeType":"image/png"}]}],"initiator":"agent","hasVisionInput":true,"headers":{"X-Initiator":"agent","Openai-Intent":"conversation-edits","Copilot-Vision-Request":"true"}}
+{"kind":"copilotHeaders","label":"user text only","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}],"initiator":"user","hasVisionInput":false,"headers":{"X-Initiator":"user","Openai-Intent":"conversation-edits"}}
+{"kind":"copilotHeaders","label":"string content is not an image","messages":[{"role":"user","content":"hi"}],"initiator":"user","hasVisionInput":false,"headers":{"X-Initiator":"user","Openai-Intent":"conversation-edits"}}
+{"kind":"authContextEnv","name":"NOTAGENT_ORACLE_SET","output":"from-process"}
+{"kind":"authContextEnv","name":"NOTAGENT_ORACLE_EMPTY","output":null}
+{"kind":"authContextEnv","name":"NOTAGENT_ORACLE_BLANK","output":null}
+{"kind":"authContextEnv","name":"NOTAGENT_ORACLE_PADDED","output":"  value  "}
+{"kind":"authContextEnv","name":"NOTAGENT_ORACLE_MISSING","output":null}
+{"kind":"authContextFileExists","path":"/definitely/not/here","output":false}
+{"kind":"imageProviders","output":["openrouter"]}
+{"kind":"imageModels","provider":"openrouter","ids":["black-forest-labs/flux.2-flex","black-forest-labs/flux.2-klein-4b","black-forest-labs/flux.2-max","black-forest-labs/flux.2-pro","bytedance-seed/seedream-4.5","google/gemini-2.5-flash-image","google/gemini-3-pro-image","google/gemini-3-pro-image-preview","google/gemini-3.1-flash-image","google/gemini-3.1-flash-image-preview","google/gemini-3.1-flash-lite-image","krea/krea-2-large","krea/krea-2-medium","krea/krea-2-medium-turbo","microsoft/mai-image-2.5","microsoft/mai-image-2.5-pro","openai/gpt-5-image","openai/gpt-5-image-mini","openai/gpt-5.4-image-2","openai/gpt-image-1","openai/gpt-image-1-mini","openai/gpt-image-2","openrouter/auto","openrouter/auto-beta","qwen/qwen-image-3","qwen/qwen-image-3-pro","recraft/recraft-v3","recraft/recraft-v4","recraft/recraft-v4-pro","recraft/recraft-v4-pro-vector","recraft/recraft-v4-vector","recraft/recraft-v4.1","recraft/recraft-v4.1-pro","recraft/recraft-v4.1-pro-vector","recraft/recraft-v4.1-utility","recraft/recraft-v4.1-utility-pro","recraft/recraft-v4.1-vector","sourceful/riverflow-v2-fast","sourceful/riverflow-v2-pro","sourceful/riverflow-v2.5-fast","sourceful/riverflow-v2.5-pro","x-ai/grok-imagine-image-quality"]}
+{"kind":"imageModel","provider":"openrouter","id":"black-forest-labs/flux.2-flex","api":"openrouter-images","name":"Black Forest Labs: FLUX.2 Flex"}
+{"kind":"imageModelMissing","provider":"openrouter","id":"does-not-exist","output":null}

@@ -236,7 +236,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | TS-Datei | LOC | Rust-Modul | Status | Abweichung (Klasse + Begründung) |
 |---|---|---|---|---|
 | `src/types.ts` | 830 | `types.rs` | verifiziert (Task 1) | Klasse 1: `Api`/`ProviderId`/`ImagesApi`/`ImagesProviderId` sind `String` (TS `KnownX \| (string & {})` ist zur Laufzeit ein String); bekannte Werte als `KNOWN_*`-Konstanten. Klasse 1: `ApiOptionsMap`/`ApiStreamOptions` sind reine Typ-Ebene und entfallen — die Dispatch-Form ist `StreamOptions`/`SimpleStreamOptions`, konkrete Optionstypen liegen bei den API-Modulen. Klasse 1: `Model.compat` wird api-abhängig deserialisiert (`ModelCompat`), da Rust keine bedingten Typen kennt; APIs ohne Zuordnung behalten den Rohwert (`ModelCompat::Other`). Klasse 1: Content-Blöcke tragen `extra: Map` (JS-Objektoffenheit) — erhält Scratch-Felder abgebrochener Streams (`partialJson`) verlustfrei, bug-compat. Klasse 1: `Usage.total_tokens` ist optional (historische TS-Session-Dateien enthalten das Feld nicht; `estimate.ts` behandelt `undefined`/`0` gleich). Klasse 3: `signal: AbortSignal` → `CancellationToken`; `fetch` → `FetchFn`-Trait; TypeBox-`TSchema` → `serde_json::Value`. Klasse 1: `js_number` bildet `JSON.stringify`-Zahlformatierung nach (`0` statt `0.0`). |
-| `src/utils/diagnostics.ts` | 45 | `utils/diagnostics.rs` | portiert (Task 3) | Klasse 1: TS unterscheidet `Error`-Instanzen von beliebig geworfenen Werten; in Rust trennen das zwei Funktionen (`extract_diagnostic_error`, `thrown_value_diagnostic`). `stack` gibt es nicht |
+| `src/utils/diagnostics.ts` | 45 | `utils/diagnostics.rs` | verifiziert (Task 3) | Klasse 1: TS unterscheidet `Error`-Instanzen von beliebig geworfenen Werten; in Rust trennen das zwei Funktionen (`extract_diagnostic_error`, `thrown_value_diagnostic`). `stack` gibt es nicht. `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren. Dabei festgehalten: `dyn Error` kennt weder ein `name`/`message`-Paar noch ein `code`, also entfallen der TS-Fallback `message || name` und die Durchreiche von `code` (Klasse 1) |
 | `src/utils/event-stream.ts` | 88 | `utils/event_stream.rs` | verifiziert (Task 3) | Klasse 1: Waiter-Liste als `tokio::sync::Notify`; `result()` klont je Aufruf statt dieselbe Referenz zu liefern |
 | `src/utils/uuid.ts` | 48 | `utils/uuid.rs` | verifiziert (Task 3) | Klasse 1: Modulzustand als `Mutex`; Uhr und Zufall sind für den portierten Test injizierbar (TS stubbt `Date.now`/`crypto`) |
 | `src/utils/json-parse.ts` | 124 | `utils/json_parse.rs` | verifiziert (Task 3) | Klasse 3: `partial-json` (220 LOC) mitportiert, immer mit `Allow.ALL`. Klasse 1: Indizes zählen Unicode-Skalare statt UTF-16-Einheiten (alle strukturellen Zeichen sind ASCII); `NaN`/`Infinity` werden zu `null` wie bei `JSON.stringify`; Zahlen werden auf JS-Semantik normalisiert (ein f64-Typ) |
@@ -246,17 +246,17 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/utils/estimate.ts` | 143 | `utils/estimate.rs` | verifiziert (Task 3) | Klasse 1: Zeichenlängen zählen UTF-16-Einheiten wie `String.length` |
 | `src/utils/validation.ts` | 350 | `utils/validation.rs` | verifiziert (Task 3) | Klasse 3: TypeBox `Compile().Check/.Errors` und `Value.Convert` mitportiert, inklusive der AJV-Meldungen. Klasse 1: TypeBox markiert seine Schemas mit einem Laufzeit-Symbol ohne JSON-Entsprechung — die Herkunft wird explizit übergeben (`SchemaOrigin`, Default `TypeBox`, weil alle App-Tools so definiert sind); empirisch belegt: `Value.Convert` ist für Plain-Schemas eine No-Op |
 | `src/utils/text.ts` | 12 | `utils/text.rs` | verifiziert (Task 3) | Klasse 1: Überladung über `ContentRef` statt einer union-typisierten Signatur |
-| `src/utils/hash.ts` | 13 | `utils/hash.rs` | portiert (Task 3) | Klasse 1: `charCodeAt` → `encode_utf16`; `toString(36)` nachgebildet |
-| `src/utils/headers.ts` | 18 | `utils/headers.rs` | portiert (Task 3) | |
-| `src/utils/sanitize-unicode.ts` | 25 | `utils/sanitize_unicode.rs` | portiert (Task 3) | Klasse 1: Rust-Strings können keine unpaarigen Surrogate enthalten; die Funktion ist die Identität, die UTF-16-Variante bleibt für Provider-Payloads |
-| `src/utils/abort.ts` + `abort-signals.ts` | 91 | `utils/abort.rs` | portiert (Task 3) | Klasse 3: `AbortController` → `CancellationToken`; `combineAbortSignals` leitet über eine Task weiter, `cleanup()` bricht sie ab |
+| `src/utils/hash.ts` | 13 | `utils/hash.rs` | verifiziert (Task 3) | Klasse 1: `charCodeAt` → `encode_utf16`; `toString(36)` nachgebildet. `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
+| `src/utils/headers.ts` | 18 | `utils/headers.rs` | verifiziert (Task 3) | `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
+| `src/utils/sanitize-unicode.ts` | 25 | `utils/sanitize_unicode.rs` | verifiziert (Task 3) | Klasse 1: Rust-Strings können keine unpaarigen Surrogate enthalten; die Funktion ist die Identität, die UTF-16-Variante bleibt für Provider-Payloads. `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
+| `src/utils/abort.ts` + `abort-signals.ts` | 91 | `utils/abort.rs` | verifiziert (Task 3) | Klasse 3: `AbortController` → `CancellationToken`; `combineAbortSignals` leitet über eine Task weiter, `cleanup()` bricht sie ab. `tests/ai_utils_behaviour.rs` nagelt das Verhalten fest; `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
 | `src/utils/fetch.rs` (Rust-eigen) | — | `utils/fetch.rs` | portiert (Task 8) | Klasse 3: `ReqwestFetch` als Default-Implementierung von `FetchFn`; Antwortkörper als Chunk-Strom für den SSE-Decoder |
 | `src/utils/error-body.ts` | 149 | `utils/error_body.rs` | verifiziert (Task 3) | Klasse 3: Statt SDK-Feldnamen zu erraten, liefert die HTTP-Schicht `RawProviderError`. `tests/error_body.rs` portiert `test/error-body.test.ts` (226 LOC) vollständig |
-| `src/utils/deferred-tools.ts` | 39 | `utils/deferred_tools.rs` | portiert (Task 3) | Tests folgen in Task 13 |
-| `src/utils/provider-env.ts` | 52 | `utils/provider_env.rs` | portiert (Task 3) | Klasse 4: Der Bun-Sandbox-Fallback (`/proc/self/environ`, oven-sh/bun#27802) entfällt |
+| `src/utils/deferred-tools.ts` | 39 | `utils/deferred_tools.rs` | verifiziert (Task 3) | Tests folgen in Task 13. `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
+| `src/utils/provider-env.ts` | 52 | `utils/provider_env.rs` | verifiziert (Task 3) | Klasse 4: Der Bun-Sandbox-Fallback (`/proc/self/environ`, oven-sh/bun#27802) entfällt. `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
 | `src/utils/node-http-proxy.ts` | 112 | `utils/node_http_proxy.rs` | verifiziert (Task 3) | Klasse 3: liefert die Proxy-URL für reqwest statt eines undici-Agents |
 | `src/model-catalog.ts` | 27 | `model_catalog.rs` | verifiziert (Task 5) | Klasse 1: Die TS-Typmagie (`ModelCatalog<TGroups, TProvider>`) ist reine Compile-Zeit-Inferenz; zur Laufzeit bleibt das flache Mergen der API-Gruppen |
-| `src/models.generated.ts` | 124 | `model_catalog.rs` | portiert (Task 5) | Klasse 3: Die 39 `*.models.ts`-Aggregatoren entfallen; die JSON-Dateien werden per `include_str!` eingebettet und einmalig geparst |
+| `src/models.generated.ts` | 124 | `model_catalog.rs` | verifiziert (Task 5) | Klasse 3: Die 39 `*.models.ts`-Aggregatoren entfallen; die JSON-Dateien werden per `include_str!` eingebettet und einmalig geparst. `tests/model_catalog.rs` prüft den eingebetteten Snapshot gegen sein Manifest (SHA-256 je Datei, 1 224 Modelle über 39 Provider) |
 | `src/providers/data/` | 592 KB | `data/` | verifiziert (Task 5) | Byte-identisch übernommen (SHA-256 je Datei gegen das Manifest getestet, 1 224 Modelle über 39 Provider). `.manifest.json` heißt `manifest.json`. Substitution: `scripts/generate-models.ts` wird laut Plan nicht portiert |
 | `src/providers/all.ts` | 155 | `model_catalog.rs` (Katalogteil), `providers/all.rs` | verifiziert (Task 11) | `builtinProviders()`/`builtinModels()` samt aller 39 Factories; Differential-Fixture `tests/fixtures/providers.jsonl` |
 | `src/providers/` (33 mechanische Factories: ant-ling, azure-openai-responses, baseten, cerebras, deepseek, fireworks, google, groq, huggingface, kimi-coding, minimax(-cn), mistral, moonshotai(-cn), nvidia, openai, openai-codex, opencode(-go), openrouter, qwen-token-plan(-cn/-individual), together, vercel-ai-gateway, xai, xiaomi(+3 token-plan), zai(-coding-cn)) | 15–28 je Datei | `providers/<name>.rs` | verifiziert (Task 11) | Klasse 1: `Object.values(X_MODELS)` wird `get_builtin_models(id)` — die `*.models.ts` sind generierte Leser desselben `data/`-Snapshots und haben kein eigenes Modul. Klasse 4: `lazyOAuth`/`load.ts` entfallen; die OAuth-Flows werden direkt referenziert (Name, `isSubscription` und `loginLabel` der Flows sind identisch mit den Werten, die `lazyOAuth` überschrieb — durch die Fixture belegt) |
@@ -285,11 +285,11 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `test/google-shared-retry.test.ts` | 40 | `tests/event_stream_and_provider_retry.rs` | abgedeckt (Task 13) | Klasse 3: `retryGoogleRequest` existiert in TS nur, um SDK-Fehlern ohne `headers` eine retry-fähige Form zu geben; in Rust liefert `ProviderErrorInfo` den Status direkt, die Google-Adapter rufen `retry_provider_request` unmittelbar auf. Die drei Fälle (Retry bei 429 mit `maxRetries`, kein Retry ohne, kein Retry bei 400) prüft die Retry-Suite |
 | `test/anthropic-adaptive-thinking-models.test.ts`, `anthropic-temperature-compat.test.ts`, `anthropic-force-adaptive-thinking.test.ts`, `anthropic-empty-thinking-signature-compat.test.ts`, `anthropic-eager-tool-input-compat.test.ts`, `anthropic-cache-write-1h-cost.test.ts`, `anthropic-auth-token.test.ts` | 813 | `tests/anthropic_compat.rs` | portiert (Task 13) | Klasse 1: statt lokalem HTTP-Server bzw. SDK-Konstruktor-Mock beobachtet ein injiziertes `fetch` denselben Request (Header und Body). Dabei aufgedeckt und behoben: `sessionId` erreichte die Anthropic-Optionen nicht, wodurch der `x-session-affinity`-Header fehlte |
 | `src/utils/typebox-helpers.ts` | 24 | `utils/typebox_helpers.rs` | verifiziert (Task 13) | Klasse 3: TypeBox-Schemas sind `serde_json::Value`, also entfällt der `TUnsafe`-Wrapper; das erzeugte JSON-Schema ist identisch |
-| `src/compat/extension-oauth-types.ts` | 45 | `compat/extension_oauth_types.rs` | portiert (Task 13) | Klasse 1: `OAuthLoginCallbacks` wird ein Trait; optionale Callbacks sind Default-Methoden, `onSelect` liefert `Option<String>` statt `string \| undefined`. Nur diese Datei aus `compat/` ist portiert — sie steht in `index.ts` und die coding-agent-Extension-API ist dagegen typisiert |
+| `src/compat/extension-oauth-types.ts` | 45 | `compat/extension_oauth_types.rs` | verifiziert (Task 13) | Klasse 1: `OAuthLoginCallbacks` wird ein Trait; optionale Callbacks sind Default-Methoden, `onSelect` liefert `Option<String>` statt `string \| undefined`. Nur diese Datei aus `compat/` ist portiert — sie steht in `index.ts` und die coding-agent-Extension-API ist dagegen typisiert. `tests/ai_utils_behaviour.rs` nagelt das Verhalten fest; `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren (Default-Methoden der optionalen Callbacks, `on_select` liefert `Option<String>`) |
 | `src/index.ts` | 47 | `lib.rs` | verifiziert (Task 13) | Klasse 1: Rust-Module sind öffentlich, zusätzlich re-exportiert `lib.rs` die Symbole, die `index.ts` flach exportiert. Klasse 3: `Type`/`Static`/`TSchema` (TypeBox) haben keine Entsprechung — Schemas sind `serde_json::Value` |
 | `src/cli.ts` | 119 | `src/bin/notagent-ai.rs` | verifiziert (Task 11) | Klasse 4: der npm-Bin (`dist/cli.js`) wird ein Cargo-Bin-Target; die Usage-Zeile nennt entsprechend `notagent-ai` statt `npx @notagent/ai`. Klasse 1: `readline` wird ein gepufferter Stdin-Reader; die Ausgaben von `list`/`help` sind zeichengleich mit dem TS-Original (verglichen) |
 | `src/providers/faux.ts` | 708 | `providers/faux.rs` | verifiziert (Task 11) | Klasse 1: Skript-Schritte als Enum (`Message`/`Factory`) statt einer TS-Union aus Wert und Funktion; Zustand hinter `Arc<Mutex<..>>`. Klasse 1: `structuredClone` der Submission-Options entfällt — beim Auflösen eines Deferred-Handles zählt nur der Kontext, wie in TS nach dem Entfernen von `deferred`/`signal`/`onResponse` |
-| `src/models.ts` | 944 | `models.rs` | portiert (Task 4) | Klasse 1: `Provider`/`Models` werden Traits bzw. eine Struktur; `provider.refreshModels !== undefined` ist zur Laufzeit nicht prüfbar und wird zu `Provider::is_dynamic()`. Klasse 1: Publikationsketten und Refresh-Controller nutzen async-Mutex und `CancellationToken` statt Promise-Ketten und `AbortController`. Klasse 1: `getAuth` ist in `get_auth_for_provider`/`get_auth_for_model` geteilt (kein Overloading). `login` persistiert außerhalb des Abbruchpfads, damit ein Abbruch während des Schreibens die Credential nicht verliert |
+| `src/models.ts` | 944 | `models.rs` | verifiziert (Task 4) | Klasse 1: `Provider`/`Models` werden Traits bzw. eine Struktur; `provider.refreshModels !== undefined` ist zur Laufzeit nicht prüfbar und wird zu `Provider::is_dynamic()`. Klasse 1: Publikationsketten und Refresh-Controller nutzen async-Mutex und `CancellationToken` statt Promise-Ketten und `AbortController`. Klasse 1: `getAuth` ist in `get_auth_for_provider`/`get_auth_for_model` geteilt (kein Overloading). `login` persistiert außerhalb des Abbruchpfads, damit ein Abbruch während des Schreibens die Credential nicht verliert. `tests/models.rs` (758 Zeilen) fährt Registry, Auth-Auflösung, Refresh und Deferred-Handles durch |
 | `src/models-store.ts` | 45 | `models_store.rs` | verifiziert (Task 4) | `tests/models.rs` fährt `InMemoryModelsStore`/`ModelsStore` durch die portierte models-Suite |
 | `src/api/anthropic-messages.ts` (SSE-Decoder, Z. 300-430) | 130 | `api/sse.rs` | verifiziert (Task 8) | Laut Plan als generisches Modul herausgezogen, weil alle SSE-APIs es nutzen. Differenziell gegen die TS-Funktionen geprüft (355 Fälle, jede Bruchstelle) |
 | `src/api/anthropic-messages.ts` (Antwortseite: Event-Zustandsmaschine, Usage, StopReason) | ~450 von 1352 | `api/anthropic_messages.rs` | verifiziert (Task 8) | Master-Architektur: Scratch-Felder (`index`, `partialJson`) leben im Streaming-State und erreichen die Content-Typen nicht; Snapshots werden je Event geklont. Request-Bau und HTTP-Transport folgen im selben Task |
@@ -297,14 +297,14 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/api/anthropic-messages.ts` (Requestseite: buildParams, convertMessages, convertTools, Header) | ~600 von 1352 | `api/anthropic_params.rs` | verifiziert (Task 8) | Payload-Snapshot-Tests gegen 18 vom TS-Original erzeugte Request-Bodies (onPayload-Hook). Klasse 3: Der SDK-Client entfällt, die Default-Header werden direkt gebaut |
 | `src/api/openai-completions.ts` (Compat-Matrix `detectCompat`/`getCompat`) | 134 von 1577 | `api/openai_completions_compat.rs` | verifiziert (Task 9) | Vollständige Auto-Detection nach Provider und baseUrl plus feldweise Overrides |
 | `src/api/constrained-sampling.ts` | 277 | `api/constrained_sampling.rs` | verifiziert (Task 8) | Klasse 1: `structuredClone` + In-place-Mutation → Klon plus rekursive Umschreibung; Fehler als `Result` statt `throw` |
-| `src/api/github-copilot-headers.ts` | 37 | `api/github_copilot_headers.rs` | portiert (Task 8) | |
+| `src/api/github-copilot-headers.ts` | 37 | `api/github_copilot_headers.rs` | verifiziert (Task 8) | `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
 | `src/api/simple-options.ts` | 86 | `api/simple_options.rs` | verifiziert (Task 8) | Klasse 1: Token-Breiten vereinheitlicht auf `u64` (JS kennt nur einen Zahlentyp), siehe interface-requests B-3 |
 | `src/api/transform-messages.ts` | 223 | `api/transform_messages.rs` | verifiziert (Task 8) | Klasse 1: Die Normalisierung von `content == null` entfällt — die Rust-Typen garantieren das Array bereits. `Date.now()` für synthetische Tool-Ergebnisse wird übergeben |
-| `src/api/lazy.ts` | 98 | `api/lazy.rs` | portiert (Task 4) | Klasse 4: `lazyApi` entfällt — es kapselt einen dynamischen `import()` für Bundler; Rust linkt statisch |
-| `src/auth/types.ts` | 240 | `auth/types.rs` | portiert (Task 6) | Klasse 1: Interfaces mit Methoden werden Traits (`CredentialStore`, `AuthContext`, `ApiKeyAuth`, `OAuthAuth`, `AuthInteraction`); `modify` nimmt eine `FnOnce`, die leihen darf, damit der OAuth-Refresh unter dem Lock laufen kann. `OAuthCredential` behält Zusatzfelder (`extra`) wie die TS-Index-Signatur |
+| `src/api/lazy.ts` | 98 | `api/lazy.rs` | verifiziert (Task 4) | Klasse 4: `lazyApi` entfällt — es kapselt einen dynamischen `import()` für Bundler; Rust linkt statisch. `tests/ai_utils_behaviour.rs` nagelt das Verhalten fest; `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren (`lazy_stream` leitet weiter bzw. beendet den Strom mit einem Fehlerereignis; `lazyApi` bleibt ausgeschlossen) |
+| `src/auth/types.ts` | 240 | `auth/types.rs` | verifiziert (Task 6) | Klasse 1: Interfaces mit Methoden werden Traits (`CredentialStore`, `AuthContext`, `ApiKeyAuth`, `OAuthAuth`, `AuthInteraction`); `modify` nimmt eine `FnOnce`, die leihen darf, damit der OAuth-Refresh unter dem Lock laufen kann. `OAuthCredential` behält Zusatzfelder (`extra`) wie die TS-Index-Signatur. `tests/ai_utils_behaviour.rs` nagelt das Verhalten fest; `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren (Credential-Round-Trip inklusive der Zusatzfelder) zusammen mit `tests/auth.rs` |
 | `src/auth/credential-store.ts` | 67 | `auth/credential_store.rs` | verifiziert (Task 6) | Klasse 1: Serialisierung je Provider-ID über einen async-Mutex statt einer Promise-Kette |
 | `src/auth/resolve.ts` | 205 | `auth/resolve.rs` | verifiziert (Task 6) | Klasse 3: `AbortSignal.any([signal, timeout])` → `child_token` plus Timeout-Task |
-| `src/auth/context.ts` | 45 | `auth/context.rs` | portiert (Task 6) | Klasse 1: Die Browser-Guards (dynamischer `import`, fehlendes `process.env`) entfallen |
+| `src/auth/context.ts` | 45 | `auth/context.rs` | verifiziert (Task 6) | Klasse 1: Die Browser-Guards (dynamischer `import`, fehlendes `process.env`) entfallen. `tests/ai_utils_oracle.rs` prüft es gegen Werte aus dem TS-Original (Generator `tests/fixtures/generators/ai-utils.mts`); `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
 | `src/api/openai-completions.ts` (Request) | 1577 | `api/openai_completions_params.rs` | verifiziert (Task 9) | `buildParams`, `convertMessages`, `convertTools`, `cache_control`-Platzierung und Chat-Template-Auflösung; 102 Payloads aus dem TS-Original werden byte-identisch reproduziert. Klasse 1: Die Feldreihenfolge von `openRouterRouting`/`vercelGatewayRouting` folgt der Interface-Deklaration statt der Schlüsselreihenfolge der Modelldatei (typisierte Structs statt offener Objekte) |
 | `src/api/openai-completions.ts` (Stream) | — | `api/openai_completions.rs` | verifiziert (Task 9) | Klasse 3: Der SDK-Iterator wird zum eigenen SSE-Modul; die SDK-`APIError`-Form (Status, `error`-Feld des Bodys, `makeMessage`) ist nachgebaut, damit `formatProviderError` denselben Text liefert. Klasse 1: Der Text eines nicht parsbaren Chunks stammt von serde statt von V8. Die Scratch-Puffer liegen im Streaming-State statt an den Blöcken (Master-Plan, Architektur) |
 | `src/api/openai-codex-responses.ts` | 1662 | `api/openai_codex_responses.rs` | verifiziert (Task 9) | Request-Body, JWT-Account-ID, zstd-komprimierter SSE-Request mit eigener Retry-Schleife, WebSocket-Transport über tokio-tungstenite und der Rückfall auf SSE samt `provider_transport_failure`-Diagnose. Klasse 3: Der WebSocket-Verbindungs-Cache hält nur den Continuation-Zustand (`previous_response_id`), nicht den Socket — `WebSocketStream` ist nicht klonbar; beobachtbar bleibt der Delta-Request, es kostet eine zusätzliche TCP-Verbindung. Klasse 1: Der Idle-Timer wird beim nächsten Zugriff ausgewertet statt per Timer. 41 Request-Bodies, URLs und Event-Sequenzen aus dem TS-Original stimmen exakt |
@@ -341,7 +341,7 @@ Format und Status-Werte: `CONVENTIONS.md`, Abschnitt "Parity-Ledger".
 | `src/auth/oauth/radius.ts` | 403 | `auth/oauth/radius.rs` | verifiziert (Task 7) | Discovery nur für den Authorization-Endpunkt; Browser- und Device-Flow |
 | — | — | `auth/oauth/callback_server.rs` | portiert (Task 7) | Klasse 3 (Hilfsmodul ohne TS-Pendant): Ein-Routen-HTTP-Server auf tokio als Ersatz für `node:http.createServer` in anthropic/codex/radius |
 | — | — | `auth/oauth/http.rs` | portiert (Task 7) | Klasse 1 (Hilfsmodul ohne TS-Pendant): die in allen Flows wiederholten Form-POST- und Feldprüf-Bausteine, Fehlermeldungen wörtlich wie TS |
-| `src/auth/helpers.ts` | 59 | `auth/helpers.rs` | portiert (Task 6) | Klasse 4: `lazyOAuth` entfällt — es verzögert einen dynamischen `import()` für Bundler; Rust linkt statisch |
+| `src/auth/helpers.ts` | 59 | `auth/helpers.rs` | verifiziert (Task 6) | Klasse 4: `lazyOAuth` entfällt — es verzögert einen dynamischen `import()` für Bundler; Rust linkt statisch. `tests/ai_utils_behaviour.rs` nagelt das Verhalten fest; `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren (gespeicherter Schlüssel vor Env-Variable, Abbruchpfad, Login-Prompt) |
 | `src/env-api-keys.ts` | 188 | `env_api_keys.rs` | verifiziert (Task 6) | Klasse 1: Die verzögerte Node-Modul-Ladung entfällt; der ADC-Cache bleibt |
 | `src/index.ts` | 47 | `lib.rs` | verifiziert (Task 13) | Klasse 3: `Static`/`TSchema`/`Type` entfallen — Schemas sind `serde_json::Value`, die Helfer liegen in `utils::typebox_helpers`. Klasse 1: `PiMessagesEvent`/`PiMessagesRewriteImpact` sind Wire-Typen des vorserialisierten Streams und im Port `serde_json::Value`, haben also keinen eigenen Namen. Sonst deckungsgleich |
 | — | — | `utils/js_number.rs` | verifiziert (Task 1) | Klasse 1 (Hilfsmodul ohne TS-Pendant): ECMAScript-`Number::toString` für byte-identische JSON-Zahlen |
@@ -374,13 +374,13 @@ der Status.
 | `src/api/cloudflare-gateway-binding.ts` | 192 | `api/cloudflare_gateway_binding.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/api/cloudflare.ts` | 15 | `api/cloudflare.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/api/constrained-sampling.ts` | 277 | `api/constrained_sampling.rs` | verifiziert (Task 8) | siehe Ledger |
-| `src/api/github-copilot-headers.ts` | 37 | `api/github_copilot_headers.rs` | portiert (Task 8) | siehe Ledger |
+| `src/api/github-copilot-headers.ts` | 37 | `api/github_copilot_headers.rs` | verifiziert (Task 8) | siehe Ledger |
 | `src/api/google-generative-ai.lazy.ts` | 4 | `api/streams.rs` | ausgeschlossen | Ausschluss Klasse 4 (Bundler-Wrapper) |
 | `src/api/google-generative-ai.ts` | 521 | `api/google_generative_ai.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/api/google-shared.ts` | 419 | `api/google_shared.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/api/google-vertex.lazy.ts` | 4 | `api/streams.rs` | ausgeschlossen | Ausschluss Klasse 4 (Bundler-Wrapper) |
 | `src/api/google-vertex.ts` | 596 | `api/google_vertex.rs` | verifiziert (Task 10) | siehe Ledger |
-| `src/api/lazy.ts` | 98 | `api/lazy.rs` | portiert (Task 4) | siehe Ledger |
+| `src/api/lazy.ts` | 98 | `api/lazy.rs` | verifiziert (Task 4) | siehe Ledger |
 | `src/api/mistral-conversations.lazy.ts` | 4 | `api/streams.rs` | ausgeschlossen | Ausschluss Klasse 4 (Bundler-Wrapper) |
 | `src/api/mistral-conversations.ts` | 931 | `api/mistral_conversations.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/api/openai-codex-responses.lazy.ts` | 4 | `api/streams.rs` | ausgeschlossen | Ausschluss Klasse 4 (Bundler-Wrapper) |
@@ -397,9 +397,9 @@ der Status.
 | `src/api/pi-messages.ts` | 433 | `api/pi_messages.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/api/simple-options.ts` | 86 | `api/simple_options.rs` | verifiziert (Task 8) | siehe Ledger |
 | `src/api/transform-messages.ts` | 223 | `api/transform_messages.rs` | verifiziert (Task 8) | siehe Ledger |
-| `src/auth/context.ts` | 45 | `auth/context.rs` | portiert (Task 6) | siehe Ledger |
+| `src/auth/context.ts` | 45 | `auth/context.rs` | verifiziert (Task 6) | siehe Ledger |
 | `src/auth/credential-store.ts` | 67 | `auth/credential_store.rs` | verifiziert (Task 6) | siehe Ledger |
-| `src/auth/helpers.ts` | 59 | `auth/helpers.rs` | portiert (Task 6) | siehe Ledger |
+| `src/auth/helpers.ts` | 59 | `auth/helpers.rs` | verifiziert (Task 6) | siehe Ledger |
 | `src/auth/oauth/anthropic.ts` | 364 | `auth/oauth/anthropic.rs` | verifiziert (Task 7) | siehe Ledger |
 | `src/auth/oauth/device-code.ts` | 98 | `auth/oauth/device_code.rs` | verifiziert (Task 7) | siehe Ledger |
 | `src/auth/oauth/github-copilot.ts` | 417 | `auth/oauth/github_copilot.rs` | verifiziert (Task 7) | siehe Ledger |
@@ -412,15 +412,15 @@ der Status.
 | `src/auth/oauth/radius.ts` | 403 | `auth/oauth/radius.rs` | verifiziert (Task 7) | siehe Ledger |
 | `src/auth/oauth/xai.ts` | 239 | `auth/oauth/xai.rs` | verifiziert (Task 7) | siehe Ledger |
 | `src/auth/resolve.ts` | 205 | `auth/resolve.rs` | verifiziert (Task 6) | siehe Ledger |
-| `src/auth/types.ts` | 240 | `auth/types.rs` | portiert (Task 6) | siehe Ledger |
+| `src/auth/types.ts` | 240 | `auth/types.rs` | verifiziert (Task 6) | siehe Ledger |
 | `src/bedrock-provider.ts` | 6 | `api/streams.rs` | ausgeschlossen | Ausschluss Klasse 4 (Bundler-Wrapper) |
 | `src/bun-oauth.ts` | 21 | `providers/*.rs` | ausgeschlossen | Klasse 4 (Bun-Binary-Registrierung) |
 | `src/cli.ts` | 119 | `src/bin/notagent-ai.rs` | verifiziert (Task 11) | siehe Ledger |
 | `src/compat.ts` | 298 | — | ausgeschlossen | Master-Plan, Scope-Tabelle |
-| `src/compat/extension-oauth-types.ts` | 45 | `compat/extension_oauth_types.rs` | portiert (Task 13) | siehe Ledger |
+| `src/compat/extension-oauth-types.ts` | 45 | `compat/extension_oauth_types.rs` | verifiziert (Task 13) | siehe Ledger |
 | `src/env-api-keys.ts` | 188 | `env_api_keys.rs` | verifiziert (Task 6) | siehe Ledger |
 | `src/image-models.generated.ts` | 639 | `data/image-models.json` | übernommen (Task 10) | Daten-Snapshot |
-| `src/image-models.ts` | 42 | `images.rs` | portiert (Task 10) | `built_in_image_models` |
+| `src/image-models.ts` | 42 | `images.rs` | verifiziert (Task 10) | `built_in_image_models`. `tests/ai_utils_oracle.rs` nagelt das Verhalten fest; `packages/ai/test/` hat für diese Datei keine eigene Suite, es gab also nichts zu portieren |
 | `src/images-api-registry.ts` | 53 | `images_api_registry.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/images-models.ts` | 275 | `images_models.rs` | verifiziert (Task 10) | siehe Ledger |
 | `src/images.ts` | 21 | `images.rs` | verifiziert (Task 10) | siehe Ledger |
@@ -428,9 +428,9 @@ der Status.
 | `src/legacy-api-aliases.ts` | 108 | — | ausgeschlossen | Master-Plan, Scope-Tabelle |
 | `src/model-catalog.ts` | 27 | `model_catalog.rs` | verifiziert (Task 5) | siehe Ledger |
 | `src/models-store.ts` | 45 | `models_store.rs` | verifiziert (Task 4) | siehe Ledger |
-| `src/models.generated.ts` | 124 | `model_catalog.rs` | portiert (Task 5) | siehe Ledger |
-| `src/models.ts` | 944 | `models.rs` | portiert (Task 4) | siehe Ledger |
-| `src/oauth.ts` | 10 | `lib.rs` | portiert (Task 13) | reiner Typ-Reexport |
+| `src/models.generated.ts` | 124 | `model_catalog.rs` | verifiziert (Task 5) | siehe Ledger |
+| `src/models.ts` | 944 | `models.rs` | verifiziert (Task 4) | siehe Ledger |
+| `src/oauth.ts` | 10 | `lib.rs` | verifiziert (Task 13) | reiner Typ-Reexport. über die Typen aus `compat/extension_oauth_types.rs`, die `tests/ai_utils_behaviour.rs` fährt |
 | `src/providers/all.ts` | 155 | `providers/all.rs` | verifiziert (Task 11) | siehe Ledger |
 | `src/providers/amazon-bedrock.models.ts` | 8 | `model_catalog.rs` | ausgeschlossen | Ausschluss (generierter Snapshot-Leser) |
 | `src/providers/amazon-bedrock.ts` | 90 | `providers/amazon_bedrock.rs` | verifiziert (Task 11) | siehe Ledger |
@@ -520,22 +520,22 @@ der Status.
 | `src/providers/zai.ts` | 15 | `providers/zai.rs` | portiert |  |
 | `src/session-resources.ts` | 24 | `session_resources.rs` | verifiziert (Task 9) | siehe Ledger |
 | `src/types.ts` | 830 | `types.rs` | verifiziert (Task 1) | siehe Ledger |
-| `src/utils/abort-signals.ts` | 41 | `utils/abort.rs` | portiert (Task 3) | mit `abort.ts` zusammengeführt |
-| `src/utils/abort.ts` | 50 | `utils/abort.rs` | portiert |  |
-| `src/utils/deferred-tools.ts` | 39 | `utils/deferred_tools.rs` | portiert (Task 3) | siehe Ledger |
-| `src/utils/diagnostics.ts` | 45 | `utils/diagnostics.rs` | portiert (Task 3) | siehe Ledger |
+| `src/utils/abort-signals.ts` | 41 | `utils/abort.rs` | verifiziert (Task 3) | mit `abort.ts` zusammengeführt |
+| `src/utils/abort.ts` | 50 | `utils/abort.rs` | verifiziert |  |
+| `src/utils/deferred-tools.ts` | 39 | `utils/deferred_tools.rs` | verifiziert (Task 3) | siehe Ledger |
+| `src/utils/diagnostics.ts` | 45 | `utils/diagnostics.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/error-body.ts` | 149 | `utils/error_body.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/estimate.ts` | 143 | `utils/estimate.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/event-stream.ts` | 88 | `utils/event_stream.rs` | verifiziert (Task 3) | siehe Ledger |
-| `src/utils/hash.ts` | 13 | `utils/hash.rs` | portiert (Task 3) | siehe Ledger |
-| `src/utils/headers.ts` | 18 | `utils/headers.rs` | portiert (Task 3) | siehe Ledger |
+| `src/utils/hash.ts` | 13 | `utils/hash.rs` | verifiziert (Task 3) | siehe Ledger |
+| `src/utils/headers.ts` | 18 | `utils/headers.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/json-parse.ts` | 124 | `utils/json_parse.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/node-http-proxy.ts` | 112 | `utils/node_http_proxy.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/overflow.ts` | 180 | `utils/overflow.rs` | verifiziert (Task 3) | siehe Ledger |
-| `src/utils/provider-env.ts` | 52 | `utils/provider_env.rs` | portiert (Task 3) | siehe Ledger |
+| `src/utils/provider-env.ts` | 52 | `utils/provider_env.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/provider-retry.ts` | 125 | `utils/provider_retry.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/retry.ts` | 228 | `utils/retry.rs` | verifiziert (Task 3) | siehe Ledger |
-| `src/utils/sanitize-unicode.ts` | 25 | `utils/sanitize_unicode.rs` | portiert (Task 3) | siehe Ledger |
+| `src/utils/sanitize-unicode.ts` | 25 | `utils/sanitize_unicode.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/text.ts` | 12 | `utils/text.rs` | verifiziert (Task 3) | siehe Ledger |
 | `src/utils/typebox-helpers.ts` | 24 | `utils/typebox_helpers.rs` | verifiziert (Task 13) | siehe Ledger |
 | `src/utils/uuid.ts` | 48 | `utils/uuid.rs` | verifiziert (Task 3) | siehe Ledger |
