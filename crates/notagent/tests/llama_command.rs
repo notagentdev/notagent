@@ -513,7 +513,12 @@ async fn the_manager_loads_a_model_refreshes_the_catalog_and_reports_it() {
         let server = {
             let status = Arc::clone(&status);
             TestHttpServer::start(move |request| {
-                let path = request.path.split('?').next().unwrap_or_default().to_owned();
+                let path = request
+                    .path
+                    .split('?')
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
                 match (request.method.as_str(), path.as_str()) {
                     (_, "/models/sse") => Reply::Sse,
                     ("POST", "/models/load") => {
@@ -619,7 +624,12 @@ async fn retry_reads_the_catalog_again_after_a_server_error() {
         let server = {
             let attempts = Arc::clone(&attempts);
             TestHttpServer::start(move |request| {
-                let path = request.path.split('?').next().unwrap_or_default().to_owned();
+                let path = request
+                    .path
+                    .split('?')
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
                 match path.as_str() {
                     "/models/sse" => Reply::Sse,
                     "/models" => {
@@ -667,7 +677,12 @@ async fn unloading_asks_first_and_only_unloads_after_a_yes() {
         let server = {
             let unloads = Arc::clone(&unloads);
             TestHttpServer::start(move |request| {
-                let path = request.path.split('?').next().unwrap_or_default().to_owned();
+                let path = request
+                    .path
+                    .split('?')
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
                 match (request.method.as_str(), path.as_str()) {
                     (_, "/models/sse") => Reply::Sse,
                     ("POST", "/models/unload") => {

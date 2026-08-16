@@ -152,6 +152,9 @@ use crate::modes::interactive::components::tasks_browser::{
     TasksBrowserComponent, TasksBrowserProps, TasksFilter,
 };
 use crate::modes::interactive::components::tasks_panel::{TasksPanel, TasksPanelScope};
+use crate::modes::interactive::components::text_input_dialog::{
+    TextInputDialogComponent, TextInputDialogOptions,
+};
 use crate::modes::interactive::components::to_locale_string;
 use crate::modes::interactive::components::todo_list::{
     TodoListComponent, TodoListMode, TodoVisibility,
@@ -4289,9 +4292,6 @@ impl InteractiveMode {
 
     /// The `onSelect` half of the tree selector.
     ///
-    /// Remaining: the "Summarize with custom prompt" option needs a free-text
-    /// dialog, whose component (`extension-editor.ts`) went with the extension
-    /// system; the two other answers are here (see interface request C-23).
     async fn navigate_tree(&mut self, entry_id: &str) {
         if self
             .session()
@@ -4304,20 +4304,33 @@ impl InteractiveMode {
         }
 
         let mut wants_summary = false;
+        let mut custom_instructions: Option<String> = None;
         if !self.settings().get_branch_summary_skip_prompt() {
-            let choice = self
-                .ask(
-                    "Summarize branch?",
-                    vec!["No summary".to_owned(), "Summarize".to_owned()],
-                )
-                .await;
-            match choice {
-                // Escape re-opens the tree on the same entry, as in TypeScript.
-                None => {
+            loop {
+                let choice = self
+                    .ask(
+                        "Summarize branch?",
+                        vec![
+                            "No summary".to_owned(),
+                            "Summarize".to_owned(),
+                            "Summarize with custom prompt".to_owned(),
+                        ],
+                    )
+                    .await;
+                let Some(answer) = choice else {
+                    // Escape re-opens the tree on the same entry, as in TypeScript.
                     self.show_tree_selector(Some(entry_id.to_owned()));
                     return;
+                };
+                wants_summary = answer != "No summary";
+                if answer == "Summarize with custom prompt" {
+                    custom_instructions = self.ask_text("Custom summarization instructions").await;
+                    if custom_instructions.is_none() {
+                        // Cancelled: back to the summary question.
+                        continue;
+                    }
                 }
-                Some(answer) => wants_summary = answer != "No summary",
+                break;
             }
         }
 
@@ -4344,6 +4357,7 @@ impl InteractiveMode {
                 entry_id,
                 NavigateTreeOptions {
                     summarize: wants_summary,
+                    custom_instructions,
                     ..NavigateTreeOptions::default()
                 },
             )
@@ -4407,6 +4421,72 @@ impl InteractiveMode {
 
         let answer = done_rx.await.unwrap_or(None);
 
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(Rc::clone(&self.editor) as ComponentRef);
+        }
+        self.ui
+            .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
+        self.ui.request_render();
+        answer
+    }
+
+    /// `showExtensionEditor(title, prefill)` (`interactive-mode.ts:2549-2577`)
+    /// — the free-text dialog of the tree's third answer, under the neutral
+    /// name workstream A gave the component (interface request C-23).
+    async fn ask_text(&mut self, title: &str) -> Option<String> {
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<Option<String>>();
+        let done_tx = Rc::new(RefCell::new(Some(done_tx)));
+        let submit_tx = Rc::clone(&done_tx);
+        let cancel_tx = Rc::clone(&done_tx);
+        let cell = self.cell.clone();
+        let dialog = component_ref(TextInputDialogComponent::new(
+            self.ui.clone(),
+            Rc::clone(&self.keybindings),
+            title,
+            Box::new(move |value| {
+                if let Some(sender) = submit_tx.borrow_mut().take() {
+                    let _ = sender.send(Some(value));
+                }
+            }),
+            Box::new(move || {
+                if let Some(sender) = cancel_tx.borrow_mut().take() {
+                    let _ = sender.send(None);
+                }
+            }),
+            Some(TextInputDialogOptions {
+                external_editor_command: Some(self.settings().get_external_editor_command()),
+                // `tui.stop()`/`start()` hang off the input pump, which a
+                // component cannot reach (A-27).
+                on_external_editor: Some(Box::new(move |command: &str, content: &str| {
+                    cell.stop(TuiStopOptions::default());
+                    let result = edit_in_external_editor(&ExternalEditorOptions {
+                        command: command.to_owned(),
+                        content: content.to_owned(),
+                    });
+                    cell.start();
+                    cell.request_render(true);
+                    match result {
+                        ExternalEditorResult::Complete(text) => Some(text),
+                        _ => None,
+                    }
+                })),
+                ..TextInputDialogOptions::default()
+            }),
+        ));
+        self.dispose_active_selector();
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(Rc::clone(&dialog));
+        }
+        self.ui.set_focus(Some(Rc::clone(&dialog)));
+        self.ui.request_render();
+
+        let answer = done_rx.await.unwrap_or(None);
+
+        // `hideExtensionEditor()`.
         {
             let mut container = self.editor_container.borrow_mut();
             container.clear();

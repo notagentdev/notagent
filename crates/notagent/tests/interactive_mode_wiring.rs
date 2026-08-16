@@ -1022,3 +1022,53 @@ async fn the_shutdown_signal_of_the_binary_ends_the_session_with_zero() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_tree_offers_a_custom_summary_prompt() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("first"), reply("second")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        // Two turns, so the tree has an entry to navigate back to.
+        driver.submit("one").await;
+        driver.wait_for("first").await;
+        driver.submit("two").await;
+        driver.wait_for("second").await;
+
+        driver.submit("/tree").await;
+        driver.wait_for("Session Tree").await;
+        // The tree opens on the current leaf; an earlier entry is the one worth
+        // navigating to.
+        driver.send_keys("\x1b[A").await;
+        driver.send_keys(KEY_ENTER).await;
+
+        // The three answers of `showTreeSelector`, the third one new (C-23).
+        driver.wait_for("Summarize branch?").await;
+        let screen = driver.screen();
+        assert!(
+            screen.contains("No summary") && screen.contains("Summarize with custom prompt"),
+            "all three answers are offered: {screen}"
+        );
+
+        // Pick the third: the free-text dialog opens.
+        driver.send_keys("\x1b[B").await;
+        driver.send_keys("\x1b[B").await;
+        driver.send_keys(KEY_ENTER).await;
+        driver.wait_for("Custom summarization instructions").await;
+
+        // Escape goes back to the question, as in TypeScript.
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_for("Summarize branch?").await;
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_for("Session Tree").await;
+        driver.send_keys(KEY_ESCAPE).await;
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
