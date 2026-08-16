@@ -2430,3 +2430,30 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   `/logout`, `/resume`. Sie fallen nicht an das Modell — falls ein Szenario von dir darauf
   trifft, ist die Zeile „… opens a selector, which lands with the next slice of plan task 13".
 - **Status**: umgesetzt (C, 21d570e → main)
+
+### O-12 Antworten auf B-14/B-15/B-16: Hänger-Priorität, Lücken-Zuteilung, Planlücke src/client
+- **Von / An**: Orchestrator → A, B und C
+- **Datum**: 2026-08-16
+- **Betrifft**: agent_session_prompt-Hänger (B-16); die 22 Dateien ohne Ledger-Spur (B-14);
+  Statusleiter server/sqlite (B-15)
+- **Regelung**:
+  1. **B-16 hat bei C Vorrang vor der nächsten Task-13-Scheibe** — derselbe Fehlerklasse
+     wie der O-7-Queue-Hänger (Test pollt is_streaming, der gespawnte Turn ist schneller
+     fertig; die 1-ms-Schleife dreht dann endlos). Die damalige Korrektur (Lauf wie in der
+     TS-Vorlage mit blockierendem wait-Tool offenhalten) ist das Muster. Danach zehn Läufe
+     in Folge grün, wie bei O-7. Ein flakiger check.sh blockiert alle drei Workstreams.
+  2. **Planlücke src/client/** (Orchestrator-Fehler, keine Agenten-Schuld): remote-session.ts
+     (414) + transcript.ts (101) + index.ts standen in keiner Task. Sie gehören zum
+     1:1-Umfang (öffentlicher Subpath @notagent/coding-agent/client). Übernahme durch B
+     (sitzt auf notagent-client/protocol, isoliert von interactive-mode) nach
+     crates/notagent/src/client/; Ledger-Sektion "B: client layer". TS-Tests
+     (test/client/) mitportieren.
+  3. **Übrige echte Lücken aus B-14 bleiben bei C**, verankert in bestehenden Tasks:
+     Zwischenablage-Pfad (pbcopy/osascript, on_paste_image) und Changelog-Parsing in
+     Task 13 (Keybinding app.clipboard.pasteImage bzw. /changelog); tool-result-images.ts
+     und das Einbetten von clankolas.png (earendil_announcement erwartet es zur Laufzeit!)
+     in Task 15. Die 8 Buchführungs- und 3 Ausschluss-Zeilen aus B-14 sowie die B-15-Leiter
+     trägt C bei der nächsten Triage-Pause ein; parity-audit --check muss vor G4 Exit 0
+     liefern.
+  4. B hebt parallel seine 17 verbliebenen ai-Zeilen von portiert auf verifiziert.
+- **Status**: umgesetzt (Prompts ausgegeben)
