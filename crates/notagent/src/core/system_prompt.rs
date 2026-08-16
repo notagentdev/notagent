@@ -141,7 +141,7 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
     let has = |name: &str| tools.iter().any(|tool| tool == name);
     let has_bash = has("bash");
     let has_grep = has("grep");
-    let has_find = has("find");
+    let has_find = has("find_filesystem");
     let has_ls = has("ls");
     let has_read = has("read");
 

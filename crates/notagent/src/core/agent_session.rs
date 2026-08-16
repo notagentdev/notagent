@@ -998,7 +998,8 @@ impl AgentSession {
                 "read".to_string(),
                 "read_minified".to_string(),
                 "grep".to_string(),
-                "find".to_string(),
+                "find_filesystem".to_string(),
+                "find_codebase".to_string(),
                 "ls".to_string(),
             ],
         }
@@ -1613,20 +1614,24 @@ impl AgentSession {
             // A child's tools are built from these options, and they carry no
             // task wiring at all: that is what makes "a subagent starts no
             // background work" structural rather than a rule it could ignore.
-            tool_options: Some(Arc::new(move || {
-                Some(ToolsOptions {
-                    read: Some(ReadToolOptions {
-                        auto_resize_images,
-                        ..ReadToolOptions::default()
-                    }),
-                    bash: Some(BashToolOptions {
-                        command_prefix: shell_command_prefix.clone(),
-                        shell_path: shell_path.clone(),
-                        ..BashToolOptions::default()
-                    }),
-                    ..ToolsOptions::default()
+            tool_options: Some({
+                let find_codebase = self.find_codebase_options();
+                Arc::new(move || {
+                    Some(ToolsOptions {
+                        read: Some(ReadToolOptions {
+                            auto_resize_images,
+                            ..ReadToolOptions::default()
+                        }),
+                        bash: Some(BashToolOptions {
+                            command_prefix: shell_command_prefix.clone(),
+                            shell_path: shell_path.clone(),
+                            ..BashToolOptions::default()
+                        }),
+                        find_codebase: Some(find_codebase.clone()),
+                        ..ToolsOptions::default()
+                    })
                 })
-            })),
+            }),
             transcripts: TaskTranscriptStore::default(),
             cwd: Some({
                 let cwd = self.cwd.clone();
@@ -1658,7 +1663,21 @@ impl AgentSession {
                     Arc::new(move || Some(Arc::clone(&store)))
                 },
             }),
+            find_codebase: Some(self.find_codebase_options()),
             ..ToolsOptions::default()
+        }
+    }
+
+    /// The `find_codebase` gate, read from settings at call time so `/index
+    /// on|off` applies without a session restart. Absent session → enabled,
+    /// matching the reference default.
+    fn find_codebase_options(&self) -> crate::core::tools::find_codebase::FindCodebaseToolOptions {
+        crate::core::tools::find_codebase::FindCodebaseToolOptions {
+            enabled: Some({
+                let settings = Arc::clone(&self.settings_manager);
+                Arc::new(move || settings.get_find_codebase_enabled())
+            }),
+            state_base_dir: None,
         }
     }
 

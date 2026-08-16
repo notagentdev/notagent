@@ -219,6 +219,8 @@ settings_struct!(
     /// the model delegated subagents run on; unset means inherit.
     subagent_provider: String,
     subagent_model: String,
+    /// Port addition (v0.1.7): gate of the `find_codebase` tool; absent = on.
+    find_codebase_enabled: bool,
     default_thinking_level: Value,
     transport: Value,
     steering_mode: Value,
@@ -987,6 +989,18 @@ impl SettingsManager {
             ("defaultProvider", Value::from(provider)),
             ("defaultModel", Value::from(model_id)),
         ]);
+    }
+
+    /// The `find_codebase` gate (port addition, v0.1.7). Absent means
+    /// enabled, matching the reference default for `cb_search_enabled`.
+    pub fn get_find_codebase_enabled(&self) -> bool {
+        self.settings_snapshot()
+            .find_codebase_enabled
+            .unwrap_or(true)
+    }
+
+    pub fn set_find_codebase_enabled(&self, enabled: bool) {
+        self.set_global_field("findCodebaseEnabled", Value::from(enabled));
     }
 
     pub fn get_subagent_provider(&self) -> Option<String> {

@@ -102,7 +102,8 @@ const READ_ONLY_TOOLS: &[ToolName] = &[
     ToolName::Read,
     ToolName::ReadMinified,
     ToolName::Grep,
-    ToolName::Find,
+    ToolName::FindFilesystem,
+    ToolName::FindCodebase,
     ToolName::Ls,
     // Loading guidance and delegating read-only work change nothing, so both
     // belong in the read-only set. A child never inherits `task`, and a

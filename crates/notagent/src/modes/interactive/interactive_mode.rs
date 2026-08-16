@@ -807,6 +807,12 @@ enum UiMessage {
         id: u64,
         model: Box<Model>,
     },
+    /// A codebase-index build (`/index`) reports progress (port addition,
+    /// v0.1.7). `done` carries the final message.
+    IndexBuildProgress {
+        message: String,
+        done: bool,
+    },
     /// A selector reported a choice or a cancellation.
     ModelSelected {
         id: u64,
@@ -1074,6 +1080,9 @@ pub struct InteractiveMode {
     side_futures: Vec<Pin<Box<dyn Future<Output = UiMessage>>>>,
     active_selector: Option<ActiveSelector>,
     selector_id: u64,
+    /// Whether a `/index` build is running; a second `/index` is a no-op
+    /// while it is, like the reference's disabled Reindex button.
+    index_build_running: bool,
     /// The session selector while it is open; the loop runs its list loads.
     session_selector: Option<Rc<RefCell<SessionSelectorComponent>>>,
     /// The models selector while it is open; its catalog refresh reports back.
@@ -1315,6 +1324,7 @@ impl InteractiveMode {
             side_futures: Vec::new(),
             active_selector: None,
             selector_id: 0,
+            index_build_running: false,
             session_selector: None,
             scoped_models_selector: None,
             tasks_browser: None,
@@ -2154,6 +2164,12 @@ impl InteractiveMode {
             UiMessage::SubagentModelSelected { id, model } => {
                 self.close_selector(id);
                 self.apply_selected_subagent_model(*model);
+            }
+            UiMessage::IndexBuildProgress { message, done } => {
+                if done {
+                    self.index_build_running = false;
+                }
+                self.show_status(&message);
             }
             UiMessage::ForkAt {
                 id,
@@ -3511,6 +3527,74 @@ impl InteractiveMode {
             return;
         }
         self.show_subagent_model_selector(Some(search_term));
+    }
+
+    /// `/index` (port addition, v0.1.7) — the command form of the reference's
+    /// Indexing settings section: no argument rebuilds the `find_codebase`
+    /// index with progress in the status line, `on`/`off` toggles the
+    /// setting. Enabling kicks off a build immediately, so the toggle is
+    /// never a dead switch (like the reference's `toggle_cb_search`).
+    fn handle_index_command(&mut self, argument: Option<&str>) {
+        match argument {
+            Some(argument) if argument.eq_ignore_ascii_case("off") => {
+                self.settings().set_find_codebase_enabled(false);
+                self.show_status("Codebase index: disabled");
+            }
+            Some(argument) if argument.eq_ignore_ascii_case("on") => {
+                self.settings().set_find_codebase_enabled(true);
+                self.start_index_build();
+            }
+            Some(other) => {
+                self.show_error(&format!("Unknown /index argument: {other} (use on|off)"));
+            }
+            None => {
+                if !self.settings().get_find_codebase_enabled() {
+                    self.show_status("Codebase index: disabled (enable with /index on)");
+                    return;
+                }
+                self.start_index_build();
+            }
+        }
+    }
+
+    /// Runs the build on a blocking thread and streams progress into the
+    /// status line via [`UiMessage::IndexBuildProgress`].
+    fn start_index_build(&mut self) {
+        use crate::core::tools::find_codebase::{IndexBuildPhase, rebuild_index_blocking};
+
+        if self.index_build_running {
+            self.show_status("Codebase index: build already running");
+            return;
+        }
+        self.index_build_running = true;
+        self.show_status("Codebase index: scanning…");
+        let cwd = self.cwd();
+        let progress_tx = self.ui_tx.clone();
+        let done_tx = self.ui_tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = rebuild_index_blocking(&cwd, &crate::config::get_agent_dir(), {
+                let progress_tx = progress_tx.clone();
+                move |progress| {
+                    if progress.phase == IndexBuildPhase::Indexing {
+                        let _ = progress_tx.send(UiMessage::IndexBuildProgress {
+                            message: format!(
+                                "Codebase index: {}/{} files",
+                                progress.indexed_files, progress.total_files
+                            ),
+                            done: false,
+                        });
+                    }
+                }
+            });
+            let message = match result {
+                Ok(()) => "Codebase index: up to date".to_owned(),
+                Err(error) => format!("Codebase index failed: {error}"),
+            };
+            let _ = done_tx.send(UiMessage::IndexBuildProgress {
+                message,
+                done: true,
+            });
+        });
     }
 
     /// `handleModelCommand(searchTerm)` (`interactive-mode.ts:4857-4879`).
@@ -5988,6 +6072,11 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_subagent_model_command(search_term.as_deref())
                     .await;
+            }
+            _ if text == "/index" || text.starts_with("/index ") => {
+                let index_argument = argument("/index ");
+                self.clear_editor_text();
+                self.handle_index_command(index_argument.as_deref());
             }
             _ if text == "/export" || text.starts_with("/export ") => {
                 self.handle_export_command(text).await;

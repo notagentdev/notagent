@@ -73,6 +73,13 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
         "<provider/model|default>",
     ),
     command("scoped-models", "Enable/disable models for Ctrl+P cycling"),
+    // Addition over the TS original (user decision 2026-08-16, v0.1.7): the
+    // command form of the reference's Indexing settings section.
+    command_with_hint(
+        "index",
+        "Rebuild the local codebase index (find_codebase), or toggle it",
+        "[on|off]",
+    ),
     command(
         "export",
         "Export session (HTML default, or specify path: .html/.jsonl)",
@@ -132,6 +139,8 @@ mod tests {
                 // Port addition (user decision, v0.1.6), not in the TS list.
                 "subagent-model",
                 "scoped-models",
+                // Port addition (user decision, v0.1.7), not in the TS list.
+                "index",
                 "export",
                 "import",
                 "share",
@@ -163,7 +172,8 @@ mod tests {
             .filter(|command| command.argument_hint.is_some())
             .map(|command| command.name)
             .collect();
-        // `subagent-model` is the port addition (user decision, v0.1.6).
-        assert_eq!(with_hint, vec!["model", "subagent-model", "login"]);
+        // `subagent-model` and `index` are port additions (user decisions,
+        // v0.1.6/v0.1.7).
+        assert_eq!(with_hint, vec!["model", "subagent-model", "index", "login"]);
     }
 }

@@ -112,7 +112,7 @@ fn format_find_call(args: &Value, theme: &Theme) -> String {
     let path = raw_path
         .map(|raw_path| shorten_path(Some(if raw_path.is_empty() { "." } else { &raw_path })));
     let invalid_arg = invalid_arg_text(theme);
-    let mut text = theme.fg(ThemeColor::ToolTitle, &theme.bold("find"))
+    let mut text = theme.fg(ThemeColor::ToolTitle, &theme.bold("find_filesystem"))
         + " "
         + &match &pattern {
             None => invalid_arg.clone(),
@@ -284,12 +284,14 @@ fn no_files_found() -> AgentToolResult {
 }
 
 impl ToolDefinition for FindToolDefinition {
+    // Renamed from `find` (user decision 2026-08-16, v0.1.7) so it pairs
+    // unambiguously with `find_codebase`.
     fn name(&self) -> &str {
-        "find"
+        "find_filesystem"
     }
 
     fn label(&self) -> &str {
-        "find"
+        "find_filesystem"
     }
 
     fn description(&self) -> &str {
@@ -714,7 +716,7 @@ mod tests {
     #[test]
     fn advertises_its_description_and_schema() {
         let tool = create_find_tool_definition("/tmp", None);
-        assert_eq!(tool.name(), "find");
+        assert_eq!(tool.name(), "find_filesystem");
         assert!(
             tool.description()
                 .contains("truncated to 1000 results or 50KB")

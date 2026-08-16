@@ -1,0 +1,50 @@
+# 1:1 takeover of `notagent_index` from ../notagent-main-rust (user decision
+# 2026-08-16, v0.1.7): code indexing and ranked search (tree-sitter symbols +
+# BM25/tantivy chunks) behind the `find_codebase` tool. The module code is
+# byte-identical to the reference; only this manifest is adapted to the
+# workspace (dependency versions live in the root Cargo.toml).
+[package]
+name = "notagent-index"
+description = "Code indexing and ranked search (tree-sitter symbols + BM25 chunks) for find_codebase"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "notagent_index"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+bincode = { workspace = true }
+dashmap = { workspace = true }
+fs2 = { workspace = true }
+ignore = { workspace = true }
+notify = { workspace = true }
+nucleo-matcher = { workspace = true }
+rayon = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+tantivy = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+twox-hash = { workspace = true }
+
+tree-sitter = { workspace = true }
+tree-sitter-bash = { workspace = true }
+tree-sitter-c = { workspace = true }
+tree-sitter-cpp = { workspace = true }
+tree-sitter-css = { workspace = true }
+tree-sitter-go = { workspace = true }
+tree-sitter-html = { workspace = true }
+tree-sitter-java = { workspace = true }
+tree-sitter-javascript = { workspace = true }
+tree-sitter-json = { workspace = true }
+tree-sitter-python = { workspace = true }
+tree-sitter-ruby = { workspace = true }
+tree-sitter-rust = { workspace = true }
+tree-sitter-typescript = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

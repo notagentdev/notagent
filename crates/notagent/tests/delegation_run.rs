@@ -235,7 +235,15 @@ async fn gets_its_modes_tools() {
     names.sort();
     assert_eq!(
         names,
-        vec!["find", "grep", "ls", "read", "read_minified", "skill"]
+        vec![
+            "find_codebase",
+            "find_filesystem",
+            "grep",
+            "ls",
+            "read",
+            "read_minified",
+            "skill",
+        ]
     );
 }
 

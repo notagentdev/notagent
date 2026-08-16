@@ -910,7 +910,7 @@
 		]
 	},
 	{
-		"tool": "find",
+		"tool": "find_filesystem",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -933,13 +933,13 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                      "
+				"\u001b[38;2;212;212;212m\u001b[1mfind_filesystem\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                           "
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "find",
+		"tool": "find_filesystem",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -960,13 +960,13 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                          "
+				"\u001b[38;2;212;212;212m\u001b[1mfind_filesystem\u001b[22m\u001b[39m \u001b[38;2;138;190;183m\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                               "
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "find",
+		"tool": "find_filesystem",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -991,13 +991,13 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in src\u001b[39m\u001b[38;2;128;128;128m (limit 5)\u001b[39m                                                                          "
+				"\u001b[38;2;212;212;212m\u001b[1mfind_filesystem\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in src\u001b[39m\u001b[38;2;128;128;128m (limit 5)\u001b[39m                                                               "
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "find",
+		"tool": "find_filesystem",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -1021,13 +1021,13 @@
 		"result": null,
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[38;2;128;128;128m in \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[39m                                                                 "
+				"\u001b[38;2;212;212;212m\u001b[1mfind_filesystem\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[38;2;128;128;128m in \u001b[38;2;204;102;102m[invalid arg]\u001b[39m\u001b[39m                                                      "
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "find",
+		"tool": "find_filesystem",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -1057,7 +1057,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                      "
+				"\u001b[38;2;212;212;212m\u001b[1mfind_filesystem\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                           "
 			]
 		],
 		"resultLines": [
@@ -1086,7 +1086,7 @@
 		]
 	},
 	{
-		"tool": "find",
+		"tool": "find_filesystem",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -1132,7 +1132,7 @@
 		},
 		"callLineSteps": [
 			[
-				"\u001b[38;2;212;212;212m\u001b[1mfind\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                                      "
+				"\u001b[38;2;212;212;212m\u001b[1mfind_filesystem\u001b[22m\u001b[39m \u001b[38;2;138;190;183m*.ts\u001b[39m\u001b[38;2;128;128;128m in .\u001b[39m                                                                           "
 			]
 		],
 		"resultLines": [
@@ -2326,7 +2326,7 @@
 		"resultLines": [
 			"                                                                                                    ",
 			"\u001b[38;2;86;156;214mconst\u001b[39m x = \u001b[38;2;181;206;168m1\u001b[39m;                                                                                        ",
-			"\u001b[38;2;255;255;0m[Language not supported for minification — raw content shown]\u001b[39m                                       "
+			"\u001b[38;2;255;255;0m[Language not supported for minification \u2014 raw content shown]\u001b[39m                                       "
 		]
 	},
 	{
@@ -3579,7 +3579,7 @@
 		],
 		"resultLines": [
 			"                                                                                                    ",
-			"\u001b[38;2;181;189;104m\u001b[1m  󰄵 \u001b[9mRun tests\u001b[29m\u001b[22m\u001b[39m                                                                                       "
+			"\u001b[38;2;181;189;104m\u001b[1m  \udb80\udd35 \u001b[9mRun tests\u001b[29m\u001b[22m\u001b[39m                                                                                       "
 		]
 	},
 	{
@@ -3633,8 +3633,8 @@
 		],
 		"resultLines": [
 			"                                                                                                    ",
-			"\u001b[38;2;128;128;128m  󰄵 \u001b[9mRun tests\u001b[29m\u001b[39m                                                                                       ",
-			"\u001b[38;2;204;102;102m  󰄱 \u001b[9mShip it\u001b[29m\u001b[39m                                                                                         "
+			"\u001b[38;2;128;128;128m  \udb80\udd35 \u001b[9mRun tests\u001b[29m\u001b[39m                                                                                       ",
+			"\u001b[38;2;204;102;102m  \udb80\udd31 \u001b[9mShip it\u001b[29m\u001b[39m                                                                                         "
 		]
 	},
 	{
@@ -3694,8 +3694,8 @@
 		],
 		"resultLines": [
 			"                                                                                                    ",
-			"\u001b[38;2;128;128;128m  󰄱 Keep me\u001b[39m                                                                                         ",
-			"\u001b[38;2;138;190;183m\u001b[1m  󰄗 New one\u001b[22m\u001b[39m                                                                                         "
+			"\u001b[38;2;128;128;128m  \udb80\udd31 Keep me\u001b[39m                                                                                         ",
+			"\u001b[38;2;138;190;183m\u001b[1m  \udb80\udd17 New one\u001b[22m\u001b[39m                                                                                         "
 		]
 	},
 	{
@@ -5892,5 +5892,75 @@
 			]
 		],
 		"resultLines": []
+	},
+	{
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"tool": "find_codebase",
+		"steps": [
+			{
+				"args": {
+					"query": "workspace lock"
+				},
+				"argsComplete": true
+			}
+		],
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1mfind_codebase\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/workspace lock/\u001b[39m                                                                      "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": true,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"tool": "find_codebase",
+		"steps": [
+			{
+				"args": {
+					"query": "workspace lock",
+					"path": "src",
+					"max_results": 5
+				},
+				"argsComplete": true
+			}
+		],
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "<find_codebase_results query=\"workspace lock\" count=\"1\">\n  <result name=\"WorkspaceLockManager\" kind=\"struct\" file=\"src/lock.rs\" line=\"1\" score=\"2.100\"/>\n</find_codebase_results>"
+				}
+			]
+		},
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1mfind_codebase\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/workspace lock/\u001b[39m\u001b[38;2;128;128;128m in src\u001b[39m\u001b[38;2;128;128;128m limit 5\u001b[39m                                                       "
+			]
+		],
+		"resultLines": [
+			"                                                                                                    ",
+			"\u001b[38;2;128;128;128m  src/lock.rs:1\u001b[39m\u001b[38;2;128;128;128m  WorkspaceLockManager (struct)\u001b[39m                                                      "
+		]
 	}
 ]

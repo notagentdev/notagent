@@ -5,6 +5,7 @@ pub mod edit;
 pub mod edit_diff;
 pub mod file_mutation_queue;
 pub mod find;
+pub mod find_codebase;
 pub mod grep;
 pub mod ls;
 pub mod output_accumulator;
@@ -46,12 +47,16 @@ pub enum ToolName {
     TodoWrite,
     Write,
     Grep,
-    Find,
+    // Renamed from `find` and joined by `find_codebase` (user decision
+    // 2026-08-16, v0.1.7): the shared `find_` prefix keeps the two search
+    // tools adjacent and unambiguous for the model.
+    FindFilesystem,
+    FindCodebase,
     Ls,
 }
 
 /// Every tool name, in the order `allToolNames` inserts them.
-pub const ALL_TOOL_NAMES: [ToolName; 16] = [
+pub const ALL_TOOL_NAMES: [ToolName; 17] = [
     ToolName::Read,
     ToolName::ReadMinified,
     ToolName::Bash,
@@ -66,7 +71,8 @@ pub const ALL_TOOL_NAMES: [ToolName; 16] = [
     ToolName::TodoWrite,
     ToolName::Write,
     ToolName::Grep,
-    ToolName::Find,
+    ToolName::FindFilesystem,
+    ToolName::FindCodebase,
     ToolName::Ls,
 ];
 
@@ -87,7 +93,8 @@ impl ToolName {
             ToolName::TodoWrite => "todo_write",
             ToolName::Write => "write",
             ToolName::Grep => "grep",
-            ToolName::Find => "find",
+            ToolName::FindFilesystem => "find_filesystem",
+            ToolName::FindCodebase => "find_codebase",
             ToolName::Ls => "ls",
         }
     }
@@ -119,6 +126,9 @@ use notagent_agent::types::AgentTool;
 use crate::core::tools::bash::{BashToolOptions, create_bash_tool, create_bash_tool_definition};
 use crate::core::tools::edit::{EditToolOptions, create_edit_tool, create_edit_tool_definition};
 use crate::core::tools::find::{FindToolOptions, create_find_tool, create_find_tool_definition};
+use crate::core::tools::find_codebase::{
+    FindCodebaseToolOptions, create_find_codebase_tool, create_find_codebase_tool_definition,
+};
 use crate::core::tools::grep::{GrepToolOptions, create_grep_tool, create_grep_tool_definition};
 use crate::core::tools::ls::{LsToolOptions, create_ls_tool, create_ls_tool_definition};
 use crate::core::tools::patch_minified::{
@@ -172,6 +182,7 @@ pub struct ToolsOptions {
     pub edit: Option<EditToolOptions>,
     pub grep: Option<GrepToolOptions>,
     pub find: Option<FindToolOptions>,
+    pub find_codebase: Option<FindCodebaseToolOptions>,
     pub ls: Option<LsToolOptions>,
 }
 
@@ -231,9 +242,13 @@ pub fn create_tool_definition(
             cwd,
             options.and_then(|options| options.grep.clone()),
         )),
-        ToolName::Find => Arc::new(create_find_tool_definition(
+        ToolName::FindFilesystem => Arc::new(create_find_tool_definition(
             cwd,
             options.and_then(|options| options.find.clone()),
+        )),
+        ToolName::FindCodebase => Arc::new(create_find_codebase_tool_definition(
+            cwd,
+            options.and_then(|options| options.find_codebase.clone()),
         )),
         ToolName::Ls => Arc::new(create_ls_tool_definition(
             cwd,
@@ -277,7 +292,13 @@ pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions
             create_write_tool(cwd, options.and_then(|options| options.write.clone()))
         }
         ToolName::Grep => create_grep_tool(cwd, options.and_then(|options| options.grep.clone())),
-        ToolName::Find => create_find_tool(cwd, options.and_then(|options| options.find.clone())),
+        ToolName::FindFilesystem => {
+            create_find_tool(cwd, options.and_then(|options| options.find.clone()))
+        }
+        ToolName::FindCodebase => create_find_codebase_tool(
+            cwd,
+            options.and_then(|options| options.find_codebase.clone()),
+        ),
         ToolName::Ls => create_ls_tool(cwd, options.and_then(|options| options.ls.clone())),
     }
 }
@@ -292,11 +313,12 @@ const CODING_TOOL_NAMES: [ToolName; 7] = [
     ToolName::Write,
 ];
 
-const READ_ONLY_TOOL_NAMES: [ToolName; 5] = [
+const READ_ONLY_TOOL_NAMES: [ToolName; 6] = [
     ToolName::Read,
     ToolName::ReadMinified,
     ToolName::Grep,
-    ToolName::Find,
+    ToolName::FindFilesystem,
+    ToolName::FindCodebase,
     ToolName::Ls,
 ];
 

@@ -1658,10 +1658,15 @@ fn format_tool_call(name: &str, arguments: &Map<String, Value>) -> String {
             let path = argument_or_dot(arguments);
             format!("[grep: /{pattern}/ in {path}]")
         }
-        "find" => {
+        "find_filesystem" => {
             let pattern = js_string(arguments.get("pattern"));
             let path = argument_or_dot(arguments);
-            format!("[find: {pattern} in {path}]")
+            format!("[find_filesystem: {pattern} in {path}]")
+        }
+        "find_codebase" => {
+            let query = js_string(arguments.get("query"));
+            let path = argument_or_dot(arguments);
+            format!("[find_codebase: /{query}/ in {path}]")
         }
         "ls" => format!("[ls: {}]", argument_or_dot(arguments)),
         _ => {

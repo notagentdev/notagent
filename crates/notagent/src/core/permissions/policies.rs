@@ -20,11 +20,12 @@ use crate::utils::paths::{is_absolute_path, main_separator, node_relative, node_
 /// own tool calls come back through this same chain, so what it does is decided
 /// where every other call is. Asking about the delegation as well would be a
 /// prompt about an action that has no effect.
-const READ_ONLY_TOOLS: [&str; 10] = [
+const READ_ONLY_TOOLS: [&str; 11] = [
     "read",
     "read_minified",
     "grep",
-    "find",
+    "find_filesystem",
+    "find_codebase",
     "ls",
     "skill",
     "task",
