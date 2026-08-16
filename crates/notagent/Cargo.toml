@@ -16,6 +16,9 @@ path = "src/bin/notagent.rs"
 
 [dependencies]
 notagent-agent = { workspace = true }
+# async-trait: the shared terminal handle implements notagent-tui's `Terminal`,
+# which is an `#[async_trait(?Send)]` trait.
+async-trait = { workspace = true }
 notagent-ai = { workspace = true }
 notagent-client = { workspace = true }
 notagent-protocol = { workspace = true }

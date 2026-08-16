@@ -33,6 +33,8 @@ const KEY_ENTER: &str = "\r";
 const KEY_CTRL_C: &str = "\x03";
 /// Ctrl+D — exits on an empty editor.
 const KEY_CTRL_D: &str = "\x04";
+/// Escape — closes an overlay or a selector.
+const KEY_ESCAPE: &str = "\x1b";
 
 /// A running mode together with the pieces the caller drives.
 struct Driver {
@@ -45,10 +47,24 @@ struct Driver {
 
 impl Driver {
     async fn start(app: &HeadlessApp, terminal: VirtualTerminal) -> Self {
+        Self::start_with(
+            app,
+            terminal,
+            notagent::core::settings_manager::TuiMode::Regular,
+        )
+        .await
+    }
+
+    async fn start_with(
+        app: &HeadlessApp,
+        terminal: VirtualTerminal,
+        tui_mode: notagent::core::settings_manager::TuiMode,
+    ) -> Self {
         let InteractiveModeHandle {
             renderer,
             pump,
             run,
+            ..
         } = create_interactive_mode(
             app.runtime(),
             InteractiveModeOptions {
@@ -56,6 +72,7 @@ impl Driver {
                     terminal: Box::new(terminal.clone()),
                     pump: Box::new(terminal.pump_handle()),
                 }),
+                tui_mode: Some(tui_mode),
                 ..InteractiveModeOptions::default()
             },
         );
@@ -501,6 +518,287 @@ async fn the_dequeue_action_puts_the_queued_messages_back_into_the_editor() {
         driver.send_keys("\x1b[1;3A").await;
         driver.wait_for("Restored 1 queued message to editor").await;
         driver.wait_until_absent("Follow-up: queued text").await;
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// Slice 4 — the selectors
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_model_selector_opens_and_escape_closes_it() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/model").await;
+        // The faux provider is the only configured one, so its model is the
+        // single row of the list.
+        driver.wait_for("faux-1").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Model Name").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_model_command_with_an_exact_reference_switches_the_model() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let model = app.session().model().expect("a model is configured");
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver
+            .submit(&format!("/model {}/{}", model.provider, model.id))
+            .await;
+
+        driver.wait_for(&format!("Model: {}", model.id)).await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_settings_selector_opens_and_escape_closes_it() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/settings").await;
+        driver.wait_for("Auto-compact").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Auto-compact").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn fork_opens_the_message_selector_and_forks_to_a_new_session() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("An answer to fork at")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+        driver.submit("A question to fork from").await;
+        driver.wait_for("An answer to fork at").await;
+        let first_session_id = app.session().session_id();
+
+        driver.submit("/fork").await;
+        driver.wait_for("Fork from Message").await;
+        driver.send_keys(KEY_ENTER).await;
+
+        driver.wait_for("Forked to new session").await;
+        assert_ne!(app.runtime().session().session_id(), first_session_id);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn trust_opens_the_trust_selector() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/trust").await;
+        driver.wait_for("Project trust").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Project trust").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn resume_opens_the_session_selector_and_lists_this_session() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux().set_responses(vec![reply("A first answer")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+        driver.submit("A question").await;
+        driver.wait_for("A first answer").await;
+
+        driver.submit("/resume").await;
+        // The loads run in the loop; the header appears once the list loaded.
+        driver.wait_for("Resume Session").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Resume Session").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn tree_opens_the_navigation_selector() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("An answer in the tree")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+        driver.submit("A question").await;
+        driver.wait_for("An answer in the tree").await;
+
+        driver.submit("/tree").await;
+        driver.wait_for("Session Tree").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Session Tree").await;
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// Slice 5 (part) — the key actions
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "current_thread")]
+async fn ctrl_o_toggles_the_tool_output_expansion() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        // `app.tools.expand` is Ctrl+O; it also expands the startup header.
+        driver.send_keys("\x0f").await;
+        driver.wait_for("Tool output: expanded").await;
+        driver.send_keys("\x0f").await;
+        driver.wait_for("Tool output: collapsed").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_double_escape_on_an_empty_editor_opens_the_configured_view() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("An answer to fork at")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+        driver.submit("A question").await;
+        driver.wait_for("An answer to fork at").await;
+
+        // The default action is the session tree.
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_for("Session Tree").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_mode_can_start_on_the_alternate_screen() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("An answer on the alt screen")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start_with(
+            &app,
+            terminal,
+            notagent::core::settings_manager::TuiMode::Fullscreen,
+        )
+        .await;
+
+        driver.wait_for("notagent").await;
+        driver.submit("A question").await;
+        driver.wait_for("An answer on the alt screen").await;
+        // The dock keeps the editor and the footer at the bottom.
+        let viewport = driver.terminal.get_viewport().join("\n");
+        assert!(
+            viewport.contains('─'),
+            "the editor frame is on the alternate screen: {viewport}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn scoped_models_opens_the_model_scope_selector() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/scoped-models").await;
+        // The footer also carries the model name, so the assertion uses a
+        // marker only the selector draws.
+        driver.wait_for("Model Configuration").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Model Configuration").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn tasks_opens_the_task_browser() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/tasks").await;
+        driver.wait_for("Tasks").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Tasks").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn login_opens_the_sign_in_method_selector() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/login").await;
+        driver.wait_for("How do you want to sign in?").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver
+            .wait_until_absent("How do you want to sign in?")
+            .await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn logout_lists_the_stored_credentials() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        // The app runtime stores an api key for the faux provider.
+        driver.submit("/logout").await;
+        driver.wait_for("Select provider to logout").await;
+
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Select provider to logout").await;
     })
     .await;
 }

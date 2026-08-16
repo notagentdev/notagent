@@ -1218,6 +1218,8 @@ pub async fn main(args: Vec<String>) -> i32 {
                 && !has_trust_requiring_project_resources(&session_cwd))
             .then_some(session_cwd);
             let InteractiveModeHandle {
+                approval_presenter,
+                report,
                 mut renderer,
                 mut pump,
                 run,
@@ -1235,6 +1237,10 @@ pub async fn main(args: Vec<String>) -> i32 {
                     terminal: None,
                 },
             );
+            // `permissionPresent` and `hookReport` are bound to the mode, as in
+            // `main.ts:1021-1023`.
+            *permission_present.lock().expect("poisoned") = Some(approval_presenter);
+            *hook_report.lock().expect("poisoned") = Some(report);
             // The render loop belongs to the caller (interface request A-20):
             // `run_until` renders and pumps stdin while the mode runs.
             let exit_code = run_until(renderer.as_mut(), pump.as_mut(), run).await;

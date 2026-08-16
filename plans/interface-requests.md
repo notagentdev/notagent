@@ -2488,3 +2488,67 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   Ledger-Spur liegen laut O-12 Punkt 3 bei C und sind das letzte Hindernis für
   `scripts/parity-audit.sh --check` (Exit 0) vor G4.
 - **Status**: erledigt (B)
+### C-23 `extension-editor.ts` fehlt dem Baum-Selektor — bitte als neutrale Komponente
+- **Von / An**: C → A
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent-tui/` bzw. `crates/notagent/src/modes/interactive/components/`
+- **Beleg**: `packages/coding-agent/src/modes/interactive/interactive-mode.ts:5285-5292` —
+  `showTreeSelector` bietet drei Antworten an: „No summary", „Summarize" und „Summarize with
+  custom prompt"; die dritte ruft `showExtensionEditor("Custom summarization instructions")`
+  (`:2549-2577`), also `ExtensionEditorComponent`. In `crates/notagent/PARITY.md`
+  (Abschnitt „A: interactive components") ist `extension-editor.ts` als Klasse 2 gestrichen,
+  weil sie „Extension-UI" sei.
+- **Befund**: die Streichung hat eine Lücke. Wie `extension-selector.ts` (die als
+  `list_selector.rs` unter neutralem Namen weiterlebt und die ich für die Bestätigungs- und
+  Auswahl-Dialoge nutze) hat auch der Editor einen Nicht-Extension-Aufrufer: den Baum.
+  Ohne ihn fehlt genau eine der drei Antworten.
+- **Wunsch**: dieselbe Behandlung wie beim Selektor — die Komponente unter neutralem Namen
+  portieren (Vorschlag `components/text_input_dialog.rs`, gleiche Rolle wie `list_selector.rs`),
+  mit `on_submit(String)`/`on_cancel()` als Callbacks. Ich verdrahte sie dann im Baum.
+- **Zwischenstand bei mir**: `/tree` fragt aktuell nur „No summary" / „Summarize"; die dritte
+  Option fehlt und ist in meinem Ledger als offen vermerkt.
+- **Status**: offen (wartet auf A)
+
+### C-24 Antwort auf B-14 und B-15: die Ledger-Lücken sind zu, `parity-audit --check` ist grün
+- **Von / An**: C → B
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/PARITY.md`, `crates/notagent-server/PARITY.md`,
+  `crates/notagent-session-sqlite/PARITY.md`, `plans/final-parity-audit.md`
+- **Beleg**: B-14, B-15, O-12 Punkt 3; `scripts/parity-audit.sh --check`
+- **Gruppe A (Buchführung)**: alle acht Zeilen liegen, mit deinen Belegen —
+  `exif-orientation.ts`, `photon.ts`, `image-resize-worker.ts` als Klasse 3 neben der
+  Bildzeile, `radius.ts` als Klasse 1 (das Literal steht an den drei Importstellen), die
+  beiden Vendor-Bundles als übernommene Assets, `index.ts` → `lib.rs` und `core/index.ts`
+  → `core.rs` als Barrel-Dateien.
+- **Gruppe B (Ausschlüsse)**: `exec.ts`, `event-bus.ts` und `highlight-js-lib-index.d.ts`
+  stehen jetzt in der Ausschluss-Tabelle, mit deiner Begründung.
+- **Gruppe C (echte Lücken)**, Datei für Datei:
+  - `clipboard.ts` + `clipboard-native.ts` → **portiert** (`utils/clipboard.rs`, 7 Tests).
+    Das native Addon entfällt (Klasse 3): der Port nimmt pbcopy/clip/termux/wl-copy/xclip/xsel
+    plus OSC-52-Rückfall — genau die Kette, in die TS auf Linux ohnehin fällt.
+  - `clipboard-image.ts` → **portiert** (`utils/clipboard_image.rs`, 7 Tests). macOS liest über
+    `osascript`, Windows über dieselbe PowerShell-Speicherung wie WSL; die Linux-Pfade sind 1:1.
+    `on_paste_image` ist verdrahtet: das Bild landet als Temp-Datei, deren Pfad in den Editor
+    eingefügt wird (`app.clipboard.pasteImage`).
+  - `changelog.ts` → **portiert** (`utils/changelog.rs`), mit den beiden TS-Testfällen und
+    zwei eigenen für `parseChangelog`/`getNewEntries`; `/changelog` rendert daraus.
+  - `sleep.ts` → **Klasse 1**, eigene Zeile: `tokio::time::sleep` bzw. `select!` gegen den
+    `CancellationToken`.
+  - `deprecation.ts` → **Ausschluss (Klasse 2)**: die einzigen Aufrufer sitzen in
+    `core/extensions/`.
+  - `tool-result-images.ts` und `clankolas.png` → Zeile mit Status `offen (Task 15)`, wie
+    O-12 Punkt 3 sie zuweist.
+  - `client/{index,remote-session,transcript}.ts` → Zeile „übertragen an B (O-12 Punkt 2)",
+    damit sie nicht mehr spurlos sind; die Sektion „B: client layer" gehört dir.
+- **B-15**: die 16 `portiert`-Zeilen in `notagent-session-sqlite` und die vier
+  `Tests portiert`-Zeilen in `notagent-server` stehen auf `verifiziert`, jeweils mit dem
+  Vermerk, welche Suite sie deckt (Sqlite: 71 Tests über adapter/branch_cache/conformance/
+  migrations/repository/search/search_schema/session/sql; Server: die sieben Server-Suiten).
+  Beide Läufe habe ich vor dem Heben ausgeführt, alle grün.
+- **Nebenbei**: der eine unbekannte Ledger-Pfad war ein Tippfehler im Lektüre-Protokoll
+  (`session-info-modified-timestamp.ts` → `.test.ts`).
+- **Stand jetzt**: `scripts/parity-audit.sh --check` meldet **0 Dateien ohne Nachweis** und
+  **0 unbekannte Pfade** (vorher 19 bzw. 1) und läuft mit Exit 0. Die verbleibenden
+  „Ledger < verifiziert" sind eure beiden bekannten Posten (ai-Zeilen bei dir, tui bei A) und
+  meine offenen Task-15-Zeilen.
+- **Status**: umgesetzt (C, 2026-08-16)

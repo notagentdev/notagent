@@ -54,10 +54,10 @@ Gelesen: 24 Dateien, 3 746 LOC — das gesamte Paket inklusive Tests.
 | src/transports/unix/types.ts | 15 | src/transports/unix/types.rs | verifiziert | Klasse 1: `UnixServerOptions` wiederholt die Felder statt sie zu erben |
 | src/transports/unix/preset.ts | 23 | src/transports/unix/preset.rs | verifiziert | — |
 | src/transports/unix/index.ts | 3 | src/transports/unix.rs | verifiziert | — |
-| src/testing/service.ts | 287 | src/testing/service.rs | Tests portiert | Klasse 1: `TestServerService` ist ein `Clone` über gemeinsamen Zustand; Unterklassen der TS-Tests werden zu `HookedService` (Delegation mit optionalen Hooks) |
-| src/testing/client.ts | 147 | src/testing/client.rs | Tests portiert | Klasse 1: `next()` liefert `Option` (None statt Reject, wenn die Verbindung vorher schließt) |
-| src/testing/server.ts | 27 | src/testing/server.rs | Tests portiert | — |
-| src/testing/index.ts | 5 | src/testing.rs | Tests portiert | — |
+| src/testing/service.ts | 287 | src/testing/service.rs | verifiziert | Klasse 1: `TestServerService` ist ein `Clone` über gemeinsamen Zustand; Unterklassen der TS-Tests werden zu `HookedService` (Delegation mit optionalen Hooks). B-15: die Datei ist Testinfrastruktur ohne eigene TS-Suite; sie trägt die portierten Server-Suiten (conformance, listener, protocol, server, sessions, unix, unix_connection), die grün laufen |
+| src/testing/client.ts | 147 | src/testing/client.rs | verifiziert | Klasse 1: `next()` liefert `Option` (None statt Reject, wenn die Verbindung vorher schließt). B-15: die Datei ist Testinfrastruktur ohne eigene TS-Suite; sie trägt die portierten Server-Suiten (conformance, listener, protocol, server, sessions, unix, unix_connection), die grün laufen |
+| src/testing/server.ts | 27 | src/testing/server.rs | verifiziert | B-15: die Datei ist Testinfrastruktur ohne eigene TS-Suite; sie trägt die portierten Server-Suiten (conformance, listener, protocol, server, sessions, unix, unix_connection), die grün laufen |
+| src/testing/index.ts | 5 | src/testing.rs | verifiziert | B-15: die Datei ist Testinfrastruktur ohne eigene TS-Suite; sie trägt die portierten Server-Suiten (conformance, listener, protocol, server, sessions, unix, unix_connection), die grün laufen |
 | test/conformance.test.ts | 378 | tests/conformance.rs | verifiziert | — (14 Tests) |
 | test/sessions.test.ts | 429 | tests/sessions.rs | verifiziert | — (12 Tests) |
 | test/protocol.test.ts | 301 | tests/protocol.rs | verifiziert | „rejects lossy tool input conversions" und „rejects sparse execution data" sind nicht darstellbar (Infinity/bigint/undefined/Zyklen/Array-Löcher); NaN-Timestamp → negativer Timestamp |

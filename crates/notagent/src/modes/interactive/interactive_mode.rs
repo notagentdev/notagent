@@ -44,34 +44,67 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use notagent_agent::types::{AgentEvent, AgentMessage, AgentToolResult};
+use notagent_ai::auth::types::{
+    AuthCheck, AuthEvent, AuthOperationOptions, AuthPrompt, AuthPromptKind, AuthType,
+};
+use notagent_ai::compat::extension_oauth_types::OAuthDeviceCodeInfo;
 use notagent_ai::types::{
-    AssistantMessage, ImageContent, StopReason, TextContent, TextOrImageContent, ToolResultMessage,
-    UserContent, UserMessage,
+    AssistantMessage, ImageContent, Model, StopReason, TextContent, TextOrImageContent,
+    ToolResultMessage, UserContent, UserMessage,
+};
+use notagent_tui::autocomplete::{
+    AutocompleteItem, CombinedAutocompleteProvider, CommandEntry, SlashCommand,
 };
 use notagent_tui::components::markdown::Markdown;
+use notagent_tui::components::scroll_view::{Overscroll, ScrollView, ScrollViewOptions};
 use notagent_tui::components::spacer::Spacer;
+use notagent_tui::components::stack::{StackEntryOptions, StackOptions};
 use notagent_tui::components::text::Text;
 use notagent_tui::components::truncated_text::TruncatedText;
+use notagent_tui::components::v_stack::VStack;
+use notagent_tui::fuzzy::fuzzy_filter;
 use notagent_tui::keybindings::set_keybindings;
+use notagent_tui::layout_node::StackBasis;
 use notagent_tui::terminal::{ProcessTerminal, Terminal, TerminalPump};
 use notagent_tui::tui::{
     Component, ComponentRef, Container, RenderLoop, TuiCore, TuiStopOptions, component_ref,
 };
+use notagent_tui::tui_alt_screen::TuiAltScreen;
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
-use crate::config::{APP_NAME, APP_TITLE, CONFIG_DIR_NAME, VERSION, get_agent_dir};
-use crate::core::agent_session::{
-    AgentSession, AgentSessionEvent, CompactionReason, ExecuteBashOptions, PromptOptions,
-    QueueBehavior, parse_skill_block,
+use crate::config::{
+    APP_NAME, APP_TITLE, CONFIG_DIR_NAME, VERSION, get_agent_dir, get_auth_path, get_docs_path,
 };
-use crate::core::agent_session_runtime::AgentSessionRuntime;
+use crate::core::agent_session::{
+    AgentSession, AgentSessionEvent, CompactionReason, ExecuteBashOptions, NavigateTreeOptions,
+    PromptOptions, QueueBehavior, parse_skill_block,
+};
+use crate::core::agent_session_runtime::{AgentSessionRuntime, ForkPosition};
 use crate::core::bash_executor::BashResult;
+use crate::core::hooks::runtime::{HookReportLevel, HookReporter};
+use crate::core::http_dispatcher::format_http_idle_timeout_ms;
 use crate::core::keybindings::KeybindingsManager;
 use crate::core::messages::create_compaction_summary_message;
-use crate::core::session_manager::{SessionEntry, session_entry_to_context_messages};
-use crate::core::settings_manager::TuiMode;
+use crate::core::model_resolver::{
+    ModelScopeDiagnosticCode, default_model_for_provider, find_exact_model_reference_match,
+    resolve_model_scope_from_models,
+};
+use crate::core::modes::indicator::format_mode_switch_notice;
+use crate::core::permissions::coordinator::ApprovalPresenter;
+use crate::core::permissions::request::{ApprovalAnswer, ApprovalRequest};
+use crate::core::session_manager::{
+    SessionEntry, SessionInfo, SessionManager, session_entry_to_context_messages,
+};
+use crate::core::settings_manager::{DoubleEscapeAction, FullscreenExitOutput, TuiMode};
+use crate::core::slash_commands::BUILTIN_SLASH_COMMANDS;
+use crate::core::source_info::{SourceInfo, SourceScope};
+use crate::core::tasks::manager::TaskManager;
+use crate::core::tasks::types::{TaskInfo, TaskKind, TaskStatus};
+use crate::core::todos::Todo;
 use crate::core::tools::truncate::TruncationResult;
+use crate::core::trust_manager::ProjectTrustStore;
 use crate::core::trust_manager::has_trust_requiring_project_resources;
+use crate::modes::interactive::components::approval_selector::ApprovalSelectorComponent;
 use crate::modes::interactive::components::armin::ArminComponent;
 use crate::modes::interactive::components::assistant_message::AssistantMessageComponent;
 use crate::modes::interactive::components::bash_execution::BashExecutionComponent;
@@ -80,6 +113,7 @@ use crate::modes::interactive::components::branch_summary_message::BranchSummary
 use crate::modes::interactive::components::compaction_summary_message::CompactionSummaryMessageComponent;
 use crate::modes::interactive::components::custom_editor::CustomEditor;
 use crate::modes::interactive::components::custom_message::CustomMessageComponent;
+use crate::modes::interactive::components::daxnuts::DaxnutsComponent;
 use crate::modes::interactive::components::dynamic_border::DynamicBorder;
 use crate::modes::interactive::components::earendil_announcement::EarendilAnnouncementComponent;
 use crate::modes::interactive::components::footer::{FooterComponent, format_tokens};
@@ -87,19 +121,56 @@ use crate::modes::interactive::components::keybinding_hints::{
     key_display_text, key_hint, key_text, raw_key_hint,
 };
 use crate::modes::interactive::components::list_selector::ListSelectorComponent;
+use crate::modes::interactive::components::login_dialog::{LoginCancelled, LoginDialogComponent};
+use crate::modes::interactive::components::model_selector::ModelSelectorComponent;
+use crate::modes::interactive::components::oauth_selector::{
+    AuthSelectorMethod, AuthSelectorMode, AuthSelectorProvider, OAuthSelectorComponent,
+};
+use crate::modes::interactive::components::scoped_models_selector::{
+    ModelsCallbacks, ModelsConfig, RefreshStatusKind, ScopedModelsSelectorComponent,
+};
+use crate::modes::interactive::components::session_selector::{
+    LoadRequest, SessionScope, SessionSelectorComponent, SessionSelectorOptions,
+};
+use crate::modes::interactive::components::settings_selector::{
+    SettingsCallbacks, SettingsConfig, SettingsSelectorComponent,
+};
 use crate::modes::interactive::components::skill_invocation_message::SkillInvocationMessageComponent;
 use crate::modes::interactive::components::status_indicator::{
     CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
 };
+use crate::modes::interactive::components::subagent_panel::SubagentPanel;
+use crate::modes::interactive::components::tasks_browser::{
+    TasksBrowserComponent, TasksBrowserProps, TasksFilter,
+};
+use crate::modes::interactive::components::tasks_panel::{TasksPanel, TasksPanelScope};
 use crate::modes::interactive::components::to_locale_string;
+use crate::modes::interactive::components::todo_list::{
+    TodoListComponent, TodoListMode, TodoVisibility,
+};
 use crate::modes::interactive::components::tool_execution::{
     ToolExecutionComponent, ToolExecutionOptions, ToolExecutionResult,
 };
+use crate::modes::interactive::components::tree_selector::{
+    TreeSelectorComponent, TreeSelectorOptions,
+};
+use crate::modes::interactive::components::trust_selector::{
+    TrustSelection, TrustSelectorComponent, TrustSelectorOptions,
+};
 use crate::modes::interactive::components::user_message::UserMessageComponent;
+use crate::modes::interactive::components::user_message_selector::{
+    UserMessageItem, UserMessageSelectorComponent,
+};
+use crate::modes::interactive::external_editor::{
+    ExternalEditorOptions, ExternalEditorResult, edit_in_external_editor,
+};
+use crate::modes::interactive::model_search::{ModelSearchItem, get_model_search_text};
 use crate::modes::interactive::theme::theme::{
-    ThemeColor, get_editor_theme, get_markdown_theme, on_theme_change, set_registered_themes, theme,
+    ThemeBg, ThemeColor, get_available_themes, get_editor_theme, get_markdown_theme,
+    on_theme_change, set_registered_themes, theme,
 };
 use crate::modes::interactive::theme::theme_controller::InteractiveThemeController;
+use crate::utils::abort::timeout_signal;
 
 // ============================================================================
 // The terminal seam (interface request A-23)
@@ -155,6 +226,111 @@ struct CompactionQueuedMessage {
     mode: CompactionQueueMode,
 }
 
+/// The half of a settings change that only the mode can carry out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SettingsEffect {
+    AutoCompact(bool),
+    ShowImages(bool),
+    ImageWidthCells(u64),
+    RebuildAutocomplete,
+    HttpIdleTimeout(u64),
+    ThinkingLevel,
+    ThemeApplied,
+    HideThinkingBlock(bool),
+    InvalidateChat,
+    RebuildChat,
+    ShowHardwareCursor(bool),
+    EditorPaddingX(u64),
+    OutputPad(u64),
+    AutocompleteMaxVisible(u64),
+    ClearOnShrink(bool),
+    TuiMode(TuiMode),
+}
+
+/// A permission request on its way to the dialog.
+type ApprovalRequestMessage = (
+    ApprovalRequest,
+    tokio::sync::oneshot::Sender<ApprovalAnswer>,
+);
+type ApprovalSender = tokio::sync::mpsc::UnboundedSender<ApprovalRequestMessage>;
+
+/// The `AuthInteraction` the login flow gets: it posts into the loop and waits
+/// for the dialog's answer.
+struct LoopAuthInteraction {
+    tx: tokio::sync::mpsc::UnboundedSender<UiMessage>,
+    signal: tokio_util::sync::CancellationToken,
+}
+
+impl notagent_ai::auth::types::AuthInteraction for LoopAuthInteraction {
+    fn signal(&self) -> Option<tokio_util::sync::CancellationToken> {
+        Some(self.signal.clone())
+    }
+
+    fn prompt(
+        &self,
+        prompt: AuthPrompt,
+    ) -> futures::future::BoxFuture<'_, Result<String, notagent_ai::auth::types::AuthError>> {
+        let tx = self.tx.clone();
+        Box::pin(async move {
+            let (answer_tx, answer_rx) = tokio::sync::oneshot::channel();
+            if tx
+                .send(UiMessage::AuthPrompt {
+                    prompt: Box::new(prompt),
+                    answer: answer_tx,
+                })
+                .is_err()
+            {
+                return Err(notagent_ai::auth::types::AuthError(
+                    "Login cancelled".to_owned(),
+                ));
+            }
+            match answer_rx.await {
+                Ok(Ok(value)) => Ok(value),
+                Ok(Err(message)) => Err(notagent_ai::auth::types::AuthError(message)),
+                Err(_) => Err(notagent_ai::auth::types::AuthError(
+                    "Login cancelled".to_owned(),
+                )),
+            }
+        })
+    }
+
+    fn notify(&self, event: AuthEvent) {
+        let _ = self.tx.send(UiMessage::AuthEvent {
+            event: Box::new(event),
+        });
+    }
+}
+
+/// What the task browser posted into the loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TaskBrowserAction {
+    Select(String),
+    ToggleFilter,
+    Refresh,
+    Output { request: u64, output: String },
+    Stop(String),
+    StopRefused(String),
+    ClearNotice,
+}
+
+/// The state the browser is fed from (`push()` in TypeScript).
+#[derive(Clone)]
+struct TasksBrowserState {
+    filter: TasksFilter,
+    selected_task_id: Option<String>,
+    output: Option<String>,
+    output_loading: bool,
+    notice: Option<String>,
+    notice_until: Option<Instant>,
+    request: u64,
+}
+
+/// The selector that currently sits where the editor is.
+struct ActiveSelector {
+    id: u64,
+    dispose: Option<Box<dyn FnOnce()>>,
+}
+
 /// A bash run the main loop drives, with what its tail needs.
 struct PendingBash {
     command: String,
@@ -169,7 +345,11 @@ enum EscapeTarget {
     Default,
     Compaction,
     Retry,
+    BranchSummary,
 }
+
+/// A session list the selector asked for, and the load itself.
+type RunningSessionLoad = (LoadRequest, Pin<Box<dyn Future<Output = Vec<SessionInfo>>>>);
 
 /// The prompt the main loop currently drives, if any.
 type PromptFuture = Pin<Box<dyn Future<Output = Result<(), String>>>>;
@@ -177,6 +357,10 @@ type PromptFuture = Pin<Box<dyn Future<Output = Result<(), String>>>>;
 /// What [`create_interactive_mode`] hands back: the three pieces a caller needs
 /// to run the mode on its own render loop.
 pub struct InteractiveModeHandle {
+    /// `permissionPresent` — shows the approval dialog and answers the gate.
+    pub approval_presenter: ApprovalPresenter,
+    /// `hookReport` — a hook diagnostic as an error or warning in the transcript.
+    pub report: HookReporter,
     /// The renderer, to be driven with `notagent_tui::tui::run_until`. It stays
     /// valid across a fullscreen switch, which replaces the renderer behind it.
     pub renderer: Box<dyn RenderLoop>,
@@ -206,7 +390,11 @@ pub fn create_interactive_mode(
     };
     let mode = InteractiveMode::new(runtime, options, terminal);
     let renderer = mode.renderer();
+    let approval_presenter = mode.approval_presenter();
+    let report = mode.reporter();
     InteractiveModeHandle {
+        approval_presenter,
+        report,
         renderer: Box::new(renderer),
         pump,
         run: Box::pin(async move {
@@ -227,12 +415,105 @@ pub fn create_interactive_mode(
 /// swapped underneath a caller holding [`InteractiveRenderer`].
 enum ActiveRenderer {
     Main(TuiMainScreen),
+    // Boxed: the alternate screen carries its own frame buffers and dwarfs the
+    // main-screen variant.
+    Alt(Box<TuiAltScreen>),
 }
 
 struct RendererState {
     renderer: ActiveRenderer,
     /// Bumped whenever the renderer is replaced, so a handle notices.
     generation: u64,
+    terminal: SharedTerminal,
+}
+
+/// The terminal, shared between the renderer that has it now and the one a
+/// fullscreen switch replaces it with.
+///
+/// Deviation (class 1): TypeScript reads `previousUi.terminal` and hands the
+/// same object to the next renderer; a `Box<dyn Terminal>` cannot be read out
+/// of the core, so the mode keeps the terminal itself and gives every renderer
+/// a handle onto it.
+#[derive(Clone)]
+struct SharedTerminal(Rc<RefCell<Box<dyn Terminal>>>);
+
+#[async_trait::async_trait(?Send)]
+impl Terminal for SharedTerminal {
+    fn start(
+        &mut self,
+        on_input: notagent_tui::terminal::InputHandler,
+        on_resize: notagent_tui::terminal::ResizeHandler,
+    ) {
+        self.0.borrow_mut().start(on_input, on_resize);
+    }
+
+    fn stop(&mut self) {
+        self.0.borrow_mut().stop();
+    }
+
+    // The drain runs at shutdown, when nothing else touches the terminal; the
+    // borrow is deliberately held across the await, because the inner terminal
+    // owns the stdin lease it drains.
+    #[allow(clippy::await_holding_refcell_ref)]
+    async fn drain_input(&mut self, max_ms: Option<u64>, idle_ms: Option<u64>) {
+        let mut terminal = self.0.borrow_mut();
+        terminal.drain_input(max_ms, idle_ms).await;
+    }
+
+    fn write(&mut self, data: &str) {
+        self.0.borrow_mut().write(data);
+    }
+
+    fn columns(&self) -> usize {
+        self.0.borrow().columns()
+    }
+
+    fn rows(&self) -> usize {
+        self.0.borrow().rows()
+    }
+
+    fn kitty_protocol_active(&self) -> bool {
+        self.0.borrow().kitty_protocol_active()
+    }
+
+    fn move_by(&mut self, lines: isize) {
+        self.0.borrow_mut().move_by(lines);
+    }
+
+    fn hide_cursor(&mut self) {
+        self.0.borrow_mut().hide_cursor();
+    }
+
+    fn show_cursor(&mut self) {
+        self.0.borrow_mut().show_cursor();
+    }
+
+    fn clear_line(&mut self) {
+        self.0.borrow_mut().clear_line();
+    }
+
+    fn clear_from_cursor(&mut self) {
+        self.0.borrow_mut().clear_from_cursor();
+    }
+
+    fn clear_screen(&mut self) {
+        self.0.borrow_mut().clear_screen();
+    }
+
+    fn set_title(&mut self, title: &str) {
+        self.0.borrow_mut().set_title(title);
+    }
+
+    fn set_progress(&mut self, active: bool) {
+        self.0.borrow_mut().set_progress(active);
+    }
+}
+
+fn renderer_mode(renderer: &ActiveRenderer) -> TuiMode {
+    match renderer {
+        ActiveRenderer::Main(_) => TuiMode::Regular,
+        ActiveRenderer::Alt(_) => TuiMode::Fullscreen,
+    }
 }
 
 /// Shared handle on the renderer; the mode holds one, the caller another.
@@ -240,10 +521,11 @@ struct RendererState {
 struct RendererCell(Rc<RefCell<RendererState>>);
 
 impl RendererCell {
-    fn new(renderer: ActiveRenderer) -> Self {
+    fn new(renderer: ActiveRenderer, terminal: SharedTerminal) -> Self {
         Self(Rc::new(RefCell::new(RendererState {
             renderer,
             generation: 0,
+            terminal,
         })))
     }
 
@@ -255,6 +537,7 @@ impl RendererCell {
         let state = self.0.borrow();
         match &state.renderer {
             ActiveRenderer::Main(screen) => screen.core().clone(),
+            ActiveRenderer::Alt(screen) => screen.core().clone(),
         }
     }
 
@@ -262,6 +545,7 @@ impl RendererCell {
         let mut state = self.0.borrow_mut();
         match &mut state.renderer {
             ActiveRenderer::Main(screen) => screen.start(),
+            ActiveRenderer::Alt(screen) => screen.start(),
         }
     }
 
@@ -269,6 +553,7 @@ impl RendererCell {
         let mut state = self.0.borrow_mut();
         match &mut state.renderer {
             ActiveRenderer::Main(screen) => screen.stop(options),
+            ActiveRenderer::Alt(screen) => screen.stop(options),
         }
     }
 
@@ -278,6 +563,7 @@ impl RendererCell {
         let mut state = self.0.borrow_mut();
         match &mut state.renderer {
             ActiveRenderer::Main(screen) => screen.request_render(force),
+            ActiveRenderer::Alt(screen) => screen.request_render(force),
         }
     }
 
@@ -285,14 +571,128 @@ impl RendererCell {
         let mut state = self.0.borrow_mut();
         match &mut state.renderer {
             ActiveRenderer::Main(screen) => screen.render_pending_frame(),
+            ActiveRenderer::Alt(screen) => screen.render_pending_frame(),
         }
     }
 
-    fn mode(&self) -> TuiMode {
-        let state = self.0.borrow();
-        match &state.renderer {
-            ActiveRenderer::Main(_) => TuiMode::Regular,
+    fn render_now(&self, force: bool) {
+        let mut state = self.0.borrow_mut();
+        match &mut state.renderer {
+            ActiveRenderer::Main(screen) => screen.render_now(force),
+            ActiveRenderer::Alt(screen) => screen.render_now(force),
         }
+    }
+
+    /// The fullscreen layout root, which only the alternate screen uses.
+    fn set_layout_root(&self, root: Option<ComponentRef>) {
+        let mut state = self.0.borrow_mut();
+        if let ActiveRenderer::Alt(screen) = &mut state.renderer {
+            screen.set_layout_root(root);
+        }
+    }
+
+    /// `ui.flash(message)` — only the alternate screen has one.
+    fn flash(&self, message: &str) -> bool {
+        let mut state = self.0.borrow_mut();
+        match &mut state.renderer {
+            ActiveRenderer::Main(_) => false,
+            ActiveRenderer::Alt(screen) => {
+                screen.flash(message, None);
+                true
+            }
+        }
+    }
+
+    /// Replace the renderer with one for `mode`, keeping the terminal, the
+    /// children and the focus (`switchTuiMode`).
+    fn switch(&self, mode: TuiMode, log_directory: std::path::PathBuf) -> bool {
+        let mut state = self.0.borrow_mut();
+        if mode == renderer_mode(&state.renderer) {
+            return true;
+        }
+        let core = match &state.renderer {
+            ActiveRenderer::Main(screen) => screen.core().clone(),
+            ActiveRenderer::Alt(screen) => screen.core().clone(),
+        };
+        if core.has_overlay_entries() {
+            return false;
+        }
+
+        let children = core.children();
+        let focus = core.get_focused_component();
+        let show_hardware_cursor = core.get_show_hardware_cursor();
+        let clear_on_shrink = core.get_clear_on_shrink();
+        let main_render_state = match &state.renderer {
+            ActiveRenderer::Main(screen) => Some(screen.capture_render_state()),
+            ActiveRenderer::Alt(_) => None,
+        };
+
+        // The outgoing renderer gives the terminal back without clearing the
+        // screen, so the incoming one can take it over.
+        match &mut state.renderer {
+            ActiveRenderer::Main(screen) => screen.stop(TuiStopOptions {
+                preserve_screen: true,
+            }),
+            ActiveRenderer::Alt(screen) => screen.stop(TuiStopOptions {
+                preserve_screen: true,
+            }),
+        }
+        core.set_focus(None);
+        core.clear();
+        if let ActiveRenderer::Alt(screen) = &mut state.renderer {
+            screen.set_layout_root(None);
+        }
+        let terminal: Box<dyn Terminal> = Box::new(state.terminal.clone());
+
+        state.renderer = match mode {
+            TuiMode::Fullscreen => ActiveRenderer::Alt(Box::new(TuiAltScreen::new(
+                terminal,
+                notagent_tui::tui_alt_screen::TuiAltScreenOptions {
+                    search_match_style: Rc::new(|text: &str| {
+                        theme().bg(
+                            ThemeBg::SearchMatchBg,
+                            &theme().fg(ThemeColor::SearchMatchText, text),
+                        )
+                    }),
+                    search_current_match_style: Rc::new(|text: &str| {
+                        theme().bold(&theme().inverse(&theme().bg(
+                            ThemeBg::SearchMatchBg,
+                            &theme().fg(ThemeColor::SearchMatchText, text),
+                        )))
+                    }),
+                    ..notagent_tui::tui_alt_screen::TuiAltScreenOptions::default()
+                },
+            ))),
+            TuiMode::Regular => {
+                let mut screen = TuiMainScreen::with_options(
+                    terminal,
+                    Some(show_hardware_cursor),
+                    Some(log_directory),
+                );
+                if let Some(render_state) = main_render_state {
+                    screen.restore_render_state(render_state);
+                }
+                ActiveRenderer::Main(screen)
+            }
+        };
+        state.generation += 1;
+
+        let next_core = match &state.renderer {
+            ActiveRenderer::Main(screen) => screen.core().clone(),
+            ActiveRenderer::Alt(screen) => screen.core().clone(),
+        };
+        next_core.set_clear_on_shrink(clear_on_shrink);
+        next_core.set_show_hardware_cursor(show_hardware_cursor);
+        for child in children {
+            next_core.add_child(child);
+        }
+        next_core.invalidate();
+        next_core.set_focus(focus);
+        true
+    }
+
+    fn mode(&self) -> TuiMode {
+        renderer_mode(&self.0.borrow().renderer)
     }
 }
 
@@ -336,6 +736,25 @@ enum AppAction {
     FollowUp,
     /// `app.message.dequeue`.
     Dequeue,
+    Copy,
+    /// `app.clipboard.pasteImage`.
+    PasteImage,
+    CycleMode,
+    CycleThinking,
+    CycleModelForward,
+    CycleModelBackward,
+    SelectModel,
+    ExpandTools,
+    ToggleThinking,
+    ExternalEditor,
+    NewSession,
+    Tree,
+    Fork,
+    Resume,
+    CycleTasksPanel,
+    DetachTasks,
+    /// `app.suspend` — Ctrl+Z.
+    Suspend,
     /// `app.exit` — Ctrl+D on an empty editor.
     Exit,
     /// `app.interrupt` — Escape.
@@ -349,17 +768,138 @@ enum UiMessage {
     Action(AppAction),
     /// A theme file changed on disk (`onThemeChange`).
     ThemeChanged,
+    /// A hook diagnostic.
+    Report {
+        message: String,
+        level: HookReportLevel,
+    },
+    /// A selector reported a choice or a cancellation.
+    ModelSelected {
+        id: u64,
+        // Boxed: `Model` is by far the largest payload here, and clippy asks
+        // that a message enum not carry one variant's size for all of them.
+        model: Box<Model>,
+    },
+    Settings {
+        id: u64,
+        effect: SettingsEffect,
+    },
+    ResumeSession {
+        id: u64,
+        path: String,
+    },
+    TreeNavigate {
+        id: u64,
+        entry_id: String,
+    },
+    TreeLabel {
+        entry_id: String,
+        label: Option<String>,
+    },
+    /// Nothing to do; a side future that only forwarded an answer.
+    Noop,
+    AuthPrompt {
+        prompt: Box<AuthPrompt>,
+        answer: tokio::sync::oneshot::Sender<Result<String, String>>,
+    },
+    AuthEvent {
+        event: Box<AuthEvent>,
+    },
+    RestoreLoginDialog,
+    LoginAuthType {
+        id: u64,
+        auth_type: AuthType,
+        providers: Option<Vec<AuthSelectorProvider>>,
+    },
+    LoginProvider {
+        id: u64,
+        provider: Box<AuthSelectorProvider>,
+    },
+    LogoutProvider {
+        id: u64,
+        provider: Box<AuthSelectorProvider>,
+    },
+    LoginCatalogRefreshed {
+        action_label: String,
+        aborted: bool,
+        failed: bool,
+    },
+    TaskBrowser {
+        id: u64,
+        action: TaskBrowserAction,
+    },
+    ScopedModelsChanged {
+        enabled_ids: Option<Vec<String>>,
+        persist: bool,
+    },
+    ScopedModelsRefreshed {
+        aborted: bool,
+        errors: Vec<String>,
+    },
+    TreeCopy {
+        text: Option<String>,
+    },
+    ForkAt {
+        id: u64,
+        entry_id: String,
+        position: ForkPosition,
+    },
+    TrustDecision {
+        id: u64,
+        selection: TrustSelection,
+    },
+    SelectorCancelled {
+        id: u64,
+    },
 }
 
 // ============================================================================
 // A text component with a collapsed and an expanded form
 // ============================================================================
 
+/// `interface Expandable` (`interactive-mode.ts:182-188`).
+///
+/// TypeScript checks `"setExpanded" in component` on the container's children;
+/// a `dyn Component` cannot be inspected that way, so the mode keeps the
+/// expandable children in their own list (deviation class 1, same set).
+trait Expandable {
+    fn set_expanded(&mut self, expanded: bool);
+}
+
+macro_rules! expandable {
+    ($($component:ty),* $(,)?) => {
+        $(impl Expandable for $component {
+            fn set_expanded(&mut self, expanded: bool) {
+                <$component>::set_expanded(self, expanded);
+            }
+        })*
+    };
+}
+
+expandable!(
+    ToolExecutionComponent,
+    SkillInvocationMessageComponent,
+    CompactionSummaryMessageComponent,
+    BranchSummaryMessageComponent,
+    CustomMessageComponent,
+    BashExecutionComponent,
+);
+
 /// `class ExpandableText extends Text` (`interactive-mode.ts:190-216`).
 struct ExpandableText {
     text: Text,
     collapsed: String,
     expanded: String,
+}
+
+impl Expandable for ExpandableText {
+    fn set_expanded(&mut self, expanded: bool) {
+        self.text.set_text(if expanded {
+            self.expanded.clone()
+        } else {
+            self.collapsed.clone()
+        });
+    }
 }
 
 impl ExpandableText {
@@ -417,7 +957,13 @@ pub struct InteractiveMode {
     pending_messages_container: Rc<RefCell<Container>>,
     status_container: Rc<RefCell<Container>>,
     todo_panel_container: Rc<RefCell<Container>>,
+    todo_panel: Rc<RefCell<TodoListComponent>>,
+    todo_visibility: TodoVisibility,
     tasks_panel_container: Rc<RefCell<Container>>,
+    tasks_panel: Rc<RefCell<TasksPanel>>,
+    tasks_panel_signature: String,
+    subagent_panel: Rc<RefCell<SubagentPanel>>,
+    subagent_panel_signature: String,
     widget_container_above: Rc<RefCell<Container>>,
     editor_container: Rc<RefCell<Container>>,
     widget_container_below: Rc<RefCell<Container>>,
@@ -432,6 +978,8 @@ pub struct InteractiveMode {
     keybindings: Rc<RefCell<KeybindingsManager>>,
     theme_controller: InteractiveThemeController,
     built_in_header: Option<Rc<RefCell<ExpandableText>>>,
+    /// The layout the alternate screen renders (`fullscreenLayoutRoot`).
+    fullscreen_layout_root: Option<ComponentRef>,
 
     version: String,
     is_initialized: bool,
@@ -453,6 +1001,11 @@ pub struct InteractiveMode {
     streaming_message: Option<AssistantMessage>,
     /// `pendingTools` — insertion-ordered like the JavaScript `Map`.
     pending_tools: Vec<(String, Rc<RefCell<ToolExecutionComponent>>)>,
+    /// Every tool row in the transcript, for the settings that reach into them.
+    chat_tool_rows: Vec<Rc<RefCell<ToolExecutionComponent>>>,
+    /// Every expandable child of the transcript (`app.tools.expand`).
+    chat_expandables: Vec<Rc<RefCell<dyn Expandable>>>,
+    last_escape_time: Option<Instant>,
 
     /// The bash row that is filling up, and the run behind it.
     bash_component: Option<Rc<RefCell<BashExecutionComponent>>>,
@@ -466,18 +1019,44 @@ pub struct InteractiveMode {
     compaction_queued_messages: Vec<CompactionQueuedMessage>,
     /// The escape handler the compaction and the retry replace while they run.
     escape_target: EscapeTarget,
+    /// When the panels are refreshed next (`tasksPanelTimer`).
+    next_panel_refresh: Option<Instant>,
+    /// Whether anything could be detached, as of the last panel refresh.
+    has_foreground_tasks: Rc<std::cell::Cell<bool>>,
+    /// Work the loop drives alongside everything else; each future ends in a
+    /// message. TypeScript starts these with `void promise.then(...)` and lets
+    /// the event loop carry them (deviation class 1).
+    side_futures: Vec<Pin<Box<dyn Future<Output = UiMessage>>>>,
+    active_selector: Option<ActiveSelector>,
+    selector_id: u64,
+    /// The session selector while it is open; the loop runs its list loads.
+    session_selector: Option<Rc<RefCell<SessionSelectorComponent>>>,
+    /// The models selector while it is open; its catalog refresh reports back.
+    scoped_models_selector: Option<Rc<RefCell<ScopedModelsSelectorComponent>>>,
+    /// The task browser while it is open, with the state it is fed from.
+    tasks_browser: Option<(Rc<RefCell<TasksBrowserComponent>>, TasksBrowserState)>,
+    /// The login dialog while a flow is running.
+    login_dialog: Option<Rc<RefCell<LoginDialogComponent>>>,
 
     tool_output_expanded: bool,
     hide_thinking_block: bool,
     output_pad: usize,
     is_bash_mode: bool,
 
+    /// `skillCommands` — command name to skill file.
+    skill_commands: Vec<(String, String)>,
+    /// The `fd` binary the file completion uses, once `ensureTool` found it.
+    fd_path: Option<String>,
     /// Prompts waiting for the main loop (`pendingUserInputs`/`getUserInput`).
     pending_user_inputs: VecDeque<String>,
 
     is_shutting_down: bool,
     exit_code: Option<i32>,
 
+    /// Permission requests waiting for the dialog, with the channel the gate
+    /// is blocked on.
+    approval_tx: ApprovalSender,
+    approval_rx: Option<tokio::sync::mpsc::UnboundedReceiver<ApprovalRequestMessage>>,
     ui_tx: tokio::sync::mpsc::UnboundedSender<UiMessage>,
     ui_rx: Option<tokio::sync::mpsc::UnboundedReceiver<UiMessage>>,
     /// The event channel outlives every session: a session switch only swaps
@@ -501,11 +1080,35 @@ impl InteractiveMode {
             .unwrap_or_else(|| settings_manager.get_tui_mode());
         options.tui_mode = Some(tui_mode);
 
-        let cell = RendererCell::new(ActiveRenderer::Main(TuiMainScreen::with_options(
-            terminal,
-            Some(settings_manager.get_show_hardware_cursor()),
-            Some(get_agent_dir()),
-        )));
+        // `createInteractiveTui(options)` — the mode keeps the terminal so a
+        // later fullscreen switch can hand it to the next renderer.
+        let terminal = SharedTerminal(Rc::new(RefCell::new(terminal)));
+        let renderer = match tui_mode {
+            TuiMode::Regular => ActiveRenderer::Main(TuiMainScreen::with_options(
+                Box::new(terminal.clone()),
+                Some(settings_manager.get_show_hardware_cursor()),
+                Some(get_agent_dir()),
+            )),
+            TuiMode::Fullscreen => ActiveRenderer::Alt(Box::new(TuiAltScreen::new(
+                Box::new(terminal.clone()),
+                notagent_tui::tui_alt_screen::TuiAltScreenOptions {
+                    search_match_style: Rc::new(|text: &str| {
+                        theme().bg(
+                            ThemeBg::SearchMatchBg,
+                            &theme().fg(ThemeColor::SearchMatchText, text),
+                        )
+                    }),
+                    search_current_match_style: Rc::new(|text: &str| {
+                        theme().bold(&theme().inverse(&theme().bg(
+                            ThemeBg::SearchMatchBg,
+                            &theme().fg(ThemeColor::SearchMatchText, text),
+                        )))
+                    }),
+                    ..notagent_tui::tui_alt_screen::TuiAltScreenOptions::default()
+                },
+            ))),
+        };
+        let cell = RendererCell::new(renderer, terminal);
         let ui = cell.core();
         ui.set_clear_on_shrink(settings_manager.get_clear_on_shrink());
 
@@ -580,9 +1183,33 @@ impl InteractiveMode {
             Box::new(|| {}),
         );
 
+        // The three panels of the dock; the loop refreshes them on its tick.
+        let tasks_panel = Rc::new(RefCell::new(TasksPanel::new()));
+        let tasks_panel_container = Rc::new(RefCell::new(Container::new()));
+        tasks_panel_container
+            .borrow_mut()
+            .add_child(Rc::clone(&tasks_panel) as ComponentRef);
+        let subagent_panel = Rc::new(RefCell::new(SubagentPanel::new()));
+        let subagent_panel_container = Rc::new(RefCell::new(Container::new()));
+        subagent_panel_container
+            .borrow_mut()
+            .add_child(Rc::clone(&subagent_panel) as ComponentRef);
+        let todo_panel = Rc::new(RefCell::new(TodoListComponent::new(
+            TodoListMode::Status,
+            0,
+        )));
+        let todo_panel_container = Rc::new(RefCell::new(Container::new()));
+        todo_panel_container
+            .borrow_mut()
+            .add_child(Rc::clone(&todo_panel) as ComponentRef);
+        // The delay elapsed and the finished list goes down; the loop reads the
+        // visibility state again on its next tick.
+        let todo_visibility = TodoVisibility::new(Box::new(|| {}), 5000);
+
         let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel();
         let (agent_tx, agent_rx) = tokio::sync::mpsc::unbounded_channel();
         let (bash_tx, bash_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel();
 
         Self {
             runtime,
@@ -595,19 +1222,26 @@ impl InteractiveMode {
             document_container,
             pending_messages_container: Rc::new(RefCell::new(Container::new())),
             status_container: Rc::new(RefCell::new(Container::new())),
-            todo_panel_container: Rc::new(RefCell::new(Container::new())),
-            tasks_panel_container: Rc::new(RefCell::new(Container::new())),
+            todo_panel_container,
+            todo_panel,
+            todo_visibility,
+            tasks_panel_container,
+            tasks_panel,
+            tasks_panel_signature: String::new(),
+            subagent_panel,
+            subagent_panel_signature: String::new(),
             widget_container_above: Rc::new(RefCell::new(Container::new())),
             editor_container,
             widget_container_below: Rc::new(RefCell::new(Container::new())),
             footer_container,
-            subagent_panel_container: Rc::new(RefCell::new(Container::new())),
+            subagent_panel_container,
             editor,
             footer,
             footer_data,
             keybindings,
             theme_controller,
             built_in_header: None,
+            fullscreen_layout_root: None,
             version: VERSION.to_owned(),
             is_initialized: false,
             active_status_indicator: None,
@@ -620,6 +1254,9 @@ impl InteractiveMode {
             streaming_component: None,
             streaming_message: None,
             pending_tools: Vec::new(),
+            chat_tool_rows: Vec::new(),
+            chat_expandables: Vec::new(),
+            last_escape_time: None,
             bash_component: None,
             pending_bash: None,
             pending_bash_components: Vec::new(),
@@ -627,19 +1264,65 @@ impl InteractiveMode {
             bash_rx: Some(bash_rx),
             compaction_queued_messages: Vec::new(),
             escape_target: EscapeTarget::Default,
+            next_panel_refresh: None,
+            has_foreground_tasks: Rc::new(std::cell::Cell::new(false)),
+            side_futures: Vec::new(),
+            active_selector: None,
+            selector_id: 0,
+            session_selector: None,
+            scoped_models_selector: None,
+            tasks_browser: None,
+            login_dialog: None,
             tool_output_expanded: false,
             hide_thinking_block,
             output_pad,
             is_bash_mode: false,
+            skill_commands: Vec::new(),
+            fd_path: None,
             pending_user_inputs: VecDeque::new(),
             is_shutting_down: false,
             exit_code: None,
+            approval_tx,
+            approval_rx: Some(approval_rx),
             ui_tx,
             ui_rx: Some(ui_rx),
             agent_tx,
             agent_rx: Some(agent_rx),
             agent_subscription: None,
         }
+    }
+
+    /// `permissionPresent = (request) => interactiveMode.requestApproval(request)`
+    /// (`main.ts:1021`).
+    ///
+    /// Deviation (class 1): the gate runs wherever the tool call runs and needs
+    /// a `Send` presenter, while the dialog is `!Send`. The presenter therefore
+    /// hands the request to the loop and awaits the answer on a `oneshot`; a
+    /// dropped channel is a denial, exactly as a dismissed dialog is.
+    pub fn approval_presenter(&self) -> ApprovalPresenter {
+        let tx = self.approval_tx.clone();
+        Arc::new(move |request: ApprovalRequest| {
+            let tx = tx.clone();
+            Box::pin(async move {
+                let (answer_tx, answer_rx) = tokio::sync::oneshot::channel();
+                if tx.send((request, answer_tx)).is_err() {
+                    return ApprovalAnswer::Deny;
+                }
+                answer_rx.await.unwrap_or(ApprovalAnswer::Deny)
+            }) as futures::future::BoxFuture<'static, ApprovalAnswer>
+        })
+    }
+
+    /// `hookReport` (`main.ts:1022-1023`) — the reporter posts into the loop,
+    /// because it is called from wherever a hook ran.
+    pub fn reporter(&self) -> HookReporter {
+        let tx = self.ui_tx.clone();
+        Arc::new(move |message: &str, level: HookReportLevel| {
+            let _ = tx.send(UiMessage::Report {
+                message: message.to_owned(),
+                level,
+            });
+        })
     }
 
     /// The renderer handle for the caller's render loop.
@@ -686,10 +1369,14 @@ impl InteractiveMode {
         self.ui
             .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
         self.setup_key_handlers();
+        self.setup_autocomplete_provider();
         self.subscribe_to_agent();
 
         self.cell.start();
         self.is_initialized = true;
+        // `startTasksPanelRefresh()`
+        self.next_panel_refresh = Some(Instant::now());
+        self.refresh_tasks_panel();
 
         self.theme_controller.apply_from_settings().await;
         self.build_header();
@@ -706,11 +1393,71 @@ impl InteractiveMode {
         }));
 
         self.update_terminal_title();
+        self.update_available_provider_count();
     }
 
     /// `mountInteractiveTui` (`interactive-mode.ts:780-786`) with the component
     /// list `init` builds.
     fn mount(&mut self) {
+        // `init()` builds the fullscreen layout: the transcript scrolls, the
+        // dock below it keeps its size (`interactive-mode.ts:875-903`).
+        let transcript = component_ref(ScrollView::new(
+            Rc::clone(&self.document_container) as ComponentRef,
+            ScrollViewOptions {
+                follow_end: true,
+                primary: true,
+                overscroll: Overscroll::Chain,
+                scrollbar: scroll_view_scrollbar(self.settings().get_fullscreen_scrollbar()),
+                scrollbar_style: Rc::new(|text: &str| theme().bg(ThemeBg::ScrollbarThumb, text)),
+                ..ScrollViewOptions::default()
+            },
+        ));
+        let mut dock = VStack::new(StackOptions::default());
+        for (component, min_size) in [
+            (
+                Rc::clone(&self.pending_messages_container) as ComponentRef,
+                0,
+            ),
+            (Rc::clone(&self.status_container) as ComponentRef, 0),
+            (Rc::clone(&self.todo_panel_container) as ComponentRef, 0),
+            (Rc::clone(&self.tasks_panel_container) as ComponentRef, 0),
+            (Rc::clone(&self.widget_container_above) as ComponentRef, 0),
+            (Rc::clone(&self.editor_container) as ComponentRef, 3),
+            (Rc::clone(&self.widget_container_below) as ComponentRef, 0),
+            (Rc::clone(&self.footer_container) as ComponentRef, 1),
+            (Rc::clone(&self.subagent_panel_container) as ComponentRef, 0),
+        ] {
+            dock.add_child_with(
+                component,
+                StackEntryOptions {
+                    shrink: Some(1),
+                    min_size: Some(min_size),
+                    ..StackEntryOptions::default()
+                },
+            );
+        }
+        let mut root = VStack::new(StackOptions::default());
+        root.add_child_with(
+            transcript,
+            StackEntryOptions {
+                basis: Some(StackBasis::Size(0)),
+                grow: Some(1),
+                shrink: Some(1),
+                min_size: Some(1),
+                ..StackEntryOptions::default()
+            },
+        );
+        root.add_child_with(
+            component_ref(dock),
+            StackEntryOptions {
+                grow: Some(0),
+                shrink: Some(1),
+                min_size: Some(1),
+                ..StackEntryOptions::default()
+            },
+        );
+        self.fullscreen_layout_root = Some(component_ref(root));
+
         let children: [ComponentRef; 10] = [
             Rc::clone(&self.document_container) as ComponentRef,
             Rc::clone(&self.pending_messages_container) as ComponentRef,
@@ -726,6 +1473,8 @@ impl InteractiveMode {
         for child in children {
             self.ui.add_child(child);
         }
+        self.cell
+            .set_layout_root(self.fullscreen_layout_root.clone());
         self.show_idle_status();
     }
 
@@ -847,10 +1596,29 @@ impl InteractiveMode {
         editor.on_ctrl_d = Some(Box::new(move || {
             let _ = tx.send(UiMessage::Action(AppAction::Exit));
         }));
+        let tx = self.ui_tx.clone();
+        editor.on_paste_image = Some(Box::new(move || {
+            let _ = tx.send(UiMessage::Action(AppAction::PasteImage));
+        }));
         for (action, message) in [
             ("app.clear", AppAction::Clear),
             ("app.message.followUp", AppAction::FollowUp),
             ("app.message.dequeue", AppAction::Dequeue),
+            ("app.message.copy", AppAction::Copy),
+            ("app.mode.cycle", AppAction::CycleMode),
+            ("app.thinking.cycle", AppAction::CycleThinking),
+            ("app.model.cycleForward", AppAction::CycleModelForward),
+            ("app.model.cycleBackward", AppAction::CycleModelBackward),
+            ("app.model.select", AppAction::SelectModel),
+            ("app.tools.expand", AppAction::ExpandTools),
+            ("app.thinking.toggle", AppAction::ToggleThinking),
+            ("app.editor.external", AppAction::ExternalEditor),
+            ("app.session.new", AppAction::NewSession),
+            ("app.session.tree", AppAction::Tree),
+            ("app.session.fork", AppAction::Fork),
+            ("app.session.resume", AppAction::Resume),
+            ("app.tasks.cycle", AppAction::CycleTasksPanel),
+            ("app.suspend", AppAction::Suspend),
         ] {
             let tx = self.ui_tx.clone();
             editor.on_action(
@@ -861,6 +1629,22 @@ impl InteractiveMode {
                 }),
             );
         }
+        // `app.tasks.detach` is the only action that can decline the key: it
+        // shares the cursor-left binding, and taking that away from someone who
+        // was only editing text would be a poor trade. The flag is what the
+        // panel refresh saw last.
+        let tx = self.ui_tx.clone();
+        let has_foreground_tasks = Rc::clone(&self.has_foreground_tasks);
+        editor.on_action(
+            "app.tasks.detach",
+            Box::new(move || {
+                if !has_foreground_tasks.get() {
+                    return false;
+                }
+                let _ = tx.send(UiMessage::Action(AppAction::DetachTasks));
+                true
+            }),
+        );
         drop(editor);
 
         // The wake-up for everything the editor records instead of calling back:
@@ -897,12 +1681,15 @@ impl InteractiveMode {
         self.apply_runtime_settings();
         self.render_current_session_state();
         self.subscribe_to_agent();
+        self.update_available_provider_count();
         self.update_editor_border_color();
         self.update_terminal_title();
     }
 
     /// `renderCurrentSessionState` (`interactive-mode.ts:1970-1985`).
     fn render_current_session_state(&mut self) {
+        // The list belonged to the session being replaced.
+        self.clear_todo_panel();
         self.loaded_resources_container.borrow_mut().clear();
         self.chat_container.borrow_mut().clear();
         self.pending_messages_container.borrow_mut().clear();
@@ -950,7 +1737,11 @@ impl InteractiveMode {
         let mut ui_rx = self.ui_rx.take().expect("run called once");
         let mut agent_rx = self.agent_rx.take().expect("init subscribed");
         let mut bash_rx = self.bash_rx.take().expect("run called once");
+        let mut approval_rx = self.approval_rx.take().expect("run called once");
         let mut prompt: Option<PromptFuture> = None;
+        let mut session_load: Option<RunningSessionLoad> = None;
+        let mut side: futures::stream::FuturesUnordered<Pin<Box<dyn Future<Output = UiMessage>>>> =
+            futures::stream::FuturesUnordered::new();
 
         loop {
             if let Some(code) = self.exit_code {
@@ -974,6 +1765,44 @@ impl InteractiveMode {
                 }));
             }
 
+            for future in std::mem::take(&mut self.side_futures) {
+                side.push(future);
+            }
+            let side_pending = !side.is_empty();
+
+            // The session selector asks for its lists; the loop runs them, so
+            // the list keeps rendering while a scope loads.
+            if session_load.is_none()
+                && let Some(selector) = self.session_selector.clone()
+                && let Some(request) = selector.borrow_mut().take_pending_load()
+            {
+                let session = self.session();
+                let (cwd, session_dir, uses_default_dir) =
+                    session.with_session_manager(|manager| {
+                        (
+                            manager.get_cwd().to_owned(),
+                            manager.get_session_dir().to_owned(),
+                            manager.uses_default_session_dir(),
+                        )
+                    });
+                let scope = request.scope;
+                session_load = Some((
+                    request,
+                    Box::pin(async move {
+                        match scope {
+                            SessionScope::Current => {
+                                SessionManager::list(&cwd, Some(&session_dir), None).await
+                            }
+                            SessionScope::All => {
+                                let directory = (!uses_default_dir).then_some(session_dir.as_str());
+                                SessionManager::list_all(directory, None).await
+                            }
+                        }
+                    }) as Pin<Box<dyn Future<Output = Vec<SessionInfo>>>>,
+                ));
+            }
+            let load_pending = session_load.is_some();
+
             let mut bash = self.pending_bash.take();
             let deadline = self.next_deadline();
             let outcome = tokio::select! {
@@ -996,6 +1825,32 @@ impl InteractiveMode {
                         None => std::future::pending().await,
                     }
                 } => bash.take().map(|bash| (bash, result)),
+                request = approval_rx.recv() => {
+                    if let Some((request, answer)) = request {
+                        self.show_approval_selector(request, answer);
+                    }
+                    None
+                }
+                sessions = async {
+                    let (_, load) = session_load.as_mut().expect("guarded by load_pending");
+                    load.await
+                }, if load_pending => {
+                    let (request, _) = session_load.take().expect("guarded by load_pending");
+                    if let Some(selector) = self.session_selector.clone() {
+                        selector.borrow_mut().apply_load_result(request, Ok(sessions));
+                        self.ui.request_render();
+                    }
+                    None
+                }
+                message = async {
+                    use futures::StreamExt;
+                    side.next().await
+                }, if side_pending => {
+                    if let Some(message) = message {
+                        self.handle_ui_message(message).await;
+                    }
+                    None
+                }
                 chunk = bash_rx.recv() => {
                     // `executeBash`'s chunk callback: the row grows while the
                     // command runs.
@@ -1045,7 +1900,18 @@ impl InteractiveMode {
     /// TypeScript lets `setInterval` inside the loader drive the spinner; the
     /// port drives every time seam from the loop (interface request A-23).
     fn next_deadline(&self) -> Option<Instant> {
-        let mut deadline: Option<Instant> = None;
+        // `startTasksPanelRefresh` — the one-second interval of the panels.
+        let mut deadline: Option<Instant> = self.next_panel_refresh;
+        if let Some(notice) = self
+            .tasks_browser
+            .as_ref()
+            .and_then(|(_, state)| state.notice_until)
+        {
+            deadline = Some(deadline.map_or(notice, |current: Instant| current.min(notice)));
+        }
+        if let Some(hide) = self.todo_visibility.hide_deadline() {
+            deadline = Some(deadline.map_or(hide, |current: Instant| current.min(hide)));
+        }
         if let Some(indicator) = self.active_status_indicator.as_ref() {
             let mut indicator = indicator.borrow_mut();
             for candidate in [indicator.loader_mut().next_frame_deadline()]
@@ -1068,6 +1934,29 @@ impl InteractiveMode {
 
     /// One pass over everything a deadline was due for.
     fn tick(&mut self) {
+        if self
+            .next_panel_refresh
+            .is_none_or(|deadline| deadline <= Instant::now())
+        {
+            self.next_panel_refresh = Some(Instant::now() + Duration::from_secs(1));
+            self.refresh_tasks_panel();
+            // `poll = setInterval(push, 1000)` of the task browser.
+            if let Some(id) = self.active_selector.as_ref().map(|active| active.id)
+                && self.tasks_browser.is_some()
+            {
+                self.push_tasks_browser(id);
+            }
+        }
+        // The browser's notice fades after 2.5 seconds.
+        if let Some(id) = self.active_selector.as_ref().map(|active| active.id)
+            && self
+                .tasks_browser
+                .as_ref()
+                .and_then(|(_, state)| state.notice_until)
+                .is_some_and(|until| until <= Instant::now())
+        {
+            self.handle_task_browser_action(id, TaskBrowserAction::ClearNotice);
+        }
         let mut needs_render = false;
         if let Some(indicator) = self.active_status_indicator.clone() {
             let mut indicator = indicator.borrow_mut();
@@ -1099,7 +1988,140 @@ impl InteractiveMode {
             UiMessage::Action(AppAction::Exit) => self.handle_ctrl_d().await,
             UiMessage::Action(AppAction::FollowUp) => self.handle_follow_up().await,
             UiMessage::Action(AppAction::Dequeue) => self.handle_dequeue(),
+            UiMessage::Action(AppAction::Copy) => self.handle_copy_command(true),
+            UiMessage::Action(AppAction::PasteImage) => self.handle_clipboard_paste(),
+            UiMessage::Action(AppAction::CycleMode) => self.cycle_operating_mode(),
+            UiMessage::Action(AppAction::CycleThinking) => self.cycle_thinking_level(),
+            UiMessage::Action(AppAction::CycleModelForward) => self.cycle_model(true),
+            UiMessage::Action(AppAction::CycleModelBackward) => self.cycle_model(false),
+            UiMessage::Action(AppAction::SelectModel) => self.show_model_selector(None),
+            UiMessage::Action(AppAction::ExpandTools) => self.toggle_tool_output_expansion(),
+            UiMessage::Action(AppAction::ToggleThinking) => self.toggle_thinking_block_visibility(),
+            UiMessage::Action(AppAction::ExternalEditor) => self.handle_open_external_editor(),
+            UiMessage::Action(AppAction::NewSession) => self.handle_clear_command().await,
+            UiMessage::Action(AppAction::Tree) => self.show_tree_selector(None),
+            UiMessage::Action(AppAction::Fork) => self.show_user_message_selector(),
+            UiMessage::Action(AppAction::Resume) => self.show_session_selector(),
+            UiMessage::Action(AppAction::CycleTasksPanel) => self.cycle_tasks_panel(),
+            UiMessage::Action(AppAction::Suspend) => self.handle_ctrl_z(),
+            UiMessage::Action(AppAction::DetachTasks) => {
+                self.detach_foreground_tasks();
+            }
             UiMessage::Action(AppAction::Escape) => self.handle_escape(),
+            UiMessage::Settings { id, effect } => {
+                let _ = id;
+                self.apply_settings_effect(effect).await;
+            }
+            UiMessage::ModelSelected { id, model } => {
+                self.close_selector(id);
+                self.apply_selected_model(*model).await;
+            }
+            UiMessage::ForkAt {
+                id,
+                entry_id,
+                position,
+            } => {
+                self.close_selector(id);
+                self.fork_session(&entry_id, position).await;
+            }
+            UiMessage::ResumeSession { id, path } => {
+                self.close_selector(id);
+                self.handle_resume_session(&path).await;
+            }
+            UiMessage::TreeNavigate { id, entry_id } => {
+                self.close_selector(id);
+                self.navigate_tree(&entry_id).await;
+            }
+            UiMessage::TreeLabel { entry_id, label } => {
+                self.session().with_session_manager(|manager| {
+                    let _ = manager.append_label_change(&entry_id, label.as_deref());
+                });
+                self.ui.request_render();
+            }
+            UiMessage::Noop => {}
+            UiMessage::AuthPrompt { prompt, answer } => self.handle_auth_prompt(*prompt, answer),
+            UiMessage::AuthEvent { event } => self.handle_auth_event(*event),
+            UiMessage::RestoreLoginDialog => {
+                if let Some(dialog) = self.login_dialog.clone() {
+                    let mut container = self.editor_container.borrow_mut();
+                    container.clear();
+                    container.add_child(Rc::clone(&dialog) as ComponentRef);
+                    drop(container);
+                    self.ui.set_focus(Some(Rc::clone(&dialog) as ComponentRef));
+                    self.ui.request_render();
+                }
+            }
+            UiMessage::LoginAuthType {
+                id,
+                auth_type,
+                providers,
+            } => {
+                self.close_selector(id);
+                match providers {
+                    Some(providers) => {
+                        if let Some(provider) = providers
+                            .into_iter()
+                            .find(|provider| provider.auth_type == auth_type)
+                        {
+                            self.start_provider_login(provider).await;
+                        }
+                    }
+                    None => self.show_login_provider_selector(Some(auth_type), None),
+                }
+            }
+            UiMessage::LoginProvider { id, provider } => {
+                self.close_selector(id);
+                self.start_provider_login(*provider).await;
+            }
+            UiMessage::LogoutProvider { id, provider } => {
+                self.close_selector(id);
+                self.logout_provider(*provider).await;
+            }
+            UiMessage::LoginCatalogRefreshed {
+                action_label,
+                aborted,
+                failed,
+            } => {
+                if aborted {
+                    self.show_warning(&format!(
+                        "{action_label}, but its model catalog refresh timed out; using cached models."
+                    ));
+                } else if failed {
+                    self.show_warning(&format!(
+                        "{action_label}, but its model catalog could not be refreshed; using cached models."
+                    ));
+                }
+                self.update_available_provider_count();
+                self.footer.borrow_mut().invalidate();
+                self.ui.request_render();
+            }
+            UiMessage::TaskBrowser { id, action } => self.handle_task_browser_action(id, action),
+            UiMessage::ScopedModelsChanged {
+                enabled_ids,
+                persist,
+            } => self.apply_scoped_models(enabled_ids, persist),
+            UiMessage::ScopedModelsRefreshed { aborted, errors } => {
+                self.apply_scoped_models_refresh(aborted, errors)
+            }
+            UiMessage::TreeCopy { text } => match text {
+                None => self.show_error("Selected entry has no text to copy"),
+                Some(text) => match crate::utils::clipboard::copy_to_clipboard(&text) {
+                    Ok(()) => self.show_status("Copied selected message to clipboard"),
+                    Err(message) => self.show_error(&message),
+                },
+            },
+            UiMessage::TrustDecision { id, selection } => {
+                self.close_selector(id);
+                self.apply_trust_decision(selection);
+            }
+            UiMessage::SelectorCancelled { id } => {
+                self.close_selector(id);
+                self.ui.request_render();
+            }
+            UiMessage::Report { message, level } => match level {
+                HookReportLevel::Error => self.show_error(&message),
+                _ => self.show_warning(&message),
+            },
             UiMessage::ThemeChanged => {
                 self.ui.invalidate();
                 self.update_editor_border_color();
@@ -1194,6 +2216,2320 @@ impl InteractiveMode {
         self.flush_pending_bash_components();
         self.pending_user_inputs.push_back(text.clone());
         self.editor.borrow_mut().editor_mut().add_to_history(&text);
+    }
+
+    // ------------------------------------------------------------------
+    // Panels
+    // ------------------------------------------------------------------
+
+    /// `refreshTasksPanel()` (`interactive-mode.ts:2822-2843`) together with
+    /// `refreshSubagentPanel` — driven by the loop's one-second tick instead of
+    /// `setInterval`.
+    fn refresh_tasks_panel(&mut self) {
+        let manager = self.session().task_manager();
+        let all_tasks = manager
+            .as_ref()
+            .map(|manager| manager.list(true, None))
+            .unwrap_or_default();
+        self.refresh_subagent_panel(&all_tasks);
+
+        self.has_foreground_tasks.set(
+            all_tasks
+                .iter()
+                .any(|info| info.base().detached == Some(false)),
+        );
+        let scope = self.tasks_panel.borrow().get_scope();
+        let tasks = match (&manager, scope) {
+            (Some(_), TasksPanelScope::Hidden) | (None, _) => Vec::new(),
+            (Some(manager), scope) => manager.list(scope == TasksPanelScope::Running, None),
+        };
+        // Elapsed time is deliberately left out of the signature: it changes
+        // every second for every running task.
+        let signature = tasks
+            .iter()
+            .map(|info| {
+                format!(
+                    "{}:{}:{}",
+                    info.task_id(),
+                    info.status().as_str(),
+                    info.description()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("|");
+        self.tasks_panel.borrow_mut().set_tasks(tasks);
+        if signature == self.tasks_panel_signature {
+            return;
+        }
+        self.tasks_panel_signature = signature;
+        self.ui.request_render();
+    }
+
+    /// `refreshSubagentPanel(tasks)` (`interactive-mode.ts:2845-2859`).
+    fn refresh_subagent_panel(&mut self, tasks: &[TaskInfo]) {
+        let running: Vec<&TaskInfo> = tasks
+            .iter()
+            .filter(|info| {
+                info.kind() == TaskKind::Subagent && info.status() == TaskStatus::Running
+            })
+            .collect();
+        let signature = running
+            .iter()
+            .map(|info| info.task_id().to_owned())
+            .collect::<Vec<_>>()
+            .join("|");
+        self.subagent_panel.borrow_mut().set_tasks(tasks.to_vec());
+        if running.is_empty() && signature == self.subagent_panel_signature {
+            return;
+        }
+        self.subagent_panel_signature = signature;
+        self.ui.request_render();
+    }
+
+    /// `syncTodoPanel(todos, fromToolCall)` (`interactive-mode.ts:2810-2815`).
+    fn sync_todo_panel(&mut self, todos: Vec<Todo>, from_tool_call: bool) {
+        self.todo_visibility.update(todos, from_tool_call);
+        let rows = self.ui.rows();
+        let visible = if self.todo_visibility.visible() {
+            self.todo_visibility.current().to_vec()
+        } else {
+            Vec::new()
+        };
+        let mut panel = self.todo_panel.borrow_mut();
+        panel.set_terminal_rows(rows);
+        panel.set_todos(visible);
+    }
+
+    /// `clearTodoPanel()` (`interactive-mode.ts:2817-2820`).
+    fn clear_todo_panel(&mut self) {
+        self.todo_visibility.reset();
+        self.todo_panel.borrow_mut().set_todos(Vec::new());
+    }
+
+    /// `cycleTasksPanel()` (`interactive-mode.ts:2979-2984`).
+    fn cycle_tasks_panel(&mut self) {
+        self.tasks_panel.borrow_mut().cycle_scope();
+        self.tasks_panel_signature = String::new();
+        self.refresh_tasks_panel();
+        self.ui.request_render();
+    }
+
+    /// `detachForegroundTasks()` (`interactive-mode.ts:2993-3001`).
+    ///
+    /// Returns `false` when there is nothing to move, so the key falls through
+    /// to the editor — it is also the cursor-left binding.
+    fn detach_foreground_tasks(&mut self) -> bool {
+        let Some(manager) = self.session().task_manager() else {
+            return false;
+        };
+        let running: Vec<String> = manager
+            .list(true, None)
+            .into_iter()
+            .filter(|info| info.base().detached == Some(false))
+            .map(|info| info.task_id().to_owned())
+            .collect();
+        if running.is_empty() {
+            return false;
+        }
+        for task_id in running {
+            manager.detach(&task_id);
+        }
+        self.refresh_tasks_panel();
+        true
+    }
+
+    // ------------------------------------------------------------------
+    // Key actions
+    // ------------------------------------------------------------------
+
+    /// `cycleOperatingMode()` (`interactive-mode.ts:4260-4268`).
+    fn cycle_operating_mode(&mut self) {
+        let Some(mode) = self.session().cycle_mode() else {
+            self.show_status("No operating modes available");
+            return;
+        };
+        self.footer.borrow_mut().invalidate();
+        let notice = format_mode_switch_notice(
+            &mode.id,
+            mode.shell,
+            self.session().active_mode_injected_tokens(),
+        );
+        self.show_status(&notice);
+    }
+
+    /// `cycleThinkingLevel()` (`interactive-mode.ts:4270-4279`).
+    fn cycle_thinking_level(&mut self) {
+        match self.session().cycle_thinking_level() {
+            None => self.show_status("Current model does not support thinking"),
+            Some(level) => {
+                self.footer.borrow_mut().invalidate();
+                self.update_editor_border_color();
+                self.show_status(&format!("Thinking level: {}", thinking_level_name(level)));
+            }
+        }
+    }
+
+    /// `cycleModel(direction)` (`interactive-mode.ts:4281-4298`).
+    fn cycle_model(&mut self, forward: bool) {
+        match self.session().cycle_model(forward) {
+            None => {
+                let message = if self.session().scoped_models().is_empty() {
+                    "Only one model available"
+                } else {
+                    "Only one model in scope"
+                };
+                self.show_status(message);
+            }
+            Some(result) => {
+                self.footer.borrow_mut().invalidate();
+                self.update_editor_border_color();
+                let thinking = if result.model.reasoning
+                    && result.thinking_level != notagent_agent::types::ThinkingLevel::Off
+                {
+                    format!(
+                        " (thinking: {})",
+                        thinking_level_name(result.thinking_level)
+                    )
+                } else {
+                    String::new()
+                };
+                let name = if result.model.name.is_empty() {
+                    result.model.id.clone()
+                } else {
+                    result.model.name.clone()
+                };
+                self.show_status(&format!("Switched to {name}{thinking}"));
+                self.check_daxnuts_easter_egg(&result.model);
+            }
+        }
+    }
+
+    /// `toggleToolOutputExpansion()`/`setToolsExpanded(expanded)`
+    /// (`interactive-mode.ts:4300-4320`).
+    fn toggle_tool_output_expansion(&mut self) {
+        let expanded = !self.tool_output_expanded;
+        self.tool_output_expanded = expanded;
+        if let Some(header) = self.built_in_header.clone() {
+            header.borrow_mut().set_expanded(expanded);
+        }
+        for component in self.chat_expandables.iter() {
+            component.borrow_mut().set_expanded(expanded);
+        }
+        self.show_status(&format!(
+            "Tool output: {}",
+            if expanded { "expanded" } else { "collapsed" }
+        ));
+    }
+
+    /// `toggleThinkingBlockVisibility()` (`interactive-mode.ts:4322-4338`).
+    fn toggle_thinking_block_visibility(&mut self) {
+        self.hide_thinking_block = !self.hide_thinking_block;
+        self.settings()
+            .set_hide_thinking_block(self.hide_thinking_block);
+        self.rebuild_chat_from_messages();
+        if let (Some(component), Some(message)) = (
+            self.streaming_component.clone(),
+            self.streaming_message.clone(),
+        ) {
+            {
+                let mut component = component.borrow_mut();
+                component.set_hide_thinking_block(self.hide_thinking_block);
+                component.update_content(message, None);
+            }
+            self.chat_container
+                .borrow_mut()
+                .add_child(Rc::clone(&component) as ComponentRef);
+        }
+        self.show_status(&format!(
+            "Thinking blocks: {}",
+            if self.hide_thinking_block {
+                "hidden"
+            } else {
+                "visible"
+            }
+        ));
+    }
+
+    /// `handleOpenExternalEditor()` (`interactive-mode.ts:4340-4360`).
+    ///
+    /// The editor runs while the TUI is stopped, exactly as in TypeScript; the
+    /// caller's render loop finds the screen back up afterwards.
+    fn handle_open_external_editor(&mut self) {
+        let command = self.settings().get_external_editor_command();
+        let content = self.editor.borrow().editor().get_expanded_text();
+        self.cell.stop(TuiStopOptions::default());
+        let result = edit_in_external_editor(&ExternalEditorOptions { command, content });
+        if let ExternalEditorResult::Complete(content) = result {
+            self.editor.borrow_mut().editor_mut().set_text(&content);
+        }
+        self.cell.start();
+        self.cell.request_render(true);
+    }
+
+    /// The double-escape branch of `setupKeyHandlers`
+    /// (`interactive-mode.ts:3018-3032`).
+    fn handle_double_escape(&mut self) {
+        let action = self.settings().get_double_escape_action();
+        if action == DoubleEscapeAction::None {
+            return;
+        }
+        let now = Instant::now();
+        match self.last_escape_time {
+            Some(last) if now.duration_since(last) < Duration::from_millis(500) => {
+                self.last_escape_time = None;
+                match action {
+                    DoubleEscapeAction::Tree => self.show_tree_selector(None),
+                    _ => self.show_user_message_selector(),
+                }
+            }
+            _ => self.last_escape_time = Some(now),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Selectors
+    // ------------------------------------------------------------------
+
+    /// `showSelector(create)` (`interactive-mode.ts:4623-4646`).
+    ///
+    /// The selector takes the editor's place; `done` — here
+    /// [`Self::close_selector`] with the id the selector was opened under —
+    /// puts the editor back. The id is the port's counterpart of the TypeScript
+    /// token: a message from a selector that has already been replaced must not
+    /// close its successor.
+    fn show_selector(
+        &mut self,
+        component: ComponentRef,
+        focus: ComponentRef,
+        dispose: Option<Box<dyn FnOnce()>>,
+    ) -> u64 {
+        self.dispose_active_selector();
+        self.selector_id += 1;
+        let id = self.selector_id;
+        self.active_selector = Some(ActiveSelector { id, dispose });
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(component);
+        }
+        self.ui.set_focus(Some(focus));
+        self.ui.request_render();
+        id
+    }
+
+    /// `disposeActiveSelector` (`interactive-mode.ts:4612-4617`).
+    fn dispose_active_selector(&mut self) {
+        if let Some(selector) = self.active_selector.take()
+            && let Some(dispose) = selector.dispose
+        {
+            dispose();
+        }
+    }
+
+    /// The `done` callback of `showSelector`.
+    fn close_selector(&mut self, id: u64) {
+        if self
+            .active_selector
+            .as_ref()
+            .is_none_or(|active| active.id != id)
+        {
+            return;
+        }
+        self.dispose_active_selector();
+        self.session_selector = None;
+        self.scoped_models_selector = None;
+        if let Some((browser, _)) = self.tasks_browser.take() {
+            browser.borrow_mut().dispose();
+        }
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(Rc::clone(&self.editor) as ComponentRef);
+        }
+        self.ui
+            .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
+        self.ui.request_render();
+    }
+
+    /// `showModelSelector(initialSearchInput)` (`interactive-mode.ts:5025-5055`).
+    fn show_model_selector(&mut self, initial_search_input: Option<&str>) {
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let selector = Rc::new(RefCell::new(ModelSelectorComponent::new(
+            {
+                let core = self.ui.clone();
+                Rc::new(move || core.request_render())
+            },
+            self.session().model(),
+            self.settings(),
+            Arc::clone(&self.runtime.services().model_runtime),
+            // The two `ScopedModel` types are structurally identical; the
+            // selector takes the one of `model_resolver`, the session hands out
+            // its own (deviation class 1, a naming split of the port).
+            self.session()
+                .scoped_models()
+                .into_iter()
+                .map(|scoped| crate::core::model_resolver::ScopedModel {
+                    model: scoped.model,
+                    thinking_level: scoped.thinking_level,
+                })
+                .collect(),
+            Box::new(move |model| {
+                let _ = select_tx.send(UiMessage::ModelSelected {
+                    id,
+                    model: Box::new(model),
+                });
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            initial_search_input,
+        )));
+        let dispose_target = Rc::clone(&selector);
+        self.show_selector(
+            Rc::clone(&selector) as ComponentRef,
+            Rc::clone(&selector) as ComponentRef,
+            Some(Box::new(move || dispose_target.borrow_mut().dispose())),
+        );
+    }
+
+    /// The `onSelect` half of the model selector and of `/model <term>`.
+    async fn apply_selected_model(&mut self, model: Model) {
+        match self.session().set_model(model.clone()).await {
+            Ok(()) => {
+                self.footer.borrow_mut().invalidate();
+                self.update_editor_border_color();
+                self.show_status(&format!("Model: {}", model.id));
+                self.check_daxnuts_easter_egg(&model);
+            }
+            Err(message) => self.show_error(&message),
+        }
+    }
+
+    /// `handleModelCommand(searchTerm)` (`interactive-mode.ts:4857-4879`).
+    async fn handle_model_command(&mut self, search_term: Option<&str>) {
+        let Some(search_term) = search_term else {
+            self.show_model_selector(None);
+            return;
+        };
+        if let Some(model) = self.find_exact_model_match(search_term).await {
+            self.apply_selected_model(model).await;
+            return;
+        }
+        self.show_model_selector(Some(search_term));
+    }
+
+    /// `findExactModelMatch(searchTerm)` (`interactive-mode.ts:4881-4914`).
+    async fn find_exact_model_match(&mut self, search_term: &str) -> Option<Model> {
+        let session = self.session();
+        let scoped = session.scoped_models();
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let cached_models: Vec<Model> = if scoped.is_empty() {
+            model_runtime.get_available_snapshot()
+        } else {
+            scoped.iter().map(|scoped| scoped.model.clone()).collect()
+        };
+        let cached_match = find_exact_model_reference_match(search_term, &cached_models);
+        if cached_match.is_some() || !scoped.is_empty() {
+            return cached_match;
+        }
+
+        self.show_status("Refreshing model catalogs…");
+        let signal = timeout_signal(15_000);
+        let result = model_runtime
+            .refresh(notagent_ai::models::ModelsRefreshOptions {
+                signal: Some(signal.clone()),
+                ..notagent_ai::models::ModelsRefreshOptions::default()
+            })
+            .await;
+        if result.aborted {
+            self.show_warning("Model refresh timed out; searching cached models.");
+        } else if !result.errors.is_empty() {
+            self.show_warning(&format!(
+                "Could not refresh {}; searching cached models.",
+                result.errors.keys().cloned().collect::<Vec<_>>().join(", ")
+            ));
+        }
+        find_exact_model_reference_match(search_term, &model_runtime.get_available_snapshot())
+    }
+
+    /// `checkDaxnutsEasterEgg(model)` (`interactive-mode.ts:6565-6569`).
+    fn check_daxnuts_easter_egg(&mut self, model: &Model) {
+        if model.provider == "opencode" && model.id.to_lowercase().contains("kimi-k2.5") {
+            let mut chat = self.chat_container.borrow_mut();
+            chat.add_child(component_ref(Spacer::new(1)));
+            chat.add_child(component_ref(DaxnutsComponent::new()));
+            drop(chat);
+            self.ui.request_render();
+        }
+    }
+
+    /// `updateAvailableProviderCount` (`interactive-mode.ts:4916-4923`).
+    fn update_available_provider_count(&self) {
+        let session = self.session();
+        let scoped = session.scoped_models();
+        let models: Vec<Model> = if scoped.is_empty() {
+            self.runtime
+                .services()
+                .model_runtime
+                .get_available_snapshot()
+        } else {
+            scoped.iter().map(|scoped| scoped.model.clone()).collect()
+        };
+        let providers: std::collections::BTreeSet<String> =
+            models.into_iter().map(|model| model.provider).collect();
+        self.footer_data
+            .set_available_provider_count(providers.len() as u64);
+    }
+
+    /// `showSettingsSelector()` (`interactive-mode.ts:4648-4855`).
+    ///
+    /// Deviation (class 1): the callbacks that only write a setting do so
+    /// directly — the settings manager is shared and needs no loop. The ones
+    /// that also change mode state (images in the transcript, thinking blocks,
+    /// padding, the TUI mode, the theme) post an effect into the loop, where
+    /// `&mut self` is available.
+    fn show_settings_selector(&mut self) {
+        let id = self.selector_id + 1;
+        let settings = self.settings();
+        let session = self.session();
+        fn effect(
+            tx: &tokio::sync::mpsc::UnboundedSender<UiMessage>,
+            id: u64,
+            effect: SettingsEffect,
+        ) {
+            let _ = tx.send(UiMessage::Settings { id, effect });
+        }
+
+        let config = SettingsConfig {
+            auto_compact: session.auto_compaction_enabled(),
+            show_images: settings.get_show_images(),
+            image_width_cells: settings.get_image_width_cells(),
+            auto_resize_images: settings.get_image_auto_resize(),
+            block_images: settings.get_block_images(),
+            enable_skill_commands: settings.get_enable_skill_commands(),
+            steering_mode: settings_queue_mode(session.steering_mode()),
+            follow_up_mode: settings_queue_mode(session.follow_up_mode()),
+            transport: parse_transport(&settings.get_transport()),
+            http_idle_timeout_ms: settings.get_http_idle_timeout_ms().unwrap_or_default(),
+            thinking_level: session.thinking_level(),
+            available_thinking_levels: session.get_available_thinking_levels(),
+            current_theme: settings
+                .get_theme_setting()
+                .unwrap_or_else(|| "dark".to_owned()),
+            terminal_theme: self.theme_controller.get_terminal_theme(),
+            available_themes: get_available_themes(),
+            hide_thinking_block: self.hide_thinking_block,
+            mermaid_rendering_mode: settings.get_mermaid_rendering_mode(),
+            show_cache_miss_notices: settings.get_show_cache_miss_notices(),
+            enable_install_telemetry: settings.get_enable_install_telemetry(),
+            double_escape_action: settings.get_double_escape_action(),
+            tree_filter_mode: settings.get_tree_filter_mode(),
+            show_hardware_cursor: settings.get_show_hardware_cursor(),
+            editor_padding_x: settings.get_editor_padding_x(),
+            output_pad: settings.get_output_pad(),
+            autocomplete_max_visible: settings.get_autocomplete_max_visible(),
+            quiet_startup: settings.get_quiet_startup(),
+            default_project_trust: settings.get_default_project_trust(),
+            clear_on_shrink: settings.get_clear_on_shrink(),
+            show_terminal_progress: settings.get_show_terminal_progress(),
+            tui_mode: self.cell.mode(),
+            fullscreen_exit_output: settings.get_fullscreen_exit_output(),
+            fullscreen_scrollbar: scroll_view_scrollbar(settings.get_fullscreen_scrollbar()),
+            warnings: settings.get_warnings(),
+        };
+
+        let callbacks = SettingsCallbacks {
+            on_auto_compact_change: {
+                let session = Arc::clone(&session);
+                let tx = self.ui_tx.clone();
+                Box::new(move |enabled| {
+                    session.set_auto_compaction_enabled(enabled);
+                    effect(&tx, id, SettingsEffect::AutoCompact(enabled));
+                })
+            },
+            on_show_images_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |enabled| {
+                    settings.set_show_images(enabled);
+                    effect(&tx, id, SettingsEffect::ShowImages(enabled));
+                })
+            },
+            on_image_width_cells_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |width| {
+                    settings.set_image_width_cells(width as f64);
+                    effect(&tx, id, SettingsEffect::ImageWidthCells(width));
+                })
+            },
+            on_auto_resize_images_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |enabled| settings.set_image_auto_resize(enabled))
+            },
+            on_block_images_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |blocked| settings.set_block_images(blocked))
+            },
+            on_enable_skill_commands_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |enabled| {
+                    settings.set_enable_skill_commands(enabled);
+                    effect(&tx, id, SettingsEffect::RebuildAutocomplete);
+                })
+            },
+            on_steering_mode_change: {
+                let session = Arc::clone(&session);
+                Box::new(move |mode| session.set_steering_mode(agent_queue_mode(mode)))
+            },
+            on_follow_up_mode_change: {
+                let session = Arc::clone(&session);
+                Box::new(move |mode| session.set_follow_up_mode(agent_queue_mode(mode)))
+            },
+            on_transport_change: {
+                let settings = Arc::clone(&settings);
+                let session = Arc::clone(&session);
+                Box::new(move |transport| {
+                    settings.set_transport(transport_wire_name(transport));
+                    // `session.agent.transport = transport` — the next run picks
+                    // it up, exactly as the field assignment does in TypeScript.
+                    session
+                        .agent()
+                        .update_options(|options| options.transport = Some(transport));
+                })
+            },
+            on_http_idle_timeout_ms_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |timeout_ms| {
+                    let _ = settings.set_http_idle_timeout_ms(timeout_ms as f64);
+                    effect(&tx, id, SettingsEffect::HttpIdleTimeout(timeout_ms));
+                })
+            },
+            on_thinking_level_change: {
+                let session = Arc::clone(&session);
+                let tx = self.ui_tx.clone();
+                Box::new(move |level| {
+                    session.set_thinking_level(level);
+                    effect(&tx, id, SettingsEffect::ThinkingLevel);
+                })
+            },
+            on_theme_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |theme_setting| {
+                    settings.set_theme(theme_setting);
+                    effect(&tx, id, SettingsEffect::ThemeApplied);
+                })
+            },
+            on_theme_preview: Some({
+                let controller = self.theme_controller.clone();
+                Box::new(move |theme_name: &str| controller.preview(theme_name))
+            }),
+            on_hide_thinking_block_change: {
+                let tx = self.ui_tx.clone();
+                Box::new(move |hidden| effect(&tx, id, SettingsEffect::HideThinkingBlock(hidden)))
+            },
+            on_mermaid_rendering_mode_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |mode| {
+                    settings.set_mermaid_rendering_mode(mode);
+                    effect(&tx, id, SettingsEffect::InvalidateChat);
+                })
+            },
+            on_show_cache_miss_notices_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |shown| {
+                    settings.set_show_cache_miss_notices(shown);
+                    effect(&tx, id, SettingsEffect::RebuildChat);
+                })
+            },
+            on_enable_install_telemetry_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |enabled| settings.set_enable_install_telemetry(enabled))
+            },
+            on_double_escape_action_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |action| settings.set_double_escape_action(action))
+            },
+            on_tree_filter_mode_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |mode| settings.set_tree_filter_mode(mode))
+            },
+            on_show_hardware_cursor_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |enabled| {
+                    settings.set_show_hardware_cursor(enabled);
+                    effect(&tx, id, SettingsEffect::ShowHardwareCursor(enabled));
+                })
+            },
+            on_editor_padding_x_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |padding| {
+                    settings.set_editor_padding_x(padding as f64);
+                    effect(&tx, id, SettingsEffect::EditorPaddingX(padding));
+                })
+            },
+            on_output_pad_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |padding| {
+                    settings.set_output_pad(padding);
+                    effect(&tx, id, SettingsEffect::OutputPad(padding));
+                })
+            },
+            on_autocomplete_max_visible_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |max_visible| {
+                    settings.set_autocomplete_max_visible(max_visible as f64);
+                    effect(&tx, id, SettingsEffect::AutocompleteMaxVisible(max_visible));
+                })
+            },
+            on_quiet_startup_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |enabled| settings.set_quiet_startup(enabled))
+            },
+            on_default_project_trust_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |trust| settings.set_default_project_trust(trust))
+            },
+            on_clear_on_shrink_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |enabled| {
+                    settings.set_clear_on_shrink(enabled);
+                    effect(&tx, id, SettingsEffect::ClearOnShrink(enabled));
+                })
+            },
+            on_show_terminal_progress_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |enabled| settings.set_show_terminal_progress(enabled))
+            },
+            on_tui_mode_change: {
+                let tx = self.ui_tx.clone();
+                Box::new(move |mode| effect(&tx, id, SettingsEffect::TuiMode(mode)))
+            },
+            on_fullscreen_exit_output_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |output| settings.set_fullscreen_exit_output(output))
+            },
+            on_fullscreen_scrollbar_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |mode| settings.set_fullscreen_scrollbar(settings_scrollbar(mode)))
+            },
+            on_warnings_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |warnings| settings.set_warnings(&warnings))
+            },
+            on_cancel: {
+                let tx = self.ui_tx.clone();
+                Box::new(move || {
+                    let _ = tx.send(UiMessage::SelectorCancelled { id });
+                })
+            },
+        };
+
+        let selector = Rc::new(RefCell::new(SettingsSelectorComponent::new(
+            config, callbacks,
+        )));
+        let focus = selector.borrow().settings_list();
+        self.show_selector(
+            Rc::clone(&selector) as ComponentRef,
+            focus as ComponentRef,
+            None,
+        );
+    }
+
+    /// The half of a settings change that needs the mode.
+    async fn apply_settings_effect(&mut self, effect: SettingsEffect) {
+        match effect {
+            SettingsEffect::AutoCompact(enabled) => {
+                self.footer.borrow_mut().set_auto_compact_enabled(enabled);
+            }
+            SettingsEffect::ShowImages(enabled) => {
+                self.for_each_tool_row(|row| row.set_show_images(enabled));
+            }
+            SettingsEffect::ImageWidthCells(width) => {
+                self.for_each_tool_row(|row| row.set_image_width_cells(width as usize));
+            }
+            SettingsEffect::RebuildAutocomplete => self.setup_autocomplete_provider(),
+            SettingsEffect::HttpIdleTimeout(timeout_ms) => {
+                self.show_status(&format!(
+                    "HTTP idle timeout: {}",
+                    format_http_idle_timeout_ms(timeout_ms)
+                ));
+            }
+            SettingsEffect::ThinkingLevel => {
+                self.footer.borrow_mut().invalidate();
+                self.update_editor_border_color();
+            }
+            SettingsEffect::ThemeApplied => {
+                self.theme_controller.apply_from_settings().await;
+            }
+            SettingsEffect::HideThinkingBlock(hidden) => {
+                self.hide_thinking_block = hidden;
+                self.settings().set_hide_thinking_block(hidden);
+                self.rebuild_chat_from_messages();
+            }
+            SettingsEffect::InvalidateChat => {
+                self.chat_container.borrow_mut().invalidate();
+                self.ui.request_render();
+            }
+            SettingsEffect::RebuildChat => self.rebuild_chat_from_messages(),
+            SettingsEffect::ShowHardwareCursor(enabled) => {
+                self.ui.set_show_hardware_cursor(enabled);
+            }
+            SettingsEffect::EditorPaddingX(padding) => {
+                self.editor
+                    .borrow_mut()
+                    .editor_mut()
+                    .set_padding_x(padding as usize);
+            }
+            SettingsEffect::OutputPad(padding) => {
+                self.output_pad = padding as usize;
+                self.rebuild_chat_from_messages();
+            }
+            SettingsEffect::AutocompleteMaxVisible(max_visible) => {
+                self.editor
+                    .borrow_mut()
+                    .editor_mut()
+                    .set_autocomplete_max_visible(max_visible as usize);
+            }
+            SettingsEffect::ClearOnShrink(enabled) => {
+                self.ui.set_clear_on_shrink(enabled);
+                if !enabled && self.active_status_indicator.is_none() {
+                    self.status_container.borrow_mut().clear();
+                }
+            }
+            SettingsEffect::TuiMode(mode) => self.switch_tui_mode(mode),
+        }
+        self.ui.request_render();
+    }
+
+    /// Runs `body` for every tool row in the transcript.
+    ///
+    /// TypeScript walks `chatContainer.children` and filters by
+    /// `instanceof ToolExecutionComponent`; the port keeps the rows in a list
+    /// instead, because a `dyn Component` cannot be downcast (deviation
+    /// class 1, same set of rows).
+    fn for_each_tool_row(&self, mut body: impl FnMut(&mut ToolExecutionComponent)) {
+        for component in self.chat_tool_rows.iter() {
+            body(&mut component.borrow_mut());
+        }
+    }
+
+    /// `showUserMessageSelector()` (`interactive-mode.ts:5180-5216`).
+    fn show_user_message_selector(&mut self) {
+        let messages = self.session().get_user_messages_for_forking();
+        if messages.is_empty() {
+            self.show_status("No messages to fork from");
+            return;
+        }
+        let initial_selected_id = messages.last().map(|(entry_id, _)| entry_id.clone());
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let selector = Rc::new(RefCell::new(UserMessageSelectorComponent::new(
+            messages
+                .into_iter()
+                .map(|(entry_id, text)| UserMessageItem {
+                    id: entry_id,
+                    text,
+                    timestamp: None,
+                })
+                .collect(),
+            Box::new(move |entry_id| {
+                let _ = select_tx.send(UiMessage::ForkAt {
+                    id,
+                    entry_id: entry_id.to_owned(),
+                    position: ForkPosition::Before,
+                });
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            initial_selected_id.as_deref(),
+        )));
+        let focus = selector.borrow().get_message_list();
+        self.show_selector(Rc::clone(&selector) as ComponentRef, focus, None);
+    }
+
+    /// The `onSelect` half of the fork selector and of `/clone`.
+    async fn fork_session(&mut self, entry_id: &str, position: ForkPosition) {
+        match self.runtime.fork(entry_id, position).await {
+            Ok(selected_text) => {
+                self.rebind_current_session();
+                self.editor
+                    .borrow_mut()
+                    .editor_mut()
+                    .set_text(selected_text.as_deref().unwrap_or(""));
+                self.show_status(if position == ForkPosition::At {
+                    "Cloned to new session"
+                } else {
+                    "Forked to new session"
+                });
+            }
+            Err(message) => self.show_error(&message),
+        }
+    }
+
+    /// `handleCloneCommand()` (`interactive-mode.ts:5218-5237`).
+    async fn handle_clone_command(&mut self) {
+        let leaf_id = self
+            .session()
+            .with_session_manager(|manager| manager.get_leaf_id().map(str::to_owned));
+        let Some(leaf_id) = leaf_id else {
+            self.show_status("Nothing to clone yet");
+            return;
+        };
+        self.fork_session(&leaf_id, ForkPosition::At).await;
+    }
+
+    /// `showTrustSelector()` (`interactive-mode.ts:4981-5011`).
+    fn show_trust_selector(&mut self) {
+        let cwd = self.cwd();
+        let trust_store = ProjectTrustStore::new(&self.runtime.services().agent_dir);
+        let saved_decision = trust_store.get_entry(&cwd).ok().flatten();
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let selector = component_ref(TrustSelectorComponent::new(TrustSelectorOptions {
+            cwd: cwd.clone(),
+            saved_decision,
+            project_trusted: self.settings().is_project_trusted(),
+            on_select: Box::new(move |selection| {
+                let _ = select_tx.send(UiMessage::TrustDecision { id, selection });
+            }),
+            on_cancel: Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+        }));
+        self.show_selector(Rc::clone(&selector), selector, None);
+    }
+
+    /// The `onSelect` half of the trust selector.
+    fn apply_trust_decision(&mut self, selection: TrustSelection) {
+        let trust_store = ProjectTrustStore::new(&self.runtime.services().agent_dir);
+        let _ = trust_store.set_many(&selection.updates);
+        self.show_status(&format!(
+            "Saved trust decision: {}. Restart notagent for this to take effect.",
+            if selection.trusted {
+                "trusted"
+            } else {
+                "untrusted"
+            }
+        ));
+    }
+
+    /// `requestApproval(request)` (`interactive-mode.ts:5013-5023`).
+    ///
+    /// The tool call stays open until the dialog answers; dismissing it denies,
+    /// so a call can never proceed because a prompt was closed.
+    fn show_approval_selector(
+        &mut self,
+        request: ApprovalRequest,
+        answer: tokio::sync::oneshot::Sender<ApprovalAnswer>,
+    ) {
+        let id = self.selector_id + 1;
+        let tx = self.ui_tx.clone();
+        let answer = Rc::new(RefCell::new(Some(answer)));
+        let selector = Rc::new(RefCell::new(ApprovalSelectorComponent::new(
+            &request,
+            Box::new(move |given| {
+                if let Some(answer) = answer.borrow_mut().take() {
+                    let _ = answer.send(given);
+                }
+                let _ = tx.send(UiMessage::SelectorCancelled { id });
+            }),
+        )));
+        let focus = Rc::clone(selector.borrow().get_select_list()) as ComponentRef;
+        self.show_selector(Rc::clone(&selector) as ComponentRef, focus, None);
+    }
+
+    /// `createBaseAutocompleteProvider()` (`interactive-mode.ts:677-761`).
+    ///
+    /// The extension commands are gone with the extension system (class 2);
+    /// what remains are the built-in commands with their two argument
+    /// completions, the prompt templates and the skill commands.
+    fn create_base_autocomplete_provider(&mut self) -> CombinedAutocompleteProvider {
+        let session = self.session();
+        let mut commands: Vec<SlashCommand> = BUILTIN_SLASH_COMMANDS
+            .iter()
+            .map(|command| SlashCommand {
+                name: command.name.to_owned(),
+                description: Some(command.description.to_owned()),
+                argument_hint: command.argument_hint.map(str::to_owned),
+                get_argument_completions: None,
+            })
+            .collect();
+
+        if let Some(model_command) = commands.iter_mut().find(|command| command.name == "model") {
+            let session = Arc::clone(&session);
+            let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+            model_command.get_argument_completions = Some(Rc::new(move |prefix: &str| {
+                let scoped = session.scoped_models();
+                let models: Vec<Model> = if scoped.is_empty() {
+                    model_runtime.get_available_snapshot()
+                } else {
+                    scoped.iter().map(|scoped| scoped.model.clone()).collect()
+                };
+                let prefix = prefix.to_owned();
+                Box::pin(async move {
+                    if models.is_empty() {
+                        return None;
+                    }
+                    let filtered = fuzzy_filter(&models, &prefix, |model: &Model| {
+                        get_model_search_text(&ModelSearchItem::new(
+                            model.id.clone(),
+                            model.provider.clone(),
+                            Some(model.name.clone()),
+                        ))
+                    });
+                    if filtered.is_empty() {
+                        return None;
+                    }
+                    Some(
+                        filtered
+                            .into_iter()
+                            .map(|model| AutocompleteItem {
+                                value: format!("{}/{}", model.provider, model.id),
+                                label: model.id.clone(),
+                                description: Some(model.provider.clone()),
+                            })
+                            .collect(),
+                    )
+                }) as Pin<Box<dyn Future<Output = Option<Vec<AutocompleteItem>>>>>
+            }));
+        }
+
+        // Prompt templates.
+        for template in session.prompt_templates() {
+            commands.push(SlashCommand {
+                name: template.name.clone(),
+                description: self.prefix_autocomplete_description(
+                    Some(template.description.clone()),
+                    &template.source_info,
+                ),
+                argument_hint: template.argument_hint.clone(),
+                get_argument_completions: None,
+            });
+        }
+
+        // Skill commands, when they are enabled.
+        self.skill_commands.clear();
+        if self.settings().get_enable_skill_commands() {
+            for skill in session.resource_loader().get_skills().0 {
+                let command_name = format!("skill:{}", skill.name);
+                self.skill_commands
+                    .push((command_name.clone(), skill.file_path.clone()));
+                commands.push(SlashCommand {
+                    name: command_name,
+                    description: self.prefix_autocomplete_description(
+                        Some(skill.description.clone()),
+                        &skill.source_info,
+                    ),
+                    argument_hint: None,
+                    get_argument_completions: None,
+                });
+            }
+        }
+
+        CombinedAutocompleteProvider::new(
+            commands.into_iter().map(CommandEntry::Command).collect(),
+            self.cwd(),
+            self.fd_path.clone(),
+        )
+    }
+
+    /// `prefixAutocompleteDescription(description, sourceInfo)`
+    /// (`interactive-mode.ts:654-660`).
+    fn prefix_autocomplete_description(
+        &self,
+        description: Option<String>,
+        source_info: &SourceInfo,
+    ) -> Option<String> {
+        let tag = self.autocomplete_source_tag(source_info)?;
+        Some(match description {
+            Some(description) if !description.is_empty() => format!("[{tag}] {description}"),
+            _ => format!("[{tag}]"),
+        })
+    }
+
+    /// `getAutocompleteSourceTag(sourceInfo)` (`interactive-mode.ts:629-652`).
+    fn autocomplete_source_tag(&self, source_info: &SourceInfo) -> Option<String> {
+        let scope_prefix = match source_info.scope {
+            SourceScope::User => "u",
+            SourceScope::Project => "p",
+            _ => "t",
+        };
+        let source = source_info.source.trim();
+        if source == "auto" || source == "local" || source == "cli" {
+            return Some(scope_prefix.to_owned());
+        }
+        Some(format!("{scope_prefix}:{source}"))
+    }
+
+    /// `setupAutocompleteProvider()` (`interactive-mode.ts:762-778`).
+    fn setup_autocomplete_provider(&mut self) {
+        let provider = self.create_base_autocomplete_provider();
+        self.editor
+            .borrow_mut()
+            .editor_mut()
+            .set_autocomplete_provider(Rc::new(provider));
+    }
+
+    /// `showSessionSelector()` (`interactive-mode.ts:5381-5417`).
+    ///
+    /// The component asks for its session lists instead of loading them itself
+    /// (workstream A's `take_pending_load`/`apply_load_result` seam), so the
+    /// main loop runs the loads — the same shape `cli/session_picker.rs` uses.
+    fn show_session_selector(&mut self) {
+        let id = self.selector_id + 1;
+        let session = self.session();
+        let current_file =
+            session.with_session_manager(|manager| manager.get_session_file().map(str::to_owned));
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let exit_tx = self.ui_tx.clone();
+        let core = self.ui.clone();
+        let selector = Rc::new(RefCell::new(SessionSelectorComponent::new(
+            Box::new(move |session_path: &str| {
+                let _ = select_tx.send(UiMessage::ResumeSession {
+                    id,
+                    path: session_path.to_owned(),
+                });
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            Box::new(move || {
+                let _ = exit_tx.send(UiMessage::Action(AppAction::Exit));
+            }),
+            Rc::new(move || core.request_render()),
+            SessionSelectorOptions {
+                rename_session: Some(Box::new(|path: &str, next_name: &str| {
+                    let next = next_name.trim();
+                    if next.is_empty() {
+                        return;
+                    }
+                    if let Ok(mut manager) = SessionManager::open(path, None, None) {
+                        let _ = manager.append_session_info(next);
+                    }
+                })),
+                show_rename_hint: Some(true),
+                keybindings: Some(Rc::clone(&self.keybindings)),
+            },
+            current_file.as_deref(),
+        )));
+        let focus = Rc::clone(selector.borrow().get_session_list()) as ComponentRef;
+        // The loop drives this selector's loads while it is open.
+        self.session_selector = Some(Rc::clone(&selector));
+        self.show_selector(Rc::clone(&selector) as ComponentRef, focus, None);
+    }
+
+    /// `handleResumeSession(sessionPath)` (`interactive-mode.ts:5419-5454`).
+    ///
+    /// Remaining: the `MissingSessionCwdError` branch, for the same reason as
+    /// in `/import` — the runtime flattens the error into a string.
+    async fn handle_resume_session(&mut self, session_path: &str) {
+        self.clear_status_indicator(None);
+        match self.runtime.switch_session(session_path, None).await {
+            Ok(()) => {
+                self.rebind_current_session();
+                self.show_status("Resumed session");
+            }
+            Err(message) => self.show_error(&format!("Failed to resume session: {message}")),
+        }
+    }
+
+    /// `showTreeSelector(initialSelectedId)` (`interactive-mode.ts:5239-5379`).
+    fn show_tree_selector(&mut self, initial_selected_id: Option<String>) {
+        let session = self.session();
+        let (tree, real_leaf_id) = session.with_session_manager(|manager| {
+            (manager.get_tree(), manager.get_leaf_id().map(str::to_owned))
+        });
+        if tree.is_empty() {
+            self.show_status("No entries in session");
+            return;
+        }
+        let initial_filter_mode = self.settings().get_tree_filter_mode();
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let label_tx = self.ui_tx.clone();
+        let copy_tx = self.ui_tx.clone();
+        let rows = self.ui.rows();
+        let mut selector = TreeSelectorComponent::new(
+            &tree,
+            real_leaf_id.as_deref(),
+            rows,
+            Box::new(move |entry_id: &str| {
+                let _ = select_tx.send(UiMessage::TreeNavigate {
+                    id,
+                    entry_id: entry_id.to_owned(),
+                });
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            TreeSelectorOptions {
+                on_label_change: Some(Box::new(move |entry_id: &str, label: Option<&str>| {
+                    let _ = label_tx.send(UiMessage::TreeLabel {
+                        entry_id: entry_id.to_owned(),
+                        label: label.map(str::to_owned),
+                    });
+                })),
+                initial_selected_id,
+                initial_filter_mode: Some(tree_filter_mode(initial_filter_mode)),
+            },
+        );
+        selector.on_copy = Some(Box::new(move |text: Option<&str>| {
+            let _ = copy_tx.send(UiMessage::TreeCopy {
+                text: text.map(str::to_owned),
+            });
+        }));
+        let selector = component_ref(selector);
+        self.show_selector(Rc::clone(&selector), selector, None);
+    }
+
+    /// The `onSelect` half of the tree selector.
+    ///
+    /// Remaining: the "Summarize with custom prompt" option needs a free-text
+    /// dialog, whose component (`extension-editor.ts`) went with the extension
+    /// system; the two other answers are here (see interface request C-23).
+    async fn navigate_tree(&mut self, entry_id: &str) {
+        if self
+            .session()
+            .with_session_manager(|manager| manager.get_leaf_id().map(str::to_owned))
+            .as_deref()
+            == Some(entry_id)
+        {
+            self.show_status("Already at this point");
+            return;
+        }
+
+        let mut wants_summary = false;
+        if !self.settings().get_branch_summary_skip_prompt() {
+            let choice = self
+                .ask(
+                    "Summarize branch?",
+                    vec!["No summary".to_owned(), "Summarize".to_owned()],
+                )
+                .await;
+            match choice {
+                // Escape re-opens the tree on the same entry, as in TypeScript.
+                None => {
+                    self.show_tree_selector(Some(entry_id.to_owned()));
+                    return;
+                }
+                Some(answer) => wants_summary = answer != "No summary",
+            }
+        }
+
+        // The user committed to navigating: stop the active response first.
+        if self.session().is_streaming() {
+            self.restore_queued_messages_to_editor(false);
+            self.session().abort().await;
+        }
+
+        let mut showing_summary_indicator = false;
+        if wants_summary {
+            self.escape_target = EscapeTarget::BranchSummary;
+            self.chat_container
+                .borrow_mut()
+                .add_child(component_ref(Spacer::new(1)));
+            self.show_status_indicator(StatusIndicator::branch_summary());
+            showing_summary_indicator = true;
+            self.ui.request_render();
+        }
+
+        let result = self
+            .session()
+            .navigate_tree(
+                entry_id,
+                NavigateTreeOptions {
+                    summarize: wants_summary,
+                    ..NavigateTreeOptions::default()
+                },
+            )
+            .await;
+        match result {
+            Ok(result) if result.aborted => {
+                self.show_status("Branch summarization cancelled");
+                self.show_tree_selector(Some(entry_id.to_owned()));
+            }
+            Ok(result) if result.cancelled => self.show_status("Navigation cancelled"),
+            Ok(result) => {
+                self.chat_container.borrow_mut().clear();
+                self.render_initial_messages();
+                if let Some(editor_text) = result.editor_text
+                    && self.editor.borrow().editor().get_text().trim().is_empty()
+                {
+                    self.editor.borrow_mut().editor_mut().set_text(&editor_text);
+                }
+                self.show_status("Navigated to selected point");
+                self.flush_compaction_queue(false).await;
+            }
+            Err(message) => self.show_error(&message),
+        }
+        if showing_summary_indicator {
+            self.clear_status_indicator(Some(StatusIndicatorKind::BranchSummary));
+        }
+        if self.escape_target == EscapeTarget::BranchSummary {
+            self.escape_target = EscapeTarget::Default;
+        }
+    }
+
+    /// `showExtensionSelector(title, options)` for the answers the tree flow
+    /// needs — the list dialog of [`Self::confirm`] with free labels.
+    async fn ask(&mut self, title: &str, options: Vec<String>) -> Option<String> {
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<Option<String>>();
+        let done_tx = Rc::new(RefCell::new(Some(done_tx)));
+        let select_tx = Rc::clone(&done_tx);
+        let cancel_tx = Rc::clone(&done_tx);
+        let selector = component_ref(ListSelectorComponent::new(
+            title,
+            options,
+            Box::new(move |option| {
+                if let Some(sender) = select_tx.borrow_mut().take() {
+                    let _ = sender.send(Some(option));
+                }
+            }),
+            Box::new(move || {
+                if let Some(sender) = cancel_tx.borrow_mut().take() {
+                    let _ = sender.send(None);
+                }
+            }),
+            None,
+        ));
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(Rc::clone(&selector));
+        }
+        self.ui.set_focus(Some(Rc::clone(&selector)));
+        self.ui.request_render();
+
+        let answer = done_rx.await.unwrap_or(None);
+
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(Rc::clone(&self.editor) as ComponentRef);
+        }
+        self.ui
+            .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
+        self.ui.request_render();
+        answer
+    }
+
+    /// `showModelsSelector()` (`interactive-mode.ts:5057-5178`).
+    fn show_models_selector(&mut self) {
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let available_models = model_runtime.get_available_snapshot();
+        let session = self.session();
+        let session_scoped = session.scoped_models();
+        let configured_patterns = self.settings().get_enabled_models();
+
+        let current_enabled_ids = if session_scoped.is_empty() {
+            configured_enabled_ids(configured_patterns.as_deref(), &available_models)
+        } else {
+            Some(
+                session_scoped
+                    .iter()
+                    .map(|scoped| format!("{}/{}", scoped.model.provider, scoped.model.id))
+                    .collect(),
+            )
+        };
+
+        let id = self.selector_id + 1;
+        let change_tx = self.ui_tx.clone();
+        let persist_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let selector = Rc::new(RefCell::new(ScopedModelsSelectorComponent::new(
+            ModelsConfig {
+                all_models: available_models.clone(),
+                enabled_model_ids: current_enabled_ids.clone(),
+                refresh_status: Some("Refreshing model catalogs…".to_owned()),
+            },
+            ModelsCallbacks {
+                on_change: Box::new(move |enabled_ids| {
+                    let _ = change_tx.send(UiMessage::ScopedModelsChanged {
+                        enabled_ids,
+                        persist: false,
+                    });
+                }),
+                on_persist: Box::new(move |enabled_ids| {
+                    let _ = persist_tx.send(UiMessage::ScopedModelsChanged {
+                        enabled_ids,
+                        persist: true,
+                    });
+                }),
+                on_cancel: Box::new(move || {
+                    let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+                }),
+            },
+        )));
+        self.scoped_models_selector = Some(Rc::clone(&selector));
+
+        // `void modelRuntime.refresh(...)` — the loop drives it and the answer
+        // comes back as a message.
+        let signal = timeout_signal(15_000);
+        self.side_futures.push(Box::pin(async move {
+            let result = model_runtime
+                .refresh(notagent_ai::models::ModelsRefreshOptions {
+                    signal: Some(signal),
+                    ..notagent_ai::models::ModelsRefreshOptions::default()
+                })
+                .await;
+            UiMessage::ScopedModelsRefreshed {
+                aborted: result.aborted,
+                errors: result.errors.keys().cloned().collect(),
+            }
+        }));
+
+        self.show_selector(
+            Rc::clone(&selector) as ComponentRef,
+            Rc::clone(&selector) as ComponentRef,
+            None,
+        );
+    }
+
+    /// `updateSessionModels(enabledIds)` of the models selector.
+    fn apply_scoped_models(&mut self, enabled_ids: Option<Vec<String>>, persist: bool) {
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let available_models = model_runtime.get_available_snapshot();
+        let available_ids: Vec<String> = available_models
+            .iter()
+            .map(|model| format!("{}/{}", model.provider, model.id))
+            .collect();
+
+        if persist {
+            let all_enabled = enabled_ids.as_ref().is_some_and(|ids| {
+                ids.len() == available_models.len()
+                    && ids.iter().all(|id| available_ids.contains(id))
+            });
+            let patterns = match (&enabled_ids, all_enabled) {
+                (None, _) | (_, true) => None,
+                (Some(ids), false) => Some(ids.clone()),
+            };
+            self.settings().set_enabled_models(patterns.as_deref());
+            self.show_status("Model selection saved to settings");
+            return;
+        }
+
+        let has_enabled_available = enabled_ids
+            .as_ref()
+            .is_some_and(|ids| ids.iter().any(|id| available_ids.contains(id)));
+        let all_available_enabled = enabled_ids
+            .as_ref()
+            .is_some_and(|ids| available_ids.iter().all(|id| ids.contains(id)));
+        match &enabled_ids {
+            Some(ids) if has_enabled_available && !all_available_enabled => {
+                let resolved = resolve_model_scope_from_models(ids, &available_models);
+                self.session().set_scoped_models(
+                    resolved
+                        .scoped_models
+                        .into_iter()
+                        .map(|scoped| crate::core::agent_session::ScopedModel {
+                            model: scoped.model,
+                            thinking_level: scoped.thinking_level,
+                        })
+                        .collect(),
+                );
+            }
+            _ => self.session().set_scoped_models(Vec::new()),
+        }
+        self.update_available_provider_count();
+        self.ui.request_render();
+    }
+
+    /// The tail of the models selector's catalog refresh.
+    fn apply_scoped_models_refresh(&mut self, aborted: bool, errors: Vec<String>) {
+        let Some(selector) = self.scoped_models_selector.clone() else {
+            return;
+        };
+        let available_models = self
+            .runtime
+            .services()
+            .model_runtime
+            .get_available_snapshot();
+        selector.borrow_mut().update_models(&available_models, None);
+        if aborted {
+            selector.borrow_mut().set_refresh_status(
+                "Model refresh timed out; showing cached models.",
+                RefreshStatusKind::Warning,
+            );
+        } else if !errors.is_empty() {
+            selector.borrow_mut().set_refresh_status(
+                &format!(
+                    "Could not refresh {}; showing cached models.",
+                    errors.join(", ")
+                ),
+                RefreshStatusKind::Warning,
+            );
+        } else {
+            selector
+                .borrow_mut()
+                .set_refresh_status("Model catalogs refreshed.", RefreshStatusKind::Success);
+        }
+        self.ui.request_render();
+    }
+
+    /// `showTasksBrowser()` (`interactive-mode.ts:2861-2977`).
+    ///
+    /// The polling, the output reads and the stop calls are driven by the main
+    /// loop (`setInterval` and `void promise.then(...)` in TypeScript).
+    fn show_tasks_browser(&mut self) {
+        let Some(manager) = self.session().task_manager() else {
+            self.show_status("No task manager in this session");
+            return;
+        };
+        let id = self.selector_id + 1;
+        let selected_task_id = manager
+            .list(false, None)
+            .into_iter()
+            .find(|info| info.status() == TaskStatus::Running)
+            .map(|info| info.task_id().to_owned());
+        let state = TasksBrowserState {
+            filter: TasksFilter::All,
+            selected_task_id: selected_task_id.clone(),
+            output: None,
+            output_loading: false,
+            notice: None,
+            notice_until: None,
+            request: 0,
+        };
+        let rows = self.ui.rows().max(3) - 2;
+        let browser = Rc::new(RefCell::new(TasksBrowserComponent::new(
+            self.tasks_browser_props(&manager, &state, id),
+            rows,
+        )));
+        self.tasks_browser = Some((Rc::clone(&browser), state));
+        if let Some(task_id) = selected_task_id {
+            self.load_task_output(&task_id, id);
+        }
+        self.show_selector(
+            Rc::clone(&browser) as ComponentRef,
+            Rc::clone(&browser) as ComponentRef,
+            None,
+        );
+    }
+
+    /// `push()` of the browser: hand it the current tasks and state.
+    fn tasks_browser_props(
+        &self,
+        manager: &TaskManager,
+        state: &TasksBrowserState,
+        id: u64,
+    ) -> TasksBrowserProps {
+        let select_tx = self.ui_tx.clone();
+        let filter_tx = self.ui_tx.clone();
+        let refresh_tx = self.ui_tx.clone();
+        let close_tx = self.ui_tx.clone();
+        let stop_tx = self.ui_tx.clone();
+        let refused_tx = self.ui_tx.clone();
+        TasksBrowserProps {
+            tasks: manager.list(false, None),
+            filter: state.filter,
+            selected_task_id: state.selected_task_id.clone(),
+            output: state.output.clone(),
+            output_loading: state.output_loading,
+            notice: state.notice.clone(),
+            on_select: Box::new(move |task_id: &str| {
+                let _ = select_tx.send(UiMessage::TaskBrowser {
+                    id,
+                    action: TaskBrowserAction::Select(task_id.to_owned()),
+                });
+            }),
+            on_toggle_filter: Box::new(move || {
+                let _ = filter_tx.send(UiMessage::TaskBrowser {
+                    id,
+                    action: TaskBrowserAction::ToggleFilter,
+                });
+            }),
+            on_refresh: Box::new(move || {
+                let _ = refresh_tx.send(UiMessage::TaskBrowser {
+                    id,
+                    action: TaskBrowserAction::Refresh,
+                });
+            }),
+            on_close: Box::new(move || {
+                let _ = close_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            on_stop: Box::new(move |task_id: &str| {
+                let _ = stop_tx.send(UiMessage::TaskBrowser {
+                    id,
+                    action: TaskBrowserAction::Stop(task_id.to_owned()),
+                });
+            }),
+            on_stop_refused: Some(Box::new(move |task_id: &str| {
+                let _ = refused_tx.send(UiMessage::TaskBrowser {
+                    id,
+                    action: TaskBrowserAction::StopRefused(task_id.to_owned()),
+                });
+            })),
+        }
+    }
+
+    /// `push()` — re-feed the browser from the manager and the state.
+    fn push_tasks_browser(&mut self, id: u64) {
+        let (Some(manager), Some((browser, state))) =
+            (self.session().task_manager(), self.tasks_browser.clone())
+        else {
+            return;
+        };
+        let rows = self.ui.rows().max(3) - 2;
+        let props = self.tasks_browser_props(&manager, &state, id);
+        {
+            let mut browser = browser.borrow_mut();
+            browser.set_rows(rows);
+            browser.set_props(props);
+        }
+        self.ui.request_render();
+    }
+
+    /// `loadOutput(taskId)` — the read runs in the loop; a slower earlier read
+    /// must not overwrite a newer selection, which the request counter guards.
+    fn load_task_output(&mut self, task_id: &str, id: u64) {
+        let Some(manager) = self.session().task_manager() else {
+            return;
+        };
+        let Some((_, state)) = self.tasks_browser.as_mut() else {
+            return;
+        };
+        state.request += 1;
+        state.output_loading = true;
+        let request = state.request;
+        let task_id = task_id.to_owned();
+        self.side_futures.push(Box::pin(async move {
+            let output = manager.read_output(&task_id, Some(8000)).await;
+            UiMessage::TaskBrowser {
+                id,
+                action: TaskBrowserAction::Output { request, output },
+            }
+        }));
+        self.push_tasks_browser(id);
+    }
+
+    /// Everything the browser posted.
+    fn handle_task_browser_action(&mut self, id: u64, action: TaskBrowserAction) {
+        if self
+            .active_selector
+            .as_ref()
+            .is_none_or(|active| active.id != id)
+        {
+            return;
+        }
+        match action {
+            TaskBrowserAction::Select(task_id) => {
+                let already_selected = self
+                    .tasks_browser
+                    .as_ref()
+                    .is_some_and(|(_, state)| state.selected_task_id.as_deref() == Some(&task_id));
+                if already_selected {
+                    return;
+                }
+                if let Some((_, state)) = self.tasks_browser.as_mut() {
+                    state.selected_task_id = Some(task_id.clone());
+                    state.output = None;
+                }
+                self.load_task_output(&task_id, id);
+            }
+            TaskBrowserAction::ToggleFilter => {
+                if let Some((_, state)) = self.tasks_browser.as_mut() {
+                    state.filter = match state.filter {
+                        TasksFilter::All => TasksFilter::Running,
+                        TasksFilter::Running => TasksFilter::All,
+                    };
+                }
+                self.push_tasks_browser(id);
+            }
+            TaskBrowserAction::Refresh => {
+                let selected = self
+                    .tasks_browser
+                    .as_ref()
+                    .and_then(|(_, state)| state.selected_task_id.clone());
+                match selected {
+                    Some(task_id) => self.load_task_output(&task_id, id),
+                    None => self.push_tasks_browser(id),
+                }
+            }
+            TaskBrowserAction::Output { request, output } => {
+                let stale = self
+                    .tasks_browser
+                    .as_ref()
+                    .is_some_and(|(_, state)| state.request != request);
+                if stale {
+                    return;
+                }
+                if let Some((_, state)) = self.tasks_browser.as_mut() {
+                    state.output = Some(output);
+                    state.output_loading = false;
+                }
+                self.push_tasks_browser(id);
+            }
+            TaskBrowserAction::Stop(task_id) => {
+                self.flash_task_browser(id, &format!("Stopping {task_id}…"));
+                if let Some(manager) = self.session().task_manager() {
+                    self.side_futures.push(Box::pin(async move {
+                        manager
+                            .stop(&task_id, Some("Stopped from the task browser"))
+                            .await;
+                        UiMessage::TaskBrowser {
+                            id,
+                            action: TaskBrowserAction::Refresh,
+                        }
+                    }));
+                }
+            }
+            TaskBrowserAction::StopRefused(task_id) => {
+                self.flash_task_browser(id, &format!("{task_id} has already finished."));
+            }
+            TaskBrowserAction::ClearNotice => {
+                if let Some((_, state)) = self.tasks_browser.as_mut() {
+                    state.notice = None;
+                    state.notice_until = None;
+                }
+                self.push_tasks_browser(id);
+            }
+        }
+    }
+
+    /// `flash(message)` of the browser: a footer notice for 2.5 seconds.
+    fn flash_task_browser(&mut self, id: u64, message: &str) {
+        if let Some((_, state)) = self.tasks_browser.as_mut() {
+            state.notice = Some(message.to_owned());
+            state.notice_until = Some(Instant::now() + Duration::from_millis(2500));
+        }
+        self.push_tasks_browser(id);
+    }
+
+    // ------------------------------------------------------------------
+    // Login and logout
+    // ------------------------------------------------------------------
+
+    /// `getLoginProviderOptions(authType)` (`interactive-mode.ts:5456-5485`).
+    fn login_provider_options(&self, auth_type: Option<AuthType>) -> Vec<AuthSelectorProvider> {
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let mut options: Vec<AuthSelectorProvider> = Vec::new();
+        for provider in model_runtime.get_providers() {
+            let auth_status = model_runtime.get_provider_auth_status(provider.id());
+            let status = auth_status.configured.then(|| AuthCheck {
+                check_type: if model_runtime.is_using_oauth(provider.id()) {
+                    AuthType::OAuth
+                } else {
+                    AuthType::ApiKey
+                },
+                source: auth_status.label.clone().or_else(|| {
+                    auth_status
+                        .source
+                        .map(|source| format!("{source:?}").to_lowercase())
+                }),
+            });
+            let auth = provider.auth();
+            if auth_type.is_none_or(|wanted| wanted == AuthType::OAuth)
+                && let Some(oauth) = auth.oauth.clone()
+            {
+                options.push(AuthSelectorProvider {
+                    id: provider.id().to_owned(),
+                    name: provider.name().to_owned(),
+                    auth_type: AuthType::OAuth,
+                    method: Some(AuthSelectorMethod::OAuth(oauth)),
+                    status: status.clone(),
+                });
+            }
+            if auth_type.is_none_or(|wanted| wanted == AuthType::ApiKey)
+                && let Some(api_key) = auth.api_key.clone()
+            {
+                options.push(AuthSelectorProvider {
+                    id: provider.id().to_owned(),
+                    name: provider.name().to_owned(),
+                    auth_type: AuthType::ApiKey,
+                    method: Some(AuthSelectorMethod::ApiKey(api_key)),
+                    status: status.clone(),
+                });
+            }
+        }
+        options.sort_by(|left, right| left.name.cmp(&right.name));
+        options
+    }
+
+    /// `findLoginProviderOptions(providerRef)` (`interactive-mode.ts:5498-5510`).
+    fn find_login_provider_options(&self, provider_ref: &str) -> Vec<AuthSelectorProvider> {
+        let normalized = provider_ref.trim().to_lowercase();
+        if normalized.is_empty() {
+            return Vec::new();
+        }
+        self.login_provider_options(None)
+            .into_iter()
+            .filter(|provider| {
+                provider.id.to_lowercase() == normalized
+                    || provider.name.to_lowercase() == normalized
+            })
+            .collect()
+    }
+
+    /// `handleLoginCommand(providerRef)` (`interactive-mode.ts:5512-5533`).
+    async fn handle_login_command(&mut self, provider_ref: Option<&str>) {
+        let Some(provider_ref) = provider_ref else {
+            self.show_login_auth_type_selector(None);
+            return;
+        };
+        let options = self.find_login_provider_options(provider_ref);
+        if options.len() == 1 {
+            self.start_provider_login(options[0].clone()).await;
+            return;
+        }
+        if options.len() > 1 {
+            let first_id = options[0].id.as_str();
+            if options
+                .iter()
+                .all(|provider| provider.id.as_str() == first_id)
+            {
+                self.show_login_auth_type_selector(Some(options));
+                return;
+            }
+        }
+        self.show_login_provider_selector(None, Some(provider_ref));
+    }
+
+    /// `startProviderLogin(providerOption)` (`interactive-mode.ts:5535-5543`).
+    async fn start_provider_login(&mut self, provider: AuthSelectorProvider) {
+        match (&provider.auth_type, &provider.method) {
+            (AuthType::OAuth, _) => self.show_login_dialog(provider, AuthType::OAuth).await,
+            // `providerOption.method?.login` — a method without an interactive
+            // setup is ambient-only.
+            (AuthType::ApiKey, Some(AuthSelectorMethod::ApiKey(api_key)))
+                if has_api_key_login(api_key.as_ref()) =>
+            {
+                self.show_login_dialog(provider, AuthType::ApiKey).await
+            }
+            _ => self.show_ambient_auth_dialog(provider),
+        }
+    }
+
+    /// `showLoginAuthTypeSelector(providerOptions)` (`interactive-mode.ts:5545-5601`).
+    fn show_login_auth_type_selector(
+        &mut self,
+        provider_options: Option<Vec<AuthSelectorProvider>>,
+    ) {
+        let oauth_login_label = provider_options.as_ref().and_then(|options| {
+            options
+                .iter()
+                .find(|provider| provider.auth_type == AuthType::OAuth)
+                .and_then(|provider| match &provider.method {
+                    Some(AuthSelectorMethod::OAuth(oauth)) => {
+                        oauth.login_label().map(str::to_owned)
+                    }
+                    _ => None,
+                })
+        });
+        let subscription_label =
+            oauth_login_label.unwrap_or_else(|| "Sign in with an account".to_owned());
+        let api_key_label = "Sign in with an API key".to_owned();
+        let available: Vec<AuthType> = match &provider_options {
+            Some(options) => options.iter().map(|provider| provider.auth_type).collect(),
+            None => vec![AuthType::OAuth, AuthType::ApiKey],
+        };
+        let mut labels: Vec<String> = Vec::new();
+        if available.contains(&AuthType::OAuth) {
+            labels.push(subscription_label.clone());
+        }
+        if available.contains(&AuthType::ApiKey) {
+            labels.push(api_key_label.clone());
+        }
+
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let options_for_message = provider_options.clone();
+        let selector = component_ref(ListSelectorComponent::new(
+            "How do you want to sign in?",
+            labels,
+            Box::new(move |label| {
+                let auth_type = if label == api_key_label {
+                    AuthType::ApiKey
+                } else {
+                    AuthType::OAuth
+                };
+                let _ = select_tx.send(UiMessage::LoginAuthType {
+                    id,
+                    auth_type,
+                    providers: options_for_message.clone(),
+                });
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            None,
+        ));
+        self.show_selector(Rc::clone(&selector), selector, None);
+    }
+
+    /// `showLoginProviderSelector(authType, initialSearchInput)`
+    /// (`interactive-mode.ts:5603-5644`).
+    fn show_login_provider_selector(
+        &mut self,
+        auth_type: Option<AuthType>,
+        initial_search_input: Option<&str>,
+    ) {
+        let providers = self.login_provider_options(auth_type);
+        if providers.is_empty() {
+            self.show_status("No providers available for that sign-in method");
+            return;
+        }
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let by_id = providers.clone();
+        let selector = component_ref(OAuthSelectorComponent::new(
+            AuthSelectorMode::Login,
+            providers,
+            Box::new(move |provider_id: &str, auth_type: AuthType| {
+                if let Some(provider) = by_id
+                    .iter()
+                    .find(|provider| provider.id == provider_id && provider.auth_type == auth_type)
+                    .or_else(|| by_id.iter().find(|provider| provider.id == provider_id))
+                    .cloned()
+                {
+                    let _ = select_tx.send(UiMessage::LoginProvider {
+                        id,
+                        provider: Box::new(provider),
+                    });
+                }
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            initial_search_input,
+        ));
+        self.show_selector(Rc::clone(&selector), selector, None);
+    }
+
+    /// `showOAuthSelector("logout")` (`interactive-mode.ts:5646-5703`).
+    async fn show_logout_selector(&mut self) {
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let credentials = model_runtime
+            .list_credentials(Some(AuthOperationOptions {
+                signal: Some(timeout_signal(15_000)),
+            }))
+            .await;
+        let credentials = match credentials {
+            Ok(credentials) => credentials,
+            Err(error) => {
+                self.show_error(&format!("Could not read stored credentials: {error}"));
+                return;
+            }
+        };
+        if credentials.is_empty() {
+            self.show_status(
+                "No stored credentials to remove. /logout only removes credentials saved by /login; environment variables and models.json config are unchanged.",
+            );
+            return;
+        }
+        let mut providers: Vec<AuthSelectorProvider> = credentials
+            .into_iter()
+            .map(|credential| AuthSelectorProvider {
+                name: model_runtime
+                    .get_provider(&credential.provider_id)
+                    .map(|provider| provider.name().to_owned())
+                    .unwrap_or_else(|| credential.provider_id.clone()),
+                id: credential.provider_id,
+                auth_type: credential.credential_type,
+                method: None,
+                status: Some(AuthCheck {
+                    check_type: credential.credential_type,
+                    source: Some("stored credential".to_owned()),
+                }),
+            })
+            .collect();
+        providers.sort_by(|left, right| left.name.cmp(&right.name));
+
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let by_id = providers.clone();
+        let selector = component_ref(OAuthSelectorComponent::new(
+            AuthSelectorMode::Logout,
+            providers,
+            Box::new(move |provider_id: &str, _auth_type: AuthType| {
+                if let Some(provider) = by_id
+                    .iter()
+                    .find(|provider| provider.id == provider_id)
+                    .cloned()
+                {
+                    let _ = select_tx.send(UiMessage::LogoutProvider {
+                        id,
+                        provider: Box::new(provider),
+                    });
+                }
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            None,
+        ));
+        self.show_selector(Rc::clone(&selector), selector, None);
+    }
+
+    /// The `onSelect` half of the logout selector.
+    async fn logout_provider(&mut self, provider: AuthSelectorProvider) {
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let result = model_runtime
+            .logout(
+                &provider.id,
+                Some(AuthOperationOptions {
+                    signal: Some(timeout_signal(15_000)),
+                }),
+            )
+            .await;
+        match result {
+            Ok(()) => {
+                self.update_available_provider_count();
+                let message = if provider.auth_type == AuthType::OAuth {
+                    format!("Logged out of {}", provider.name)
+                } else {
+                    format!(
+                        "Removed stored API key for {}. Environment variables and models.json config are unchanged.",
+                        provider.name
+                    )
+                };
+                self.show_status(&message);
+            }
+            Err(error) => self.show_error(&format!("Logout failed: {error}")),
+        }
+    }
+
+    /// `showAmbientAuthDialog(providerOption)` (`interactive-mode.ts:5778-5799`).
+    fn show_ambient_auth_dialog(&mut self, provider: AuthSelectorProvider) {
+        let id = self.selector_id + 1;
+        let tx = self.ui_tx.clone();
+        let core = self.ui.clone();
+        let dialog = Rc::new(RefCell::new(LoginDialogComponent::new(
+            Rc::new(move || core.request_render()),
+            &provider.id,
+            Box::new(move |_success, _message| {
+                let _ = tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            Some(&provider.name),
+            Some(&format!("{} setup", provider.name)),
+        )));
+        dialog.borrow_mut().show_info(
+            &format!(
+                "{} is configured outside notagent.",
+                provider
+                    .method
+                    .as_ref()
+                    .map(AuthSelectorMethod::name)
+                    .unwrap_or("Authentication")
+            ),
+            &[],
+            true,
+        );
+        self.show_selector(
+            Rc::clone(&dialog) as ComponentRef,
+            Rc::clone(&dialog) as ComponentRef,
+            None,
+        );
+    }
+
+    /// `showLoginDialog(providerId, providerName)` and `showApiKeyLoginDialog`
+    /// (`interactive-mode.ts:5801-5847`, `5932-5966`).
+    ///
+    /// Deviation (class 1): the auth flow runs wherever the runtime puts it and
+    /// needs a `Send` interaction, while the dialog is `!Send`. The interaction
+    /// therefore posts its prompts and events into this loop and waits on
+    /// `oneshot`s, the same bridge the approval dialog uses.
+    async fn show_login_dialog(&mut self, provider: AuthSelectorProvider, auth_type: AuthType) {
+        let previous_model = self.session().model();
+        let id = self.selector_id + 1;
+        let complete_tx = self.ui_tx.clone();
+        let core = self.ui.clone();
+        let dialog = Rc::new(RefCell::new(LoginDialogComponent::new(
+            Rc::new(move || core.request_render()),
+            &provider.id,
+            Box::new(move |_success, _message| {
+                let _ = complete_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+            Some(&provider.name),
+            None,
+        )));
+        if provider.id == "amazon-bedrock" {
+            dialog.borrow_mut().show_details(&[
+                theme().fg(
+                    ThemeColor::Text,
+                    "You can also use an AWS profile, IAM keys, or role-based credentials.",
+                ),
+                theme().fg(ThemeColor::Muted, "See:"),
+                theme().fg(
+                    ThemeColor::Accent,
+                    &format!("  {}", get_docs_path().join("providers.md").display()),
+                ),
+            ]);
+        }
+        let signal = dialog.borrow().signal();
+        self.login_dialog = Some(Rc::clone(&dialog));
+        self.show_selector(
+            Rc::clone(&dialog) as ComponentRef,
+            Rc::clone(&dialog) as ComponentRef,
+            None,
+        );
+
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let interaction = LoopAuthInteraction {
+            tx: self.ui_tx.clone(),
+            signal: signal.clone(),
+        };
+        let provider_id = provider.id.clone();
+        let provider_name = provider.name.clone();
+        let result = model_runtime
+            .login(&provider_id, auth_type, &interaction)
+            .await;
+        self.login_dialog = None;
+        self.close_selector(id);
+
+        match result {
+            Ok(_) => {
+                self.complete_provider_authentication(
+                    &provider_id,
+                    &provider_name,
+                    auth_type,
+                    previous_model,
+                )
+                .await
+            }
+            Err(error) => {
+                let message = error.to_string();
+                if message != "Login cancelled" {
+                    self.show_error(&if auth_type == AuthType::OAuth {
+                        format!("Failed to login to {provider_name}: {message}")
+                    } else {
+                        format!("Failed to save API key for {provider_name}: {message}")
+                    });
+                }
+            }
+        }
+    }
+
+    /// `completeProviderAuthentication(...)` (`interactive-mode.ts:5706-5776`).
+    async fn complete_provider_authentication(
+        &mut self,
+        provider_id: &str,
+        provider_name: &str,
+        auth_type: AuthType,
+        previous_model: Option<Model>,
+    ) {
+        let action_label = if auth_type == AuthType::OAuth {
+            format!("Logged in to {provider_name}")
+        } else {
+            format!("Saved API key for {provider_name}")
+        };
+
+        let mut selected_model: Option<Model> = None;
+        let mut selection_error: Option<String> = None;
+        if is_unknown_model(previous_model.as_ref()) {
+            let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+            let provider_models: Vec<Model> = model_runtime
+                .get_available_snapshot()
+                .into_iter()
+                .filter(|model| model.provider == provider_id)
+                .collect();
+            match default_model_for_provider(provider_id) {
+                None => {
+                    selection_error = Some(format!(
+                        "{action_label}, but no default model is configured for provider \"{provider_id}\". Use /model to select a model."
+                    ));
+                }
+                Some(_) if provider_models.is_empty() => {
+                    selection_error = Some(format!(
+                        "{action_label}, but no models are available for that provider. Use /model to select a model."
+                    ));
+                }
+                Some(default_model_id) => {
+                    match provider_models
+                        .into_iter()
+                        .find(|model| model.id == default_model_id)
+                    {
+                        None => {
+                            selection_error = Some(format!(
+                                "{action_label}, but its default model \"{default_model_id}\" is not available. Use /model to select a model."
+                            ));
+                        }
+                        Some(model) => match self.session().set_model(model.clone()).await {
+                            Ok(()) => selected_model = Some(model),
+                            Err(message) => {
+                                selection_error = Some(format!(
+                                    "{action_label}, but selecting its default model failed: {message}. Use /model to select a model."
+                                ));
+                            }
+                        },
+                    }
+                }
+            }
+        }
+
+        self.update_available_provider_count();
+        self.footer.borrow_mut().invalidate();
+        self.update_editor_border_color();
+        match selected_model {
+            Some(model) => {
+                self.show_status(&format!(
+                    "{action_label}. Selected {}. Credentials saved to {}",
+                    model.id,
+                    get_auth_path().display()
+                ));
+                self.check_daxnuts_easter_egg(&model);
+            }
+            None => {
+                self.show_status(&format!(
+                    "{action_label}. Credentials saved to {}",
+                    get_auth_path().display()
+                ));
+                if let Some(selection_error) = selection_error {
+                    self.show_error(&selection_error);
+                }
+            }
+        }
+
+        // `void modelRuntime.refresh({providers: [providerId]})`
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        let provider_id = provider_id.to_owned();
+        let signal = timeout_signal(15_000);
+        self.side_futures.push(Box::pin(async move {
+            let result = model_runtime
+                .refresh(notagent_ai::models::ModelsRefreshOptions {
+                    providers: Some(vec![provider_id]),
+                    signal: Some(signal),
+                    ..notagent_ai::models::ModelsRefreshOptions::default()
+                })
+                .await;
+            UiMessage::LoginCatalogRefreshed {
+                action_label,
+                aborted: result.aborted,
+                failed: !result.errors.is_empty(),
+            }
+        }));
+    }
+
+    /// The prompt half of the login interaction, on this loop.
+    fn handle_auth_prompt(
+        &mut self,
+        prompt: AuthPrompt,
+        answer: tokio::sync::oneshot::Sender<Result<String, String>>,
+    ) {
+        let Some(dialog) = self.login_dialog.clone() else {
+            let _ = answer.send(Err("Login cancelled".to_owned()));
+            return;
+        };
+        match prompt.kind {
+            AuthPromptKind::Select { message, options } => {
+                // `showAuthSelect`: the list replaces the dialog and hands it back.
+                let labels: Vec<String> =
+                    options.iter().map(|option| option.label.clone()).collect();
+                let answer = Rc::new(RefCell::new(Some(answer)));
+                let select_answer = Rc::clone(&answer);
+                let cancel_answer = Rc::clone(&answer);
+                let tx = self.ui_tx.clone();
+                let cancel_tx = self.ui_tx.clone();
+                let selector = component_ref(ListSelectorComponent::new(
+                    &message,
+                    labels,
+                    Box::new(move |label| {
+                        let id = options
+                            .iter()
+                            .find(|option| option.label == label)
+                            .map(|option| option.id.clone());
+                        if let Some(answer) = select_answer.borrow_mut().take() {
+                            let _ = answer.send(match id {
+                                Some(id) => Ok(id),
+                                None => Err("Login cancelled".to_owned()),
+                            });
+                        }
+                        let _ = tx.send(UiMessage::RestoreLoginDialog);
+                    }),
+                    Box::new(move || {
+                        if let Some(answer) = cancel_answer.borrow_mut().take() {
+                            let _ = answer.send(Err("Login cancelled".to_owned()));
+                        }
+                        let _ = cancel_tx.send(UiMessage::RestoreLoginDialog);
+                    }),
+                    None,
+                ));
+                let mut container = self.editor_container.borrow_mut();
+                container.clear();
+                container.add_child(Rc::clone(&selector));
+                drop(container);
+                self.ui.set_focus(Some(selector));
+                self.ui.request_render();
+            }
+            kind => {
+                let input = {
+                    let mut dialog = dialog.borrow_mut();
+                    match kind {
+                        AuthPromptKind::ManualCode { message, .. } => {
+                            dialog.show_manual_input(&message)
+                        }
+                        AuthPromptKind::Text {
+                            message,
+                            placeholder,
+                        }
+                        | AuthPromptKind::Secret {
+                            message,
+                            placeholder,
+                        } => dialog.show_prompt(&message, placeholder.as_deref()),
+                        AuthPromptKind::Select { .. } => unreachable!("handled above"),
+                    }
+                };
+                // The dialog answers on its own channel; the loop forwards it.
+                self.side_futures.push(Box::pin(async move {
+                    let value = input
+                        .await
+                        .unwrap_or(Err(LoginCancelled))
+                        .map_err(|_| "Login cancelled".to_owned());
+                    let _ = answer.send(value);
+                    UiMessage::Noop
+                }));
+            }
+        }
+    }
+
+    /// The notify half of the login interaction (`notifyAuthDialog`).
+    fn handle_auth_event(&mut self, event: AuthEvent) {
+        let Some(dialog) = self.login_dialog.clone() else {
+            return;
+        };
+        let mut dialog = dialog.borrow_mut();
+        match event {
+            AuthEvent::AuthUrl { url, instructions } => {
+                dialog.show_auth(&url, instructions.as_deref())
+            }
+            AuthEvent::DeviceCode {
+                user_code,
+                verification_uri,
+                interval_seconds,
+                expires_in_seconds,
+            } => {
+                dialog.show_device_code(&OAuthDeviceCodeInfo {
+                    user_code,
+                    verification_uri,
+                    interval_seconds,
+                    expires_in_seconds,
+                });
+                dialog.show_waiting("Waiting for authentication...");
+            }
+            AuthEvent::Info { message, links } => dialog.show_info(&message, &links, false),
+            AuthEvent::Progress { message } => dialog.show_progress(&message),
+        }
+        self.ui.request_render();
     }
 
     // ------------------------------------------------------------------
@@ -1562,16 +4898,17 @@ impl InteractiveMode {
 
         match text {
             "/settings" => {
-                self.selector_slice_notice("/settings");
+                self.show_settings_selector();
                 self.clear_editor_text();
             }
             "/scoped-models" => {
                 self.clear_editor_text();
-                self.selector_slice_notice("/scoped-models");
+                self.show_models_selector();
             }
             _ if text == "/model" || text.starts_with("/model ") => {
+                let search_term = argument("/model ");
                 self.clear_editor_text();
-                self.selector_slice_notice("/model");
+                self.handle_model_command(search_term.as_deref()).await;
             }
             _ if text == "/export" || text.starts_with("/export ") => {
                 self.handle_export_command(text).await;
@@ -1602,7 +4939,7 @@ impl InteractiveMode {
                 self.clear_editor_text();
             }
             "/tasks" | "/task" => {
-                self.selector_slice_notice("/tasks");
+                self.show_tasks_browser();
                 self.clear_editor_text();
             }
             "/hotkeys" => {
@@ -1610,27 +4947,28 @@ impl InteractiveMode {
                 self.clear_editor_text();
             }
             "/fork" => {
-                self.selector_slice_notice("/fork");
+                self.show_user_message_selector();
                 self.clear_editor_text();
             }
             "/clone" => {
                 self.clear_editor_text();
-                self.selector_slice_notice("/clone");
+                self.handle_clone_command().await;
             }
             "/tree" => {
-                self.selector_slice_notice("/tree");
+                self.show_tree_selector(None);
                 self.clear_editor_text();
             }
             "/trust" => {
-                self.selector_slice_notice("/trust");
+                self.show_trust_selector();
                 self.clear_editor_text();
             }
             _ if text == "/login" || text.starts_with("/login ") => {
+                let provider_ref = argument("/login ");
                 self.clear_editor_text();
-                self.selector_slice_notice("/login");
+                self.handle_login_command(provider_ref.as_deref()).await;
             }
             "/logout" => {
-                self.selector_slice_notice("/logout");
+                self.show_logout_selector().await;
                 self.clear_editor_text();
             }
             "/new" => {
@@ -1659,7 +4997,7 @@ impl InteractiveMode {
                 self.clear_editor_text();
             }
             "/resume" => {
-                self.selector_slice_notice("/resume");
+                self.show_session_selector();
                 self.clear_editor_text();
             }
             "/quit" => {
@@ -1671,13 +5009,6 @@ impl InteractiveMode {
             _ => return false,
         }
         true
-    }
-
-    /// The interim answer of a command whose selector is not wired yet.
-    fn selector_slice_notice(&mut self, command: &str) {
-        self.show_error(&format!(
-            "{command} opens a selector, which lands with the next slice of plan task 13"
-        ));
     }
 
     fn clear_editor_text(&mut self) {
@@ -1809,13 +5140,18 @@ impl InteractiveMode {
     }
 
     /// `handleCopyCommand` (`interactive-mode.ts:6241-6258`).
-    fn handle_copy_command(&mut self, _flash_confirmation: bool) {
+    fn handle_copy_command(&mut self, flash_confirmation: bool) {
         let Some(text) = self.session().get_last_assistant_text() else {
             self.show_error("No agent messages to copy yet.");
             return;
         };
         match crate::utils::clipboard::copy_to_clipboard(&text) {
-            Ok(()) => self.show_status("Copied last agent message to clipboard"),
+            Ok(()) => {
+                // The alternate screen flashes instead of writing a status line.
+                if !(flash_confirmation && self.cell.flash("Copied!")) {
+                    self.show_status("Copied last agent message to clipboard");
+                }
+            }
             Err(message) => self.show_error(&message),
         }
     }
@@ -2213,6 +5549,7 @@ impl InteractiveMode {
         self.output_pad = self.settings().get_output_pad() as usize;
         self.rebuild_chat_from_messages();
         self.keybindings.borrow_mut().reload();
+        self.setup_autocomplete_provider();
         set_keybindings(self.keybindings.borrow().to_tui());
         if let Some(header) = self.built_in_header.clone() {
             header.borrow_mut().set_expanded(self.tool_output_expanded);
@@ -2393,6 +5730,89 @@ impl InteractiveMode {
         answer.as_deref() == Some("Yes")
     }
 
+    /// `switchTuiMode(mode)` (`interactive-mode.ts:797-846`).
+    fn switch_tui_mode(&mut self, mode: TuiMode) {
+        if !self.cell.switch(mode, get_agent_dir()) {
+            self.show_status("Close active overlays before changing TUI mode");
+            return;
+        }
+        self.ui = self.cell.core();
+        self.cell
+            .set_layout_root(self.fullscreen_layout_root.clone());
+        self.options.tui_mode = Some(mode);
+        self.settings().set_tui_mode(mode);
+        self.cell.start();
+        self.theme_controller.rebind_tui();
+        if self.settings().get_show_terminal_progress()
+            && (self.session().is_streaming() || self.session().is_compacting())
+        {
+            self.ui
+                .with_terminal(|terminal| terminal.set_progress(true));
+        }
+        if self.active_status_indicator.is_none() {
+            self.status_container.borrow_mut().clear();
+        }
+        self.show_status(&format!(
+            "TUI mode: {}",
+            match mode {
+                TuiMode::Regular => "regular",
+                TuiMode::Fullscreen => "fullscreen",
+            }
+        ));
+    }
+
+    /// `handleCtrlZ()` (`interactive-mode.ts:4167-4202`).
+    ///
+    /// Deviation (class 1): TypeScript keeps the event loop alive and restores
+    /// the TUI from a `SIGCONT` handler; in Rust the signal stops the thread
+    /// inside `kill`, so the code after it *is* the resume path.
+    fn handle_ctrl_z(&mut self) {
+        #[cfg(windows)]
+        {
+            self.show_status("Suspend to background is not supported on Windows");
+        }
+        #[cfg(unix)]
+        {
+            self.cell.stop(TuiStopOptions::default());
+            // pid 0: the whole process group, as in TypeScript.
+            unsafe {
+                libc::kill(0, libc::SIGTSTP);
+            }
+            self.cell.start();
+            self.cell.request_render(true);
+        }
+    }
+
+    /// `handleClipboardPaste()` (`interactive-mode.ts:3088-3111`).
+    ///
+    /// An image lands as a temporary file whose path is inserted at the cursor,
+    /// which is what the `@`-attachment path reads back; anything else pastes
+    /// as plain text.
+    fn handle_clipboard_paste(&mut self) {
+        if let Some(image) = crate::utils::clipboard_image::read_clipboard_image() {
+            let extension =
+                crate::utils::clipboard_image::extension_for_image_mime_type(&image.mime_type)
+                    .unwrap_or("png");
+            let file_name = format!("notagent-clipboard-{}.{extension}", uuid::Uuid::new_v4());
+            let file_path = std::env::temp_dir().join(file_name);
+            if std::fs::write(&file_path, &image.bytes).is_ok() {
+                self.editor
+                    .borrow_mut()
+                    .editor_mut()
+                    .insert_text_at_cursor(&file_path.to_string_lossy());
+                self.ui.request_render();
+                return;
+            }
+        }
+        if let Some(text) = crate::utils::clipboard::read_clipboard_text() {
+            self.editor
+                .borrow_mut()
+                .editor_mut()
+                .insert_text_at_cursor(&text);
+            self.ui.request_render();
+        }
+    }
+
     /// `handleCtrlC` (`interactive-mode.ts:4010-4018`).
     async fn handle_ctrl_c(&mut self) {
         let now = Instant::now();
@@ -2428,6 +5848,10 @@ impl InteractiveMode {
                 self.session().abort_retry();
                 return;
             }
+            EscapeTarget::BranchSummary => {
+                self.session().abort_branch_summary();
+                return;
+            }
             EscapeTarget::Default => {}
         }
         if self.session().is_streaming() {
@@ -2438,6 +5862,8 @@ impl InteractiveMode {
             self.clear_editor_text();
             self.is_bash_mode = false;
             self.update_editor_border_color();
+        } else if self.editor.borrow().editor().get_text().trim().is_empty() {
+            self.handle_double_escape();
         }
     }
 
@@ -2490,6 +5916,7 @@ impl InteractiveMode {
 
     /// `stop()` (`interactive-mode.ts:6668-6687`).
     pub fn stop(&mut self) {
+        self.dispose_active_selector();
         if self.settings().get_show_terminal_progress() {
             self.ui
                 .with_terminal(|terminal| terminal.set_progress(false));
@@ -2499,8 +5926,22 @@ impl InteractiveMode {
         self.footer.borrow_mut().dispose();
         self.agent_subscription = None;
         if self.is_initialized {
+            // `stopInteractiveTui(fullscreenExitOutput)`: leaving fullscreen
+            // with `transcript` writes the document into the scrollback by
+            // switching back to the main screen for one last frame.
+            if self.cell.mode() == TuiMode::Fullscreen
+                && self.settings().get_fullscreen_exit_output() == FullscreenExitOutput::Transcript
+            {
+                while self.ui.has_overlay_entries() {
+                    self.ui.hide_overlay();
+                }
+                if self.cell.switch(TuiMode::Regular, get_agent_dir()) {
+                    self.ui = self.cell.core();
+                    self.cell.render_now(false);
+                }
+            }
             self.cell.stop(TuiStopOptions {
-                preserve_screen: self.cell.mode() != TuiMode::Regular,
+                preserve_screen: self.cell.mode() == TuiMode::Fullscreen,
             });
             self.is_initialized = false;
         }
@@ -2659,15 +6100,29 @@ impl InteractiveMode {
             }
             AgentSessionEvent::Agent(AgentEvent::ToolExecutionEnd {
                 tool_call_id,
+                tool_name,
                 result,
                 is_error,
-                ..
             }) => {
+                let todo_details = (tool_name == "todo_write")
+                    .then(|| result.details.clone())
+                    .flatten();
                 if let Some(component) = self.tool_component(&tool_call_id) {
                     component
                         .borrow_mut()
                         .update_result(tool_result(result, is_error), false);
                     self.pending_tools.retain(|(id, _)| id != &tool_call_id);
+                    self.ui.request_render();
+                }
+                // Fed from the result rather than from the store: a list whose
+                // items are all completed is gone from the store by now.
+                if tool_name == "todo_write" {
+                    let todos = todo_details
+                        .as_ref()
+                        .and_then(|details| details.get("after"))
+                        .and_then(|after| serde_json::from_value::<Vec<Todo>>(after.clone()).ok())
+                        .unwrap_or_default();
+                    self.sync_todo_panel(todos, true);
                     self.ui.request_render();
                 }
             }
@@ -2817,6 +6272,9 @@ impl InteractiveMode {
         self.chat_container
             .borrow_mut()
             .add_child(Rc::clone(&component) as ComponentRef);
+        self.chat_tool_rows.push(Rc::clone(&component));
+        self.chat_expandables
+            .push(Rc::clone(&component) as Rc<RefCell<dyn Expandable>>);
         self.pending_tools
             .push((tool_call_id.to_owned(), component));
     }
@@ -2886,6 +6344,8 @@ impl InteractiveMode {
     /// slices that own them.
     fn render_session_items(&mut self, items: &[AgentMessage], populate_history: bool) {
         self.pending_tools.clear();
+        self.chat_tool_rows.clear();
+        self.chat_expandables.clear();
         let mut rendered_pending: Vec<(String, Rc<RefCell<ToolExecutionComponent>>)> = Vec::new();
 
         for item in items {
@@ -2907,6 +6367,9 @@ impl InteractiveMode {
                         self.chat_container
                             .borrow_mut()
                             .add_child(Rc::clone(&component) as ComponentRef);
+                        self.chat_tool_rows.push(Rc::clone(&component));
+                        self.chat_expandables
+                            .push(Rc::clone(&component) as Rc<RefCell<dyn Expandable>>);
 
                         if matches!(message.stop_reason, StopReason::Aborted | StopReason::Error) {
                             let error_message = if message.stop_reason == StopReason::Aborted {
@@ -3232,6 +6695,169 @@ fn compaction_status_reason(reason: CompactionReason) -> CompactionStatusReason 
         CompactionReason::Manual => CompactionStatusReason::Manual,
         CompactionReason::Threshold => CompactionStatusReason::Threshold,
         CompactionReason::Overflow => CompactionStatusReason::Overflow,
+    }
+}
+
+/// Whether an api-key method offers an interactive login (`method.login`).
+fn has_api_key_login(api_key: &dyn notagent_ai::auth::types::ApiKeyAuth) -> bool {
+    let interaction = notagent_ai::auth::types::ProviderAuthInteraction {
+        interaction: &NoAuthInteraction,
+        signal: tokio_util::sync::CancellationToken::new(),
+    };
+    api_key.login(&interaction).is_some()
+}
+
+/// A never-used interaction, only to ask a method whether it has a login.
+struct NoAuthInteraction;
+
+impl notagent_ai::auth::types::AuthInteraction for NoAuthInteraction {
+    fn signal(&self) -> Option<tokio_util::sync::CancellationToken> {
+        None
+    }
+
+    fn prompt(
+        &self,
+        _prompt: AuthPrompt,
+    ) -> futures::future::BoxFuture<'_, Result<String, notagent_ai::auth::types::AuthError>> {
+        Box::pin(async {
+            Err(notagent_ai::auth::types::AuthError(
+                "Login cancelled".to_owned(),
+            ))
+        })
+    }
+
+    fn notify(&self, _event: AuthEvent) {}
+}
+
+/// `isUnknownModel(model)` (`interactive-mode.ts:239-241`).
+fn is_unknown_model(model: Option<&Model>) -> bool {
+    model.is_some_and(|model| {
+        model.provider == "unknown" && model.id == "unknown" && model.api == "unknown"
+    })
+}
+
+/// `configuredEnabledIds(models)` of the models selector.
+fn configured_enabled_ids(
+    configured_patterns: Option<&[String]>,
+    models: &[Model],
+) -> Option<Vec<String>> {
+    let patterns = configured_patterns.filter(|patterns| !patterns.is_empty())?;
+    let resolved = resolve_model_scope_from_models(patterns, models);
+    let mut ids: Vec<String> = resolved
+        .scoped_models
+        .iter()
+        .map(|scoped| format!("{}/{}", scoped.model.provider, scoped.model.id))
+        .collect();
+    for diagnostic in resolved.diagnostics {
+        if diagnostic.code == ModelScopeDiagnosticCode::NoMatch
+            && !ids.contains(&diagnostic.pattern)
+        {
+            ids.push(diagnostic.pattern);
+        }
+    }
+    Some(ids)
+}
+
+/// The wire name of a thinking level, as the status line prints it.
+fn thinking_level_name(level: notagent_agent::types::ThinkingLevel) -> &'static str {
+    use notagent_agent::types::ThinkingLevel;
+    match level {
+        ThinkingLevel::Off => "off",
+        ThinkingLevel::Minimal => "minimal",
+        ThinkingLevel::Low => "low",
+        ThinkingLevel::Medium => "medium",
+        ThinkingLevel::High => "high",
+        ThinkingLevel::Xhigh => "xhigh",
+        ThinkingLevel::Max => "max",
+    }
+}
+
+/// The two spellings of the tree filter mode.
+fn tree_filter_mode(
+    mode: crate::core::settings_manager::TreeFilterMode,
+) -> crate::modes::interactive::components::tree_selector::FilterMode {
+    use crate::core::settings_manager::TreeFilterMode as Setting;
+    use crate::modes::interactive::components::tree_selector::FilterMode as Mode;
+    match mode {
+        Setting::Default => Mode::Default,
+        Setting::NoTools => Mode::NoTools,
+        Setting::UserOnly => Mode::UserOnly,
+        Setting::LabeledOnly => Mode::LabeledOnly,
+        Setting::All => Mode::All,
+    }
+}
+
+/// The settings spelling of a queue mode (`settingsQueueMode` of the session).
+fn settings_queue_mode(
+    mode: notagent_agent::QueueMode,
+) -> crate::core::settings_manager::QueueMode {
+    match mode {
+        notagent_agent::QueueMode::All => crate::core::settings_manager::QueueMode::All,
+        notagent_agent::QueueMode::OneAtATime => {
+            crate::core::settings_manager::QueueMode::OneAtATime
+        }
+    }
+}
+
+/// The agent spelling of a queue mode.
+fn agent_queue_mode(mode: crate::core::settings_manager::QueueMode) -> notagent_agent::QueueMode {
+    match mode {
+        crate::core::settings_manager::QueueMode::All => notagent_agent::QueueMode::All,
+        crate::core::settings_manager::QueueMode::OneAtATime => {
+            notagent_agent::QueueMode::OneAtATime
+        }
+    }
+}
+
+/// The `transport` setting, as `settings.json` spells it.
+fn parse_transport(value: &str) -> notagent_ai::types::Transport {
+    match value {
+        "sse" => notagent_ai::types::Transport::Sse,
+        "websocket" => notagent_ai::types::Transport::Websocket,
+        "websocket-cached" => notagent_ai::types::Transport::WebsocketCached,
+        _ => notagent_ai::types::Transport::Auto,
+    }
+}
+
+fn transport_wire_name(transport: notagent_ai::types::Transport) -> &'static str {
+    match transport {
+        notagent_ai::types::Transport::Sse => "sse",
+        notagent_ai::types::Transport::Websocket => "websocket",
+        notagent_ai::types::Transport::WebsocketCached => "websocket-cached",
+        notagent_ai::types::Transport::Auto => "auto",
+    }
+}
+
+/// The two spellings of the scrollbar setting.
+fn scroll_view_scrollbar(
+    mode: crate::core::settings_manager::ScrollViewScrollbar,
+) -> notagent_tui::components::scroll_view::ScrollViewScrollbar {
+    match mode {
+        crate::core::settings_manager::ScrollViewScrollbar::Auto => {
+            notagent_tui::components::scroll_view::ScrollViewScrollbar::Auto
+        }
+        crate::core::settings_manager::ScrollViewScrollbar::Always => {
+            notagent_tui::components::scroll_view::ScrollViewScrollbar::Always
+        }
+        crate::core::settings_manager::ScrollViewScrollbar::Hidden => {
+            notagent_tui::components::scroll_view::ScrollViewScrollbar::Hidden
+        }
+    }
+}
+
+fn settings_scrollbar(
+    mode: notagent_tui::components::scroll_view::ScrollViewScrollbar,
+) -> crate::core::settings_manager::ScrollViewScrollbar {
+    match mode {
+        notagent_tui::components::scroll_view::ScrollViewScrollbar::Auto => {
+            crate::core::settings_manager::ScrollViewScrollbar::Auto
+        }
+        notagent_tui::components::scroll_view::ScrollViewScrollbar::Always => {
+            crate::core::settings_manager::ScrollViewScrollbar::Always
+        }
+        notagent_tui::components::scroll_view::ScrollViewScrollbar::Hidden => {
+            crate::core::settings_manager::ScrollViewScrollbar::Hidden
+        }
     }
 }
 
