@@ -90,6 +90,20 @@ struct RuntimeState {
     model_fallback_message: Option<String>,
 }
 
+/// Why opening a session file failed.
+///
+/// Deviation (class 1): TypeScript throws `MissingSessionCwdError` and the
+/// interactive mode catches it with `instanceof`; the port kept a `String` at
+/// first, which lost the issue the dialog needs. The variant carries it, and
+/// `to_string()` still produces the message the other callers print.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SessionOpenError {
+    #[error("{0}")]
+    MissingCwd(#[from] MissingSessionCwdError),
+    #[error("{0}")]
+    Failed(String),
+}
+
 pub struct AgentSessionRuntime {
     state: Mutex<RuntimeState>,
     create_runtime: CreateAgentSessionRuntimeFactory,
@@ -207,12 +221,11 @@ impl AgentSessionRuntime {
         &self,
         session_path: &str,
         cwd_override: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), SessionOpenError> {
         let previous_session_file = self.session().session_file();
         let session_manager = SessionManager::open(session_path, None, cwd_override)
-            .map_err(|error| error.to_string())?;
-        assert_session_cwd_exists(&session_manager, &self.cwd())
-            .map_err(|error: MissingSessionCwdError| error.to_string())?;
+            .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
+        assert_session_cwd_exists(&session_manager, &self.cwd())?;
         let cwd = session_manager.get_cwd().to_string();
         self.replace_with(
             cwd,
@@ -221,6 +234,7 @@ impl AgentSessionRuntime {
             previous_session_file,
         )
         .await
+        .map_err(SessionOpenError::Failed)
     }
 
     /// Starts a fresh session in the same directory.
@@ -372,18 +386,21 @@ impl AgentSessionRuntime {
         &self,
         input_path: &str,
         cwd_override: Option<&str>,
-    ) -> Result<(), String> {
-        let resolved =
-            resolve_path_default(input_path, &current_dir()).map_err(|error| error.to_string())?;
+    ) -> Result<(), SessionOpenError> {
+        let resolved = resolve_path_default(input_path, &current_dir())
+            .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
         if !Path::new(&resolved).exists() {
-            return Err(SessionImportFileNotFoundError(resolved).to_string());
+            return Err(SessionOpenError::Failed(
+                SessionImportFileNotFoundError(resolved).to_string(),
+            ));
         }
 
         let session_dir = self
             .session()
             .with_session_manager(|manager| manager.get_session_dir().to_string());
         if !Path::new(&session_dir).exists() {
-            std::fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(&session_dir)
+                .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
         }
 
         let file_name = Path::new(&resolved)
@@ -395,14 +412,14 @@ impl AgentSessionRuntime {
 
         let previous_session_file = self.session().session_file();
         if destination_text != resolved {
-            std::fs::copy(&resolved, &destination).map_err(|error| error.to_string())?;
+            std::fs::copy(&resolved, &destination)
+                .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
         }
 
         let session_manager =
             SessionManager::open(&destination_text, Some(&session_dir), cwd_override)
-                .map_err(|error| error.to_string())?;
-        assert_session_cwd_exists(&session_manager, &self.cwd())
-            .map_err(|error: MissingSessionCwdError| error.to_string())?;
+                .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
+        assert_session_cwd_exists(&session_manager, &self.cwd())?;
         let cwd = session_manager.get_cwd().to_string();
         self.replace_with(
             cwd,
@@ -411,6 +428,7 @@ impl AgentSessionRuntime {
             previous_session_file,
         )
         .await
+        .map_err(SessionOpenError::Failed)
     }
 
     /// Shuts the runtime down for good.

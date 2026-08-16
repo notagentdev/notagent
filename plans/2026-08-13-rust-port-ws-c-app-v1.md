@@ -156,7 +156,24 @@ TS-Quelle: `/Users/dev/projects/notagent-main/packages/coding-agent` (und die vi
 > Loopback-Server) und 3 in `tests/interactive_mode_wiring.rs` (Manager öffnen und schließen,
 > `/login`-Hinweis ohne Credential, native Provider-Registrierung) — darunter die native Form
 > des ersten TS-Falls aus `test/llama-extension.test.ts`, den B ausgenommen hatte.
-- [ ] 15. Rest-Features portieren: `src/core/export-html/` (746 — HTML-Export mit Template und ANSI→HTML; die Vendor-JS-Dateien marked.min.js/highlight.min.js werden als statische Assets übernommen, da sie im exportierten HTML clientseitig laufen), /share (GitHub-Gist, Viewer-URL-Env), JSONL-Export/Import, `src/utils/image-*.ts` + `photon.ts`-Ersatz durch image-Crate + `exif-orientation.ts`, Mermaid-Rendering (`components/mermaid.ts`, grok-mermaid-Ersatzentscheidung: Port des genutzten Funktionsumfangs, Modi off/final/streaming), `src/core/cache-stats.ts`, `usage-totals.ts`, `src/core/telemetry.ts` (Install-Ping, opt-out), `utils/version-check.ts` + Self-Update semantisch äquivalent für die Rust-Distribution (dokumentierte Substitution), `src/index.ts`-Äquivalent als lib-Oberfläche des Bin-Crates (SDK-Nutzung ohne Extension-Factories) lesen und portieren; verbleibende Testsuiten (Ziel äquivalent zu ~53 600 TS-Test-LOC inkl. test/suite/regressions/) portieren. Rationale: komplettiert den Funktionsumfang bis zur G4-Parität. (O-4: export-html, share, version-check/self-update, Install-Telemetrie, cache-stats, usage-totals sind an B übertragen; Bilder/Mermaid/lib-Oberfläche bleiben hier)
+- [x] 15. Rest-Features portieren: `src/core/export-html/` (746 — HTML-Export mit Template und ANSI→HTML; die Vendor-JS-Dateien marked.min.js/highlight.min.js werden als statische Assets übernommen, da sie im exportierten HTML clientseitig laufen), /share (GitHub-Gist, Viewer-URL-Env), JSONL-Export/Import, `src/utils/image-*.ts` + `photon.ts`-Ersatz durch image-Crate + `exif-orientation.ts`, Mermaid-Rendering (`components/mermaid.ts`, grok-mermaid-Ersatzentscheidung: Port des genutzten Funktionsumfangs, Modi off/final/streaming), `src/core/cache-stats.ts`, `usage-totals.ts`, `src/core/telemetry.ts` (Install-Ping, opt-out), `utils/version-check.ts` + Self-Update semantisch äquivalent für die Rust-Distribution (dokumentierte Substitution), `src/index.ts`-Äquivalent als lib-Oberfläche des Bin-Crates (SDK-Nutzung ohne Extension-Factories) lesen und portieren; verbleibende Testsuiten (Ziel äquivalent zu ~53 600 TS-Test-LOC inkl. test/suite/regressions/) portieren. Rationale: komplettiert den Funktionsumfang bis zur G4-Parität. (O-4: export-html, share, version-check/self-update, Install-Telemetrie, cache-stats, usage-totals sind an B übertragen; Bilder/Mermaid/lib-Oberfläche bleiben hier)
+
+> **Abschluss Task 15 (2026-08-16):** Der an B übertragene Teil (export-html, /share, JSONL-Export,
+> version-check/self-update, Telemetrie, cache-stats, usage-totals) liegt seit B-Task 16 auf main,
+> Mermaid seit A-Task 15 (O-6), die lib-Oberfläche (`src/index.ts` → `lib.rs`) ist mit C-24
+> gebucht. Neu in dieser Task: `utils/tool-result-images.ts` samt der Stelle, an der TS es
+> aufruft — das `afterToolCall` von `_installAgentHooks`, das im Port bis dahin ganz fehlte und
+> mit ihm auch der `PostToolUse`-Dispatch der Session; `clankolas.png` ist als Asset übernommen
+> und einkompiliert; die Bildzeile des Ledgers ist auf `verifiziert` gehoben.
+> Dazu die drei bei Task 13 offen dokumentierten Zweige: `maybeSaveImplicitProjectTrustAfterReload`,
+> der `MissingSessionCwdError`-Zweig von `/import` und `/resume` (mit dem dafür nötigen
+> typisierten `SessionOpenError` statt der Zeichenkette) und die Signal-Handler, die als
+> SIGTERM/SIGHUP-Task des Binaries auf einen Shutdown-Token laufen, den die Modus-Schleife
+> abwartet.
+> **Tests:** 7 portierte Fälle in `tests/tool_result_images.rs`, 2 in
+> `tests/agent_session_tool_result_images.rs`, 3 neue in `tests/interactive_mode_wiring.rs`
+> (implizites Projektvertrauen nach `/reload`, `/import` einer Sitzung ohne existierendes cwd,
+> Shutdown-Token) und die erweiterte Bildprüfung in `tests/panels.rs`.
 - [ ] 16. Gate-Abnahmen und Abschluss-Audit durchführen: G1/G2/G3/G4-Kriterien aus dem Master prüfen und taggen; an G4 den Smoke-Test analog TS-Release-Prozedur ausführen (--help, --version, --list-models, -p gegen faux und einen echten Provider des Nutzers, interaktive Session in tmux mit Prompt-Roundtrip) und in plans/g4-smoke-report.md protokollieren; Abschluss-Drift-Audit über alle Ledger (jede TS-src-Datei erfasst) in plans/final-parity-audit.md; PARITY.md aller fünf C-Crates finalisieren. Rationale: messbarer Abschluss gemäß Master-Plan Task 9 und 10.
 
 ## Verification Criteria

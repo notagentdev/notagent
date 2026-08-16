@@ -542,7 +542,8 @@ async fn handle_command(
             state
                 .runtime_host
                 .switch_session(&payload.session_path, None)
-                .await?;
+                .await
+                .map_err(|error| error.to_string())?;
             success(Some(json!({ "cancelled": false })))
         }
 

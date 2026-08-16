@@ -154,4 +154,10 @@ fn earendil_announces_the_blog_post() {
     // Top and bottom border.
     assert!(plain.starts_with(&"─".repeat(80)), "{plain}");
     assert!(plain.ends_with(&"─".repeat(80)), "{plain}");
+    // The picture is part of the panel: it is compiled into the binary, so it
+    // is there whether or not an assets directory exists next to it.
+    assert!(
+        plain.contains("[Image: clankolas.png [image/png] 640x537]"),
+        "the picture is compiled into the binary, so it is there without an assets directory: {plain}"
+    );
 }

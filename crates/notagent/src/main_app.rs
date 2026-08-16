@@ -85,7 +85,9 @@ use crate::core::settings_manager::{SettingsManager, SettingsManagerCreateOption
 use crate::core::timings::{print_timings, reset_timings, time};
 use crate::core::trust_manager::{ProjectTrustStore, has_trust_requiring_project_resources};
 use crate::migrations::run_migrations;
+use crate::utils::shell::kill_tracked_detached_children;
 use notagent_tui::tui::run_until;
+use tokio_util::sync::CancellationToken;
 
 use crate::modes::interactive::interactive_mode::{
     InteractiveModeHandle, InteractiveModeOptions, create_interactive_mode,
@@ -1217,6 +1219,34 @@ pub async fn main(args: Vec<String>) -> i32 {
             let auto_trust_on_reload_cwd = (parsed.project_trust_override.is_none()
                 && !has_trust_requiring_project_resources(&session_cwd))
             .then_some(session_cwd);
+            // `registerSignalHandlers()` (`interactive-mode.ts:4122-4155`): the
+            // process signals belong to the binary. SIGTERM and SIGHUP shut the
+            // session down gracefully — the children first, then the session
+            // teardown and the terminal restore inside the mode, which owns
+            // them; the interactive path exits 0, as in TypeScript.
+            let shutdown_signal = CancellationToken::new();
+            #[cfg(unix)]
+            let signal_task = {
+                let shutdown_signal = shutdown_signal.clone();
+                tokio::spawn(async move {
+                    let Ok(mut terminate) =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    else {
+                        return;
+                    };
+                    let Ok(mut hangup) =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
+                    else {
+                        return;
+                    };
+                    tokio::select! {
+                        _ = terminate.recv() => {}
+                        _ = hangup.recv() => {}
+                    }
+                    kill_tracked_detached_children();
+                    shutdown_signal.cancel();
+                })
+            };
             let InteractiveModeHandle {
                 approval_presenter,
                 report,
@@ -1229,6 +1259,7 @@ pub async fn main(args: Vec<String>) -> i32 {
                     migrated_providers,
                     model_fallback_message: runtime.model_fallback_message(),
                     auto_trust_on_reload_cwd,
+                    shutdown_signal: Some(shutdown_signal),
                     initial_message,
                     initial_images: initial_images.unwrap_or_default(),
                     initial_messages: parsed.messages.clone(),
@@ -1244,6 +1275,8 @@ pub async fn main(args: Vec<String>) -> i32 {
             // The render loop belongs to the caller (interface request A-20):
             // `run_until` renders and pumps stdin while the mode runs.
             let exit_code = run_until(renderer.as_mut(), pump.as_mut(), run).await;
+            #[cfg(unix)]
+            signal_task.abort();
             stop_theme_watcher();
             restore_stdout();
             exit_code

@@ -87,6 +87,9 @@ use crate::core::hooks::runtime::{HookReportLevel, HookReporter};
 use crate::core::http_dispatcher::format_http_idle_timeout_ms;
 use crate::core::keybindings::KeybindingsManager;
 use crate::core::messages::create_compaction_summary_message;
+use tokio_util::sync::CancellationToken;
+
+use crate::core::agent_session_runtime::SessionOpenError;
 use crate::core::model_registry::ModelRegistry;
 use crate::core::model_resolver::{
     ModelScopeDiagnosticCode, default_model_for_provider, find_exact_model_reference_match,
@@ -96,6 +99,7 @@ use crate::core::modes::indicator::format_mode_switch_notice;
 use crate::core::package_manager::{DefaultPackageManager, PackageManagerOptions};
 use crate::core::permissions::coordinator::ApprovalPresenter;
 use crate::core::permissions::request::{ApprovalAnswer, ApprovalRequest};
+use crate::core::session_cwd::{MissingSessionCwdError, format_missing_session_cwd_prompt};
 use crate::core::session_manager::{
     SessionEntry, SessionInfo, SessionManager, session_entry_to_context_messages,
 };
@@ -209,6 +213,11 @@ pub struct InteractiveModeOptions {
     /// Cwd to trust after a reload if it gained a `.notagent` directory during
     /// this implicitly trusted session.
     pub auto_trust_on_reload_cwd: Option<String>,
+    /// `registerSignalHandlers()` (`interactive-mode.ts:4122-4155`): the binary
+    /// owns the process signals and cancels this token on SIGTERM/SIGHUP; the
+    /// mode then runs the `fromSignal` shutdown on its own thread, where the
+    /// terminal lives.
+    pub shutdown_signal: Option<CancellationToken>,
     /// Initial message sent on startup (may carry `@file` content).
     pub initial_message: Option<String>,
     /// Images attached to the initial message.
@@ -1800,6 +1809,7 @@ impl InteractiveMode {
             self.pending_user_inputs.push_back(message);
         }
 
+        let shutdown_signal = self.options.shutdown_signal.clone();
         let mut ui_rx = self.ui_rx.take().expect("run called once");
         let mut agent_rx = self.agent_rx.take().expect("init subscribed");
         let mut bash_rx = self.bash_rx.take().expect("run called once");
@@ -1947,6 +1957,18 @@ impl InteractiveMode {
                     }
                 } => {
                     self.tick();
+                    None
+                }
+                // The signal handlers of `registerSignalHandlers()`: the binary
+                // catches SIGTERM/SIGHUP and cancels the token, the shutdown
+                // itself runs here, where the terminal is owned.
+                () = async {
+                    match shutdown_signal.as_ref() {
+                        Some(token) => token.cancelled().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    self.shutdown_from_signal().await;
                     None
                 }
             };
@@ -3876,6 +3898,48 @@ impl InteractiveMode {
     }
 
     /// `showTrustSelector()` (`interactive-mode.ts:4981-5011`).
+    /// `maybeSaveImplicitProjectTrustAfterReload()`
+    /// (`interactive-mode.ts:4955-4979`).
+    ///
+    /// A session that started in a folder without trust-requiring resources was
+    /// trusted implicitly. If the reload brought such resources in, that
+    /// implicit decision is written down once, so the next start does not ask.
+    fn maybe_save_implicit_project_trust_after_reload(&mut self) -> bool {
+        let cwd = self.cwd();
+        if self.options.auto_trust_on_reload_cwd.as_deref() != Some(cwd.as_str()) {
+            return false;
+        }
+        if !self.settings().is_project_trusted() || !has_trust_requiring_project_resources(&cwd) {
+            return false;
+        }
+
+        let trust_store = ProjectTrustStore::new(&self.runtime.services().agent_dir);
+        match trust_store.get(&cwd) {
+            Ok(Some(_)) => {
+                self.options.auto_trust_on_reload_cwd = None;
+                false
+            }
+            Ok(None) => match trust_store.set(&cwd, Some(true)) {
+                Ok(()) => {
+                    self.options.auto_trust_on_reload_cwd = None;
+                    true
+                }
+                Err(error) => {
+                    self.show_warning(&format!(
+                        "Could not save project trust after reload: {error}"
+                    ));
+                    false
+                }
+            },
+            Err(error) => {
+                self.show_warning(&format!(
+                    "Could not save project trust after reload: {error}"
+                ));
+                false
+            }
+        }
+    }
+
     fn show_trust_selector(&mut self) {
         let cwd = self.cwd();
         let trust_store = ProjectTrustStore::new(&self.runtime.services().agent_dir);
@@ -4129,9 +4193,6 @@ impl InteractiveMode {
     }
 
     /// `handleResumeSession(sessionPath)` (`interactive-mode.ts:5419-5454`).
-    ///
-    /// Remaining: the `MissingSessionCwdError` branch, for the same reason as
-    /// in `/import` — the runtime flattens the error into a string.
     async fn handle_resume_session(&mut self, session_path: &str) {
         self.clear_status_indicator(None);
         match self.runtime.switch_session(session_path, None).await {
@@ -4139,8 +4200,41 @@ impl InteractiveMode {
                 self.rebind_current_session();
                 self.show_status("Resumed session");
             }
-            Err(message) => self.show_error(&format!("Failed to resume session: {message}")),
+            Err(SessionOpenError::MissingCwd(error)) => {
+                let Some(selected_cwd) = self.prompt_for_missing_session_cwd(&error).await else {
+                    self.show_status("Resume cancelled");
+                    return;
+                };
+                match self
+                    .runtime
+                    .switch_session(session_path, Some(&selected_cwd))
+                    .await
+                {
+                    Ok(()) => {
+                        self.rebind_current_session();
+                        self.show_status("Resumed session in current cwd");
+                    }
+                    Err(error) => {
+                        self.show_error(&format!("Failed to resume session: {error}"));
+                    }
+                }
+            }
+            Err(error) => self.show_error(&format!("Failed to resume session: {error}")),
         }
+    }
+
+    /// `promptForMissingSessionCwd(error)` (`interactive-mode.ts:2482-2488`).
+    async fn prompt_for_missing_session_cwd(
+        &mut self,
+        error: &MissingSessionCwdError,
+    ) -> Option<String> {
+        let confirmed = self
+            .confirm(
+                "Session cwd not found",
+                &format_missing_session_cwd_prompt(&error.0),
+            )
+            .await;
+        confirmed.then(|| error.0.fallback_cwd.clone())
     }
 
     /// `showTreeSelector(initialSelectedId)` (`interactive-mode.ts:5239-5379`).
@@ -5918,11 +6012,6 @@ impl InteractiveMode {
     }
 
     /// `handleImportCommand` (`interactive-mode.ts:6103-6145`).
-    ///
-    /// Remaining: the `MissingSessionCwdError` branch, which offers the
-    /// fallback cwd and retries. `AgentSessionRuntime::import_from_jsonl`
-    /// flattens its errors into a string, so the branch needs a typed error
-    /// first; noted in `PARITY.md`.
     async fn handle_import_command(&mut self, text: &str) {
         let Some(input_path) = path_command_argument(text, "/import") else {
             self.show_error("Usage: /import <path.jsonl>");
@@ -5944,7 +6033,26 @@ impl InteractiveMode {
                 self.rebind_current_session();
                 self.show_status(&format!("Session imported from: {input_path}"));
             }
-            Err(message) => self.show_error(&format!("Failed to import session: {message}")),
+            Err(SessionOpenError::MissingCwd(error)) => {
+                let Some(selected_cwd) = self.prompt_for_missing_session_cwd(&error).await else {
+                    self.show_status("Import cancelled");
+                    return;
+                };
+                match self
+                    .runtime
+                    .import_from_jsonl(&input_path, Some(&selected_cwd))
+                    .await
+                {
+                    Ok(()) => {
+                        self.rebind_current_session();
+                        self.show_status(&format!("Session imported from: {input_path}"));
+                    }
+                    Err(error) => {
+                        self.show_error(&format!("Failed to import session: {error}"));
+                    }
+                }
+            }
+            Err(error) => self.show_error(&format!("Failed to import session: {error}")),
         }
     }
 
@@ -6424,12 +6532,15 @@ impl InteractiveMode {
         self.theme_controller.apply_from_settings().await;
         self.apply_runtime_settings();
         self.show_loaded_resources(false, true);
+        let saved_implicit_project_trust = self.maybe_save_implicit_project_trust_after_reload();
         if let Some(error) = self.runtime.services().model_runtime.get_error() {
             self.show_error(&format!("models.json error: {error}"));
         }
-        self.show_status(
-            "Reloaded keybindings, extensions, skills, prompts, themes, and context files",
-        );
+        self.show_status(if saved_implicit_project_trust {
+            "Reloaded keybindings, extensions, skills, prompts, themes, and context files; saved project trust"
+        } else {
+            "Reloaded keybindings, extensions, skills, prompts, themes, and context files"
+        });
 
         {
             let mut editor_container = self.editor_container.borrow_mut();
@@ -6732,6 +6843,23 @@ impl InteractiveMode {
         } else if self.editor.borrow().editor().get_text().trim().is_empty() {
             self.handle_double_escape();
         }
+    }
+
+    /// `shutdown({ fromSignal: true })` (`interactive-mode.ts:4038-4051`).
+    ///
+    /// The session teardown runs before the terminal is touched: removing
+    /// sockets and writing the session file must not be skipped because a
+    /// restore write to a dead terminal failed. No resume hint is printed —
+    /// TypeScript's signal path does not reach that code either.
+    async fn shutdown_from_signal(&mut self) {
+        if self.is_shutting_down {
+            return;
+        }
+        self.is_shutting_down = true;
+        self.runtime.dispose().await;
+        self.theme_controller.disable_auto_sync();
+        self.stop();
+        self.exit_code = Some(0);
     }
 
     /// `shutdown()` (`interactive-mode.ts:4032-4071`) for the interactive quit.

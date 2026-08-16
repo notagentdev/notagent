@@ -63,6 +63,23 @@ impl Driver {
         terminal: VirtualTerminal,
         tui_mode: notagent::core::settings_manager::TuiMode,
     ) -> Self {
+        Self::start_with_options(
+            app,
+            terminal,
+            InteractiveModeOptions {
+                tui_mode: Some(tui_mode),
+                ..InteractiveModeOptions::default()
+            },
+        )
+        .await
+    }
+
+    /// Start with everything but the terminal chosen by the caller.
+    async fn start_with_options(
+        app: &HeadlessApp,
+        terminal: VirtualTerminal,
+        options: InteractiveModeOptions,
+    ) -> Self {
         let InteractiveModeHandle {
             renderer,
             pump,
@@ -75,8 +92,7 @@ impl Driver {
                     terminal: Box::new(terminal.clone()),
                     pump: Box::new(terminal.pump_handle()),
                 }),
-                tui_mode: Some(tui_mode),
-                ..InteractiveModeOptions::default()
+                ..options
             },
         );
         Driver {
@@ -891,6 +907,117 @@ async fn the_llama_command_opens_the_manager_and_gives_the_editor_back() {
         driver.wait_until_absent("Download model…").await;
 
         driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_reload_that_finds_project_resources_writes_the_implicit_trust_decision() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        // The session started in a folder without trust-requiring resources, so
+        // it was trusted implicitly; `main.ts` hands that cwd to the mode.
+        let mut driver = Driver::start_with_options(
+            &app,
+            terminal,
+            InteractiveModeOptions {
+                auto_trust_on_reload_cwd: Some(app.cwd()),
+                ..InteractiveModeOptions::default()
+            },
+        )
+        .await;
+        driver.wait_for("notagent").await;
+
+        // The reload finds a project settings file that was not there before.
+        let config = std::path::Path::new(&app.cwd()).join(".notagent");
+        std::fs::create_dir_all(&config).expect("config dir");
+        std::fs::write(config.join("settings.json"), "{}").expect("settings");
+
+        driver.submit("/reload").await;
+        driver.wait_for("saved project trust").await;
+
+        let trust =
+            std::fs::read_to_string(std::path::Path::new(&app.agent_dir()).join("trust.json"))
+                .expect("the trust file was written");
+        assert!(
+            trust.contains(&app.cwd()),
+            "the implicit decision names the project: {trust}"
+        );
+
+        // The implicit decision is written once: with the cwd forgotten, a
+        // second reload does not write it again.
+        let trust_file = std::path::Path::new(&app.agent_dir()).join("trust.json");
+        std::fs::remove_file(&trust_file).expect("removes");
+        driver.submit("/reload").await;
+        driver.settle_for(300).await;
+        assert!(
+            !trust_file.exists(),
+            "the decision is not written a second time"
+        );
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn importing_a_session_whose_cwd_is_gone_offers_the_current_one() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        // The fixture records `/Users/badlogic/workspaces/pi-mono` as its cwd,
+        // which does not exist here — the case the dialog is for.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/before-compaction.jsonl");
+        driver
+            .submit(&format!("/import {}", fixture.display()))
+            .await;
+        driver.wait_for("Import session").await;
+        driver.send_keys(KEY_ENTER).await;
+
+        driver.wait_for("Session cwd not found").await;
+        let screen = driver.screen();
+        assert!(
+            screen.contains("cwd from session file does not exist")
+                && screen.contains("/Users/badlogic/workspaces/pi-mono"),
+            "the dialog names both directories: {screen}"
+        );
+
+        // "Yes" continues in the current cwd.
+        driver.send_keys(KEY_ENTER).await;
+        driver.wait_for("Session imported from:").await;
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_shutdown_signal_of_the_binary_ends_the_session_with_zero() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let mut driver = Driver::start_with_options(
+            &app,
+            terminal,
+            InteractiveModeOptions {
+                shutdown_signal: Some(shutdown.clone()),
+                ..InteractiveModeOptions::default()
+            },
+        )
+        .await;
+        driver.wait_for("notagent").await;
+
+        // What the SIGTERM/SIGHUP task of `main_app` does.
+        shutdown.cancel();
         assert_eq!(driver.wait_for_exit().await, 0);
     })
     .await;

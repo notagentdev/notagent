@@ -253,6 +253,24 @@ impl HeadlessApp {
         &self.faux
     }
 
+    /// The project directory of this run.
+    pub fn cwd(&self) -> String {
+        self.temp
+            .path()
+            .join("project")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// The agent directory of this run (`~/.notagent/agent` stands in here).
+    pub fn agent_dir(&self) -> String {
+        self.temp
+            .path()
+            .join("agent")
+            .to_string_lossy()
+            .into_owned()
+    }
+
     /// A path inside the project directory of this run.
     pub fn path(&self, name: &str) -> String {
         self.temp

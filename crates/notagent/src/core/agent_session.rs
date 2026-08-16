@@ -88,6 +88,7 @@ use crate::core::tools::tool_definition::{
 use crate::core::tools::{ALL_TOOL_NAMES, ToolName, ToolsOptions, create_all_tool_definitions};
 use crate::utils::frontmatter::strip_frontmatter;
 use crate::utils::paths::{current_dir, resolve_path_default};
+use crate::utils::tool_result_images::normalize_tool_result_images;
 
 /// The three tools that make background work observable. Background execution
 /// is gated on all of them, so a mode that drops one drops the capability.
@@ -573,6 +574,7 @@ impl AgentSession {
         *session.unsubscribe_agent.lock().expect("poisoned") = Some(Box::new(unsubscribe));
 
         session.install_agent_next_turn_refresh();
+        session.install_agent_after_tool_call();
         session.build_runtime(BuildRuntimeOptions {
             active_tool_names: session.initial_active_tool_names.clone(),
         });
@@ -789,6 +791,67 @@ impl AgentSession {
                 AgentMessage::Assistant(assistant) => Some(assistant.clone()),
                 _ => None,
             })
+    }
+
+    /// `_installAgentHooks`' `afterToolCall` (`agent-session.ts:567-597`),
+    /// minus the extension runner: what is left is the `PostToolUse` hook —
+    /// which the extension mapped from its `tool_result` event
+    /// (`plans/facts/extension-boundary.md` §2.2) — and the image
+    /// normalisation that runs after it, so images a hook could have replaced
+    /// are normalised too.
+    fn install_agent_after_tool_call(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        self.agent.update_options(|options| {
+            let previous = options.after_tool_call.clone();
+            options.after_tool_call = Some(Arc::new(move |context, signal| {
+                let weak = weak.clone();
+                let previous = previous.clone();
+                Box::pin(async move {
+                    let earlier = match previous {
+                        Some(previous) => previous(context.clone(), signal).await,
+                        None => None,
+                    };
+                    let Some(session) = weak.upgrade() else {
+                        return earlier;
+                    };
+                    let content = earlier
+                        .as_ref()
+                        .and_then(|result| result.content.clone())
+                        .or_else(|| Some(context.result.content.clone()))
+                        .unwrap_or_default();
+                    if let Some(hooks) = session.hooks.as_ref() {
+                        let input = match &context.args {
+                            serde_json::Value::Object(args) => args.clone(),
+                            _ => serde_json::Map::new(),
+                        };
+                        hooks
+                            .tool_result(
+                                &context.tool_call.name,
+                                &input,
+                                &content,
+                                context.is_error,
+                            )
+                            .await;
+                    }
+                    let normalized = normalize_tool_result_images(
+                        &content,
+                        session.settings_manager.get_image_auto_resize(),
+                    );
+                    match (earlier, normalized) {
+                        (None, None) => None,
+                        (earlier, normalized) => {
+                            let mut result = earlier.unwrap_or_default();
+                            if let Some(normalized) = normalized {
+                                result.content = Some(normalized);
+                            } else if result.content.is_none() {
+                                result.content = Some(content);
+                            }
+                            Some(result)
+                        }
+                    }
+                })
+            }));
+        });
     }
 
     fn install_agent_next_turn_refresh(self: &Arc<Self>) {

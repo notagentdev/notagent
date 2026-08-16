@@ -4,7 +4,7 @@ Maschinell erzeugt von `scripts/parity-audit.sh` (Werkzeug: `tools/parity-audit.
 Der Bericht prüft jede Datei unter `packages/*/src` des TS-Repos gegen alle `crates/*/PARITY.md`-Ledger.
 Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine Bewertung.
 
-- Lauf: 2026-08-16, Repo-Commit `cc3b98d`
+- Lauf: 2026-08-16, Repo-Commit `1b0fb13`
 - TS-Repo: `/Users/dev/projects/notagent-main`
 - Gelesene Ledger: 9 (`notagent`, `notagent-agent`, `notagent-ai`, `notagent-client`, `notagent-protocol`, `notagent-server`, `notagent-session-sqlite`, `notagent-telemetry`, `notagent-tui`)
 - src-Verzeichnisse: 12, Dateien gesamt: 632
@@ -13,8 +13,8 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 
 | Kategorie | Dateien | Bedeutung |
 |---|---:|---|
-| verifiziert | 453 | Ledger-Zeile mit Status `verifiziert` |
-| ausgeschlossen | 76 | in einer `Ausschlüsse`-Tabelle eines Ledgers geführt |
+| verifiziert | 455 | Ledger-Zeile mit Status `verifiziert` |
+| ausgeschlossen | 74 | in einer `Ausschlüsse`-Tabelle eines Ledgers geführt |
 | Rahmen-Ausschluss | 8 | im Master-Plan ausgeschlossen, ohne eigenes Ledger |
 | Ledger < verifiziert | 95 | Ledger-Zeile vorhanden, Status `gelesen`/`portiert`/`Tests portiert` |
 | ohne Nachweis | 0 | keine Spur in irgendeinem Ledger — harte Lücke |
@@ -26,7 +26,7 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 | `packages/agent` | B | 50 | 8 | 42 | 0 | 0 | 0 |
 | `packages/ai` | B | 215 | 210 | 5 | 0 | 0 | 0 |
 | `packages/client` | C | 10 | 10 | 0 | 0 | 0 | 0 |
-| `packages/coding-agent` | C | 258 | 143 | 29 | 0 | 86 | 0 |
+| `packages/coding-agent` | C | 258 | 145 | 27 | 0 | 86 | 0 |
 | `packages/evals` | — | 8 | 0 | 0 | 8 | 0 | 0 |
 | `packages/protocol` | C | 8 | 8 | 0 | 0 | 0 | 0 |
 | `packages/server` | C | 17 | 17 | 0 | 0 | 0 | 0 |
@@ -164,8 +164,6 @@ Statusspalte; die Prüfung stuft sie höchstens als `portiert` ein. Formalbefund
 | `crates/notagent/PARITY.md` | 894 | teilportiert | unklar | 1 |
 | `crates/notagent/PARITY.md` | 895 | übernommen | unklar | 3 |
 | `crates/notagent/PARITY.md` | 901 | nachgezogen | unklar | 1 |
-| `crates/notagent/PARITY.md` | 942 | offen (C) | unklar | 1 |
-| `crates/notagent/PARITY.md` | 943 | offen (C) | unklar | 1 |
 | `crates/notagent-ai/PARITY.md` | 422 | übernommen (Task 10) | unklar | 1 |
 | `crates/notagent-ai/PARITY.md` | 716 | (leer) | unklar | 1 |
 | `crates/notagent-ai/PARITY.md` | 717 | (leer) | unklar | 1 |
@@ -185,14 +183,14 @@ Prüfung nicht aus).
 | `crates/notagent-ai/PARITY.md:260` | `src/providers/data/` | verifiziert | 40 |
 | `crates/notagent-agent/PARITY.md:51` | `src/harness/**` | ausgeschlossen | 38 |
 | `crates/notagent-ai/PARITY.md:273` | `src/api/*.lazy.ts` | verifiziert | 11 |
-| `crates/notagent/PARITY.md:996` | `src/cli/experimental/` | ausgeschlossen | 8 |
-| `crates/notagent/PARITY.md:993` | `src/core/extensions/` | ausgeschlossen | 5 |
-| `crates/notagent/PARITY.md:996` | `src/bun/` | ausgeschlossen | 3 |
-| `crates/notagent/PARITY.md:993` | `src/extensions/` | ausgeschlossen | 3 |
+| `crates/notagent/PARITY.md:1008` | `src/cli/experimental/` | ausgeschlossen | 8 |
+| `crates/notagent/PARITY.md:1005` | `src/core/extensions/` | ausgeschlossen | 5 |
+| `crates/notagent/PARITY.md:1008` | `src/bun/` | ausgeschlossen | 3 |
 | `crates/notagent/PARITY.md:456` | `src/core/modes/builtin/auto/10-*.md` | verifiziert | 1 |
 | `crates/notagent/PARITY.md:456` | `src/core/modes/builtin/manual/10-*.md` | verifiziert | 1 |
 | `crates/notagent/PARITY.md:456` | `src/core/modes/builtin/plan/10-*.md` | verifiziert | 1 |
 | `crates/notagent/PARITY.md:456` | `src/core/modes/builtin/yolo/10-*.md` | verifiziert | 1 |
+| `crates/notagent/PARITY.md:1005` | `src/extensions/` | ausgeschlossen | 1 |
 
 ## Rahmen-Ausschlüsse aus dem Master-Plan
 
