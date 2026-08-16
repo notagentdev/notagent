@@ -146,6 +146,25 @@ pub struct Harness {
 }
 
 impl Harness {
+    /// Wait until the run started by a spawned `prompt` is in flight.
+    ///
+    /// Interface request B-16: without a deadline the loop spins forever when
+    /// the spawned run finished before the first look — `#[tokio::test]` gives
+    /// a current-thread scheduler, so the whole turn can run inside the first
+    /// `await`. Cases that need the window use a slowed faux provider
+    /// (`tokens_per_second`); the deadline turns a regression into a failure
+    /// with a message instead of a hanging `check.sh`.
+    pub async fn wait_until_streaming(&self) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !self.session.is_streaming() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the run never became visible as streaming; it most likely finished before the                  first look — slow the faux provider down (`tokens_per_second`)"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+    }
+
     pub fn model(&self) -> Model {
         self.models[0].clone()
     }

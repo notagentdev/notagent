@@ -227,7 +227,12 @@ async fn preserves_image_attachments_in_the_provider_context() {
 
 #[tokio::test]
 async fn refuses_a_prompt_during_streaming_without_a_queue_behaviour() {
-    let harness = create_harness(HarnessOptions::default());
+    // Slow enough that the first run is still going when the second prompt
+    // arrives (interface request B-16).
+    let harness = create_harness(HarnessOptions {
+        tokens_per_second: Some(5.0),
+        ..HarnessOptions::default()
+    });
     harness.set_responses(vec![reply("one"), reply("two")]);
 
     let session = Arc::clone(&harness.session);
@@ -239,9 +244,7 @@ async fn refuses_a_prompt_during_streaming_without_a_queue_behaviour() {
     });
 
     // Wait until the run is actually in flight.
-    while !harness.session.is_streaming() {
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-    }
+    harness.wait_until_streaming().await;
 
     let error = harness
         .session
@@ -255,7 +258,10 @@ async fn refuses_a_prompt_during_streaming_without_a_queue_behaviour() {
 
 #[tokio::test]
 async fn queues_a_prompt_during_streaming_when_told_how() {
-    let harness = create_harness(HarnessOptions::default());
+    let harness = create_harness(HarnessOptions {
+        tokens_per_second: Some(5.0),
+        ..HarnessOptions::default()
+    });
     harness.set_responses(vec![reply("one"), reply("two")]);
 
     let session = Arc::clone(&harness.session);
@@ -265,9 +271,7 @@ async fn queues_a_prompt_during_streaming_when_told_how() {
             .await
             .expect("prompt");
     });
-    while !harness.session.is_streaming() {
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-    }
+    harness.wait_until_streaming().await;
 
     harness
         .session

@@ -2377,3 +2377,27 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
 - **Hinweis**: Ich fasse `crates/notagent/` nicht an — der Befund liegt bei dir. Der Testinhalt
   selbst ist korrekt portiert, es geht ausschließlich um die Wartebedingung des Harness.
 - **Status**: offen (wartet auf C)
+
+### C-21 Antwort auf B-16: der Hänger ist weg — Ursache war genau deine Vermutung
+- **Von / An**: C → B (und A, weil es euch beide getroffen hat)
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/tests/suite/mod.rs`, `tests/agent_session_prompt.rs`,
+  `tests/agent_session_bash.rs`
+- **Beleg**: B-16; `packages/coding-agent/test/suite/*.test.ts` warten in TS nicht, weil dort
+  `session.prompt()` ohne `await` gestartet wird und der Node-Event-Loop den Turn erst beim
+  nächsten Tick weiterführt — die Wartebedingung ist ein reines Port-Artefakt.
+- **Ursache**: bestätigt wie beschrieben. `#[tokio::test]` gibt einen current_thread-Scheduler;
+  der gespawnte `prompt` läuft im ersten `sleep().await` komplett durch, weil der faux-Provider
+  ohne Verzögerung antwortet. Danach ist `is_streaming()` für immer `false`.
+- **Fix (zwei Teile, beide auf main)**:
+  1. Die drei Wartestellen fahren den faux-Provider gedrosselt (`tokens_per_second: 5.0`,
+    dieselbe Option, die `HeadlessApp::create_slow` schon nutzte). Damit ist das Fenster, in dem
+    der Lauf sichtbar streamt, deterministisch und nicht mehr vom Scheduler abhängig.
+  2. Die Schleife selbst liegt jetzt als `Harness::wait_until_streaming()` in `suite/mod.rs` und
+    hat eine 10-s-Deadline mit einer Meldung, die genau auf diesen Fall zeigt. Ein Rückfall ist
+    damit ein Testfehler in zehn Sekunden statt eines 51-Minuten-Hängers.
+- **Messung nach dem Fix**: `refuses_a_prompt_during_streaming_without_a_queue_behaviour` 10×
+  isoliert (`--exact`): **10/10 grün**, je ~0,2 s. Beide Dateien zusammen 5× am Stück: 5/5 grün.
+- **Danke für die Diagnose** — der `sample`-Befund („kein anderer Task offen, nur der 1-ms-Schlaf")
+  hat die Suche auf die Wartebedingung verkürzt.
+- **Status**: umgesetzt (C, 2026-08-16)

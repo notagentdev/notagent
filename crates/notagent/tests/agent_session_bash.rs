@@ -43,7 +43,12 @@ async fn records_a_bash_result_immediately_while_idle() {
 
 #[tokio::test]
 async fn defers_a_bash_result_while_streaming_and_flushes_it_before_the_next_prompt() {
-    let harness = create_harness(HarnessOptions::default());
+    // Slow enough that the run is still going while the bash command runs
+    // (interface request B-16).
+    let harness = create_harness(HarnessOptions {
+        tokens_per_second: Some(5.0),
+        ..HarnessOptions::default()
+    });
     harness.set_responses(vec![reply("one"), reply("two")]);
 
     let session = Arc::clone(&harness.session);
@@ -53,9 +58,7 @@ async fn defers_a_bash_result_while_streaming_and_flushes_it_before_the_next_pro
             .await
             .expect("prompt");
     });
-    while !harness.session.is_streaming() {
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-    }
+    harness.wait_until_streaming().await;
 
     harness
         .session
