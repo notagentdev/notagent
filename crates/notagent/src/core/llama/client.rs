@@ -35,6 +35,7 @@ impl From<AbortError> for LlamaError {
 pub const LLAMA_STATUS_LOADED: &str = "loaded";
 pub const LLAMA_STATUS_UNLOADED: &str = "unloaded";
 pub const LLAMA_STATUS_DOWNLOADING: &str = "downloading";
+pub const LLAMA_STATUS_SLEEPING: &str = "sleeping";
 
 /// `LlamaModelInfo["status"]`
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -225,7 +226,7 @@ fn parse_download_progress(data: Option<&Value>) -> Option<LlamaProgress> {
 ///
 /// Deviation (class 3): Rust's `{:.n}` rounds ties to even, `toFixed` rounds them
 /// away from zero, so the tie is nudged before formatting.
-fn to_fixed(value: f64, digits: u32) -> String {
+pub(crate) fn to_fixed(value: f64, digits: u32) -> String {
     let scale = 10_f64.powi(i32::try_from(digits).unwrap_or(0));
     let scaled = value * scale;
     let rounded = if (scaled.fract().abs() - 0.5).abs() < f64::EPSILON {

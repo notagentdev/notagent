@@ -87,6 +87,7 @@ use crate::core::hooks::runtime::{HookReportLevel, HookReporter};
 use crate::core::http_dispatcher::format_http_idle_timeout_ms;
 use crate::core::keybindings::KeybindingsManager;
 use crate::core::messages::create_compaction_summary_message;
+use crate::core::model_registry::ModelRegistry;
 use crate::core::model_resolver::{
     ModelScopeDiagnosticCode, default_model_for_provider, find_exact_model_reference_match,
     resolve_model_scope_from_models,
@@ -166,6 +167,10 @@ use crate::modes::interactive::components::user_message_selector::{
 };
 use crate::modes::interactive::external_editor::{
     ExternalEditorOptions, ExternalEditorResult, edit_in_external_editor,
+};
+use crate::modes::interactive::llama_command::{
+    LLAMA_COMMAND_DESCRIPTION, LlamaCommand, Notify, NotifyLevel, create_llama_ui,
+    llama_client_for_command, run_llama_command,
 };
 use crate::modes::interactive::model_search::{ModelSearchItem, get_model_search_text};
 use crate::modes::interactive::theme::theme::{
@@ -861,6 +866,16 @@ enum UiMessage {
     },
     SelectorCancelled {
         id: u64,
+    },
+    /// `ctx.ui.notify(message, type)` of the `/llama` command.
+    Notify {
+        message: String,
+        level: NotifyLevel,
+    },
+    /// The `/llama` manager closed; the editor comes back.
+    LlamaFinished {
+        error: Option<String>,
+        saved_text: String,
     },
 }
 
@@ -2183,6 +2198,17 @@ impl InteractiveMode {
                 HookReportLevel::Error => self.show_error(&message),
                 _ => self.show_warning(&message),
             },
+            UiMessage::Notify { message, level } => match level {
+                NotifyLevel::Error => self.show_error(&message),
+                NotifyLevel::Warning => self.show_warning(&message),
+                NotifyLevel::Info => self.show_status(&message),
+            },
+            UiMessage::LlamaFinished { error, saved_text } => {
+                self.restore_editor(&saved_text);
+                if let Some(error) = error {
+                    self.show_error(&error);
+                }
+            }
             UiMessage::ThemeChanged => {
                 self.ui.invalidate();
                 self.update_editor_border_color();
@@ -3979,6 +4005,17 @@ impl InteractiveMode {
             });
         }
 
+        // `/llama`. TypeScript appends the extension commands here, between
+        // the prompt templates and the skill commands; the source tag its
+        // description carried (`[t]`, from the synthetic source info of an
+        // inline extension) goes with the extension system (class 2).
+        commands.push(SlashCommand {
+            name: "llama".to_owned(),
+            description: Some(LLAMA_COMMAND_DESCRIPTION.to_owned()),
+            argument_hint: None,
+            get_argument_completions: None,
+        });
+
         // Skill commands, when they are enabled.
         self.skill_commands.clear();
         if self.settings().get_enable_skill_commands() {
@@ -5727,6 +5764,15 @@ impl InteractiveMode {
                 self.show_logout_selector().await;
                 self.clear_editor_text();
             }
+            "/llama" => {
+                // The one extension command of the TypeScript app reached the
+                // model layer through `session.prompt`, which is why it lands
+                // in the editor history like a prompt does; the built-in
+                // commands above return before that.
+                self.editor.borrow_mut().editor_mut().add_to_history(text);
+                self.clear_editor_text();
+                self.handle_llama_command().await;
+            }
             "/new" => {
                 self.clear_editor_text();
                 self.handle_clear_command().await;
@@ -5769,6 +5815,70 @@ impl InteractiveMode {
 
     fn clear_editor_text(&mut self) {
         self.editor.borrow_mut().editor_mut().set_text("");
+    }
+
+    /// The `handler` of the `llama` command (`extensions/llama/index.ts:186-228`).
+    ///
+    /// `showLlamaUi` goes through `ctx.ui.custom` in TypeScript, which is
+    /// `showExtensionCustom` here: the editor's text is saved, the view takes
+    /// the editor's place, and the text comes back when the flow is done.
+    async fn handle_llama_command(&mut self) {
+        let notify_tx = self.ui_tx.clone();
+        let notify: Notify = Rc::new(move |message: &str, level: NotifyLevel| {
+            let _ = notify_tx.send(UiMessage::Notify {
+                message: message.to_owned(),
+                level,
+            });
+        });
+        let services = self.runtime.services();
+        let registry = ModelRegistry::new(Arc::clone(&services.model_runtime));
+        let client = match llama_client_for_command(&registry, &notify).await {
+            Ok(Some(client)) => client,
+            // `configuredClient` already told the user to run `/login`.
+            Ok(None) => return,
+            Err(error) => {
+                self.show_error(&error);
+                return;
+            }
+        };
+        let command = LlamaCommand {
+            client,
+            provider: Arc::clone(&services.llama),
+            registry,
+            notify,
+        };
+
+        let core = self.ui.clone();
+        let (view, mut ui) = create_llama_ui(Rc::new(move || core.request_render()));
+        let saved_text = self.editor.borrow().editor().get_text();
+        self.dispose_active_selector();
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(Rc::clone(&view) as ComponentRef);
+        }
+        self.ui.set_focus(Some(Rc::clone(&view) as ComponentRef));
+        self.ui.request_render();
+        self.side_futures.push(Box::pin(async move {
+            let error = run_llama_command(&command, &mut ui).await.err();
+            // The view has to outlive the flow: it holds the answer channel.
+            drop(view);
+            UiMessage::LlamaFinished { error, saved_text }
+        }));
+    }
+
+    /// `restoreEditor()` of `showExtensionCustom`
+    /// (`interactive-mode.ts:2691-2697`).
+    fn restore_editor(&mut self, saved_text: &str) {
+        {
+            let mut container = self.editor_container.borrow_mut();
+            container.clear();
+            container.add_child(Rc::clone(&self.editor) as ComponentRef);
+        }
+        self.editor.borrow_mut().editor_mut().set_text(saved_text);
+        self.ui
+            .set_focus(Some(Rc::clone(&self.editor) as ComponentRef));
+        self.ui.request_render();
     }
 
     /// `handleExportCommand` (`interactive-mode.ts:6058-6072`).

@@ -57,22 +57,32 @@ pub struct HeadlessApp {
 
 impl HeadlessApp {
     pub async fn create() -> Self {
-        Self::build(true, None).await
+        Self::build(true, None, None).await
+    }
+
+    /// With a llama.cpp credential pointing at `base_url`, so `/llama` finds a
+    /// configured server.
+    pub async fn create_with_llama(base_url: &str) -> Self {
+        Self::build(true, None, Some(base_url.to_owned())).await
     }
 
     /// A model whose provider has no credentials at all, so prompt preflight
     /// refuses before a request is made.
     pub async fn create_without_auth() -> Self {
-        Self::build(false, None).await
+        Self::build(false, None, None).await
     }
 
     /// With a provider that streams slowly enough to still be running when the
     /// next command arrives.
     pub async fn create_slow(tokens_per_second: f64) -> Self {
-        Self::build(true, Some(tokens_per_second)).await
+        Self::build(true, Some(tokens_per_second), None).await
     }
 
-    async fn build(with_auth: bool, tokens_per_second: Option<f64>) -> Self {
+    async fn build(
+        with_auth: bool,
+        tokens_per_second: Option<f64>,
+        llama_base_url: Option<String>,
+    ) -> Self {
         let temp = tempfile::tempdir().expect("temp dir");
         let cwd = temp.path().join("project");
         let agent_dir = temp.path().join("agent");
@@ -81,7 +91,7 @@ impl HeadlessApp {
         let cwd = cwd.to_string_lossy().into_owned();
         let agent_dir = agent_dir.to_string_lossy().into_owned();
 
-        let stored = if with_auth {
+        let mut stored = if with_auth {
             json!({ "faux": { "type": "api_key", "key": "faux-key" } })
                 .as_object()
                 .cloned()
@@ -89,6 +99,12 @@ impl HeadlessApp {
         } else {
             AuthStorageData::new()
         };
+        if let Some(base_url) = llama_base_url {
+            stored.insert(
+                "llama.cpp".to_owned(),
+                json!({ "type": "api_key", "key": "local", "env": { "LLAMA_BASE_URL": base_url } }),
+            );
+        }
         let credentials = Arc::new(AuthStorage::in_memory(stored));
         let model_runtime = ModelRuntime::create(CreateModelRuntimeOptions {
             credentials: Some(credentials),

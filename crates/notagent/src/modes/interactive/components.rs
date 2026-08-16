@@ -24,6 +24,7 @@ pub mod first_time_setup;
 pub mod footer;
 pub mod keybinding_hints;
 pub mod list_selector;
+pub mod llama;
 pub mod login_dialog;
 pub mod markdown_transform;
 pub mod mermaid;

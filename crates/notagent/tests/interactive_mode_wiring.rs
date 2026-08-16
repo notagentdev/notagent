@@ -14,6 +14,9 @@
 
 mod app_runtime;
 
+#[path = "support/llama_server.rs"]
+mod llama_server;
+
 use std::time::Duration;
 
 use app_runtime::{HeadlessApp, reply};
@@ -799,6 +802,96 @@ async fn logout_lists_the_stored_credentials() {
 
         driver.send_keys(KEY_ESCAPE).await;
         driver.wait_until_absent("Select provider to logout").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_llama_command_runs_and_asks_for_credentials_when_there_are_none() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        // Without a credential the manager does not open; it says how to get one.
+        driver.send_keys("/llama").await;
+        driver.send_keys(KEY_ENTER).await;
+        driver
+            .wait_for("Configure llama.cpp with /login llama.cpp")
+            .await;
+
+        // The editor is back and usable.
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_services_register_the_native_llama_provider() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let services = app.runtime().services();
+        assert!(
+            services
+                .model_runtime
+                .get_registered_provider_ids()
+                .contains(&"llama.cpp".to_owned()),
+            "`registerNativeProvider` of the built-in llama extension happens natively"
+        );
+        assert!(
+            services
+                .model_runtime
+                .get_provider("llama.cpp")
+                .is_some_and(|provider| provider.is_dynamic()),
+            "the registered provider is the llama.cpp one, catalog and all"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_llama_command_opens_the_manager_and_gives_the_editor_back() {
+    local(async {
+        // A router with one unloaded model; the manager only lists it here.
+        let server = llama_server::TestHttpServer::start(|request| {
+            let path = request
+                .path
+                .split('?')
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            match path.as_str() {
+                "/models/sse" => llama_server::Reply::Sse,
+                "/models" => llama_server::Reply::json(serde_json::json!({
+                    "data": [{ "id": "router-model", "status": { "value": "unloaded" } }]
+                })),
+                _ => llama_server::Reply::status(404),
+            }
+        })
+        .await;
+
+        let app = HeadlessApp::create_with_llama(&server.base_url).await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.send_keys("/llama").await;
+        driver.send_keys(KEY_ENTER).await;
+        driver.wait_for("llama.cpp models").await;
+        let screen = driver.screen();
+        assert!(
+            screen.contains("router-model") && screen.contains("Download model…"),
+            "the manager took the editor's place: {screen}"
+        );
+
+        // Escape closes the manager; the editor comes back and takes input.
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Download model…").await;
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
     })
     .await;
 }

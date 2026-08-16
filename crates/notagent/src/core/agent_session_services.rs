@@ -11,11 +11,17 @@
 //!
 //! Deviation (class 2): the extension flag values and the pending provider
 //! registrations of the TypeScript are gone with the extension system
-//! (`plans/facts/extension-boundary.md` §3).
+//! (`plans/facts/extension-boundary.md` §3). The one registration that was
+//! productive — the native llama.cpp provider of the built-in llama extension
+//! (`main.ts:641`, `extensions/index.ts:4`) — happens natively here, at the
+//! point where `agent-session-services.ts:170-181` drains
+//! `pendingNativeProviderRegistrations`: after the resources are loaded and
+//! before the first refresh.
 
 use std::sync::Arc;
 
 use crate::config::get_agent_dir;
+use crate::core::llama::provider::{LlamaProviderController, create_llama_provider};
 use crate::core::model_runtime::{CreateModelRuntimeOptions, ModelRuntime};
 use crate::core::resource_loader::{
     DefaultResourceLoader, DefaultResourceLoaderOptions, ResourceLoader,
@@ -62,6 +68,9 @@ pub struct AgentSessionServices {
     pub model_runtime: Arc<ModelRuntime>,
     pub settings_manager: Arc<SettingsManager>,
     pub resource_loader: Arc<dyn ResourceLoader>,
+    /// The controller of the natively registered llama.cpp provider; `/llama`
+    /// writes the router catalog through it.
+    pub llama: Arc<LlamaProviderController>,
     pub diagnostics: Vec<AgentSessionRuntimeDiagnostic>,
 }
 
@@ -116,6 +125,18 @@ pub async fn create_agent_session_services(
         .reload(options.resource_loader_reload_options.unwrap_or_default())
         .await;
 
+    // `registerNativeProvider(provider)` of the llama extension's factory.
+    let llama = Arc::new(create_llama_provider());
+    let mut diagnostics: Vec<AgentSessionRuntimeDiagnostic> = Vec::new();
+    if let Err(error) = model_runtime.register_native_provider(
+        Arc::clone(&llama.provider) as Arc<dyn notagent_ai::models::Provider>
+    ) {
+        diagnostics.push(AgentSessionRuntimeDiagnostic {
+            level: DiagnosticLevel::Error,
+            message: format!("Extension \"<inline:llama.cpp>\" error: {error}"),
+        });
+    }
+
     // The model catalogs are refreshed without the network here: startup must
     // not wait on a provider, and the runtime refreshes again in the background.
     model_runtime
@@ -131,7 +152,8 @@ pub async fn create_agent_session_services(
         model_runtime,
         settings_manager,
         resource_loader,
-        diagnostics: Vec::new(),
+        llama,
+        diagnostics,
     })
 }
 
