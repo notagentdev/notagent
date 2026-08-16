@@ -4,7 +4,7 @@ Maschinell erzeugt von `scripts/parity-audit.sh` (Werkzeug: `tools/parity-audit.
 Der Bericht prüft jede Datei unter `packages/*/src` des TS-Repos gegen alle `crates/*/PARITY.md`-Ledger.
 Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine Bewertung.
 
-- Lauf: 2026-08-16, Repo-Commit `b507cea`
+- Lauf: 2026-08-16, Repo-Commit `fe8f3e6`
 - TS-Repo: `/Users/dev/projects/notagent-main`
 - Gelesene Ledger: 9 (`notagent`, `notagent-agent`, `notagent-ai`, `notagent-client`, `notagent-protocol`, `notagent-server`, `notagent-session-sqlite`, `notagent-telemetry`, `notagent-tui`)
 - src-Verzeichnisse: 12, Dateien gesamt: 632
@@ -13,10 +13,10 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 
 | Kategorie | Dateien | Bedeutung |
 |---|---:|---|
-| verifiziert | 384 | Ledger-Zeile mit Status `verifiziert` |
+| verifiziert | 388 | Ledger-Zeile mit Status `verifiziert` |
 | ausgeschlossen | 73 | in einer `Ausschlüsse`-Tabelle eines Ledgers geführt |
 | Rahmen-Ausschluss | 8 | im Master-Plan ausgeschlossen, ohne eigenes Ledger |
-| Ledger < verifiziert | 145 | Ledger-Zeile vorhanden, Status `gelesen`/`portiert`/`Tests portiert` |
+| Ledger < verifiziert | 141 | Ledger-Zeile vorhanden, Status `gelesen`/`portiert`/`Tests portiert` |
 | ohne Nachweis | 22 | keine Spur in irgendeinem Ledger — harte Lücke |
 
 ## Je Paket
@@ -24,14 +24,14 @@ Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine B
 | TS-Paket | Owner | Dateien | verifiziert | ausgeschl. | Rahmen | < verifiziert | ohne Nachweis |
 |---|---|---:|---:|---:|---:|---:|---:|
 | `packages/agent` | B | 50 | 7 | 43 | 0 | 0 | 0 |
-| `packages/ai` | B | 215 | 191 | 5 | 0 | 19 | 0 |
+| `packages/ai` | B | 215 | 193 | 5 | 0 | 17 | 0 |
 | `packages/client` | C | 10 | 10 | 0 | 0 | 0 | 0 |
 | `packages/coding-agent` | C | 258 | 127 | 25 | 0 | 84 | 22 |
 | `packages/evals` | — | 8 | 0 | 0 | 8 | 0 | 0 |
 | `packages/protocol` | C | 8 | 8 | 0 | 0 | 0 | 0 |
 | `packages/server` | C | 17 | 13 | 0 | 0 | 4 | 0 |
 | `packages/session-backends/sqlite-node` | C | 19 | 3 | 0 | 0 | 16 | 0 |
-| `packages/telemetry` | B | 6 | 4 | 0 | 0 | 2 | 0 |
+| `packages/telemetry` | B | 6 | 6 | 0 | 0 | 0 | 0 |
 | `packages/tui` | A | 41 | 21 | 0 | 0 | 20 | 0 |
 
 ## Lücke 1 — Dateien ohne jede Ledger-Spur
@@ -79,14 +79,12 @@ Für diese Dateien fehlt der grüne Testnachweis (Status-Leiter aus `CONVENTIONS
 | `packages/ai/src/auth/types.ts` | portiert | `crates/notagent-ai/PARITY.md:304` | datei |
 | `packages/ai/src/compat/extension-oauth-types.ts` | portiert | `crates/notagent-ai/PARITY.md:288` | datei |
 | `packages/ai/src/image-models.ts` | portiert | `crates/notagent-ai/PARITY.md:423` | datei |
-| `packages/ai/src/models-store.ts` | portiert | `crates/notagent-ai/PARITY.md:293` | datei |
 | `packages/ai/src/models.generated.ts` | portiert | `crates/notagent-ai/PARITY.md:259` | datei |
 | `packages/ai/src/oauth.ts` | portiert | `crates/notagent-ai/PARITY.md:433` | datei |
 | `packages/ai/src/utils/abort-signals.ts` | portiert | `crates/notagent-ai/PARITY.md:252` | datei |
 | `packages/ai/src/utils/abort.ts` | portiert | `crates/notagent-ai/PARITY.md:252` | datei |
 | `packages/ai/src/utils/deferred-tools.ts` | portiert | `crates/notagent-ai/PARITY.md:255` | datei |
 | `packages/ai/src/utils/diagnostics.ts` | portiert | `crates/notagent-ai/PARITY.md:239` | datei |
-| `packages/ai/src/utils/error-body.ts` | portiert | `crates/notagent-ai/PARITY.md:254` | datei |
 | `packages/ai/src/utils/hash.ts` | portiert | `crates/notagent-ai/PARITY.md:249` | datei |
 | `packages/ai/src/utils/headers.ts` | portiert | `crates/notagent-ai/PARITY.md:250` | datei |
 | `packages/ai/src/utils/provider-env.ts` | portiert | `crates/notagent-ai/PARITY.md:256` | datei |
@@ -195,8 +193,6 @@ Für diese Dateien fehlt der grüne Testnachweis (Status-Leiter aus `CONVENTIONS
 | `packages/session-backends/sqlite-node/src/sqlite/storage/sessions.ts` | portiert | `crates/notagent-session-sqlite/PARITY.md:44` | datei |
 | `packages/session-backends/sqlite-node/src/sqlite/storage/writer-leases.ts` | portiert | `crates/notagent-session-sqlite/PARITY.md:47` | datei |
 | `packages/session-backends/sqlite-node/src/sqlite/types.ts` | portiert | `crates/notagent-session-sqlite/PARITY.md:39` | datei |
-| `packages/telemetry/src/testing/index.ts` | portiert | `crates/notagent-telemetry/PARITY.md:30` | datei |
-| `packages/telemetry/src/testing/types.ts` | portiert | `crates/notagent-telemetry/PARITY.md:29` | datei |
 | `packages/tui/native/darwin/src/darwin-modifiers.c` | portiert | `crates/notagent-tui/PARITY.md:231` | datei |
 | `packages/tui/native/win32/src/win32-console-mode.c` | portiert | `crates/notagent-tui/PARITY.md:232` | datei |
 | `packages/tui/src/autocomplete.ts` | portiert | `crates/notagent-tui/PARITY.md:234` | datei |
