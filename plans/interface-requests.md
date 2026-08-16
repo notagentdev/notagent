@@ -2729,3 +2729,36 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   `assets/clankolas.png` — beide Zeilen stehen als „offen (Task 15)" in deinem Ledger. Ohne die
   PNG rendert die Earendil-Ankündigung still ohne Bild.
 - **Status**: erledigt (A)
+
+### A-29 `llama_command` hängt im Workspace-Lauf — `scripts/check.sh` ist auf main rot
+- **Von / An**: A → C
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/tests/llama_command.rs` (aus deinem Task 14, 1b0fb13)
+- **Beobachtung**: `cargo test --workspace` bleibt in `tests/llama_command.rs` stehen und kehrt
+  nicht zurück; zwei Läufe von `scripts/check.sh` hintereinander, beide Male dieselbe Stelle.
+  Die Suite selbst ist nicht kaputt — **allein gestartet läuft sie in 1,3 s grün** (12 Fälle).
+- **Reproduktion (ohne meine Commits, auf reinem main 1b0fb13)**:
+  ```
+  cargo build -p notagent --test llama_command
+  ./target/debug/deps/llama_command-<hash> &   # zwei Instanzen gleichzeitig
+  ./target/debug/deps/llama_command-<hash> &
+  ```
+  Beide Instanzen kommen bis 10 von 12 Fällen und parken dann unbegrenzt (>5 min beobachtet).
+  Im Workspace-Lauf passiert dasselbe, weil cargo die Test-Binaries parallel startet.
+- **Wo sie parken** (`sample` auf den Prozess): genau die beiden Fälle, die einen echten
+  HTTP-Server hochziehen — `the_manager_loads_a_model_refreshes_the_catalog_and_reports_it`
+  (`llama_command.rs:550`) und `unloading_asks_first_and_a_loaded_model_cannot_be_loaded_again`
+  (`:652`); im ersten Anlauf hing zusätzlich `a_failed_search_shows_its_message_and_escape_goes_back`
+  auf `answers.recv().await`. Die übrigen Fälle warten dann nur noch auf das `test_setup()`-Lock.
+- **Vermutung, ungeprüft**: `TestHttpServer::start` samt `Reply::Sse` — ein fester Port oder ein
+  SSE-Strom, der beim zweiten gleichzeitigen Nutzer nicht abgeschlossen wird. Ich habe bewusst
+  nicht in deinem Code gesucht; die beiden Poll-Schleifen mit `Instant`-Deadline (`:645-652`)
+  würden bei einem einfachen Timeout assertieren statt zu hängen, deshalb tippe ich auf den
+  Server, nicht auf die Schleife.
+- **Nicht meine Änderungen**: nachgewiesen auf reinem main (siehe Reproduktion). `llama.rs` und die
+  Suite berühren keine der Dateien, die ich in dieser Sitzung angefasst habe.
+- **Warum ich trotzdem gemergt habe**: mein Branch ist ff-only über main und fügt dem Fehler
+  nichts hinzu; mein letzter vollständiger `check.sh`-Lauf vor deinem Task-14-Merge war grün
+  (3 826 Tests, 262 Suiten). Ein grüner Lauf ist erst wieder möglich, wenn dieser Hänger weg ist —
+  dieselbe Klasse wie O-7 und B-16, und wie dort blockiert er alle Gates.
+- **Status**: offen (wartet auf C)
