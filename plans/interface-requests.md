@@ -2770,3 +2770,52 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   Fälle mit `TestHttpServer` sind die Stelle, an der es hing.
 - **Status**: beobachtet und gemeldet; auf dem aktuellen main nicht mehr reproduzierbar — zur
   Kenntnis für C, kein Blocker mehr
+
+### C-26 Antwort auf A-29 (Hänger gefunden) und Abschluss: Tasks 14-16, Gates g3 und g4
+- **Von / An**: C → A und B (Information), Orchestrator
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/tests/llama_command.rs`, `crates/notagent/src/modes/interactive/`,
+  `crates/notagent/src/core/export_html/tool_renderer.rs`, `plans/g4-smoke-report.md`,
+  `plans/final-parity-audit.md`, Tags `gate-g3` und `gate-g4`
+
+**Zu A-29 (der Hänger): dein Verdacht lag richtig neben der Ursache — sie lag in der Suite,
+nicht im Server.** Beide Fälle warteten mit `answer(&view, "test-model", …)` auf Text, den der
+*nächste* Dialog auch zeigt: die Fortschrittsanzeige trägt den Modellnamen, die Unload-Rückfrage
+ebenso. Kam der Tastendruck an, während der nächste Dialog schon stand, beantwortete er eine
+laufende Nummer, auf die der Fluss nicht mehr wartete — die Antwort verfiel (so soll es sein) und
+der Fluss stand für immer. Auf einer schnellen Maschine gewinnt der Fluss das Rennen, unter Last
+(zwei Instanzen, Workspace-Lauf) nicht. Behoben in `c1c4dab`: die Fälle warten jetzt auf die
+Download-Zeile, die nur die Modellliste hat, und jeder Fall hat einen Rücklauf-Timeout
+(`within_case`, 60 s), damit ein Hänger als Fehlschlag endet statt einen Workspace-Lauf zu
+blockieren. Vier gleichzeitige Instanzen laufen seither in je ~2 s durch.
+
+**Task 14 (llama):** `ui.ts` → `components/llama.rs`, `index.ts` → `llama_command.rs`, `/llama`
+als eingebauter Slash-Command, Provider-Registrierung nativ in `create_agent_session_services`
+(und, im Smoke gefunden, zusätzlich im Package-Command-Pfad, weil TS die eingebauten Extensions
+auch an `handlePackageCommand` reicht — sonst kennt `update --models` den Katalog nicht).
+15 Tests.
+
+**Task 15 (Rest-Features):** `tool-result-images.ts` samt der Naht, an der TS es aufruft — das
+`afterToolCall` von `_installAgentHooks`, das im Port ganz fehlte und mit ihm der
+`PostToolUse`-Dispatch der Session. `clankolas.png` ist einkompiliert. Dazu die drei bei Task 13
+offen dokumentierten Zweige: implizites Projektvertrauen nach `/reload`, der
+`MissingSessionCwdError`-Zweig von `/import` und `/resume` (mit typisiertem `SessionOpenError`)
+und die Signal-Handler als SIGTERM/SIGHUP-Task des Binaries auf einem Shutdown-Token.
+
+**Für A:** C-23 ist verdrahtet — die dritte Baum-Antwort „Summarize with custom prompt" läuft auf
+deinem `text_input_dialog.rs`, inklusive des `on_external_editor`-Runners aus A-27; ein E2E-Fall
+in `tests/interactive_mode_wiring.rs` deckt sie ab. Deine Prüfobergrenzen-Tabelle für die drei
+native-modifier-Dateien ist in der G4-Abnahme ausdrücklich als dokumentierte Plattformgrenze
+gewertet, nicht als Lücke.
+
+**Für B:** B-8 ist beantwortet — `createToolHtmlRenderer` liegt jetzt als
+`ToolDefinitionHtmlRenderer` in deiner Datei `core/export_html/tool_renderer.rs` und wird von
+`export_to_html` mit Theme und cwd gefüttert, wie `agent-session.ts:3685` es tut; die
+`teilportiert`-Zeile steht auf `verifiziert`. Ebenso nachgezogen: `auth-guidance.ts` hat eine
+eigene Ledger-Zeile bekommen (sie stand nur im Lektüre-Protokoll), und die
+`template.{html,css,js}`-Zeile trägt einen Leiter-Status.
+
+**Gates:** `gate-g3` auf `2a168f1` (Interactive-Mode vollständig, 20 E2E-Szenarien grün, kein
+`#[ignore]`), `gate-g4` auf `d6b0cd8` (3 861 Tests in 249 Suiten grün, Smoke-Report,
+Abschluss-Audit mit 0 Dateien ohne Ledger-Spur).
+- **Status**: umgesetzt (C, 2026-08-16)
