@@ -1606,6 +1606,10 @@ impl AgentSession {
                         .and_then(|session| session.resolve_child_tool(name.as_str()))
                 })
             }),
+            subagent_model: Some({
+                let weak = Arc::downgrade(self);
+                Arc::new(move || weak.upgrade().and_then(|session| session.subagent_model()))
+            }),
             // A child's tools are built from these options, and they carry no
             // task wiring at all: that is what makes "a subagent starts no
             // background work" structural rather than a rule it could ignore.
@@ -2100,6 +2104,24 @@ impl AgentSession {
     /// The model runtime the session resolves models and auth against.
     pub fn model_runtime(&self) -> Arc<dyn SessionModelRuntime> {
         Arc::clone(&self.model_runtime)
+    }
+
+    /// The model delegated children run on: the `subagentModel` setting when
+    /// it names a model that exists right now, otherwise `None` — the child
+    /// then inherits the parent's model. Addition over the TS original (user
+    /// decision 2026-08-16, v0.1.6); set and cleared via `/subagent-model`.
+    pub fn subagent_model(&self) -> Option<Model> {
+        let id = self.settings_manager.get_subagent_model()?;
+        match self.settings_manager.get_subagent_provider() {
+            Some(provider) => self.model_runtime.get_model(&provider, &id),
+            // No provider stored (hand-edited settings.json): fall back to an
+            // id-wide search so the setting still works.
+            None => self
+                .model_runtime
+                .get_available_snapshot()
+                .into_iter()
+                .find(|model| model.id == id),
+        }
     }
 
     pub fn resource_loader(&self) -> Arc<dyn ResourceLoader> {

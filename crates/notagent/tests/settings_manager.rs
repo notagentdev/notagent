@@ -726,6 +726,33 @@ fn enabling_analytics_generates_a_tracking_id_once() {
 }
 
 #[test]
+fn stores_and_clears_the_subagent_model() {
+    // `/subagent-model` (port addition, v0.1.6): persisted like the default
+    // model; clearing drops the keys from settings.json entirely.
+    let harness = harness();
+    let manager = manager(&harness);
+    assert_eq!(manager.get_subagent_model(), None);
+    manager.set_subagent_model_and_provider("openrouter", "cheap-model");
+    manager.flush();
+    assert_eq!(
+        manager.get_subagent_provider().as_deref(),
+        Some("openrouter")
+    );
+    assert_eq!(manager.get_subagent_model().as_deref(), Some("cheap-model"));
+    let saved = global_settings(&harness);
+    assert_eq!(saved["subagentProvider"], json!("openrouter"));
+    assert_eq!(saved["subagentModel"], json!("cheap-model"));
+
+    manager.clear_subagent_model();
+    manager.flush();
+    assert_eq!(manager.get_subagent_provider(), None);
+    assert_eq!(manager.get_subagent_model(), None);
+    let saved = global_settings(&harness);
+    assert!(saved.get("subagentModel").is_none(), "{saved}");
+    assert!(saved.get("subagentProvider").is_none(), "{saved}");
+}
+
+#[test]
 fn writes_typed_list_and_model_settings() {
     let harness = harness();
     let manager = manager(&harness);

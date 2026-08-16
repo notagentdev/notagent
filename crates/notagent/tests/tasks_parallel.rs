@@ -341,6 +341,7 @@ async fn one_task_call_runs_its_eight_subagents_at_once() {
         tool_options: None,
         transcripts: Default::default(),
         cwd: None,
+        subagent_model: None,
     }));
 
     let tasks: Vec<String> = (0..TASK_COUNT)

@@ -71,6 +71,8 @@ struct Seen {
     tool_names: Vec<String>,
     first_user_text: String,
     message_count: usize,
+    /// Which model the child actually called the provider with.
+    model_id: String,
 }
 
 /// A parent whose provider call records what the child was configured with.
@@ -82,7 +84,7 @@ fn parent_agent(reply: AssistantMessage, seen: Arc<Mutex<Vec<Seen>>>) -> Arc<Age
         get_api_key: Some(Arc::new(|_provider| {
             Box::pin(async { Some("test-key".to_owned()) })
         })),
-        stream_fn: Some(Arc::new(move |_model, context, _options| {
+        stream_fn: Some(Arc::new(move |stream_model, context, _options| {
             let first = context.messages.first().cloned();
             let first_user_text = match first {
                 Some(notagent_ai::types::Message::User(message)) => match message.content {
@@ -109,6 +111,7 @@ fn parent_agent(reply: AssistantMessage, seen: Arc<Mutex<Vec<Seen>>>) -> Arc<Age
                     .unwrap_or_default(),
                 first_user_text,
                 message_count: context.messages.len(),
+                model_id: stream_model.id.clone(),
             });
             let reply = reply.clone();
             Box::pin(async move {
@@ -212,6 +215,7 @@ fn options(parent: Arc<Agent>, mode: Mode, task: &str) -> DelegationOptions {
         tool_options: None,
         resolve_tool: None,
         timeout_ms: None,
+        model_override: None,
         on_tokens: None,
     }
 }
@@ -349,6 +353,39 @@ async fn uses_the_parents_system_prompt() {
     ))
     .await;
     assert_eq!(seen.lock().expect("seen")[0].system_prompt, "PARENT PROMPT");
+}
+
+#[tokio::test]
+async fn runs_on_the_parents_model_when_no_override_is_set() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    run_delegation(options(
+        parent_agent(assistant("done"), Arc::clone(&seen)),
+        mode("plan", ShellId::ReadOnly, "x"),
+        "t",
+    ))
+    .await;
+    assert_eq!(seen.lock().expect("seen")[0].model_id, "mock");
+}
+
+#[tokio::test]
+async fn runs_on_the_override_model_when_one_is_set() {
+    // `/subagent-model` (port addition, v0.1.6): the override replaces the
+    // model alone; transport and prompt still come from the parent.
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mut cheap = model();
+    cheap.id = "cheap".to_owned();
+    run_delegation(DelegationOptions {
+        model_override: Some(cheap),
+        ..options(
+            parent_agent(assistant("done"), Arc::clone(&seen)),
+            mode("plan", ShellId::ReadOnly, "x"),
+            "t",
+        )
+    })
+    .await;
+    let first = seen.lock().expect("seen")[0].clone();
+    assert_eq!(first.model_id, "cheap");
+    assert_eq!(first.system_prompt, "PARENT PROMPT");
 }
 
 #[tokio::test]

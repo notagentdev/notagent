@@ -147,6 +147,7 @@ fn harness(parent_shell: ShellId, background: bool) -> Harness {
         tool_options: None,
         transcripts: Default::default(),
         cwd: None,
+        subagent_model: None,
     }));
     Harness {
         _directory: directory,

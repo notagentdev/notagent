@@ -66,6 +66,12 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
         "Select model (opens selector UI)",
         "<provider/model>",
     ),
+    // Addition over the TS original (user decision 2026-08-16, v0.1.6).
+    command_with_hint(
+        "subagent-model",
+        "Select the model subagents run on (default: inherit the main model)",
+        "<provider/model|default>",
+    ),
     command("scoped-models", "Enable/disable models for Ctrl+P cycling"),
     command(
         "export",
@@ -123,6 +129,8 @@ mod tests {
             vec![
                 "settings",
                 "model",
+                // Port addition (user decision, v0.1.6), not in the TS list.
+                "subagent-model",
                 "scoped-models",
                 "export",
                 "import",
@@ -149,12 +157,13 @@ mod tests {
     }
 
     #[test]
-    fn only_model_and_login_take_an_argument() {
+    fn only_the_model_commands_and_login_take_an_argument() {
         let with_hint: Vec<&str> = BUILTIN_SLASH_COMMANDS
             .iter()
             .filter(|command| command.argument_hint.is_some())
             .map(|command| command.name)
             .collect();
-        assert_eq!(with_hint, vec!["model", "login"]);
+        // `subagent-model` is the port addition (user decision, v0.1.6).
+        assert_eq!(with_hint, vec!["model", "subagent-model", "login"]);
     }
 }

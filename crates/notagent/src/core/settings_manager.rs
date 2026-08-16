@@ -215,6 +215,10 @@ settings_struct!(
     last_changelog_version: String,
     default_provider: String,
     default_model: String,
+    /// Addition over the TS original (user decision 2026-08-16, v0.1.6):
+    /// the model delegated subagents run on; unset means inherit.
+    subagent_provider: String,
+    subagent_model: String,
     default_thinking_level: Value,
     transport: Value,
     steering_mode: Value,
@@ -982,6 +986,30 @@ impl SettingsManager {
         self.set_global_fields(&[
             ("defaultProvider", Value::from(provider)),
             ("defaultModel", Value::from(model_id)),
+        ]);
+    }
+
+    pub fn get_subagent_provider(&self) -> Option<String> {
+        self.settings_snapshot().subagent_provider
+    }
+
+    pub fn get_subagent_model(&self) -> Option<String> {
+        self.settings_snapshot().subagent_model
+    }
+
+    pub fn set_subagent_model_and_provider(&self, provider: &str, model_id: &str) {
+        self.set_global_fields(&[
+            ("subagentProvider", Value::from(provider)),
+            ("subagentModel", Value::from(model_id)),
+        ]);
+    }
+
+    /// Back to inheriting the main model. `Null` lands as `None` in the typed
+    /// field and `skip_serializing_if` drops the key from settings.json.
+    pub fn clear_subagent_model(&self) {
+        self.set_global_fields(&[
+            ("subagentProvider", Value::Null),
+            ("subagentModel", Value::Null),
         ]);
     }
 

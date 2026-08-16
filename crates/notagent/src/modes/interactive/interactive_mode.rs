@@ -53,7 +53,7 @@ use notagent_ai::types::{
     ToolResultMessage, UserContent, UserMessage,
 };
 use notagent_tui::autocomplete::{
-    AutocompleteItem, CombinedAutocompleteProvider, CommandEntry, SlashCommand,
+    ArgumentCompletions, AutocompleteItem, CombinedAutocompleteProvider, CommandEntry, SlashCommand,
 };
 use notagent_tui::components::markdown::Markdown;
 use notagent_tui::components::scroll_view::{Overscroll, ScrollView, ScrollViewOptions};
@@ -801,6 +801,11 @@ enum UiMessage {
     Report {
         message: String,
         level: HookReportLevel,
+    },
+    /// The `/subagent-model` selector reported a choice (port addition, v0.1.6).
+    SubagentModelSelected {
+        id: u64,
+        model: Box<Model>,
     },
     /// A selector reported a choice or a cancellation.
     ModelSelected {
@@ -2146,6 +2151,10 @@ impl InteractiveMode {
                 self.close_selector(id);
                 self.apply_selected_model(*model).await;
             }
+            UiMessage::SubagentModelSelected { id, model } => {
+                self.close_selector(id);
+                self.apply_selected_subagent_model(*model);
+            }
             UiMessage::ForkAt {
                 id,
                 entry_id,
@@ -3399,6 +3408,16 @@ impl InteractiveMode {
 
     /// `showModelSelector(initialSearchInput)` (`interactive-mode.ts:5025-5055`).
     fn show_model_selector(&mut self, initial_search_input: Option<&str>) {
+        self.show_model_selector_impl(initial_search_input, false);
+    }
+
+    /// The same selector aimed at the `/subagent-model` setting (port
+    /// addition, v0.1.6): only the message the choice sends back differs.
+    fn show_subagent_model_selector(&mut self, initial_search_input: Option<&str>) {
+        self.show_model_selector_impl(initial_search_input, true);
+    }
+
+    fn show_model_selector_impl(&mut self, initial_search_input: Option<&str>, for_subagent: bool) {
         let id = self.selector_id + 1;
         let select_tx = self.ui_tx.clone();
         let cancel_tx = self.ui_tx.clone();
@@ -3422,10 +3441,18 @@ impl InteractiveMode {
                 })
                 .collect(),
             Box::new(move |model| {
-                let _ = select_tx.send(UiMessage::ModelSelected {
-                    id,
-                    model: Box::new(model),
-                });
+                let message = if for_subagent {
+                    UiMessage::SubagentModelSelected {
+                        id,
+                        model: Box::new(model),
+                    }
+                } else {
+                    UiMessage::ModelSelected {
+                        id,
+                        model: Box::new(model),
+                    }
+                };
+                let _ = select_tx.send(message);
             }),
             Box::new(move || {
                 let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
@@ -3451,6 +3478,39 @@ impl InteractiveMode {
             }
             Err(message) => self.show_error(&message),
         }
+    }
+
+    /// The `onSelect` half of the subagent-model selector and of
+    /// `/subagent-model <term>` (port addition, v0.1.6). Persisted like
+    /// `/model`; the child resolves it at spawn time and inherits the main
+    /// model when the setting is absent or names a model that no longer
+    /// exists.
+    fn apply_selected_subagent_model(&mut self, model: Model) {
+        self.settings()
+            .set_subagent_model_and_provider(&model.provider, &model.id);
+        self.show_status(&format!("Subagent model: {}", model.id));
+    }
+
+    /// `/subagent-model` (port addition, v0.1.6): no argument opens the
+    /// selector, `default`/`inherit` clears the setting, anything else is
+    /// matched like `/model <term>`.
+    async fn handle_subagent_model_command(&mut self, search_term: Option<&str>) {
+        let Some(search_term) = search_term else {
+            self.show_subagent_model_selector(None);
+            return;
+        };
+        if search_term.eq_ignore_ascii_case("default")
+            || search_term.eq_ignore_ascii_case("inherit")
+        {
+            self.settings().clear_subagent_model();
+            self.show_status("Subagent model: inherits the main model");
+            return;
+        }
+        if let Some(model) = self.find_exact_model_match(search_term).await {
+            self.apply_selected_subagent_model(model);
+            return;
+        }
+        self.show_subagent_model_selector(Some(search_term));
     }
 
     /// `handleModelCommand(searchTerm)` (`interactive-mode.ts:4857-4879`).
@@ -4059,10 +4119,10 @@ impl InteractiveMode {
             })
             .collect();
 
-        if let Some(model_command) = commands.iter_mut().find(|command| command.name == "model") {
+        {
             let session = Arc::clone(&session);
             let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
-            model_command.get_argument_completions = Some(Rc::new(move |prefix: &str| {
+            let model_completions: ArgumentCompletions = Rc::new(move |prefix: &str| {
                 let scoped = session.scoped_models();
                 let models: Vec<Model> = if scoped.is_empty() {
                     model_runtime.get_available_snapshot()
@@ -4095,7 +4155,14 @@ impl InteractiveMode {
                             .collect(),
                     )
                 }) as Pin<Box<dyn Future<Output = Option<Vec<AutocompleteItem>>>>>
-            }));
+            });
+            // `/subagent-model` (port addition, v0.1.6) completes from the
+            // same list of available models as `/model`.
+            for name in ["model", "subagent-model"] {
+                if let Some(command) = commands.iter_mut().find(|command| command.name == name) {
+                    command.get_argument_completions = Some(Rc::clone(&model_completions));
+                }
+            }
         }
 
         // Prompt templates.
@@ -5915,6 +5982,12 @@ impl InteractiveMode {
                 let search_term = argument("/model ");
                 self.clear_editor_text();
                 self.handle_model_command(search_term.as_deref()).await;
+            }
+            _ if text == "/subagent-model" || text.starts_with("/subagent-model ") => {
+                let search_term = argument("/subagent-model ");
+                self.clear_editor_text();
+                self.handle_subagent_model_command(search_term.as_deref())
+                    .await;
             }
             _ if text == "/export" || text.starts_with("/export ") => {
                 self.handle_export_command(text).await;

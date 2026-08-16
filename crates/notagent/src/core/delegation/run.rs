@@ -17,6 +17,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use notagent_agent::agent::{Agent, AgentOptions};
 use notagent_agent::types::{AgentEvent, AgentMessage, AgentTool};
+use notagent_ai::types::Model;
 use notagent_ai::uuidv7;
 use tokio_util::sync::CancellationToken;
 
@@ -127,6 +128,10 @@ pub struct DelegationOptions {
     /// Overrides the ceiling, for tests and for callers with their own bound.
     pub timeout_ms: Option<u64>,
     pub on_tokens: Option<OnTokensFn>,
+    /// The model the child binds instead of the parent's. Addition over the
+    /// TS original (user decision 2026-08-16, v0.1.6): `/subagent-model` pins
+    /// it; `None` inherits the parent's model as before.
+    pub model_override: Option<Model>,
 }
 
 /// The child's tools: its mode's allowlist, minus what no child may have.
@@ -202,7 +207,9 @@ fn last_assistant_text(messages: &[AgentMessage]) -> String {
 /// Builds the child. Every provider-facing field is taken from the parent so a
 /// child talks to the same model through the same transport, retries and
 /// headers — anything else would make a subagent behave differently from the
-/// agent that spawned it for reasons nobody chose.
+/// agent that spawned it for reasons nobody chose. The one chosen exception:
+/// `model_override` (the `/subagent-model` setting) replaces the model alone;
+/// transport, retries and headers still come from the parent.
 fn create_child(options: &DelegationOptions, session_id: &str) -> Arc<Agent> {
     let parent_state = options.parent.state();
     let parent_options = options.parent.options();
@@ -219,7 +226,12 @@ fn create_child(options: &DelegationOptions, session_id: &str) -> Arc<Agent> {
 
     let child = Agent::new(AgentOptions {
         system_prompt: Some(parent_state.system_prompt.clone()),
-        model: Some(parent_state.model.clone()),
+        model: Some(
+            options
+                .model_override
+                .clone()
+                .unwrap_or_else(|| parent_state.model.clone()),
+        ),
         thinking_level: Some(parent_state.thinking_level),
         tools: Some(tools),
         // A distinct id, not the parent's: the two conversations share no

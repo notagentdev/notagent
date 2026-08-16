@@ -26,7 +26,7 @@ use notagent_agent::agent::Agent;
 use notagent_agent::types::{
     AgentMessage, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
-use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
+use notagent_ai::types::{ConstrainedSampling, Model, TextContent, TextOrImageContent};
 use notagent_ai::uuidv7;
 use notagent_tui::tui::ComponentRef;
 use serde_json::{Value, json};
@@ -78,6 +78,11 @@ pub struct TaskToolSources {
     /// directly at the call; the port takes it from the session, which is the
     /// same value and testable (deviation class 1).
     pub cwd: Option<Arc<dyn Fn() -> String + Send + Sync>>,
+    /// The model children run on instead of the parent's, when the user pinned
+    /// one with `/subagent-model` (addition over the TS original, user
+    /// decision 2026-08-16, v0.1.6). Queried at spawn time, so a mid-session
+    /// change applies to the next delegation; `None` inherits.
+    pub subagent_model: Option<Arc<dyn Fn() -> Option<Model> + Send + Sync>>,
 }
 
 impl Default for TaskToolSources {
@@ -93,6 +98,7 @@ impl Default for TaskToolSources {
             tool_options: None,
             transcripts: TaskTranscriptStore::default(),
             cwd: None,
+            subagent_model: None,
         }
     }
 }
@@ -584,6 +590,11 @@ impl ToolDefinition for TaskToolDefinition {
                     on_tokens: Some(Arc::new(move |spent| {
                         token_sink.store(spent, std::sync::atomic::Ordering::SeqCst);
                     })),
+                    model_override: self
+                        .sources
+                        .subagent_model
+                        .as_ref()
+                        .and_then(|subagent_model| subagent_model()),
                 };
                 // Real parallelism: every child is its own tokio task, and the
                 // tool only holds the two ends of its result.
