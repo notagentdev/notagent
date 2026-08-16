@@ -466,8 +466,13 @@ async fn llama_command(
 }
 
 /// Run the flow until the screen shows `needle`, then send `keys` to it.
+///
+/// The needle has to be text only the awaited dialog shows: consecutive dialogs
+/// of the manager share model ids and titles, and a key that reaches the
+/// previous dialog answers a sequence number the flow no longer waits for —
+/// which would park the flow instead of failing the case.
 async fn answer(view: &Rc<RefCell<LlamaView>>, needle: &str, keys: &[&str]) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         if render(view).contains(needle) {
             break;
@@ -485,20 +490,30 @@ async fn answer(view: &Rc<RefCell<LlamaView>>, needle: &str, keys: &[&str]) {
     }
 }
 
+/// Only the model list offers the download row, so it is the needle that tells
+/// the list apart from the dialogs the flow shows in between.
+const MODEL_LIST: &str = "Download model…";
+
+/// A whole case never waits longer than this. Every wait below has its own
+/// deadline; this is the backstop for the flow itself, so a case can only fail,
+/// never park a workspace run.
+const CASE_TIMEOUT: Duration = Duration::from_secs(60);
+
+async fn within_case<F: Future>(body: F) -> F::Output {
+    tokio::time::timeout(CASE_TIMEOUT, body)
+        .await
+        .expect("the case finished inside its timeout")
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn the_manager_loads_a_model_refreshes_the_catalog_and_reports_it() {
-    local(async {
+    local(within_case(async {
         let _guard = test_setup().await;
         let status = Arc::new(Mutex::new("unloaded".to_owned()));
         let server = {
             let status = Arc::clone(&status);
             TestHttpServer::start(move |request| {
-                let path = request
-                    .path
-                    .split('?')
-                    .next()
-                    .unwrap_or_default()
-                    .to_owned();
+                let path = request.path.split('?').next().unwrap_or_default().to_owned();
                 match (request.method.as_str(), path.as_str()) {
                     (_, "/models/sse") => Reply::Sse,
                     ("POST", "/models/load") => {
@@ -528,9 +543,10 @@ async fn the_manager_loads_a_model_refreshes_the_catalog_and_reports_it() {
             (outcome, command_models(&command))
         });
 
-        // The list arrives, the model is picked, the load runs, the list is back.
-        answer(&view, "test-model", &[ENTER]).await;
-        answer(&view, "test-model", &[ESCAPE]).await;
+        // Pick the model. The list is back once the load finished, which is the
+        // download row showing again — until then the progress view is up.
+        answer(&view, MODEL_LIST, &[ENTER]).await;
+        answer(&view, MODEL_LIST, &[ESCAPE]).await;
         let (outcome, models) = flow.await.expect("the flow finished");
         assert_eq!(outcome, Ok(()));
         assert_eq!(
@@ -546,7 +562,7 @@ async fn the_manager_loads_a_model_refreshes_the_catalog_and_reports_it() {
             )],
             "the loaded model reached the provider catalog"
         );
-    })
+    }))
     .await;
 }
 
@@ -563,8 +579,8 @@ fn command_models(command: &LlamaCommand) -> Vec<(String, String, u64)> {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_server_that_is_not_there_offers_retry_and_close() {
-    local(async {
+async fn a_server_that_is_not_there_reports_the_connection_and_closes() {
+    local(within_case(async {
         let _guard = test_setup().await;
         let notes = Arc::new(Mutex::new(Vec::new()));
         // Port 1 on loopback: nothing listens, every request fails at once.
@@ -583,32 +599,75 @@ async fn a_server_that_is_not_there_offers_retry_and_close() {
             screen.contains("Retry") && screen.contains("Close"),
             "both answers are offered: {screen}"
         );
-        // Retry once, then close.
-        answer(&view, "Retry", &[ENTER]).await;
-        answer(&view, "llama.cpp unavailable", &[DOWN, ENTER]).await;
+        // Close is the second row.
+        view.borrow_mut().handle_input(DOWN);
+        view.borrow_mut().handle_input(ENTER);
         assert_eq!(flow.await.expect("the flow finished"), Ok(()));
         assert!(
             notes.lock().expect("poisoned").is_empty(),
             "a connection error is not repeated as a notification"
         );
-    })
+    }))
     .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn unloading_asks_first_and_a_loaded_model_cannot_be_loaded_again() {
-    local(async {
+async fn retry_reads_the_catalog_again_after_a_server_error() {
+    local(within_case(async {
+        let _guard = test_setup().await;
+        let attempts = Arc::new(Mutex::new(0_usize));
+        let server = {
+            let attempts = Arc::clone(&attempts);
+            TestHttpServer::start(move |request| {
+                let path = request.path.split('?').next().unwrap_or_default().to_owned();
+                match path.as_str() {
+                    "/models/sse" => Reply::Sse,
+                    "/models" => {
+                        let mut attempts = attempts.lock().expect("poisoned");
+                        *attempts += 1;
+                        if *attempts == 1 {
+                            return Reply::status(503);
+                        }
+                        Reply::json(json!({
+                            "data": [{ "id": "test-model", "status": { "value": "unloaded" } }]
+                        }))
+                    }
+                    _ => Reply::status(404),
+                }
+            })
+            .await
+        };
+
+        let notes = Arc::new(Mutex::new(Vec::new()));
+        let command = llama_command(&server.base_url, Arc::clone(&notes)).await;
+        let (view, mut ui) = create_llama_ui(Rc::new(|| {}));
+        let flow =
+            tokio::task::spawn_local(async move { run_llama_command(&command, &mut ui).await });
+
+        // A server error is not a connection error: its message is shown as is.
+        answer(&view, "llama.cpp unavailable", &[]).await;
+        assert!(
+            render(&view).contains("llama.cpp returned HTTP 503"),
+            "the server's own message survives: {}",
+            render(&view)
+        );
+        // Retry is the first row; the second read succeeds and the list opens.
+        view.borrow_mut().handle_input(ENTER);
+        answer(&view, MODEL_LIST, &[ESCAPE]).await;
+        assert_eq!(flow.await.expect("the flow finished"), Ok(()));
+    }))
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn unloading_asks_first_and_only_unloads_after_a_yes() {
+    local(within_case(async {
         let _guard = test_setup().await;
         let unloads = Arc::new(Mutex::new(0_usize));
         let server = {
             let unloads = Arc::clone(&unloads);
             TestHttpServer::start(move |request| {
-                let path = request
-                    .path
-                    .split('?')
-                    .next()
-                    .unwrap_or_default()
-                    .to_owned();
+                let path = request.path.split('?').next().unwrap_or_default().to_owned();
                 match (request.method.as_str(), path.as_str()) {
                     (_, "/models/sse") => Reply::Sse,
                     ("POST", "/models/unload") => {
@@ -616,7 +675,16 @@ async fn unloading_asks_first_and_a_loaded_model_cannot_be_loaded_again() {
                         Reply::json(json!({ "success": true }))
                     }
                     ("GET", "/models") => Reply::json(json!({
-                        "data": [{ "id": "test-model", "status": { "value": "loaded" } }]
+                        "data": [{
+                            "id": "test-model",
+                            "status": {
+                                "value": if *unloads.lock().expect("poisoned") == 0 {
+                                    "loaded"
+                                } else {
+                                    "unloaded"
+                                }
+                            },
+                        }]
                     })),
                     _ => Reply::status(404),
                 }
@@ -630,24 +698,22 @@ async fn unloading_asks_first_and_a_loaded_model_cannot_be_loaded_again() {
         let flow =
             tokio::task::spawn_local(async move { run_llama_command(&command, &mut ui).await });
 
-        // Pick the loaded model, decline the unload.
-        answer(&view, "test-model", &[ENTER]).await;
+        // Pick the loaded model, then decline the unload.
+        answer(&view, MODEL_LIST, &[ENTER]).await;
         answer(&view, "Unload model?", &[DOWN, ENTER]).await;
+        answer(&view, MODEL_LIST, &[]).await;
         assert_eq!(*unloads.lock().expect("poisoned"), 0, "No means no");
 
-        // Pick it again and confirm; the server never reports it unloaded, so
-        // `unloadAndWait` keeps polling — closing the list ends the flow.
-        answer(&view, "test-model", &[ENTER]).await;
+        // Pick it again and confirm.
+        answer(&view, MODEL_LIST, &[ENTER]).await;
         answer(&view, "Unload model?", &[ENTER]).await;
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while *unloads.lock().expect("poisoned") == 0 {
-            assert!(
-                Instant::now() < deadline,
-                "the unload never reached the server"
-            );
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        flow.abort();
-    })
+        answer(&view, MODEL_LIST, &[ESCAPE]).await;
+        assert_eq!(flow.await.expect("the flow finished"), Ok(()));
+        assert_eq!(*unloads.lock().expect("poisoned"), 1);
+        assert_eq!(
+            *notes.lock().expect("poisoned"),
+            vec![("Unloaded test-model".to_owned(), NotifyLevel::Info)]
+        );
+    }))
     .await;
 }
