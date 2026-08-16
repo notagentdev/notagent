@@ -4,7 +4,7 @@ Maschinell erzeugt von `scripts/parity-audit.sh` (Werkzeug: `tools/parity-audit.
 Der Bericht prüft jede Datei unter `packages/*/src` des TS-Repos gegen alle `crates/*/PARITY.md`-Ledger.
 Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine Bewertung.
 
-- Lauf: 2026-08-16, Repo-Commit `2a168f1`
+- Lauf: 2026-08-16, Repo-Commit `a5cebaf`
 - TS-Repo: `/Users/dev/projects/notagent-main`
 - Gelesene Ledger: 9 (`notagent`, `notagent-agent`, `notagent-ai`, `notagent-client`, `notagent-protocol`, `notagent-server`, `notagent-session-sqlite`, `notagent-telemetry`, `notagent-tui`)
 - src-Verzeichnisse: 12, Dateien gesamt: 632
@@ -122,79 +122,3 @@ Buchführung eine Aussage zu der Datei enthält.
 Erneut laufen lassen: `scripts/parity-audit.sh` (Optionen: `--ts-repo`, `--out`, `--check`, `--quiet`,
 `--explain <datei>`). `--check` endet mit Exit-Code 1, solange Dateien ohne jede Ledger-Spur bleiben —
 für Gate G4. `--explain packages/…/foo.ts` zeigt jede Ledger-Spur einer einzelnen Datei.
-
----
-
-# G4-Abnahme (von Hand, Workstream C als Gate-Verwalter, 2026-08-16)
-
-## 1. Zahlen des Laufs oben
-
-| Kategorie | Dateien | Bewertung |
-|---|---:|---|
-| verifiziert | 544 | 86 % aller 632 src-Dateien |
-| dokumentierter Ausschluss (Ledger + Master-Plan) | 85 | 13 % |
-| Ledger-Zeile unter `verifiziert` | 3 | siehe Punkt 2 |
-| ohne jede Ledger-Spur | 0 | `scripts/parity-audit.sh --out /tmp/parity.md --check` endet mit Exit 0 |
-
-## 2. Die drei Dateien unter `verifiziert` — Prüfobergrenze, kein offener Port
-
-`packages/tui/src/native-modifiers.ts`, `native/darwin/src/darwin-modifiers.c` und
-`native/win32/src/win32-console-mode.c`. Workstream A führt sie mit Status `portiert` und
-einer eigenen Tabelle „Prüfobergrenzen" (`crates/notagent-tui/PARITY.md:224-228`):
-
-- Der Aufruf erreicht die Plattform und antwortet — das belegt `tests/base_components.rs`.
-- Ein `true` verlangt eine **im Messmoment gedrückte** Modifier-Taste; die kann kein Test
-  herstellen, weder in TypeScript noch in Rust (die TS-Seite hat für diese drei Dateien
-  ebenfalls keine Suite).
-- Der Windows-Zweig kompiliert nur unter `cfg(target_os = "windows")` und braucht eine echte
-  Windows-Konsole; diese Maschine ist macOS.
-
-Bewertung: das ist die im Master-Plan (Risiko 3, Contingency) vorgesehene dokumentierte
-Plattformgrenze, kein Portmangel. Alle anderen Dateien tragen `verifiziert` oder einen
-Ausschluss.
-
-## 3. „Lücke 3" nach der Bereinigung
-
-Die neun Zeilen aus Cs Ledger sind aufgelöst: sechs waren überholte Doppel-Zeilen aus der
-Task, in der die Datei noch offen war (der Nachweis stand längst in einer zweiten Zeile), zwei
-sind die nativ ersetzten Extension-Hüllen und stehen jetzt in der Ausschluss-Tabelle, eine
-war die an B übertragene Client-Schicht. Was bleibt, sind acht Zeilen aus dreispaltigen
-**Nachtrags-** und **Prüfobergrenzen-Tabellen** von A und B, die die Prüfung als Ledger-Zeilen
-ohne Statusspalte liest — Formalbefund des Parsers, keine Aussage über einen Port.
-
-## 4. Feature-Checkliste gegen die sechs Faktendokumente
-
-| Faktendokument | Prüfpunkt | Beleg |
-|---|---|---|
-| `coding-agent-core.md` | 16 Tools mit Registry und Presets | `core/tools/`, Suiten `bash_tool`, `bash_background`, `minified_tools`, `mini_read_multi_edit`, `todo_and_skill_tools`, `task_tool(s)`, `render_utils`, `tool_render_oracle` |
-| | Session-JSONL v3, 9 Entry-Typen, Branching, Kontextaufbau | `core/session_manager.rs`, `tests/session_manager.rs` mit den TS-Fixtures |
-| | Modes/Permissions/Hooks nativ | `core/modes*`, `core/permissions/`, `core/hooks/`; `tests/modes.rs`, `tests/permissions.rs`, `tests/permission_end_to_end.rs`, `tests/hooks.rs`, `tests/hook_dispatch.rs` |
-| | Tasks und Delegation echt parallel | `core/tasks/`, `core/delegation/`; `tests/tasks_parallel.rs` (Wanduhrzeit), `tests/delegation_*.rs` |
-| | Compaction mit beiden Prompts und Overflow-Recovery | `core/compaction/`, `tests/compaction.rs`, `tests/agent_session_compaction.rs` |
-| | CLI-Flags und Subkommandos | `cli/args.rs`, `tests/args.rs`; Smoke-Schritte 2-5 |
-| | Print/JSON/RPC | `modes/`, `tests/headless_end_to_end.rs`, `tests/rpc_*.rs`; Smoke-Schritte 6-8 |
-| `extension-boundary.md` §2 | Permissions nativ statt Extension | Ausschluss-Tabelle + `permissions/gate.rs` im Agent-Loop |
-| | Hooks nativ statt Extension (16 Namen, nur PreToolUse blockiert) | `hooks/dispatch.rs`; `tests/hook_dispatch.rs` prüft alle 16 Namen; `PostToolUse` seit Task 15 aus dem `after_tool_call` der Session |
-| | llama.cpp-Provider + `/llama` | `core/llama/`, `modes/interactive/llama_command.rs`; `tests/llama_extension.rs`, `tests/llama_command.rs`; Smoke-Schritt 11 |
-| §3 Integrationspunkte | jeder Punkt nativ ersetzt oder als entfallend geführt | die Ledger-Zeilen der genannten Dateien; die Extension-eigenen Punkte stehen in der Ausschluss-Tabelle |
-| `ai-and-agent.md` | Provider, APIs, Streaming, Agent-Loop | Workstream B, `crates/notagent-ai/PARITY.md` und `crates/notagent-agent/PARITY.md` |
-| `tui.md` | Renderer, Layout, Komponenten, Editor, Keybindings | Workstream A, `crates/notagent-tui/PARITY.md`; G3-Szenarien in `tests/g3_interactive_e2e.rs` |
-| `protocol-…-evals.md` | protocol/client/server/sqlite | die vier Crates, alle Ledger vollständig `verifiziert`; evals ist Master-Plan-Ausschluss |
-| `rust-minify-reference.md` | Minify nach der Rust-Referenz, byte-genau | `core/mini_read/`, Unit-Tests plus `tests/minified_tools.rs` und die Testbench-Fälle |
-
-## 5. Gate-Kriterien
-
-**G3 — Interaktive Parität**
-- Interactive-Mode vollständig verdrahtet: Editor, Slash-Commands (alle aus der Faktenliste,
-  inklusive `/llama` und der beiden Easter Eggs), Selektoren, Themes, Keybindings (45
-  Actions), Footer, Panels, Fullscreen — Plan-Tasks 13 bis 16 abgehakt.
-- End-to-End über das virtuelle Terminal: `tests/g3_interactive_e2e.rs` — **20 Fälle grün,
-  kein `#[ignore]`**; dazu 40 Fälle in `tests/interactive_mode_wiring.rs`.
-- `scripts/check.sh` grün auf main.
-
-**G4 — Release-Parität**
-- Alle portierten Suiten grün im Gesamtworkspace: **3 861 Tests in 249 Suiten**, `check.sh`
-  (fmt, clippy `-D warnings`, test) mit Exit 0.
-- Parity-Ledger aller neun Crates vollständig: 0 Dateien ohne Nachweis, `--check` Exit 0.
-- Feature-Checkliste gegen alle sechs Faktendokumente: Abschnitt 4.
-- Manueller Smoke-Test: `plans/g4-smoke-report.md`, 12 Schritte, kein Fehlschlag.

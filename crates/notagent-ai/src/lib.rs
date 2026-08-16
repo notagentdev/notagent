@@ -17,6 +17,15 @@ pub mod session_resources;
 pub mod types;
 pub mod utils;
 
+/// Installs the process-wide rustls default. Both `ring` (via reqwest) and
+/// `aws-lc-rs` (via the AWS SDK) are linked into the binaries, so rustls
+/// cannot pick a provider on its own and panics on the first TLS handshake.
+/// Every binary must call this before any network use; calling it twice is
+/// harmless (the second install is ignored).
+pub fn install_default_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 // ---------------------------------------------------------------------------
 // Flache Oberfläche von `src/index.ts` (47 LOC)
 //

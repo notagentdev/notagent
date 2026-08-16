@@ -52,6 +52,10 @@ serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
 serde_yaml_ng = "0.10"
 
 # --- Netzwerk ---
+# rustls direkt nur für CryptoProvider::install_default in den Binaries: im
+# Prozess stecken ring (reqwest) UND aws-lc-rs (aws-sdk) — ohne expliziten
+# Default panict rustls beim ersten TLS-Aufbau (Laufzeitfund nach v0.1.0).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls",

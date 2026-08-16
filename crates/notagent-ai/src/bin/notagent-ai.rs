@@ -231,6 +231,7 @@ async fn run() -> Result<(), String> {
 
 #[tokio::main]
 async fn main() {
+    notagent_ai::install_default_crypto_provider();
     if let Err(error) = run().await {
         eprintln!("Error: {error}");
         std::process::exit(1);

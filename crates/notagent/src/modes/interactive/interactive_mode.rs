@@ -1961,6 +1961,7 @@ impl InteractiveMode {
                     }
                 } => {
                     self.tick();
+                    self.pump_editor_autocomplete().await;
                     None
                 }
                 // The signal handlers of `registerSignalHandlers()`: the binary
@@ -2022,6 +2023,30 @@ impl InteractiveMode {
             deadline = Some(deadline.map_or(candidate, |current: Instant| current.min(candidate)));
         }
         deadline
+    }
+
+    /// The missing half of the `autocomplete_deadline` seam: the deadline in
+    /// `next_deadline` only wakes the loop — the due request must be pumped
+    /// here, exactly like the editor tests drive it
+    /// (`crates/notagent-tui/tests/editor.rs`). The editor borrow is held
+    /// across the await; only the provider runs during it (fd + command
+    /// table), nothing re-enters the editor.
+    async fn pump_editor_autocomplete(&mut self) {
+        let due = self
+            .editor
+            .borrow()
+            .editor()
+            .autocomplete_deadline()
+            .is_some_and(|deadline| deadline <= Instant::now());
+        if !due {
+            return;
+        }
+        self.editor
+            .borrow_mut()
+            .editor_mut()
+            .pump_autocomplete()
+            .await;
+        self.ui.request_render();
     }
 
     /// One pass over everything a deadline was due for.
