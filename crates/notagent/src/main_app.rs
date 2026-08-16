@@ -85,6 +85,11 @@ use crate::core::settings_manager::{SettingsManager, SettingsManagerCreateOption
 use crate::core::timings::{print_timings, reset_timings, time};
 use crate::core::trust_manager::{ProjectTrustStore, has_trust_requiring_project_resources};
 use crate::migrations::run_migrations;
+use notagent_tui::tui::run_until;
+
+use crate::modes::interactive::interactive_mode::{
+    InteractiveModeHandle, InteractiveModeOptions, create_interactive_mode,
+};
 use crate::modes::interactive::theme::theme::{init_theme, stop_theme_watcher};
 use crate::modes::print_mode::{PrintModeOptions, PrintOutputMode, run_print_mode};
 use crate::modes::rpc::rpc_mode::run_rpc_mode;
@@ -927,7 +932,7 @@ pub async fn main(args: Vec<String>) -> i32 {
     }
 
     let migrations = run_migrations(Path::new(&cwd));
-    let _migrated_providers = migrations.migrated_auth_providers;
+    let migrated_providers = migrations.migrated_auth_providers;
     time("runMigrations");
 
     let startup_settings_manager = Arc::new(SettingsManager::create(
@@ -1197,14 +1202,36 @@ pub async fn main(args: Vec<String>) -> i32 {
             run_rpc_mode(runtime).await
         }
         AppMode::Interactive => {
-            // The interactive main loop lands with plan task 13.
-            eprintln!(
-                "{}",
-                red(
-                    "Error: interactive mode is not wired up in this build yet; use -p, --mode json or --mode rpc"
-                )
+            hook_runtime.report_diagnostics();
+            print_timings();
+            let session_cwd = session.with_session_manager(|manager| manager.get_cwd().to_owned());
+            let auto_trust_on_reload_cwd = (parsed.project_trust_override.is_none()
+                && !has_trust_requiring_project_resources(&session_cwd))
+            .then_some(session_cwd);
+            let InteractiveModeHandle {
+                mut renderer,
+                mut pump,
+                run,
+            } = create_interactive_mode(
+                Arc::clone(&runtime),
+                InteractiveModeOptions {
+                    migrated_providers,
+                    model_fallback_message: runtime.model_fallback_message(),
+                    auto_trust_on_reload_cwd,
+                    initial_message,
+                    initial_images: initial_images.unwrap_or_default(),
+                    initial_messages: parsed.messages.clone(),
+                    verbose: parsed.verbose,
+                    tui_mode: parsed.tui_mode,
+                    terminal: None,
+                },
             );
-            1
+            // The render loop belongs to the caller (interface request A-20):
+            // `run_until` renders and pumps stdin while the mode runs.
+            let exit_code = run_until(renderer.as_mut(), pump.as_mut(), run).await;
+            stop_theme_watcher();
+            restore_stdout();
+            exit_code
         }
         AppMode::Print | AppMode::Json => {
             hook_runtime.report_diagnostics();
