@@ -81,6 +81,8 @@ use crate::core::agent_session::{
 };
 use crate::core::agent_session_runtime::{AgentSessionRuntime, ForkPosition};
 use crate::core::bash_executor::BashResult;
+use crate::core::cache_stats::{CACHE_TTL_MS, CacheMiss, detect_cache_miss};
+use crate::core::diagnostics::{DiagnosticLevel, ResourceDiagnostic};
 use crate::core::hooks::runtime::{HookReportLevel, HookReporter};
 use crate::core::http_dispatcher::format_http_idle_timeout_ms;
 use crate::core::keybindings::KeybindingsManager;
@@ -90,6 +92,7 @@ use crate::core::model_resolver::{
     resolve_model_scope_from_models,
 };
 use crate::core::modes::indicator::format_mode_switch_notice;
+use crate::core::package_manager::{DefaultPackageManager, PackageManagerOptions};
 use crate::core::permissions::coordinator::ApprovalPresenter;
 use crate::core::permissions::request::{ApprovalAnswer, ApprovalRequest};
 use crate::core::session_manager::{
@@ -171,6 +174,8 @@ use crate::modes::interactive::theme::theme::{
 };
 use crate::modes::interactive::theme::theme_controller::InteractiveThemeController;
 use crate::utils::abort::timeout_signal;
+use crate::utils::tools_manager::{ManagedTool, ensure_tool};
+use crate::utils::version_check::{LatestPiRelease, check_for_new_pi_version};
 
 // ============================================================================
 // The terminal seam (interface request A-23)
@@ -768,6 +773,12 @@ enum UiMessage {
     Action(AppAction),
     /// A theme file changed on disk (`onThemeChange`).
     ThemeChanged,
+    VersionChecked {
+        release: Option<Box<LatestPiRelease>>,
+    },
+    PackageUpdatesChecked {
+        packages: Vec<String>,
+    },
     /// A hook diagnostic.
     Report {
         message: String,
@@ -991,6 +1002,7 @@ pub struct InteractiveMode {
     hidden_thinking_label: String,
 
     last_sigint_time: Option<Instant>,
+    anthropic_subscription_warning_shown: bool,
 
     /// `lastStatusSpacer`/`lastStatusText` — the mutation target of two status
     /// lines emitted back to back.
@@ -1249,6 +1261,7 @@ impl InteractiveMode {
             working_visible: true,
             hidden_thinking_label: DEFAULT_HIDDEN_THINKING_LABEL.to_owned(),
             last_sigint_time: None,
+            anthropic_subscription_warning_shown: false,
             last_status_spacer: None,
             last_status_text: None,
             streaming_component: None,
@@ -1364,6 +1377,14 @@ impl InteractiveMode {
         if self.is_initialized {
             return;
         }
+
+        self.record_version_seen();
+        // fd feeds the file autocomplete, rg the grep tool and bash.
+        let (fd_path, _) = futures::join!(
+            ensure_tool(ManagedTool::Fd, true),
+            ensure_tool(ManagedTool::Rg, true)
+        );
+        self.fd_path = fd_path;
 
         self.mount();
         self.ui
@@ -1726,6 +1747,36 @@ impl InteractiveMode {
         if let Some(message) = self.options.model_fallback_message.take() {
             self.show_warning(&message);
         }
+
+        // `void checkForNewPiVersion(...)`, `void checkForPackageUpdates(...)`,
+        // `void checkTmuxKeyboardSetup(...)` — the loop drives all three.
+        self.side_futures.push(Box::pin(async move {
+            UiMessage::VersionChecked {
+                release: check_for_new_pi_version(VERSION).await.map(Box::new),
+            }
+        }));
+        let package_cwd = self.cwd();
+        let package_settings = Arc::clone(&self.settings());
+        self.side_futures.push(Box::pin(async move {
+            let packages = DefaultPackageManager::new(PackageManagerOptions {
+                cwd: package_cwd,
+                agent_dir: get_agent_dir().to_string_lossy().into_owned(),
+                settings_manager: package_settings,
+                command_runner: None,
+            })
+            .check_for_available_updates()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|update| update.display_name)
+            .collect();
+            UiMessage::PackageUpdatesChecked { packages }
+        }));
+        if let Some(warning) = Self::check_tmux_keyboard_setup() {
+            self.show_warning(&warning);
+        }
+        self.maybe_warn_about_anthropic_subscription_auth(None)
+            .await;
 
         if let Some(initial) = self.options.initial_message.take() {
             self.pending_user_inputs.push_back(initial);
@@ -2118,6 +2169,16 @@ impl InteractiveMode {
                 self.close_selector(id);
                 self.ui.request_render();
             }
+            UiMessage::VersionChecked { release } => {
+                if let Some(release) = release {
+                    self.show_new_version_notification(*release);
+                }
+            }
+            UiMessage::PackageUpdatesChecked { packages } => {
+                if !packages.is_empty() {
+                    self.show_package_update_notification(packages);
+                }
+            }
             UiMessage::Report { message, level } => match level {
                 HookReportLevel::Error => self.show_error(&message),
                 _ => self.show_warning(&message),
@@ -2216,6 +2277,701 @@ impl InteractiveMode {
         self.flush_pending_bash_components();
         self.pending_user_inputs.push_back(text.clone());
         self.editor.borrow_mut().editor_mut().add_to_history(&text);
+    }
+
+    /// `recordVersionSeen()` (`interactive-mode.ts:1196-1210`).
+    fn record_version_seen(&self) {
+        if !self.session().messages().is_empty() {
+            return;
+        }
+        let settings = self.settings();
+        let Some(last_version) = settings.get_last_changelog_version() else {
+            settings.set_last_changelog_version(VERSION);
+            crate::core::telemetry::report_install_telemetry(&settings, VERSION);
+            return;
+        };
+        let entries =
+            crate::utils::changelog::parse_changelog(&crate::config::get_changelog_path());
+        if crate::utils::changelog::get_new_entries(&entries, &last_version).is_empty() {
+            return;
+        }
+        settings.set_last_changelog_version(VERSION);
+        crate::core::telemetry::report_install_telemetry(&settings, VERSION);
+    }
+
+    /// `checkTmuxKeyboardSetup()` (`interactive-mode.ts:1136-1194`).
+    fn check_tmux_keyboard_setup() -> Option<String> {
+        std::env::var("TMUX")
+            .ok()
+            .filter(|value| !value.is_empty())?;
+        let show = |option: &str| -> Option<String> {
+            let output = std::process::Command::new("tmux")
+                .args(["show", "-gv", option])
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()?;
+            output
+                .status
+                .success()
+                .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        };
+        // Could not query tmux (sandbox, timeout): no warning.
+        let extended_keys = show("extended-keys")?;
+        if extended_keys != "on" && extended_keys != "always" {
+            return Some(
+                "tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux."
+                    .to_owned(),
+            );
+        }
+        if show("extended-keys-format").as_deref() == Some("xterm") {
+            return Some(
+                "tmux extended-keys-format is xterm. Notagent works best with csi-u. Add `set -g extended-keys-format csi-u` to ~/.tmux.conf and restart tmux."
+                    .to_owned(),
+            );
+        }
+        None
+    }
+
+    /// `showNewVersionNotification(release)` (`interactive-mode.ts:4379-4406`).
+    fn show_new_version_notification(&mut self, release: LatestPiRelease) {
+        let action = theme().fg(ThemeColor::Accent, &format!("{APP_NAME} update"));
+        let update_instruction = format!(
+            "{}{action}",
+            theme().fg(
+                ThemeColor::Muted,
+                &format!("New version {} is available. Run ", release.version)
+            )
+        );
+        let changelog_url = "https://notagent.dev/changelog";
+        let changelog_line = format!(
+            "{}{}",
+            theme().fg(ThemeColor::Muted, "Changelog: "),
+            theme().fg(ThemeColor::Accent, changelog_url)
+        );
+        let border = || {
+            component_ref(DynamicBorder::new(Some(Rc::new(|text: &str| {
+                theme().fg(ThemeColor::Warning, text)
+            }))))
+        };
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(border());
+        chat.add_child(component_ref(Text::new(
+            format!(
+                "{}\n{update_instruction}",
+                theme().bold(&theme().fg(ThemeColor::Warning, "Update Available"))
+            ),
+            1,
+            0,
+        )));
+        if let Some(note) = release
+            .note
+            .as_ref()
+            .map(|note| note.trim())
+            .filter(|note| !note.is_empty())
+        {
+            chat.add_child(component_ref(Spacer::new(1)));
+            chat.add_child(component_ref(Markdown::new(
+                note,
+                1,
+                0,
+                get_markdown_theme(),
+                None,
+                None,
+            )));
+            chat.add_child(component_ref(Spacer::new(1)));
+        }
+        chat.add_child(component_ref(Text::new(changelog_line, 1, 0)));
+        chat.add_child(border());
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `showPackageUpdateNotification(packages)` (`interactive-mode.ts:4408-4428`).
+    fn show_package_update_notification(&mut self, packages: Vec<String>) {
+        let action = theme().fg(
+            ThemeColor::Accent,
+            &format!("{APP_NAME} update --extensions"),
+        );
+        let update_instruction = format!(
+            "{}{action}",
+            theme().fg(ThemeColor::Muted, "Package updates are available. Run ")
+        );
+        let package_lines = packages
+            .iter()
+            .map(|package| format!("- {package}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let border = || {
+            component_ref(DynamicBorder::new(Some(Rc::new(|text: &str| {
+                theme().fg(ThemeColor::Warning, text)
+            }))))
+        };
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(border());
+        chat.add_child(component_ref(Text::new(
+            format!(
+                "{}\n{update_instruction}\n{}\n{package_lines}",
+                theme().bold(&theme().fg(ThemeColor::Warning, "Package Updates Available")),
+                theme().fg(ThemeColor::Muted, "Packages:")
+            ),
+            1,
+            0,
+        )));
+        chat.add_child(border());
+        drop(chat);
+        self.ui.request_render();
+    }
+
+    /// `maybeShowCacheMissNotice(message)` and `addCacheMissNotice(miss)`
+    /// (`interactive-mode.ts:3926-3948`).
+    fn maybe_show_cache_miss_notice(&mut self, message: &AssistantMessage) {
+        if !self.settings().get_show_cache_miss_notices() {
+            return;
+        }
+        // Entries do not contain `message` yet: `message_end` fires before it is
+        // persisted.
+        let entries = self
+            .session()
+            .with_session_manager(|manager| manager.get_entries());
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        if let Some(miss) = detect_cache_miss(&entries, message, &*model_runtime) {
+            self.add_cache_miss_notice(miss);
+        }
+    }
+
+    fn add_cache_miss_notice(&mut self, miss: CacheMiss) {
+        if miss.missed_tokens < 20_000 && miss.missed_cost < 0.1 {
+            return;
+        }
+        let cost = if miss.missed_cost >= 0.01 {
+            format!(" (~${:.2})", miss.missed_cost)
+        } else {
+            String::new()
+        };
+        let re_billed = format!(
+            "{} tokens re-billed{cost}",
+            format_tokens(miss.missed_tokens)
+        );
+        let label = if miss.model_changed {
+            "Cache miss after model switch".to_owned()
+        } else if miss.idle_ms >= CACHE_TTL_MS {
+            format!(
+                "Cache miss after {}m idle",
+                (miss.idle_ms as f64 / 60_000.0).round() as i64
+            )
+        } else {
+            "Cache miss".to_owned()
+        };
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(component_ref(Spacer::new(1)));
+        chat.add_child(component_ref(Text::new(
+            theme().fg(ThemeColor::Warning, &format!("{label}: {re_billed}")),
+            1,
+            0,
+        )));
+    }
+
+    /// `maybeWarnAboutAnthropicSubscriptionAuth(model)`
+    /// (`interactive-mode.ts:4925-4953`).
+    async fn maybe_warn_about_anthropic_subscription_auth(&mut self, model: Option<Model>) {
+        if self.settings().get_warnings().anthropic_extra_usage == Some(false)
+            || self.anthropic_subscription_warning_shown
+        {
+            return;
+        }
+        let model = model.or_else(|| self.session().model());
+        let Some(model) = model.filter(|model| model.provider == "anthropic") else {
+            return;
+        };
+        let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+        if model_runtime
+            .check_auth("anthropic", None)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|check| check.check_type == AuthType::OAuth)
+        {
+            self.anthropic_subscription_warning_shown = true;
+            self.show_warning(ANTHROPIC_SUBSCRIPTION_AUTH_WARNING);
+            return;
+        }
+        let api_key = model_runtime
+            .get_auth_for_provider(&model.provider, None)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|result| result.auth.api_key);
+        if api_key.is_some_and(|key| key.starts_with("sk-ant-oat")) {
+            self.anthropic_subscription_warning_shown = true;
+            self.show_warning(ANTHROPIC_SUBSCRIPTION_AUTH_WARNING);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // The loaded resources
+    // ------------------------------------------------------------------
+
+    /// `formatDisplayPath(p)` (`interactive-mode.ts:1242-1252`).
+    fn format_display_path(&self, path: &str) -> String {
+        match dirs::home_dir() {
+            Some(home) => {
+                let home = home.to_string_lossy().into_owned();
+                match path.strip_prefix(&home) {
+                    Some(rest) => format!("~{rest}"),
+                    None => path.to_owned(),
+                }
+            }
+            None => path.to_owned(),
+        }
+    }
+
+    /// `formatContextPath(p)` (`interactive-mode.ts:1260-1269`).
+    fn format_context_path(&self, path: &str) -> String {
+        let cwd = self.cwd();
+        match crate::utils::paths::get_cwd_relative_path(path, &cwd) {
+            Ok(Some(relative)) => relative,
+            _ => self.format_display_path(path),
+        }
+    }
+
+    /// `getStartupExpansionState()` (`interactive-mode.ts:1271-1276`).
+    fn startup_expansion_state(&self) -> bool {
+        self.options.verbose || self.tool_output_expanded
+    }
+
+    /// `isPackageSource(sourceInfo)` (`interactive-mode.ts:1462-1465`).
+    fn is_package_source(source_info: Option<&SourceInfo>) -> bool {
+        source_info.is_some_and(|source_info| {
+            source_info.source.starts_with("npm:") || source_info.source.starts_with("git:")
+        })
+    }
+
+    /// `getScopeGroup(sourceInfo)` (`interactive-mode.ts:1453-1460`).
+    fn scope_group(source_info: Option<&SourceInfo>) -> &'static str {
+        let source = source_info.map_or("local", |source_info| source_info.source.as_str());
+        let scope = source_info.map_or(SourceScope::Project, |source_info| source_info.scope);
+        if source == "cli" || scope == SourceScope::Temporary {
+            return "path";
+        }
+        match scope {
+            SourceScope::User => "user",
+            SourceScope::Project => "project",
+            SourceScope::Temporary => "path",
+        }
+    }
+
+    /// `getShortPath(fullPath, sourceInfo)` (`interactive-mode.ts:1278-1313`), for
+    /// the cases the port can reach: a package base directory and the npm/git
+    /// checkout layouts.
+    fn short_path(&self, full_path: &str, source_info: Option<&SourceInfo>) -> String {
+        let normalized = full_path.replace('\\', "/");
+        if Self::is_package_source(source_info)
+            && let Some(base_dir) =
+                source_info.and_then(|source_info| source_info.base_dir.as_ref())
+        {
+            let normalized_base = base_dir.replace('\\', "/");
+            if let Some(rest) = normalized.strip_prefix(&format!("{normalized_base}/"))
+                && !rest.is_empty()
+            {
+                return rest.to_owned();
+            }
+        }
+        let source = source_info.map_or("", |source_info| source_info.source.as_str());
+        if source.starts_with("npm:")
+            && let Some(index) = normalized.find("node_modules/")
+        {
+            let rest = &normalized[index + "node_modules/".len()..];
+            // `node_modules/<scope>/<name>/<rest>` or `node_modules/<name>/<rest>`
+            let segments: Vec<&str> = rest.split('/').collect();
+            let skip = if rest.starts_with('@') { 2 } else { 1 };
+            if segments.len() > skip {
+                return segments[skip..].join("/");
+            }
+        }
+        if source.starts_with("git:")
+            && let Some(index) = normalized.find("git/")
+        {
+            let rest = &normalized[index + "git/".len()..];
+            let segments: Vec<&str> = rest.split('/').collect();
+            if segments.len() > 2 {
+                return segments[2..].join("/");
+            }
+        }
+        self.format_display_path(full_path)
+    }
+
+    /// `buildScopeGroups(items)` and `formatScopeGroups(groups, options)`
+    /// (`interactive-mode.ts:1467-1536`), in one pass.
+    fn format_scope_groups(
+        &self,
+        items: &[(String, Option<SourceInfo>)],
+        format_path: &dyn Fn(&str, Option<&SourceInfo>) -> String,
+        format_package_path: &dyn Fn(&str, Option<&SourceInfo>) -> String,
+    ) -> String {
+        let mut lines: Vec<String> = Vec::new();
+        for scope in ["project", "user", "path"] {
+            let members: Vec<&(String, Option<SourceInfo>)> = items
+                .iter()
+                .filter(|(_, source_info)| Self::scope_group(source_info.as_ref()) == scope)
+                .collect();
+            if members.is_empty() {
+                continue;
+            }
+            lines.push(format!("  {}", theme().fg(ThemeColor::Accent, scope)));
+
+            let mut paths: Vec<&(String, Option<SourceInfo>)> = members
+                .iter()
+                .copied()
+                .filter(|(_, source_info)| !Self::is_package_source(source_info.as_ref()))
+                .collect();
+            paths.sort_by(|left, right| left.0.cmp(&right.0));
+            for (path, source_info) in paths {
+                lines.push(theme().fg(
+                    ThemeColor::Dim,
+                    &format!("    {}", format_path(path, source_info.as_ref())),
+                ));
+            }
+
+            let mut sources: Vec<&str> = members
+                .iter()
+                .filter(|(_, source_info)| Self::is_package_source(source_info.as_ref()))
+                .map(|(_, source_info)| {
+                    source_info
+                        .as_ref()
+                        .map_or("local", |source_info| source_info.source.as_str())
+                })
+                .collect();
+            sources.sort_unstable();
+            sources.dedup();
+            for source in sources {
+                lines.push(format!("    {}", theme().fg(ThemeColor::MdLink, source)));
+                let mut package_paths: Vec<&(String, Option<SourceInfo>)> = members
+                    .iter()
+                    .copied()
+                    .filter(|(_, source_info)| {
+                        source_info
+                            .as_ref()
+                            .is_some_and(|source_info| source_info.source == source)
+                    })
+                    .collect();
+                package_paths.sort_by(|left, right| left.0.cmp(&right.0));
+                for (path, source_info) in package_paths {
+                    lines.push(theme().fg(
+                        ThemeColor::Dim,
+                        &format!("      {}", format_package_path(path, source_info.as_ref())),
+                    ));
+                }
+            }
+        }
+        lines.join("\n")
+    }
+
+    /// `formatDiagnostics(diagnostics, sourceInfos)` (`interactive-mode.ts:1562-1613`).
+    fn format_diagnostics(
+        &self,
+        diagnostics: &[ResourceDiagnostic],
+        source_infos: &[(String, SourceInfo)],
+    ) -> String {
+        let find_source_info = |path: &str| -> Option<&SourceInfo> {
+            if let Some((_, source_info)) =
+                source_infos.iter().find(|(candidate, _)| candidate == path)
+            {
+                return Some(source_info);
+            }
+            let mut current = path.to_owned();
+            while let Some(index) = current.rfind('/') {
+                current.truncate(index);
+                if let Some((_, source_info)) = source_infos
+                    .iter()
+                    .find(|(candidate, _)| *candidate == current)
+                {
+                    return Some(source_info);
+                }
+            }
+            None
+        };
+        let format_path_with_source = |path: &str| -> String {
+            match find_source_info(path) {
+                Some(source_info) => {
+                    let short_path = self.short_path(path, Some(source_info));
+                    let (label, scope_label) = display_source_label(source_info);
+                    let label_text = match scope_label {
+                        Some(scope_label) => format!("{label} ({scope_label})"),
+                        None => label.to_owned(),
+                    };
+                    format!("{label_text} {short_path}")
+                }
+                None => self.format_display_path(path),
+            }
+        };
+
+        let mut lines: Vec<String> = Vec::new();
+        // Collisions are grouped by name, in first-seen order.
+        let mut collision_names: Vec<String> = Vec::new();
+        for diagnostic in diagnostics {
+            if let Some(collision) = diagnostic.collision.as_ref()
+                && !collision_names.contains(&collision.name)
+            {
+                collision_names.push(collision.name.clone());
+            }
+        }
+        for name in &collision_names {
+            let group: Vec<&ResourceDiagnostic> = diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    diagnostic
+                        .collision
+                        .as_ref()
+                        .is_some_and(|collision| &collision.name == name)
+                })
+                .collect();
+            let Some(first) = group.first().and_then(|first| first.collision.as_ref()) else {
+                continue;
+            };
+            lines.push(theme().fg(ThemeColor::Warning, &format!("  \"{name}\" collision:")));
+            lines.push(theme().fg(
+                ThemeColor::Dim,
+                &format!(
+                    "    {} {}",
+                    theme().fg(ThemeColor::Success, "✓"),
+                    format_path_with_source(&first.winner_path)
+                ),
+            ));
+            for diagnostic in group {
+                if let Some(collision) = diagnostic.collision.as_ref() {
+                    lines.push(theme().fg(
+                        ThemeColor::Dim,
+                        &format!(
+                            "    {} {} (skipped)",
+                            theme().fg(ThemeColor::Warning, "✗"),
+                            format_path_with_source(&collision.loser_path)
+                        ),
+                    ));
+                }
+            }
+        }
+
+        for diagnostic in diagnostics {
+            if diagnostic.collision.is_some() {
+                continue;
+            }
+            let color = if diagnostic.level == DiagnosticLevel::Error {
+                ThemeColor::Error
+            } else {
+                ThemeColor::Warning
+            };
+            match diagnostic.path.as_ref() {
+                Some(path) => {
+                    lines.push(theme().fg(color, &format!("  {}", format_path_with_source(path))));
+                    lines.push(theme().fg(color, &format!("    {}", diagnostic.message)));
+                }
+                None => lines.push(theme().fg(color, &format!("  {}", diagnostic.message))),
+            }
+        }
+        lines.join("\n")
+    }
+
+    /// `showLoadedResources(options)` (`interactive-mode.ts:1615-1829`), minus
+    /// the extension sections and their diagnostics (class 2).
+    fn show_loaded_resources(&mut self, force: bool, show_diagnostics_when_quiet: bool) {
+        self.loaded_resources_container.borrow_mut().clear();
+        let settings = self.settings();
+        let show_listing = force || self.options.verbose || !settings.get_quiet_startup();
+        let show_diagnostics = show_listing || show_diagnostics_when_quiet;
+        if !show_listing && !show_diagnostics {
+            return;
+        }
+
+        let resource_loader = self.session().resource_loader();
+        let (skills, skill_diagnostics) = resource_loader.get_skills();
+        let (prompts, prompt_diagnostics) = resource_loader.get_prompts();
+        let (themes, theme_diagnostics) = resource_loader.get_themes();
+
+        let mut source_infos: Vec<(String, SourceInfo)> = Vec::new();
+        for skill in &skills {
+            source_infos.push((skill.file_path.clone(), skill.source_info.clone()));
+        }
+        for prompt in &prompts {
+            source_infos.push((prompt.file_path.clone(), prompt.source_info.clone()));
+        }
+        for loaded_theme in &themes {
+            if let (Some(path), Some(source_info)) =
+                (&loaded_theme.source_path, &loaded_theme.source_info)
+            {
+                source_infos.push((path.clone(), source_info.clone()));
+            }
+        }
+
+        if show_listing {
+            let mut context_files: Vec<String> = Vec::new();
+            if let Some(system_prompt) = resource_loader.get_system_prompt_source() {
+                context_files.push(system_prompt);
+            }
+            context_files.extend(resource_loader.get_append_system_prompt_sources());
+            context_files.extend(
+                resource_loader
+                    .get_agents_files()
+                    .into_iter()
+                    .map(|file| file.path),
+            );
+            if !context_files.is_empty() {
+                self.loaded_resources_container
+                    .borrow_mut()
+                    .add_child(component_ref(Spacer::new(1)));
+                let expanded = context_files
+                    .iter()
+                    .map(|path| {
+                        theme().fg(
+                            ThemeColor::Dim,
+                            &format!("  {}", self.format_display_path(path)),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let collapsed = compact_list(
+                    &context_files
+                        .iter()
+                        .map(|path| self.format_context_path(path))
+                        .collect::<Vec<_>>(),
+                    false,
+                );
+                self.add_loaded_section("Context", &collapsed, &expanded);
+            }
+
+            if !skills.is_empty() {
+                let items: Vec<(String, Option<SourceInfo>)> = skills
+                    .iter()
+                    .map(|skill| (skill.file_path.clone(), Some(skill.source_info.clone())))
+                    .collect();
+                let expanded = self.format_scope_groups(
+                    &items,
+                    &|path, _| self.format_display_path(path),
+                    &|path, source_info| self.short_path(path, source_info),
+                );
+                let collapsed = compact_list(
+                    &skills
+                        .iter()
+                        .map(|skill| skill.name.clone())
+                        .collect::<Vec<_>>(),
+                    true,
+                );
+                self.add_loaded_section("Skills", &collapsed, &expanded);
+            }
+
+            let templates = self.session().prompt_templates();
+            if !templates.is_empty() {
+                let items: Vec<(String, Option<SourceInfo>)> = templates
+                    .iter()
+                    .map(|template| {
+                        (
+                            template.file_path.clone(),
+                            Some(template.source_info.clone()),
+                        )
+                    })
+                    .collect();
+                let names: Vec<(String, String)> = templates
+                    .iter()
+                    .map(|template| (template.file_path.clone(), format!("/{}", template.name)))
+                    .collect();
+                let by_path = |path: &str, _: Option<&SourceInfo>| -> String {
+                    names
+                        .iter()
+                        .find(|(file_path, _)| file_path == path)
+                        .map(|(_, name)| name.clone())
+                        .unwrap_or_else(|| self.format_display_path(path))
+                };
+                let expanded = self.format_scope_groups(&items, &by_path, &by_path);
+                let collapsed = compact_list(
+                    &templates
+                        .iter()
+                        .map(|template| format!("/{}", template.name))
+                        .collect::<Vec<_>>(),
+                    true,
+                );
+                self.add_loaded_section("Prompts", &collapsed, &expanded);
+            }
+
+            let custom_themes: Vec<&crate::modes::interactive::theme::theme::Theme> = themes
+                .iter()
+                .filter(|loaded_theme| loaded_theme.source_path.is_some())
+                .collect();
+            if !custom_themes.is_empty() {
+                let items: Vec<(String, Option<SourceInfo>)> = custom_themes
+                    .iter()
+                    .map(|loaded_theme| {
+                        (
+                            loaded_theme.source_path.clone().unwrap_or_default(),
+                            loaded_theme.source_info.clone(),
+                        )
+                    })
+                    .collect();
+                let expanded = self.format_scope_groups(
+                    &items,
+                    &|path, _| self.format_display_path(path),
+                    &|path, source_info| self.short_path(path, source_info),
+                );
+                let collapsed = compact_list(
+                    &custom_themes
+                        .iter()
+                        .map(|loaded_theme| {
+                            loaded_theme.name.clone().unwrap_or_else(|| {
+                                let path = loaded_theme.source_path.clone().unwrap_or_default();
+                                compact_path_label(
+                                    &self.short_path(&path, loaded_theme.source_info.as_ref()),
+                                )
+                            })
+                        })
+                        .collect::<Vec<_>>(),
+                    true,
+                );
+                self.add_loaded_section("Themes", &collapsed, &expanded);
+            }
+        }
+
+        if show_diagnostics {
+            for (title, diagnostics) in [
+                ("[Skill conflicts]", &skill_diagnostics),
+                ("[Prompt conflicts]", &prompt_diagnostics),
+                ("[Theme conflicts]", &theme_diagnostics),
+            ] {
+                if diagnostics.is_empty() {
+                    continue;
+                }
+                let warning_lines = self.format_diagnostics(diagnostics, &source_infos);
+                let mut container = self.loaded_resources_container.borrow_mut();
+                container.add_child(component_ref(Text::new(
+                    format!(
+                        "{}\n{warning_lines}",
+                        theme().fg(ThemeColor::Warning, title)
+                    ),
+                    0,
+                    0,
+                )));
+                container.add_child(component_ref(Spacer::new(1)));
+            }
+        }
+        self.ui.request_render();
+    }
+
+    /// `addLoadedSection(name, collapsedBody, expandedBody)` of
+    /// `showLoadedResources`.
+    fn add_loaded_section(&mut self, name: &str, collapsed: &str, expanded: &str) {
+        let header = theme().fg(ThemeColor::MdHeading, &format!("[{name}]"));
+        let section = Rc::new(RefCell::new(ExpandableText::new(
+            format!("{header}\n{collapsed}"),
+            format!("{header}\n{expanded}"),
+            self.startup_expansion_state(),
+            0,
+        )));
+        let mut container = self.loaded_resources_container.borrow_mut();
+        container.add_child(Rc::clone(&section) as ComponentRef);
+        container.add_child(component_ref(Spacer::new(1)));
+        drop(container);
+        self.chat_expandables
+            .push(section as Rc<RefCell<dyn Expandable>>);
     }
 
     // ------------------------------------------------------------------
@@ -5557,6 +6313,7 @@ impl InteractiveMode {
         let _ = set_registered_themes(self.session().resource_loader().get_themes().0);
         self.theme_controller.apply_from_settings().await;
         self.apply_runtime_settings();
+        self.show_loaded_resources(false, true);
         if let Some(error) = self.runtime.services().model_runtime.get_error() {
             self.show_error(&format!("models.json error: {error}"));
         }
@@ -6063,9 +6820,11 @@ impl InteractiveMode {
                                 .update_result(error_result(&error_message), false);
                         }
                     } else {
+                        // Args are complete: the edit tools compute their diff.
                         for (_, component) in self.pending_tools.iter() {
                             component.borrow_mut().set_args_complete();
                         }
+                        self.maybe_show_cache_miss_notice(&message);
                     }
                     self.streaming_component = None;
                     self.streaming_message = None;
@@ -6877,6 +7636,51 @@ fn json_string(value: &str) -> String {
 const DEFAULT_WORKING_MESSAGE: &str = "Working...";
 const DEFAULT_HIDDEN_THINKING_LABEL: &str = "Thinking...";
 
+/// `formatCompactList(items, options)` of `showLoadedResources`.
+fn compact_list(items: &[String], sort: bool) -> String {
+    let mut labels: Vec<String> = items
+        .iter()
+        .map(|item| item.trim().to_owned())
+        .filter(|item| !item.is_empty())
+        .collect();
+    if sort {
+        labels.sort();
+    }
+    theme().fg(ThemeColor::Dim, &format!("  {}", labels.join(", ")))
+}
+
+/// `getCompactPathLabel(resourcePath, sourceInfo)` (`interactive-mode.ts:1315-1323`),
+/// on an already shortened path.
+fn compact_path_label(short_path: &str) -> String {
+    short_path
+        .replace('\\', "/")
+        .split('/')
+        .rfind(|segment| !segment.is_empty() && *segment != "~")
+        .map(str::to_owned)
+        .unwrap_or_else(|| short_path.to_owned())
+}
+
+/// `getDisplaySourceInfo(sourceInfo)` (`interactive-mode.ts:1424-1451`) — the
+/// label and the optional scope note.
+fn display_source_label(source_info: &SourceInfo) -> (&'static str, Option<&'static str>) {
+    let source = source_info.source.as_str();
+    let scope = source_info.scope;
+    if source == "local" {
+        return match scope {
+            SourceScope::User => ("user", None),
+            SourceScope::Project => ("project", None),
+            SourceScope::Temporary => ("path", Some("temp")),
+        };
+    }
+    if source == "cli" {
+        return ("path", Some("cli"));
+    }
+    if source.starts_with("npm:") || source.starts_with("git:") {
+        return ("package", None);
+    }
+    ("path", None)
+}
+
 /// `quoteIfNeeded` (`interactive-mode.ts:243-249`).
 fn quote_if_needed(value: &str) -> String {
     let needs_quotes = value
@@ -6920,6 +7724,9 @@ fn result_from_message(message: &ToolResultMessage) -> ToolExecutionResult {
         is_error: message.is_error,
     }
 }
+
+/// `ANTHROPIC_SUBSCRIPTION_AUTH_WARNING` (`interactive-mode.ts:232-233`).
+const ANTHROPIC_SUBSCRIPTION_AUTH_WARNING: &str = "Anthropic subscription auth is active. Third-party harness usage draws from extra usage and is billed per token, not your Claude plan limits. Manage extra usage at https://claude.ai/settings/usage. Disable this warning in /settings.";
 
 /// The one-line error result the aborted and failed paths write into every
 /// still-pending tool row.

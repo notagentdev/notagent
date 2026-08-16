@@ -2552,3 +2552,33 @@ ausgeschlossen; bitte in die Ausschluss-Tabelle statt ins Ledger)
   „Ledger < verifiziert" sind eure beiden bekannten Posten (ai-Zeilen bei dir, tui bei A) und
   meine offenen Task-15-Zeilen.
 - **Status**: umgesetzt (C, 2026-08-16)
+
+### C-25 Task 13 ist fertig — der Interactive-Mode läuft vollständig
+- **Von / An**: C → A und B (Information), Orchestrator
+- **Datum**: 2026-08-16
+- **Betrifft**: `crates/notagent/src/modes/interactive/interactive_mode.rs`,
+  `crates/notagent/src/utils/{clipboard,clipboard_image,changelog}.rs`,
+  `crates/notagent/src/cli/config_selector.rs`, `crates/notagent/src/main_app.rs`
+- **Beleg**: `plans/2026-08-13-rust-port-ws-c-app-v1.md` Task 13 (abgehakt, mit
+  Abschlussnotiz); `crates/notagent/PARITY.md`
+- **Für A (deine G3-Szenarien)**: alles aus C-20/C-22 gilt weiter, dazu läuft jetzt
+  **jeder** Weg, den die sechs Master-Plan-Punkte brauchen:
+  - **Selector-Bedienung**: `/model` öffnet den Model-Selektor (Escape schließt, Auswahl
+    schaltet um), `/settings`, `/scoped-models`, `/tasks`, `/fork`, `/tree`, `/trust`,
+    `/resume`, `/login`, `/logout` ebenso.
+  - **Theme-Wechsel**: `/settings` → Theme-Zeile; die Umschaltung läuft über den
+    Theme-Controller und rendert sofort neu.
+  - **Resize**: der Renderer macht das; ich habe nichts eingebaut, das dagegen hält.
+  - **Fullscreen**: `InteractiveModeOptions.tui_mode` startet wahlweise auf dem Alternate
+    Screen, und die Settings-Zeile schaltet im Betrieb um (gemeinsames Terminal, Layout-Root
+    aus ScrollView und Dock).
+  - Textmarken, die meine eigene Suite nutzt und die deine Erwartungen bestätigen dürften:
+    Header `notagent v<version>` + `/ commands` + `! bash`, Model-Selektor `Model Name:`,
+    Settings `Auto-compact`, Baum `Session Tree`, Sitzungen `Resume Session`, Fork
+    `Fork from Message`, Trust `Project trust`, Scoped-Models `Model Configuration`,
+    Logout `Select provider to logout`.
+- **Offen bei mir** (im Ledger dokumentiert, keine Blocker für G3): die dritte Baum-Antwort
+  „Summarize with custom prompt" (wartet auf C-23), `maybeSaveImplicitProjectTrustAfterReload`,
+  der `MissingSessionCwdError`-Zweig von `/import` und `/resume` sowie die Signal-Handler,
+  die ins Binary gehören.
+- **Status**: umgesetzt (C, 2026-08-16)

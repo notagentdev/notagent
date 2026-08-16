@@ -4,7 +4,7 @@ Maschinell erzeugt von `scripts/parity-audit.sh` (Werkzeug: `tools/parity-audit.
 Der Bericht prüft jede Datei unter `packages/*/src` des TS-Repos gegen alle `crates/*/PARITY.md`-Ledger.
 Er ist ein Entwurf: die Lückenliste ist der Arbeitsvorrat für Gate G4, keine Bewertung.
 
-- Lauf: 2026-08-16, Repo-Commit `d1ee102`
+- Lauf: 2026-08-16, Repo-Commit `cc3b98d`
 - TS-Repo: `/Users/dev/projects/notagent-main`
 - Gelesene Ledger: 9 (`notagent`, `notagent-agent`, `notagent-ai`, `notagent-client`, `notagent-protocol`, `notagent-server`, `notagent-session-sqlite`, `notagent-telemetry`, `notagent-tui`)
 - src-Verzeichnisse: 12, Dateien gesamt: 632
@@ -106,7 +106,7 @@ Für diese Dateien fehlt der grüne Testnachweis (Status-Leiter aus `CONVENTIONS
 | `packages/coding-agent/src/modes/interactive/components/extension-editor.ts` | gelesen | `crates/notagent/PARITY.md:113` | verzeichnis |
 | `packages/coding-agent/src/modes/interactive/components/extension-input.ts` | gelesen | `crates/notagent/PARITY.md:113` | verzeichnis |
 | `packages/coding-agent/src/modes/interactive/components/index.ts` | portiert | `crates/notagent/PARITY.md:635` | datei |
-| `packages/coding-agent/src/modes/interactive/interactive-mode.ts` | gelesen | `crates/notagent/PARITY.md:194` | datei |
+| `packages/coding-agent/src/modes/interactive/interactive-mode.ts` | portiert | `crates/notagent/PARITY.md:575` | datei |
 | `packages/coding-agent/src/modes/interactive/model-search.ts` | portiert | `crates/notagent/PARITY.md:451` | datei |
 | `packages/coding-agent/src/modes/interactive/theme/theme-controller.ts` | portiert | `crates/notagent/PARITY.md:616` | datei |
 | `packages/coding-agent/src/modes/interactive/theme/theme-schema.json` | gelesen | `crates/notagent/PARITY.md:68` | datei |
@@ -155,7 +155,6 @@ Statusspalte; die Prüfung stuft sie höchstens als `portiert` ein. Formalbefund
 | `crates/notagent/PARITY.md` | 472 | nativ ersetzt | unklar | 1 |
 | `crates/notagent/PARITY.md` | 552 | offen (Task 13) | unklar | 1 |
 | `crates/notagent/PARITY.md` | 553 | teilweise entfallen, Rest Task 13 | portiert | 1 |
-| `crates/notagent/PARITY.md` | 575 | teilportiert (Scheiben 1-5) | unklar | 1 |
 | `crates/notagent/PARITY.md` | 592 | offen (Task 15) | unklar | 1 |
 | `crates/notagent/PARITY.md` | 593 | offen (Task 15) | unklar | 1 |
 | `crates/notagent/PARITY.md` | 594 | übertragen an B (O-12 Punkt 2) | unklar | 3 |
