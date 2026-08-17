@@ -63,25 +63,30 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
         let e2e = InteractiveE2e::new().await;
         e2e.faux().set_responses(vec![
             tool_call_reply(
-                "ls",
+                "edit",
                 "call-1",
-                json!({ "path": e2e.path("does-not-exist") }),
+                json!({
+                    "path": e2e.path("does-not-exist.txt"),
+                    "edits": [{ "oldText": "before", "newText": "after" }]
+                }),
             ),
-            reply("The directory is missing."),
+            reply("The file is missing."),
         ]);
         let mut driver = e2e.start().await;
         driver.wait_for(APP_NAME).await;
 
-        driver.submit("list the missing directory").await;
+        driver.submit("edit the missing file").await;
 
         // The row names the tool, its target and the error the tool returned.
         // The path is the one assertion that has to survive the wrap: it is
         // longer than the 80 columns of the terminal. The badge style (the
-        // default) names the tool uppercase in its state badge.
-        driver.wait_for("LS").await;
-        driver.wait_for_across_wraps("does-not-exist").await;
-        driver.assert_shows("Path not found");
-        driver.wait_for("The directory is missing.").await;
+        // default) names the tool uppercase in its state badge. A read-only
+        // tool would be grouped into the explore block instead, so this uses
+        // one that keeps its own row.
+        driver.wait_for("EDIT").await;
+        driver.wait_for_across_wraps("does-not-exist.txt").await;
+        driver.assert_shows("Could not edit file");
+        driver.wait_for("The file is missing.").await;
     })
     .await;
 }

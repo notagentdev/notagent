@@ -322,6 +322,13 @@ const READ_ONLY_TOOL_NAMES: [ToolName; 6] = [
     ToolName::Ls,
 ];
 
+/// The tools that only look at the project. The transcript groups their calls
+/// into one explore block, so the list is read there as well.
+#[must_use]
+pub fn read_only_tool_names() -> &'static [ToolName] {
+    &READ_ONLY_TOOL_NAMES
+}
+
 pub fn create_coding_tool_definitions(cwd: &str, options: Option<&ToolsOptions>) -> Vec<ToolDef> {
     CODING_TOOL_NAMES
         .into_iter()

@@ -138,6 +138,10 @@ pub enum ThemeColor {
     Dim,
     Text,
     ThinkingText,
+    /// Label colour of a state badge (port addition, v0.1.12). Absent means
+    /// the label follows [`ThemeColor::Text`], which is what every theme did
+    /// before the badge style existed.
+    BadgeText,
     SearchMatchText,
     UserMessageText,
     CustomMessageText,
@@ -191,6 +195,7 @@ impl ThemeColor {
             ThemeColor::Dim => "dim",
             ThemeColor::Text => "text",
             ThemeColor::ThinkingText => "thinkingText",
+            ThemeColor::BadgeText => "badgeText",
             ThemeColor::SearchMatchText => "searchMatchText",
             ThemeColor::UserMessageText => "userMessageText",
             ThemeColor::CustomMessageText => "customMessageText",
@@ -240,7 +245,7 @@ impl ThemeColor {
 }
 
 /// Every foreground slot, in schema declaration order.
-pub const ALL_THEME_COLORS: [ThemeColor; 47] = [
+pub const ALL_THEME_COLORS: [ThemeColor; 48] = [
     ThemeColor::Accent,
     ThemeColor::Border,
     ThemeColor::BorderAccent,
@@ -252,6 +257,7 @@ pub const ALL_THEME_COLORS: [ThemeColor; 47] = [
     ThemeColor::Dim,
     ThemeColor::Text,
     ThemeColor::ThinkingText,
+    ThemeColor::BadgeText,
     ThemeColor::SearchMatchText,
     ThemeColor::UserMessageText,
     ThemeColor::CustomMessageText,
@@ -302,6 +308,15 @@ pub enum ThemeBg {
     ToolPendingBg,
     ToolSuccessBg,
     ToolErrorBg,
+    // The badge fills (port addition, v0.1.12). A block background is chosen
+    // to sit behind twenty lines of text, so it is barely tinted; the same
+    // value on an eight-character badge shows no state at all. These carry the
+    // saturated tone the reference's themes use, and each falls back to its
+    // block background for a theme that does not name one.
+    ToolPendingBadgeBg,
+    ToolSuccessBadgeBg,
+    ToolErrorBadgeBg,
+    CustomMessageBadgeBg,
 }
 
 impl ThemeBg {
@@ -316,6 +331,22 @@ impl ThemeBg {
             ThemeBg::ToolPendingBg => "toolPendingBg",
             ThemeBg::ToolSuccessBg => "toolSuccessBg",
             ThemeBg::ToolErrorBg => "toolErrorBg",
+            ThemeBg::ToolPendingBadgeBg => "toolPendingBadgeBg",
+            ThemeBg::ToolSuccessBadgeBg => "toolSuccessBadgeBg",
+            ThemeBg::ToolErrorBadgeBg => "toolErrorBadgeBg",
+            ThemeBg::CustomMessageBadgeBg => "customMessageBadgeBg",
+        }
+    }
+
+    /// The badge fill standing for this block background, or the token itself
+    /// when it is not one a block wears.
+    pub fn badge_fill(self) -> Self {
+        match self {
+            ThemeBg::ToolPendingBg => ThemeBg::ToolPendingBadgeBg,
+            ThemeBg::ToolSuccessBg => ThemeBg::ToolSuccessBadgeBg,
+            ThemeBg::ToolErrorBg => ThemeBg::ToolErrorBadgeBg,
+            ThemeBg::CustomMessageBg => ThemeBg::CustomMessageBadgeBg,
+            other => other,
         }
     }
 
@@ -326,7 +357,7 @@ impl ThemeBg {
 }
 
 /// Every background slot.
-pub const ALL_THEME_BGS: [ThemeBg; 8] = [
+pub const ALL_THEME_BGS: [ThemeBg; 12] = [
     ThemeBg::SelectedBg,
     ThemeBg::ScrollbarThumb,
     ThemeBg::SearchMatchBg,
@@ -335,6 +366,10 @@ pub const ALL_THEME_BGS: [ThemeBg; 8] = [
     ThemeBg::ToolPendingBg,
     ThemeBg::ToolSuccessBg,
     ThemeBg::ToolErrorBg,
+    ThemeBg::ToolPendingBadgeBg,
+    ThemeBg::ToolSuccessBadgeBg,
+    ThemeBg::ToolErrorBadgeBg,
+    ThemeBg::CustomMessageBadgeBg,
 ];
 
 /// The two chat-block styles (port addition, user decision 2026-08-17,
@@ -381,7 +416,7 @@ pub fn set_block_style(style: BlockStyle) {
 pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
     format!(
         "{}{}{}\x1b[0m",
-        theme.get_bg_ansi(background),
+        theme.get_bg_ansi(background.badge_fill()),
         badge_text_ansi(theme),
         badge_label(label)
     )
@@ -394,17 +429,16 @@ pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
 pub fn color_badge(theme: &Theme, color: ThemeColor, label: &str) -> String {
     format!(
         "{}{}{}\x1b[0m",
-        fg_ansi_as_bg(theme.get_fg_ansi(color)),
+        fg_ansi_as_badge_fill(theme.get_fg_ansi(color)),
         badge_text_ansi(theme),
         badge_label(label)
     )
 }
 
-/// The foreground sequence a badge label is painted in: the theme's ordinary
-/// text colour (the reference resolves `badgeText` here, which no theme of
-/// ours overrides).
+/// The foreground sequence a badge label is painted in: the theme's
+/// `badgeText`, which falls back to its ordinary text colour.
 fn badge_text_ansi(theme: &Theme) -> &str {
-    theme.get_fg_ansi(ThemeColor::Text)
+    theme.get_fg_ansi(ThemeColor::BadgeText)
 }
 
 /// Badge labels read as words: uppercase with pill padding, underscores
@@ -417,6 +451,51 @@ fn badge_label(label: &str) -> String {
 /// background sequence.
 fn fg_ansi_as_bg(ansi: &str) -> String {
     ansi.replace("\x1b[38;", "\x1b[48;")
+}
+
+/// The RGB triple of a truecolor ANSI sequence (`38;2;r;g;b`/`48;2;r;g;b`).
+pub(crate) fn ansi_rgb(ansi: &str) -> Option<(u8, u8, u8)> {
+    let start = ansi.find(";2;")? + 3;
+    let mut parts = ansi[start..].trim_end_matches('m').split(';');
+    let red = parts.next()?.parse().ok()?;
+    let green = parts.next()?.parse().ok()?;
+    let blue = parts.next()?.parse().ok()?;
+    Some((red, green, blue))
+}
+
+/// Perceived brightness on 0–255 (Rec. 709 luma).
+fn luminance((red, green, blue): (u8, u8, u8)) -> f32 {
+    0.2126 * f32::from(red) + 0.7152 * f32::from(green) + 0.0722 * f32::from(blue)
+}
+
+/// A foreground colour as a badge fill, dark enough for the label to stay
+/// legible.
+///
+/// A tone picked to be read *as* text on the terminal background is far too
+/// light to sit *behind* text — the thinking grey against the label's grey is
+/// the case that gave this away — so a light one is pulled toward black until
+/// it carries the label. A tone that is already dark passes through, and a
+/// palette without truecolor keeps the plain swap.
+fn fg_ansi_as_badge_fill(ansi: &str) -> String {
+    // Chosen to sit with the block badge fills, whose luminance runs from 14
+    // (the error red) to 67 (the compaction violet), so a tone badge does not
+    // glare next to them.
+    const MAX_FILL_LUMINANCE: f32 = 72.0;
+    let Some(rgb) = ansi_rgb(ansi) else {
+        return fg_ansi_as_bg(ansi);
+    };
+    let luminance = luminance(rgb);
+    if luminance <= MAX_FILL_LUMINANCE {
+        return fg_ansi_as_bg(ansi);
+    }
+    let scale = MAX_FILL_LUMINANCE / luminance;
+    let (red, green, blue) = rgb;
+    format!(
+        "\x1b[48;2;{};{};{}m",
+        (f32::from(red) * scale) as u8,
+        (f32::from(green) * scale) as u8,
+        (f32::from(blue) * scale) as u8
+    )
 }
 
 /// Elapsed time for a running badge: invisible below one second — a
@@ -458,6 +537,10 @@ fn is_bg_color_key(key: &str) -> bool {
             | "toolPendingBg"
             | "toolSuccessBg"
             | "toolErrorBg"
+            | "toolPendingBadgeBg"
+            | "toolSuccessBadgeBg"
+            | "toolErrorBadgeBg"
+            | "customMessageBadgeBg"
     )
 }
 
@@ -797,6 +880,10 @@ impl Theme {
             ThemeColor::ThinkingXhigh,
         );
         apply_fg_fallback(&mut colors, ThemeColor::SearchMatchText, ThemeColor::Text);
+        // A badge label follows the ordinary text colour unless the theme
+        // names one of its own — a light theme carrying deep badge fills needs
+        // a light label (the reference's `badgeText`).
+        apply_fg_fallback(&mut colors, ThemeColor::BadgeText, ThemeColor::Text);
         let mut fg_map = HashMap::new();
         for (key, value) in &colors {
             fg_map.insert(*key, fg_ansi(value, mode)?);
@@ -813,6 +900,16 @@ impl Theme {
             ThemeBg::SearchMatchBg,
             ThemeBg::SelectedBg,
         );
+        // A theme that names no badge fill keeps its block background there,
+        // which is what every theme did before the badge style existed.
+        for block in [
+            ThemeBg::ToolPendingBg,
+            ThemeBg::ToolSuccessBg,
+            ThemeBg::ToolErrorBg,
+            ThemeBg::CustomMessageBg,
+        ] {
+            apply_bg_fallback(&mut backgrounds, block.badge_fill(), block);
+        }
         let mut bg_map = HashMap::new();
         for (key, value) in &backgrounds {
             bg_map.insert(*key, bg_ansi(value, mode)?);
@@ -947,7 +1044,7 @@ fn apply_bg_fallback(colors: &mut Vec<(ThemeBg, ColorValue)>, key: ThemeBg, fall
 
 /// The colour slots of `ThemeJsonSchema` in declaration order; `true` marks the
 /// optional ones (`Type.Optional`).
-const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 55] = [
+const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 60] = [
     ("accent", false),
     ("border", false),
     ("borderAccent", false),
@@ -959,6 +1056,9 @@ const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 55] = [
     ("dim", false),
     ("text", false),
     ("thinkingText", false),
+    // Port additions (v0.1.12), all optional: the badge fills and the badge
+    // label colour, each falling back to what a theme already names.
+    ("badgeText", true),
     ("selectedBg", false),
     ("scrollbarThumb", true),
     ("searchMatchBg", true),
@@ -971,6 +1071,10 @@ const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 55] = [
     ("toolPendingBg", false),
     ("toolSuccessBg", false),
     ("toolErrorBg", false),
+    ("toolPendingBadgeBg", true),
+    ("toolSuccessBadgeBg", true),
+    ("toolErrorBadgeBg", true),
+    ("customMessageBadgeBg", true),
     ("toolTitle", false),
     ("toolOutput", false),
     ("mdHeading", false),

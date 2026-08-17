@@ -1,19 +1,22 @@
-//! Compact block grouping consecutive search-tool calls.
+//! Compact block grouping consecutive exploration calls.
 //!
 //! Takeover of `ExploreBlockComponent` from ../notagent-main-rust
 //! (`crates/notagent_tui/src/explore_block.rs`), user decision 2026-08-17
-//! (v0.1.8), with one deliberate rename: the phase labels read
-//! "Searching..." / "Searched" instead of "Exploring..." / "Explored".
+//! (v0.1.8), renamed back to the reference's "Exploring..." / "Explored"
+//! in v0.1.12.
 //!
-//! It groups the search tools — `grep`, `find_filesystem`, `find_codebase` —
-//! together with the reads (`read`, `read_minified`), exactly as the reference
-//! does (user decision 2026-08-17, v0.1.11; v0.1.8 had left the reads out).
+//! It groups every tool that only looks at the project — the searches
+//! (`grep`, `find_filesystem`, `find_codebase`), the reads (`read`,
+//! `read_minified`) and the listing (`ls`). That is exactly
+//! [`crate::core::tools::read_only_tool_names`], and it is the point of the
+//! block: looking around is one activity, so it costs one block instead of a
+//! row per call. Anything that changes the project keeps its own row. The
+//! reference left `list_files` out; the user put it in (v0.1.12).
 //!
 //! The mechanics are the reference's: one row per call id (a call announced
 //! before its arguments stays one row), the last four rows as the collapsed
-//! preview, ctrl+o to expand, a summary line counting searches and reads
-//! separately, and the pending/success/error block background carrying the
-//! state.
+//! preview, ctrl+o to expand, a summary line counting the kinds separately,
+//! and the pending/success/error state carried by the block.
 
 use std::collections::HashMap;
 
@@ -28,35 +31,35 @@ use crate::modes::interactive::theme::theme::{
 
 const PREVIEW_ROWS: usize = 4;
 
-/// Returns whether a tool call belongs in the compact search block.
+/// Returns whether a tool call belongs in the compact explore block: every
+/// read-only tool does, and only those.
 #[must_use]
-pub fn is_search_tool(name: &str) -> bool {
-    matches!(
-        name,
-        "grep" | "find_filesystem" | "find_codebase" | "read" | "read_minified"
-    )
+pub fn is_explore_tool(name: &str) -> bool {
+    crate::core::tools::ToolName::parse(name)
+        .is_some_and(|name| crate::core::tools::read_only_tool_names().contains(&name))
 }
 
-/// What an entry stands for; the summary counts the two kinds separately.
+/// What an entry stands for; the summary counts the kinds separately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SearchKind {
+enum ExploreKind {
     Search,
     Read,
+    List,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SearchEntry {
+struct ExploreEntry {
     call_id: String,
     label: &'static str,
     detail: String,
     /// The line range of a read, e.g. `L1-200`.
     range: Option<String>,
-    kind: SearchKind,
+    kind: ExploreKind,
     complete: bool,
     failed: bool,
 }
 
-impl SearchEntry {
+impl ExploreEntry {
     fn new(tool_name: &str, call_id: String, args: &serde_json::Value) -> Self {
         let (label, detail, range, kind) = match tool_name {
             "read" | "read_minified" => {
@@ -74,7 +77,7 @@ impl SearchEntry {
                     .filter(|name| !name.is_empty())
                     .unwrap_or(path)
                     .to_string();
-                ("Read", name, read_range(args), SearchKind::Read)
+                ("Read", name, read_range(args), ExploreKind::Read)
             }
             "find_filesystem" => (
                 "Searched files",
@@ -83,7 +86,7 @@ impl SearchEntry {
                     .unwrap_or("")
                     .to_string(),
                 None,
-                SearchKind::Search,
+                ExploreKind::Search,
             ),
             "find_codebase" => (
                 "Searched code",
@@ -92,7 +95,7 @@ impl SearchEntry {
                     .unwrap_or("")
                     .to_string(),
                 None,
-                SearchKind::Search,
+                ExploreKind::Search,
             ),
             "grep" => (
                 "Searched text",
@@ -101,9 +104,24 @@ impl SearchEntry {
                     .unwrap_or("")
                     .to_string(),
                 None,
-                SearchKind::Search,
+                ExploreKind::Search,
             ),
-            _ => ("Searched", String::new(), None, SearchKind::Search),
+            "ls" => (
+                "Listed",
+                // The path as given; `.` is what the tool itself falls back
+                // to, and it reads better than an empty column.
+                match args
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                {
+                    "" => ".".to_string(),
+                    path => path.to_string(),
+                },
+                None,
+                ExploreKind::List,
+            ),
+            _ => ("Explored", String::new(), None, ExploreKind::Search),
         };
         // A search pattern or query may span lines; `render_entry` returns one
         // string per entry and the renderer counts it as one row.
@@ -143,8 +161,8 @@ fn read_range(args: &serde_json::Value) -> Option<String> {
 }
 
 /// Compact TUI component grouping consecutive search calls.
-pub struct SearchBlockComponent {
-    entries: Vec<SearchEntry>,
+pub struct ExploreBlockComponent {
+    entries: Vec<ExploreEntry>,
     entry_by_call_id: HashMap<String, usize>,
     open: bool,
     expanded: bool,
@@ -157,7 +175,7 @@ pub struct SearchBlockComponent {
     finished: Option<std::time::Duration>,
 }
 
-impl SearchBlockComponent {
+impl ExploreBlockComponent {
     /// Creates an empty open search block.
     #[must_use]
     pub fn new() -> Self {
@@ -190,13 +208,13 @@ impl SearchBlockComponent {
     /// the entry rather than adding one, so a single call is a single row.
     pub fn push_call(&mut self, tool_name: &str, call_id: String, args: &serde_json::Value) {
         if let Some(index) = self.entry_by_call_id.get(&call_id).copied() {
-            self.entries[index] = SearchEntry::new(tool_name, call_id, args);
+            self.entries[index] = ExploreEntry::new(tool_name, call_id, args);
             return;
         }
         let index = self.entries.len();
         self.entry_by_call_id.insert(call_id.clone(), index);
         self.entries
-            .push(SearchEntry::new(tool_name, call_id, args));
+            .push(ExploreEntry::new(tool_name, call_id, args));
     }
 
     /// Whether this block carries the given call.
@@ -242,17 +260,17 @@ impl SearchBlockComponent {
         self.entries.iter().filter(|entry| entry.failed).count()
     }
 
+    fn count_of(&self, kind: ExploreKind) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.kind == kind)
+            .count()
+    }
+
     fn summary(&self) -> String {
-        let searches = self
-            .entries
-            .iter()
-            .filter(|entry| entry.kind == SearchKind::Search)
-            .count();
-        let reads = self
-            .entries
-            .iter()
-            .filter(|entry| entry.kind == SearchKind::Read)
-            .count();
+        let searches = self.count_of(ExploreKind::Search);
+        let reads = self.count_of(ExploreKind::Read);
+        let lists = self.count_of(ExploreKind::List);
         let failed = self.failed_count();
         let mut parts = Vec::new();
         if searches > 0 {
@@ -263,6 +281,12 @@ impl SearchBlockComponent {
         }
         if reads > 0 {
             parts.push(format!("{reads} read{}", if reads == 1 { "" } else { "s" }));
+        }
+        if lists > 0 {
+            parts.push(format!(
+                "{lists} listing{}",
+                if lists == 1 { "" } else { "s" }
+            ));
         }
         if failed > 0 {
             parts.push(format!("{failed} failed"));
@@ -281,13 +305,13 @@ impl SearchBlockComponent {
     }
 }
 
-impl Default for SearchBlockComponent {
+impl Default for ExploreBlockComponent {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Component for SearchBlockComponent {
+impl Component for ExploreBlockComponent {
     fn invalidate(&mut self) {}
 
     fn render(&mut self, width: usize) -> Vec<String> {
@@ -297,7 +321,7 @@ impl Component for SearchBlockComponent {
         let theme_instance = theme();
         // Same single-space inset as the header and the summary: the entries
         // read as one column, not as a list hanging off it.
-        let render_entry = |entry: &SearchEntry| {
+        let render_entry = |entry: &ExploreEntry| {
             let mut line = format!(" {}", theme_instance.fg(ThemeColor::Muted, entry.label));
             if !entry.detail.is_empty() {
                 line.push(' ');
@@ -311,14 +335,14 @@ impl Component for SearchBlockComponent {
         };
 
         // In the badge style the block sheds surface and padding rows; the
-        // state moves into the SEARCHING/SEARCHED badge, with the runtime
+        // state moves into the EXPLORING/EXPLORED badge, with the runtime
         // beside it (the reference's `BlockStyle::Bar` rendering).
         let badge_style = block_style() == BlockStyle::Badge;
         let mut lines = if badge_style {
             let label = if self.open || self.entries.iter().any(|entry| !entry.complete) {
-                "Searching"
+                "Exploring"
             } else {
-                "Searched"
+                "Explored"
             };
             let mut badge_line = format!(" {}", badge(&theme_instance, self.background(), label));
             let runtime_text = if self.is_running() {
@@ -337,9 +361,9 @@ impl Component for SearchBlockComponent {
             vec![badge_line]
         } else {
             let header_label = if self.open {
-                "Searching..."
+                "Exploring..."
             } else {
-                "Searched"
+                "Explored"
             };
             vec![
                 String::new(),
@@ -440,7 +464,7 @@ mod tests {
         guard
     }
 
-    fn rendered(component: &mut SearchBlockComponent) -> Vec<String> {
+    fn rendered(component: &mut ExploreBlockComponent) -> Vec<String> {
         component
             .render(100)
             .into_iter()
@@ -451,7 +475,7 @@ mod tests {
     #[test]
     fn a_call_announced_before_its_arguments_stays_one_row() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call("grep", "call-1".to_string(), &serde_json::json!({}));
         block.push_call(
             "grep",
@@ -467,26 +491,52 @@ mod tests {
         );
     }
 
+    /// Every read-only tool is grouped, and nothing that changes the project.
     #[test]
-    fn the_search_and_read_tools_and_only_those_are_grouped() {
+    fn the_read_only_tools_and_only_those_are_grouped() {
         for name in [
             "grep",
             "find_filesystem",
             "find_codebase",
             "read",
             "read_minified",
+            "ls",
         ] {
-            assert!(is_search_tool(name), "{name}");
+            assert!(is_explore_tool(name), "{name}");
         }
-        for name in ["ls", "bash", "todo_write", "write", "edit"] {
-            assert!(!is_search_tool(name), "{name}");
+        for name in ["bash", "todo_write", "write", "edit", "task", "skill"] {
+            assert!(!is_explore_tool(name), "{name}");
         }
+        // The grouping is the read-only list itself, so the two never drift.
+        for name in crate::core::tools::read_only_tool_names() {
+            assert!(is_explore_tool(name.as_str()), "{}", name.as_str());
+        }
+    }
+
+    #[test]
+    fn a_listing_shows_its_path_and_is_counted_as_one() {
+        let _guard = theme_lock();
+        let mut block = ExploreBlockComponent::new();
+        block.push_call(
+            "ls",
+            "ls-1".to_string(),
+            &serde_json::json!({ "path": "crates/notagent" }),
+        );
+        block.push_call("ls", "ls-2".to_string(), &serde_json::json!({}));
+        block.complete_call("ls-1", false);
+        block.complete_call("ls-2", false);
+        block.close();
+        let actual = rendered(&mut block).join("\n");
+        assert!(actual.contains("Listed crates/notagent"), "{actual}");
+        // A call without a path lists the working directory.
+        assert!(actual.contains("Listed ."), "{actual}");
+        assert!(actual.contains("2 listings"), "{actual}");
     }
 
     #[test]
     fn a_read_shows_its_file_name_and_line_range() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "read",
             "read-1".to_string(),
@@ -504,7 +554,7 @@ mod tests {
     #[test]
     fn a_whole_file_read_shows_no_range_and_an_open_read_shows_one() {
         let _guard = theme_lock();
-        let mut whole = SearchBlockComponent::new();
+        let mut whole = ExploreBlockComponent::new();
         whole.push_call(
             "read",
             "read-1".to_string(),
@@ -515,7 +565,7 @@ mod tests {
         assert!(!whole.contains(" L"), "{whole}");
 
         let _guard2 = ();
-        let mut open = SearchBlockComponent::new();
+        let mut open = ExploreBlockComponent::new();
         open.push_call(
             "read_minified",
             "read-2".to_string(),
@@ -528,7 +578,7 @@ mod tests {
     #[test]
     fn the_summary_counts_searches_and_reads_separately() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "grep",
             "search-1".to_string(),
@@ -555,7 +605,7 @@ mod tests {
     #[test]
     fn a_running_block_says_searching_and_lists_the_calls() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "find_filesystem",
             "search-1".to_string(),
@@ -566,7 +616,7 @@ mod tests {
         let expected = vec![
             "",
             "",
-            " Searching...",
+            " Exploring...",
             "",
             " Searched files config",
             " 1 search",
@@ -578,7 +628,7 @@ mod tests {
     #[test]
     fn a_closed_block_says_searched_and_counts_failures() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "find_codebase",
             "search-1".to_string(),
@@ -593,15 +643,15 @@ mod tests {
         block.complete_call("search-2", true);
         block.close();
         let actual = rendered(&mut block).join("\n");
-        assert!(actual.contains("Searched"), "{actual}");
-        assert!(!actual.contains("Searching..."), "{actual}");
+        assert!(actual.contains("Explored"), "{actual}");
+        assert!(!actual.contains("Exploring..."), "{actual}");
         assert!(actual.contains("2 searches, 1 failed"), "{actual}");
     }
 
     #[test]
     fn the_collapsed_block_shows_the_last_four_rows() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         for index in 0..5 {
             block.push_call(
                 "find_filesystem",
@@ -613,7 +663,7 @@ mod tests {
         let expected = vec![
             "",
             "",
-            " Searching...",
+            " Exploring...",
             "",
             " ...",
             " Searched files pattern-1",
@@ -630,7 +680,7 @@ mod tests {
     #[test]
     fn the_expanded_block_shows_all_rows() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         for index in 0..5 {
             let call_id = format!("call-{index}");
             block.push_call(
@@ -661,7 +711,7 @@ mod tests {
     #[test]
     fn the_background_carries_the_state() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "find_codebase",
             "failed".to_string(),
@@ -678,7 +728,7 @@ mod tests {
     fn the_badge_style_leads_with_the_state_badge_and_sheds_the_surface() {
         let _guard = theme_lock();
         set_block_style(BlockStyle::Badge);
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "find_codebase",
             "failed".to_string(),
@@ -691,7 +741,7 @@ mod tests {
         // below — no surface padding rows.
         let expected = vec![
             "",
-            "  SEARCHED  (0ms)",
+            "  EXPLORED  (0ms)",
             " Searched code workspace lock",
             " 1 search, 1 failed",
         ];
@@ -702,22 +752,22 @@ mod tests {
     fn the_badge_says_searching_while_calls_still_run() {
         let _guard = theme_lock();
         set_block_style(BlockStyle::Badge);
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "grep",
             "search-1".to_string(),
             &serde_json::json!({"pattern": "config"}),
         );
         let actual = rendered(&mut block).join("\n");
-        assert!(actual.contains("SEARCHING"), "{actual}");
-        assert!(!actual.contains("SEARCHED "), "{actual}");
+        assert!(actual.contains("EXPLORING"), "{actual}");
+        assert!(!actual.contains("EXPLORED "), "{actual}");
     }
 
     #[test]
     fn the_badge_style_info_line_closes_the_block_below_the_summary() {
         let _guard = theme_lock();
         set_block_style(BlockStyle::Badge);
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         for index in 0..5 {
             let call_id = format!("call-{index}");
             block.push_call(
@@ -744,7 +794,7 @@ mod tests {
     fn a_replayed_block_shows_no_runtime() {
         let _guard = theme_lock();
         set_block_style(BlockStyle::Badge);
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.mark_replayed();
         block.push_call(
             "grep",
@@ -754,14 +804,14 @@ mod tests {
         block.complete_call("call-1", false);
         block.close();
         let actual = rendered(&mut block).join("\n");
-        assert!(actual.contains("SEARCHED"), "{actual}");
+        assert!(actual.contains("EXPLORED"), "{actual}");
         assert!(!actual.contains("ms)"), "{actual}");
     }
 
     #[test]
     fn multiline_patterns_collapse_to_one_row() {
         let _guard = theme_lock();
-        let mut block = SearchBlockComponent::new();
+        let mut block = ExploreBlockComponent::new();
         block.push_call(
             "grep",
             "call-1".to_string(),

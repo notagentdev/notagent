@@ -446,3 +446,112 @@ fn does_not_watch_the_built_in_themes() {
         "\x1b[38;2;138;190;183m"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Badge colours (v0.1.12)
+// ---------------------------------------------------------------------------
+
+/// Perceived brightness on 0–255, the measure the badge fills are chosen by.
+fn luminance(ansi: &str) -> f32 {
+    let start = ansi.find(";2;").expect("truecolor sequence") + 3;
+    let values: Vec<f32> = ansi[start..]
+        .trim_end_matches('m')
+        .split(';')
+        .filter_map(|part| part.parse::<f32>().ok())
+        .collect();
+    0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2]
+}
+
+/// A block background is tinted just enough to sit behind twenty lines of
+/// text; the same value on an eight-character badge shows no state at all, so
+/// the badge fills are their own, saturated tokens.
+#[test]
+fn badge_fills_are_darker_and_more_saturated_than_the_block_backgrounds() {
+    let _guard = global_lock();
+    init_theme(Some("dark"), false);
+    let theme = theme();
+
+    for (block, badge) in [
+        (ThemeBg::ToolSuccessBg, ThemeBg::ToolSuccessBadgeBg),
+        (ThemeBg::ToolErrorBg, ThemeBg::ToolErrorBadgeBg),
+        (ThemeBg::CustomMessageBg, ThemeBg::CustomMessageBadgeBg),
+    ] {
+        assert_ne!(
+            theme.get_bg_ansi(block),
+            theme.get_bg_ansi(badge),
+            "{badge:?} must not fall back to {block:?} in the built-in theme"
+        );
+    }
+}
+
+/// Every badge label has to stand off its fill; the thinking grey was the case
+/// that gave this away — as a fill it sat at the label's own brightness.
+#[test]
+fn every_badge_keeps_its_label_legible_against_its_fill() {
+    let _guard = global_lock();
+    init_theme(Some("dark"), false);
+    let theme = theme();
+    let label = luminance(theme.get_fg_ansi(ThemeColor::BadgeText));
+
+    let mut fills: Vec<f32> = [
+        ThemeBg::ToolPendingBadgeBg,
+        ThemeBg::ToolSuccessBadgeBg,
+        ThemeBg::ToolErrorBadgeBg,
+        ThemeBg::CustomMessageBadgeBg,
+    ]
+    .into_iter()
+    .map(|fill| luminance(theme.get_bg_ansi(fill)))
+    .collect();
+    // The tone badge builds its fill from a foreground colour, which is why it
+    // is pulled down; it is measured through the rendered badge itself.
+    let thinking = notagent::modes::interactive::theme::theme::color_badge(
+        &theme,
+        ThemeColor::ThinkingText,
+        "thought",
+    );
+    fills.push(luminance(&thinking));
+
+    for fill in fills {
+        assert!(
+            label - fill > 100.0,
+            "a badge label at {label} is unreadable on a fill at {fill}"
+        );
+    }
+}
+
+/// A theme that names no badge fill keeps its block background there, which is
+/// what every theme did before the badge style existed.
+#[test]
+fn a_theme_without_badge_fills_falls_back_to_its_block_backgrounds() {
+    let _guard = global_lock();
+    let mut json = dark_theme();
+    let colors = json
+        .get_mut("colors")
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("colors object");
+    for key in [
+        "toolPendingBadgeBg",
+        "toolSuccessBadgeBg",
+        "toolErrorBadgeBg",
+        "customMessageBadgeBg",
+        "badgeText",
+    ] {
+        colors.remove(key);
+    }
+
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("no-badges.json");
+    std::fs::write(&path, serde_json::to_string(&json).expect("serialises"))
+        .expect("theme written");
+    let theme = load_theme_from_path(&path, Some(ColorMode::TrueColor))
+        .expect("the theme loads without its badge fills");
+
+    assert_eq!(
+        theme.get_bg_ansi(ThemeBg::ToolSuccessBadgeBg),
+        theme.get_bg_ansi(ThemeBg::ToolSuccessBg)
+    );
+    assert_eq!(
+        theme.get_fg_ansi(ThemeColor::BadgeText),
+        theme.get_fg_ansi(ThemeColor::Text)
+    );
+}

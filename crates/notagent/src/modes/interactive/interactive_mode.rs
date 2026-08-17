@@ -125,6 +125,9 @@ use crate::modes::interactive::components::custom_message::CustomMessageComponen
 use crate::modes::interactive::components::daxnuts::DaxnutsComponent;
 use crate::modes::interactive::components::dynamic_border::DynamicBorder;
 use crate::modes::interactive::components::earendil_announcement::EarendilAnnouncementComponent;
+use crate::modes::interactive::components::explore_block::{
+    ExploreBlockComponent, is_explore_tool,
+};
 use crate::modes::interactive::components::footer::{FooterComponent, format_tokens};
 use crate::modes::interactive::components::keybinding_hints::{
     key_display_text, key_hint, key_text, raw_key_hint,
@@ -138,7 +141,6 @@ use crate::modes::interactive::components::oauth_selector::{
 use crate::modes::interactive::components::scoped_models_selector::{
     ModelsCallbacks, ModelsConfig, RefreshStatusKind, ScopedModelsSelectorComponent,
 };
-use crate::modes::interactive::components::search_block::{SearchBlockComponent, is_search_tool};
 use crate::modes::interactive::components::session_selector::{
     LoadRequest, SessionScope, SessionSelectorComponent, SessionSelectorOptions,
 };
@@ -934,7 +936,7 @@ expandable!(
     BranchSummaryMessageComponent,
     CustomMessageComponent,
     BashExecutionComponent,
-    SearchBlockComponent,
+    ExploreBlockComponent,
     // The expand toggle opens and closes the badge-style thinking block
     // (reference: Ctrl+O reaches every transcript component).
     AssistantMessageComponent,
@@ -952,7 +954,7 @@ fn assistant_message_ends_search_run(message: &notagent_ai::types::AssistantMess
     let announced_search = message.content.iter().any(|content| {
         matches!(
             content,
-            notagent_ai::types::AssistantContent::ToolCall(call) if is_search_tool(&call.name)
+            notagent_ai::types::AssistantContent::ToolCall(call) if is_explore_tool(&call.name)
         )
     });
     has_visible_text && !announced_search
@@ -1080,8 +1082,8 @@ pub struct InteractiveMode {
     /// The open search block collecting consecutive search calls, and every
     /// block of the session for completion routing (takeover of the
     /// reference's explore grouping, user decision 2026-08-17, v0.1.8).
-    search_block: Option<Rc<RefCell<SearchBlockComponent>>>,
-    chat_search_blocks: Vec<Rc<RefCell<SearchBlockComponent>>>,
+    explore_block: Option<Rc<RefCell<ExploreBlockComponent>>>,
+    chat_explore_blocks: Vec<Rc<RefCell<ExploreBlockComponent>>>,
     /// Subagent lifecycle entries already written to the transcript, keyed by
     /// task id (user decision 2026-08-17, v0.1.8: one "started" and one
     /// "done"/"failed" line per subagent).
@@ -1343,8 +1345,8 @@ impl InteractiveMode {
             streaming_message: None,
             pending_tools: Vec::new(),
             chat_tool_rows: Vec::new(),
-            search_block: None,
-            chat_search_blocks: Vec::new(),
+            explore_block: None,
+            chat_explore_blocks: Vec::new(),
             announced_subagent_starts: std::collections::HashSet::new(),
             announced_subagent_ends: std::collections::HashSet::new(),
             chat_expandables: Vec::new(),
@@ -3270,7 +3272,7 @@ impl InteractiveMode {
     /// Appends one lifecycle line to the transcript. It is a non-search
     /// addition, so it also ends an open search block.
     fn append_subagent_entry(&mut self, line: String) {
-        self.close_search_block();
+        self.close_explore_block();
         let mut chat = self.chat_container.borrow_mut();
         if !chat.children.is_empty() {
             chat.add_child(component_ref(Spacer::new(1)));
@@ -7535,7 +7537,7 @@ impl InteractiveMode {
                     if assistant_message_ends_search_run(&message)
                         || matches!(message.stop_reason, StopReason::Aborted | StopReason::Error)
                     {
-                        self.close_search_block();
+                        self.close_explore_block();
                     }
                     self.streaming_component = None;
                     self.streaming_message = None;
@@ -7583,10 +7585,10 @@ impl InteractiveMode {
                         .update_result(tool_result(result, is_error), false);
                     self.pending_tools.retain(|(id, _)| id != &tool_call_id);
                     self.ui.request_render();
-                } else if is_search_tool(&tool_name) {
+                } else if is_explore_tool(&tool_name) {
                     // Search calls live in a block, not in a tool row; the
                     // block may already be closed, so route by call id.
-                    for block in self.chat_search_blocks.iter().rev() {
+                    for block in self.chat_explore_blocks.iter().rev() {
                         if block.borrow().has_call(&tool_call_id) {
                             block.borrow_mut().complete_call(&tool_call_id, is_error);
                             self.ui.request_render();
@@ -7754,15 +7756,15 @@ impl InteractiveMode {
         // explore grouping, user decision 2026-08-17, v0.1.8). A repeated
         // call id replaces its entry, so the streaming double-announce stays
         // one row.
-        if is_search_tool(tool_name) {
-            let block = self.open_search_block(false);
+        if is_explore_tool(tool_name) {
+            let block = self.open_explore_block(false);
             block
                 .borrow_mut()
                 .push_call(tool_name, tool_call_id.to_owned(), &args);
             return;
         }
         // Any other tool row ends the run of searches.
-        self.close_search_block();
+        self.close_explore_block();
         let component = Rc::new(RefCell::new(self.create_tool_component(
             tool_name,
             tool_call_id,
@@ -7783,22 +7785,22 @@ impl InteractiveMode {
 
     /// Ends the run of consecutive searches: the block freezes with its final
     /// success or error background.
-    fn close_search_block(&mut self) {
-        if let Some(block) = self.search_block.take() {
+    fn close_explore_block(&mut self) {
+        if let Some(block) = self.explore_block.take() {
             block.borrow_mut().close();
         }
     }
 
     /// The open search block, or a fresh one appended to the chat.
-    fn open_search_block(&mut self, replayed: bool) -> Rc<RefCell<SearchBlockComponent>> {
+    fn open_explore_block(&mut self, replayed: bool) -> Rc<RefCell<ExploreBlockComponent>> {
         if let Some(block) = self
-            .search_block
+            .explore_block
             .as_ref()
             .filter(|block| block.borrow().is_open())
         {
             return Rc::clone(block);
         }
-        let block = Rc::new(RefCell::new(SearchBlockComponent::new()));
+        let block = Rc::new(RefCell::new(ExploreBlockComponent::new()));
         if replayed {
             block.borrow_mut().mark_replayed();
         }
@@ -7808,8 +7810,8 @@ impl InteractiveMode {
             .add_child(Rc::clone(&block) as ComponentRef);
         self.chat_expandables
             .push(Rc::clone(&block) as Rc<RefCell<dyn Expandable>>);
-        self.chat_search_blocks.push(Rc::clone(&block));
-        self.search_block = Some(Rc::clone(&block));
+        self.chat_explore_blocks.push(Rc::clone(&block));
+        self.explore_block = Some(Rc::clone(&block));
         block
     }
 
@@ -7887,7 +7889,7 @@ impl InteractiveMode {
                 AgentMessage::Assistant(message) => {
                     self.add_message_to_chat(item, populate_history);
                     if assistant_message_ends_search_run(message) {
-                        self.close_search_block();
+                        self.close_explore_block();
                     }
                     for content in message.content.iter() {
                         let notagent_ai::types::AssistantContent::ToolCall(call) = content else {
@@ -7900,8 +7902,8 @@ impl InteractiveMode {
                         }
                         // Restored searches group like live ones; the block is
                         // replayed history and closes at the end of the items.
-                        if is_search_tool(&call.name) {
-                            let block = self.open_search_block(true);
+                        if is_explore_tool(&call.name) {
+                            let block = self.open_explore_block(true);
                             block.borrow_mut().push_call(
                                 &call.name,
                                 call.id.clone(),
@@ -7915,7 +7917,7 @@ impl InteractiveMode {
                             }
                             continue;
                         }
-                        self.close_search_block();
+                        self.close_explore_block();
                         let component = Rc::new(RefCell::new(self.create_tool_component(
                             &call.name,
                             &call.id,
@@ -7968,7 +7970,7 @@ impl InteractiveMode {
                     } else {
                         // Search results have no row; route them to the block
                         // carrying the call.
-                        for block in self.chat_search_blocks.iter().rev() {
+                        for block in self.chat_explore_blocks.iter().rev() {
                             if block.borrow().has_call(&result.tool_call_id) {
                                 block
                                     .borrow_mut()
@@ -7983,7 +7985,7 @@ impl InteractiveMode {
         }
 
         // Restored history is over; whatever block is still open freezes.
-        self.close_search_block();
+        self.close_explore_block();
         self.pending_tools.extend(rendered_pending);
         self.ui.request_render();
     }
@@ -7993,7 +7995,7 @@ impl InteractiveMode {
         // A new message row between searches ends the block (the streamed
         // assistant path closes it at MessageEnd instead).
         if !matches!(message, AgentMessage::Assistant(_)) {
-            self.close_search_block();
+            self.close_explore_block();
         }
         match message {
             AgentMessage::User(message) => {

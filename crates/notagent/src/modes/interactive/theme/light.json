@@ -16,7 +16,12 @@
 		"toolPendingBg": "#e8e8f0",
 		"toolSuccessBg": "#e8f0e8",
 		"toolErrorBg": "#f0e8e8",
-		"customMsgBg": "#ede7f6"
+		"customMsgBg": "#ede7f6",
+		"toolPendingBadgeBg": "#1c2027",
+		"toolSuccessBadgeBg": "#1c4229",
+		"toolErrorBadgeBg": "#3d0101",
+		"customMsgBadgeBg": "#573590",
+		"badgeText": "#f0f0f1"
 	},
 	"colors": {
 		"accent": "teal",
@@ -43,6 +48,11 @@
 		"toolPendingBg": "toolPendingBg",
 		"toolSuccessBg": "toolSuccessBg",
 		"toolErrorBg": "toolErrorBg",
+		"toolPendingBadgeBg": "toolPendingBadgeBg",
+		"toolSuccessBadgeBg": "toolSuccessBadgeBg",
+		"toolErrorBadgeBg": "toolErrorBadgeBg",
+		"customMessageBadgeBg": "customMsgBadgeBg",
+		"badgeText": "badgeText",
 		"toolTitle": "text",
 		"toolOutput": "mediumGray",
 

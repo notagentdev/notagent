@@ -18,16 +18,7 @@ use crate::modes::interactive::theme::theme::{
 
 pub mod word_diff;
 
-/// Extracts the RGB triple from a truecolor ANSI `38;2;…`/`48;2;…` sequence
-/// (reference `ansi_rgb`).
-fn ansi_rgb(ansi: &str) -> Option<(u8, u8, u8)> {
-    let start = ansi.find(";2;")? + 3;
-    let mut parts = ansi[start..].trim_end_matches('m').split(';');
-    let r = parts.next()?.parse().ok()?;
-    let g = parts.next()?.parse().ok()?;
-    let b = parts.next()?.parse().ok()?;
-    Some((r, g, b))
-}
+use crate::modes::interactive::theme::theme::ansi_rgb;
 
 /// Linear blend from `base` toward `toward` by `t` (reference `blend_rgb`).
 fn blend_rgb(base: (u8, u8, u8), toward: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
