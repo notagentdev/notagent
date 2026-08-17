@@ -171,6 +171,20 @@ struct AvailabilityState {
     error: Option<String>,
 }
 
+/// Providers whose plan covers the tokens although they authenticate with an
+/// API key, so the auth kind alone cannot identify them: Kimi For Coding and
+/// ClinePass are both subscriptions bought outside the tool (user decision
+/// 2026-08-17, v0.1.17).
+const SUBSCRIPTION_API_KEY_PROVIDERS: [&str; 2] = ["kimi-coding", "cline-pass"];
+
+/// Whether `provider_id` is one of the plans that authenticate with an API
+/// key. Exposed so that anything mirroring the runtime — a test double, a
+/// different front end — answers the question the same way.
+#[must_use]
+pub fn is_subscription_api_key_provider(provider_id: &str) -> bool {
+    SUBSCRIPTION_API_KEY_PROVIDERS.contains(&provider_id)
+}
+
 /// Configured notagent-ai Models collection used by coding-agent and SDK consumers.
 pub struct ModelRuntime {
     models: Arc<Models>,
@@ -810,7 +824,13 @@ impl ModelRuntime {
             .is_some_and(|check| check.check_type == AuthType::OAuth)
     }
 
+    /// Whether the tokens spent on `provider_id` are covered by a plan rather
+    /// than billed per token. Callers use it to keep a price off the screen
+    /// that nobody owes.
     pub fn is_using_subscription(&self, provider_id: &str) -> bool {
+        if is_subscription_api_key_provider(provider_id) {
+            return true;
+        }
         self.is_using_oauth(provider_id)
             && self
                 .models

@@ -103,8 +103,12 @@ impl FooterSession for StubSession {
         None
     }
 
-    fn is_using_subscription(&self, _provider: &str) -> bool {
+    /// Mirrors `ModelRuntime::is_using_subscription`: the plans that
+    /// authenticate with an API key are known by name, everything else is
+    /// whatever the fixture declares.
+    fn is_using_subscription(&self, provider: &str) -> bool {
         self.using_subscription
+            || notagent::core::model_runtime::is_subscription_api_key_provider(provider)
     }
 }
 
@@ -341,4 +345,19 @@ fn cline_pass_reports_no_price() {
     let stats = strip_ansi(&footer.render(120)[1]);
     assert!(stats.contains("sub"), "stats: {stats}");
     assert!(!stats.contains('$'), "no amount at all: {stats}");
+}
+
+/// The rule itself, without the footer: a plan bought outside the tool is a
+/// subscription regardless of how it authenticates, so every caller of the
+/// runtime — not just the footer — gets the same answer.
+#[test]
+fn the_api_key_backed_plans_are_known_to_the_runtime() {
+    use notagent::core::model_runtime::is_subscription_api_key_provider;
+
+    assert!(is_subscription_api_key_provider("cline-pass"));
+    assert!(is_subscription_api_key_provider("kimi-coding"));
+    // Pay-per-token providers are not, however they sign in.
+    assert!(!is_subscription_api_key_provider("openrouter"));
+    assert!(!is_subscription_api_key_provider("anthropic"));
+    assert!(!is_subscription_api_key_provider("zai"));
 }

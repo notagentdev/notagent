@@ -352,12 +352,12 @@ impl Component for FooterComponent {
             stats_parts.push(format!("CH{rate:.1}%"));
         }
 
-        // Kimi Coding and ClinePass are subscription-backed despite using
-        // API-key authentication, so the auth kind alone does not identify them.
-        let using_subscription = model.as_ref().is_some_and(|model| {
-            matches!(model.provider.as_str(), "kimi-coding" | "cline-pass")
-                || self.session.is_using_subscription(&model.provider)
-        });
+        // Which providers count as subscription-backed is the session's answer
+        // to give: the API-key-authenticated plans live there too, so every
+        // caller sees the same truth (`ModelRuntime::is_using_subscription`).
+        let using_subscription = model
+            .as_ref()
+            .is_some_and(|model| self.session.is_using_subscription(&model.provider));
         // A subscription is paid for by the month, so the per-token figure is
         // not money anyone owes — showing it invites reading a bill into it.
         // The marker stays: it says the tokens are covered (user decision
