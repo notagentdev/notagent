@@ -942,22 +942,31 @@ expandable!(
     AssistantMessageComponent,
 );
 
-/// Whether a finished assistant message ends a run of searches: it carries
-/// visible text and announced no search call of its own (v0.1.8 search block).
+/// Whether a finished assistant message ends a run of exploration.
+///
+/// The reference closes the block on the reasoning and the message events
+/// themselves (`TaskReasoning`, `TaskMessage`), which arrive before the tool
+/// calls they lead to. Our messages carry both at once, so the same rule reads
+/// as: the message put something of its own in the transcript — an answer or a
+/// thought — and did not announce exploration alongside it. A message whose
+/// text introduces its own exploration keeps the run open, because the reference
+/// would not have closed it either: there, the calls follow the text inside the
+/// same turn.
 fn assistant_message_ends_search_run(message: &notagent_ai::types::AssistantMessage) -> bool {
-    let has_visible_text = message.content.iter().any(|content| {
-        matches!(
-            content,
-            notagent_ai::types::AssistantContent::Text(text) if !text.text.trim().is_empty()
-        )
+    let has_visible_content = message.content.iter().any(|content| match content {
+        notagent_ai::types::AssistantContent::Text(text) => !text.text.trim().is_empty(),
+        notagent_ai::types::AssistantContent::Thinking(thinking) => {
+            !thinking.thinking.trim().is_empty()
+        }
+        notagent_ai::types::AssistantContent::ToolCall(_) => false,
     });
-    let announced_search = message.content.iter().any(|content| {
+    let announced_exploration = message.content.iter().any(|content| {
         matches!(
             content,
             notagent_ai::types::AssistantContent::ToolCall(call) if is_explore_tool(&call.name)
         )
     });
-    has_visible_text && !announced_search
+    has_visible_content && !announced_exploration
 }
 
 /// `class ExpandableText extends Text` (`interactive-mode.ts:190-216`).
@@ -7609,6 +7618,10 @@ impl InteractiveMode {
                 }
             }
             AgentSessionEvent::AgentEnd { .. } => {
+                // The run is over, so the exploration is too — the reference
+                // closes on `TaskComplete` for the same reason. Without this a
+                // later turn would hang its first calls on the stale block.
+                self.close_explore_block();
                 if self.settings().get_show_terminal_progress() {
                     self.ui
                         .with_terminal(|terminal| terminal.set_progress(false));
@@ -7994,7 +8007,15 @@ impl InteractiveMode {
     fn add_message_to_chat(&mut self, message: &AgentMessage, populate_history: bool) {
         // A new message row between searches ends the block (the streamed
         // assistant path closes it at MessageEnd instead).
-        if !matches!(message, AgentMessage::Assistant(_)) {
+        // A tool result belongs to a call the block already carries, so it
+        // must not end the run — closing here gave every call its own block.
+        // Everything else that lands in the transcript does end it, matching
+        // the events the reference closes on (user message, compaction,
+        // interrupt).
+        if !matches!(
+            message,
+            AgentMessage::Assistant(_) | AgentMessage::ToolResult(_)
+        ) {
             self.close_explore_block();
         }
         match message {
