@@ -11,7 +11,7 @@ use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::render_utils::{get_text_output, render_tool_path, str_arg};
+use crate::core::tools::render_utils::{call_title, get_text_output, render_tool_path, str_arg};
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
     ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
@@ -98,10 +98,7 @@ pub struct LsToolOptions {
 fn format_ls_call(args: &Value, theme: &Theme, cwd: &str) -> String {
     let path_display =
         render_tool_path(str_arg(args.get("path")).as_deref(), theme, cwd, Some("."));
-    let mut text = format!(
-        "{} {path_display}",
-        theme.fg(ThemeColor::ToolTitle, &theme.bold("ls"))
-    );
+    let mut text = format!("{}{path_display}", call_title(theme, "ls"));
     if let Some(limit) = args.get("limit") {
         text += &theme.fg(
             ThemeColor::ToolOutput,

@@ -18,7 +18,7 @@ use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
 use crate::core::tools::render_utils::{
-    normalize_display_text, render_tool_path, replace_tabs, str_arg,
+    call_title, normalize_display_text, render_tool_path, replace_tabs, str_arg,
 };
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
@@ -269,10 +269,7 @@ fn format_write_call(
     let raw_path = write_path_arg(args);
     let file_content = str_arg(args.get("content"));
     let path_display = render_tool_path(raw_path.as_deref(), theme, cwd, None);
-    let mut text = format!(
-        "{} {path_display}",
-        theme.fg(ThemeColor::ToolTitle, &theme.bold("write"))
-    );
+    let mut text = format!("{}{path_display}", call_title(theme, "write"));
 
     let Some(file_content) = file_content else {
         text += &format!(

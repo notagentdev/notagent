@@ -9,7 +9,7 @@
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::modes::interactive::components::diff::{RenderDiffOptions, render_diff};
-use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::modes::interactive::theme::theme::{BlockStyle, init_theme, set_block_style};
 use notagent_tui::{TerminalCapabilities, reset_capabilities_cache, set_capabilities};
 
 fn global_lock() -> MutexGuard<'static, ()> {
@@ -34,6 +34,9 @@ fn matches_the_typescript_component_for_every_oracle_case() {
         hyperlinks: false,
     });
     init_theme(Some("dark"), false);
+    // The oracle pins the TS look, which is the standard block style; the
+    // badge style washes diff lines and is covered by its own unit tests.
+    set_block_style(BlockStyle::Standard);
 
     let oracle: Vec<OracleCase> =
         serde_json::from_str(include_str!("fixtures/render-diff-oracle.json"))

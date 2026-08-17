@@ -32,7 +32,7 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::modes::indicator::estimate_injected_tokens;
 use crate::core::modes::{Mode, render_mode_injection};
-use crate::core::tools::render_utils::str_arg;
+use crate::core::tools::render_utils::{call_title, str_arg};
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
     ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
@@ -264,8 +264,8 @@ impl ToolDefinition for SkillToolDefinition {
         Some(render_text_call(
             context,
             &format!(
-                "{} {}",
-                theme.fg(ThemeColor::ToolTitle, &theme.bold("skill")),
+                "{}{}",
+                call_title(theme, "skill"),
                 theme.fg(ThemeColor::Accent, &name)
             ),
         ))

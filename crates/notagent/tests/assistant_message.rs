@@ -14,7 +14,7 @@ use notagent::modes::interactive::components::markdown_transform::{
     MarkdownMessageType, MarkdownTransformContext, MarkdownTransformer,
 };
 use notagent::modes::interactive::components::user_message::UserMessageComponent;
-use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::modes::interactive::theme::theme::{BlockStyle, init_theme, set_block_style};
 use notagent::utils::ansi::strip_ansi;
 use notagent_ai::types::{
     AssistantContent, AssistantMessage, StopReason, TextContent, ThinkingContent, ToolCall, Usage,
@@ -28,9 +28,14 @@ const OSC133_ZONE_FINAL: &str = "\x1b]133;C\x07";
 
 fn theme_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(|error| error.into_inner());
+    // The block style is a process global (default: badge); the TS-parity
+    // tests pin the standard layout, the badge tests set Badge themselves.
+    set_block_style(BlockStyle::Standard);
+    guard
 }
 
 fn text(text: &str) -> AssistantContent {
@@ -372,4 +377,140 @@ fn uses_configured_output_padding_for_user_messages() {
     let mut unpadded = UserMessageComponent::new("hello", None, Some(0), Vec::new());
     let unpadded_lines: Vec<String> = unpadded.render(40).iter().map(|l| strip_ansi(l)).collect();
     assert!(unpadded_lines.iter().any(|line| line.starts_with("hello")));
+}
+
+// ---------------------------------------------------------------------------
+// Badge block style (takeover of the reference's badge-style thinking block)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn badge_style_collapses_thinking_behind_a_thought_badge() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let mut component = AssistantMessageComponent::new(
+        Some(create_assistant_message(
+            vec![thinking("secret reasoning"), text("answer")],
+            StopReason::Stop,
+        )),
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    );
+    let rendered = strip_ansi(&component.render(80).join("\n"));
+    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    assert!(rendered.contains("to expand)"), "{rendered}");
+    assert!(
+        !rendered.contains("secret reasoning"),
+        "collapsed thinking stays hidden: {rendered}"
+    );
+    assert!(rendered.contains("answer"), "{rendered}");
+}
+
+#[test]
+fn badge_style_expand_toggle_reveals_the_thinking_text() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let mut component = AssistantMessageComponent::new(
+        Some(create_assistant_message(
+            vec![thinking("secret reasoning"), text("answer")],
+            StopReason::Stop,
+        )),
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    );
+    component.set_expanded(true);
+    let rendered = strip_ansi(&component.render(80).join("\n"));
+    assert!(rendered.contains("secret reasoning"), "{rendered}");
+    assert!(rendered.contains("to collapse)"), "{rendered}");
+}
+
+#[test]
+fn badge_style_ignores_the_hidden_thinking_label() {
+    // The badge branch outranks `hide_thinking_block`: thinking always
+    // renders as its badge block (reference behaviour).
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let mut component = AssistantMessageComponent::new(
+        Some(create_assistant_message(
+            vec![thinking("secret reasoning")],
+            StopReason::Stop,
+        )),
+        true,
+        None,
+        Some("Thinking...".to_string()),
+        Some(1),
+        Vec::new(),
+    );
+    let rendered = strip_ansi(&component.render(80).join("\n"));
+    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    assert!(!rendered.contains("Thinking..."), "{rendered}");
+}
+
+#[test]
+fn badge_style_thinking_timer_runs_while_streaming_and_freezes_on_text() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.update_content(
+        create_assistant_message(vec![thinking("reasoning")], StopReason::Stop),
+        Some(true),
+    );
+    assert!(component.has_running_thinking());
+    let rendered = strip_ansi(&component.render(80).join("\n"));
+    assert!(rendered.contains("THINKING"), "{rendered}");
+    // No info line while the badge still counts.
+    assert!(!rendered.contains("to expand)"), "{rendered}");
+
+    // Visible text after the thinking freezes the timer.
+    component.update_content(
+        create_assistant_message(
+            vec![thinking("reasoning"), text("answer")],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    assert!(!component.has_running_thinking());
+    let rendered = strip_ansi(&component.render(80).join("\n"));
+    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    assert!(rendered.contains("to expand)"), "{rendered}");
+}
+
+#[test]
+fn badge_style_replayed_thought_carries_no_runtime() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let mut component = AssistantMessageComponent::new(
+        Some(create_assistant_message(
+            vec![thinking("reasoning")],
+            StopReason::Stop,
+        )),
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    );
+    let rendered = strip_ansi(&component.render(80).join("\n"));
+    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    assert!(!rendered.contains("ms)"), "{rendered}");
+    assert!(
+        !rendered.contains("s)") || rendered.contains("to expand)"),
+        "{rendered}"
+    );
 }

@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::todos::render::{TodoDiffKind, build_todo_diff_lines, render_todos_updated};
 use crate::core::todos::{TODO_STATUSES, Todo, TodoStatus, TodoStore};
+use crate::core::tools::render_utils::call_title;
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
     ToolRenderResultOptions, render_text_call, render_text_result, wrap_tool_definition,
@@ -223,8 +224,8 @@ impl ToolDefinition for TodoWriteToolDefinition {
         Some(render_text_call(
             context,
             &format!(
-                "{} {}",
-                theme.fg(ThemeColor::ToolTitle, &theme.bold("todo_write")),
+                "{}{}",
+                call_title(theme, "todo_write"),
                 theme.fg(ThemeColor::Muted, &label)
             ),
         ))

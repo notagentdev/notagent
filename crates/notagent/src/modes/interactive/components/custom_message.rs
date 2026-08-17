@@ -17,7 +17,9 @@ use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Container, component_ref};
 
-use crate::modes::interactive::theme::theme::{ThemeBg, ThemeColor, get_markdown_theme, theme};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
+};
 
 /// Component that renders a custom message entry.
 /// Uses distinct styling to differentiate from user messages.
@@ -68,22 +70,39 @@ impl CustomMessageComponent {
         self.container.clear();
         self.container.add_child(component_ref(Spacer::new(1)));
 
-        // Box with purple background
-        let mut content_box = BoxComponent::new(
-            1,
-            1,
-            Some(Rc::new(|text: &str| {
-                theme().bg(ThemeBg::CustomMessageBg, text)
-            })),
-        );
+        // Standard: box with purple background. Badge style: no wash, no
+        // padding rows — the label becomes a badge in the block's colour and
+        // the content follows directly (reference compaction pattern).
+        let badge_style = block_style() == BlockStyle::Badge;
+        let mut content_box = if badge_style {
+            BoxComponent::new(1, 0, None)
+        } else {
+            BoxComponent::new(
+                1,
+                1,
+                Some(Rc::new(|text: &str| {
+                    theme().bg(ThemeBg::CustomMessageBg, text)
+                })),
+            )
+        };
 
         // Default rendering: label + content
-        let label = theme().fg(
-            ThemeColor::CustomMessageLabel,
-            &format!("\x1b[1m[{}]\x1b[22m", self.message.custom_type),
-        );
+        let label = if badge_style {
+            badge(
+                &theme(),
+                ThemeBg::CustomMessageBg,
+                &self.message.custom_type,
+            )
+        } else {
+            theme().fg(
+                ThemeColor::CustomMessageLabel,
+                &format!("\x1b[1m[{}]\x1b[22m", self.message.custom_type),
+            )
+        };
         content_box.add_child(component_ref(Text::new(label, 0, 0)));
-        content_box.add_child(component_ref(Spacer::new(1)));
+        if !badge_style {
+            content_box.add_child(component_ref(Spacer::new(1)));
+        }
 
         // Extract text content
         let text = match &self.message.content {

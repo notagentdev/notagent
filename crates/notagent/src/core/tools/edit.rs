@@ -354,8 +354,8 @@ fn edit_path_arg(args: &Value) -> Option<String> {
 fn format_edit_call(args: &Value, theme: &Theme, cwd: &str) -> String {
     let path_display = render_tool_path(edit_path_arg(args).as_deref(), theme, cwd, None);
     format!(
-        "{} {path_display}",
-        theme.fg(ThemeColor::ToolTitle, &theme.bold("edit"))
+        "{}{path_display}",
+        crate::core::tools::render_utils::call_title(theme, "edit")
     )
 }
 
@@ -383,8 +383,19 @@ fn build_edit_call_component(
 ) {
     let header_text = format_edit_call(args, theme, cwd);
     let mut component = component.borrow_mut();
-    let background = edit_header_bg(component.preview.as_ref(), component.settled_error, theme);
-    component.header.set_bg_fn(Some(background));
+    // In the badge style the wash and padding rows go; the badge the tool
+    // block prepends pairs with the header as the first line (reference
+    // `build_patch_call_component`).
+    let badge_style = crate::modes::interactive::theme::theme::block_style()
+        == crate::modes::interactive::theme::theme::BlockStyle::Badge;
+    if badge_style {
+        component.header.set_padding(0, 0);
+        component.header.set_bg_fn(None);
+    } else {
+        component.header.set_padding(1, 1);
+        let background = edit_header_bg(component.preview.as_ref(), component.settled_error, theme);
+        component.header.set_bg_fn(Some(background));
+    }
     component.header.clear();
     component
         .header
@@ -397,7 +408,10 @@ fn build_edit_call_component(
         Err(error) => theme.fg(ThemeColor::Error, error),
         Ok(diff) => render_diff(&diff.diff, &RenderDiffOptions::default()),
     };
-    component.header.add_child(component_ref(Spacer::new(1)));
+    // The badge style stacks the diff directly under the header row.
+    if !badge_style {
+        component.header.add_child(component_ref(Spacer::new(1)));
+    }
     component
         .header
         .add_child(component_ref(Text::new(body, 0, 0)));

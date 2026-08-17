@@ -9,7 +9,9 @@ use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, component_ref};
 
 use crate::core::agent_session::ParsedSkillBlock;
-use crate::modes::interactive::theme::theme::{ThemeBg, ThemeColor, get_markdown_theme, theme};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
+};
 
 use super::keybinding_hints::key_text;
 
@@ -49,13 +51,29 @@ impl SkillInvocationMessageComponent {
     }
 
     fn update_display(&mut self) {
+        // Badge style: no wash, no padding rows — a SKILL badge in the
+        // block's colour leads, the name beside it (reference pattern).
+        let badge_style = block_style() == BlockStyle::Badge;
+        if badge_style {
+            self.content_box.set_padding(1, 0);
+            self.content_box.set_bg_fn(None);
+        } else {
+            self.content_box.set_padding(1, 1);
+            self.content_box.set_bg_fn(Some(Rc::new(|text: &str| {
+                theme().bg(ThemeBg::CustomMessageBg, text)
+            })));
+        }
         self.content_box.clear();
 
+        let label = if badge_style {
+            format!("{} ", badge(&theme(), ThemeBg::CustomMessageBg, "skill"))
+        } else {
+            theme().fg(ThemeColor::CustomMessageLabel, "\x1b[1m[skill]\x1b[22m ")
+        };
         if self.expanded {
             // Expanded: label + skill name header + full content
-            let label = theme().fg(ThemeColor::CustomMessageLabel, "\x1b[1m[skill]\x1b[22m");
             self.content_box
-                .add_child(component_ref(Text::new(label, 0, 0)));
+                .add_child(component_ref(Text::new(label.trim_end(), 0, 0)));
             let header = format!("**{}**\n\n", self.skill_block.name);
             self.content_box.add_child(component_ref(Markdown::new(
                 header + &self.skill_block.content,
@@ -72,7 +90,7 @@ impl SkillInvocationMessageComponent {
             )));
         } else {
             // Collapsed: single line - [skill] name (hint to expand)
-            let line = theme().fg(ThemeColor::CustomMessageLabel, "\x1b[1m[skill]\x1b[22m ")
+            let line = label
                 + &theme().fg(ThemeColor::CustomMessageText, &self.skill_block.name)
                 + &theme().fg(
                     ThemeColor::Dim,

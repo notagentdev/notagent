@@ -36,8 +36,77 @@ use crate::core::tools::tool_definition::{
     new_tool_render_state,
 };
 use crate::core::tools::{ToolDef, ToolName, create_all_tool_definitions};
-use crate::modes::interactive::theme::theme::{ThemeBg, ThemeColor, theme};
+use crate::modes::interactive::components::keybinding_hints::key_text;
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, ThemeBg, ThemeColor, badge, block_style, theme,
+};
 use crate::utils::image::convert_to_png;
+
+/// The badge-style block header (takeover of the reference's
+/// `BadgeCallHeader`): the state badge and the first line of what follows
+/// share one row, and the remaining lines follow underneath. Content is
+/// wrapped to the space remaining beside the badge so a non-empty first
+/// fragment does not move needlessly to the next row. Empty content, or a
+/// badge that consumes the full width, falls back to the badge on its own
+/// row.
+///
+/// The hoisted line is the call when the tool renders one — `BASH ($ ls -la)`
+/// — and otherwise the result, which is set without the parentheses because
+/// it is a statement rather than an argument.
+struct BadgeCallHeader {
+    badge: String,
+    call: ComponentRef,
+    /// Whether the hoisted line is parenthesised — true for a call line.
+    parens: bool,
+}
+
+impl Component for BadgeCallHeader {
+    fn render(&mut self, width: usize) -> Vec<String> {
+        use notagent_tui::utils::visible_width;
+        let theme_instance = theme();
+        // One space after the badge, plus the two parentheses when they are
+        // drawn. Render against the remaining width so long one-line calls
+        // keep their first fragment beside the badge instead of moving down
+        // wholesale.
+        let overhead = visible_width(&self.badge) + if self.parens { 3 } else { 1 };
+        if let Some(call_width) = width
+            .checked_sub(overhead)
+            .filter(|call_width| *call_width > 0)
+        {
+            let mut lines = self.call.borrow_mut().render(call_width);
+            let has_first_line = lines
+                .first()
+                .is_some_and(|first| visible_width(first.trim_end()) > 0);
+            if has_first_line {
+                let first = lines.remove(0);
+                let head = if self.parens {
+                    format!(
+                        "{} {}{}{}",
+                        self.badge,
+                        theme_instance.fg(ThemeColor::Dim, "("),
+                        first.trim_end(),
+                        theme_instance.fg(ThemeColor::Dim, ")")
+                    )
+                } else {
+                    format!("{} {}", self.badge, first.trim_end())
+                };
+                let mut out = vec![head];
+                out.append(&mut lines);
+                return out;
+            }
+        }
+        let lines = self.call.borrow_mut().render(width);
+        let mut out = vec![self.badge.clone()];
+        if lines.iter().any(|line| visible_width(line) > 0) {
+            out.extend(lines);
+        }
+        out
+    }
+
+    fn invalidate(&mut self) {
+        self.call.borrow_mut().invalidate();
+    }
+}
 
 /// Options of a tool row.
 #[derive(Debug, Clone, Default)]
@@ -85,6 +154,9 @@ pub struct ToolExecutionComponent {
     hide_component: bool,
     /// Set by the render context's `invalidate`; consumed by the next `render`.
     dirty: Rc<Cell<bool>>,
+    /// The block style the current layout was built for; a mismatch at render
+    /// time rebuilds, so a live style switch restyles the row.
+    built_style: BlockStyle,
 }
 
 impl ToolExecutionComponent {
@@ -152,24 +224,30 @@ impl ToolExecutionComponent {
             converted_images: HashMap::new(),
             hide_component: false,
             dirty: Rc::new(Cell::new(false)),
+            built_style: block_style(),
         };
-
-        if component.has_renderer_definition() {
-            let shell = component.render_shell();
-            let child: ComponentRef = if shell == RenderShell::SelfManaged {
-                Rc::clone(&component.self_render_container) as ComponentRef
-            } else {
-                Rc::clone(&component.content_box) as ComponentRef
-            };
-            component.container.add_child(child);
-        } else {
-            component
-                .container
-                .add_child(Rc::clone(&component.content_text) as ComponentRef);
-        }
 
         component.update_display();
         component
+    }
+
+    /// Whether the block renders in the badge style right now. The
+    /// self-managed standard shell keeps its own framing; the badge style
+    /// routes every tool — the self-framed edit included — through the
+    /// badge header (reference `tool_execution.rs`).
+    fn badge_style(&self) -> bool {
+        block_style() == BlockStyle::Badge
+    }
+
+    /// The state badge of this block: the tool's name, uppercased, on the
+    /// fill the standard style would wash the whole block with.
+    fn badge_for(&self, state: ThemeBg) -> String {
+        badge(&theme(), state, &self.tool_name)
+    }
+
+    /// Whether the result holds output the expand toggle controls.
+    fn result_is_expandable(&self) -> bool {
+        self.result.is_some() && !self.text_output().trim().is_empty()
     }
 
     fn has_renderer_definition(&self) -> bool {
@@ -346,6 +424,7 @@ impl ToolExecutionComponent {
 
     fn update_display(&mut self) {
         self.dirty.set(false);
+        self.built_style = block_style();
         let is_partial = self.is_partial;
         let is_error = self.result.as_ref().is_some_and(|result| result.is_error);
         let bg_slot = if is_partial {
@@ -358,6 +437,14 @@ impl ToolExecutionComponent {
         let bg_fn: Rc<dyn Fn(&str) -> String> =
             Rc::new(move |text: &str| theme().bg(bg_slot, text));
 
+        // In the badge style the block sheds surface and padding rows — the
+        // state moves entirely into the tool-name badge, which shares its
+        // line with the call header (reference `tool_execution.rs`). The
+        // container is rebuilt so a live style switch restyles the row.
+        let badge_style = self.badge_style();
+        self.container.clear();
+        self.container.add_child(component_ref(Spacer::new(1)));
+
         // TS starts at `false`, and both branches below always set it — the
         // `hide_component` case is therefore as unreachable here as it is there
         // (bug-compat, not a simplification).
@@ -365,13 +452,27 @@ impl ToolExecutionComponent {
         let mut has_content = false;
         self.hide_component = false;
         if self.has_renderer_definition() {
-            let self_managed = self.render_shell() == RenderShell::SelfManaged;
+            // The badge style routes every tool — the self-framed edit
+            // included — through the badge header path.
+            let self_managed = self.render_shell() == RenderShell::SelfManaged && !badge_style;
             if self_managed {
                 self.self_render_container.borrow_mut().clear();
+                self.container
+                    .add_child(Rc::clone(&self.self_render_container) as ComponentRef);
             } else {
                 let mut content_box = self.content_box.borrow_mut();
-                content_box.set_bg_fn(Some(Rc::clone(&bg_fn)));
+                // The badge carries the state on its own — no surface, no
+                // padding rows; the single-column inset stays.
+                content_box.set_padding(1, if badge_style { 0 } else { 1 });
+                content_box.set_bg_fn(if badge_style {
+                    None
+                } else {
+                    Some(Rc::clone(&bg_fn))
+                });
                 content_box.clear();
+                drop(content_box);
+                self.container
+                    .add_child(Rc::clone(&self.content_box) as ComponentRef);
             }
 
             let theme_instance = theme();
@@ -382,17 +483,22 @@ impl ToolExecutionComponent {
             let call_component = match call_component {
                 Some(component) => {
                     self.call_renderer_component = Some(Rc::clone(&component));
-                    component
+                    Some(component)
+                }
+                None if badge_style => {
+                    // The badge already names the tool; without a rendered
+                    // call the badge row takes the result's first line
+                    // instead of a second name line.
+                    self.call_renderer_component = None;
+                    None
                 }
                 None => {
                     self.call_renderer_component = None;
-                    self.create_call_fallback()
+                    Some(self.create_call_fallback())
                 }
             };
-            self.add_to_render_container(self_managed, call_component);
-            has_content = true;
 
-            if let Some(result) = self.result.clone() {
+            let mut result_component = if let Some(result) = self.result.clone() {
                 let context = self.render_context(self.result_renderer_component.clone());
                 let rendered = self.definitions_in_order().find_map(|definition| {
                     definition.render_result(
@@ -411,32 +517,122 @@ impl ToolExecutionComponent {
                 match rendered {
                     Some(component) => {
                         self.result_renderer_component = Some(Rc::clone(&component));
-                        self.add_to_render_container(self_managed, component);
-                        has_content = true;
+                        Some(component)
                     }
                     None => {
                         self.result_renderer_component = None;
-                        if let Some(component) = self.create_result_fallback() {
-                            self.add_to_render_container(self_managed, component);
-                            has_content = true;
-                        }
+                        self.create_result_fallback()
                     }
                 }
+            } else {
+                None
+            };
+
+            if badge_style {
+                // The badge shares its row with the first line of what
+                // follows — `BASH ($ ls -la)` for a rendered call, and
+                // otherwise the result, so that a tool whose whole output is
+                // one line costs one row instead of two.
+                let badge = self.badge_for(bg_slot);
+                let head = match call_component {
+                    Some(call) => Some((call, true)),
+                    None => result_component.take().map(|result| (result, false)),
+                };
+                match head {
+                    Some((content, parens)) => {
+                        self.add_to_render_container(
+                            self_managed,
+                            component_ref(BadgeCallHeader {
+                                badge,
+                                call: content,
+                                parens,
+                            }),
+                        );
+                    }
+                    None => {
+                        self.add_to_render_container(
+                            self_managed,
+                            component_ref(Text::new(badge, 0, 0)),
+                        );
+                    }
+                }
+                has_content = true;
+            } else if let Some(call) = call_component {
+                self.add_to_render_container(self_managed, call);
+                has_content = true;
             }
+
+            if let Some(component) = result_component {
+                self.add_to_render_container(self_managed, component);
+                has_content = true;
+            }
+
+            // In the badge style an expanded result closes with its info
+            // line (reference `tool_execution.rs`).
+            if badge_style && self.expanded && self.result_is_expandable() {
+                self.add_to_render_container(
+                    self_managed,
+                    component_ref(Text::new(
+                        theme().fg(
+                            ThemeColor::Muted,
+                            &format!("({} to collapse)", key_text("app.tools.expand")),
+                        ),
+                        0,
+                        0,
+                    )),
+                );
+            }
+        } else if badge_style {
+            // No renderer, badge style: the badge takes the first output
+            // line onto its row exactly as it does for a tool that renders a
+            // call line. The raw argument JSON follows the output instead of
+            // preceding it, so the line on the badge row is the answer and
+            // not an opening brace (reference `tool_execution.rs`).
+            let badge = self.badge_for(bg_slot);
+            let output = self.text_output();
+            {
+                let mut content_box = self.content_box.borrow_mut();
+                content_box.set_padding(1, 0);
+                content_box.set_bg_fn(None);
+                content_box.clear();
+                if output.is_empty() {
+                    content_box.add_child(component_ref(Text::new(badge, 0, 0)));
+                } else {
+                    content_box.add_child(component_ref(BadgeCallHeader {
+                        badge,
+                        call: component_ref(Text::new(
+                            theme().fg(ThemeColor::ToolOutput, &output),
+                            0,
+                            0,
+                        )),
+                        parens: false,
+                    }));
+                }
+                if self.expanded
+                    && let Ok(content) = serde_json::to_string_pretty(&self.args)
+                    && !content.is_empty()
+                    && content != "null"
+                    && content != "{}"
+                {
+                    content_box.add_child(component_ref(Text::new(format!("\n{content}"), 0, 0)));
+                }
+            }
+            self.container
+                .add_child(Rc::clone(&self.content_box) as ComponentRef);
+            has_content = true;
         } else {
             let text = self.format_tool_execution();
             let mut content_text = self.content_text.borrow_mut();
             content_text.set_custom_bg_fn(Some(Rc::clone(&bg_fn)));
             content_text.set_text(text);
+            drop(content_text);
+            self.container
+                .add_child(Rc::clone(&self.content_text) as ComponentRef);
             has_content = true;
         }
 
-        for image in std::mem::take(&mut self.image_components) {
-            self.container.remove_child(&image);
-        }
-        for spacer in std::mem::take(&mut self.image_spacers) {
-            self.container.remove_child(&spacer);
-        }
+        self.image_components.clear();
+        self.image_spacers.clear();
 
         if let Some(result) = self.result.clone() {
             let capabilities = get_capabilities();
@@ -551,14 +747,19 @@ fn image_blocks(
 
 impl Component for ToolExecutionComponent {
     fn render(&mut self, width: usize) -> Vec<String> {
-        if self.dirty.get() {
+        // A live style switch restyles rows already on screen (reference
+        // pattern: rebuild when the built style no longer matches).
+        if self.dirty.get() || self.built_style != block_style() {
             self.update_display();
         }
         if self.hide_component {
             return Vec::new();
         }
 
-        if self.has_renderer_definition() && self.render_shell() == RenderShell::SelfManaged {
+        if self.has_renderer_definition()
+            && self.render_shell() == RenderShell::SelfManaged
+            && !self.badge_style()
+        {
             let content_lines = self.self_render_container.borrow_mut().render(width);
             if content_lines.is_empty() && self.image_components.is_empty() {
                 return Vec::new();

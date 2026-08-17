@@ -8,16 +8,20 @@ use notagent::modes::interactive::components::markdown_transform::{
     MarkdownMessageType, MarkdownTransformContext, MarkdownTransformer,
 };
 use notagent::modes::interactive::components::user_message::UserMessageComponent;
-use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::modes::interactive::theme::theme::{BlockStyle, init_theme, set_block_style};
 use notagent::utils::ansi::strip_ansi;
 use notagent_tui::tui::Component;
 
-/// The global theme is a process global.
+/// The global theme and the block style are process globals; the TS-parity
+/// cases pin the standard layout, the badge cases set Badge themselves.
 fn theme_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(|error| error.into_inner());
+    set_block_style(BlockStyle::Standard);
+    guard
 }
 
 const OSC133_ZONE_START: &str = "\x1b]133;A\x07";
@@ -116,4 +120,43 @@ fn reapplies_markdown_transformers_when_invalidated() {
         "{:?}",
         strip_ansi(&component.render(80).join("\n"))
     );
+}
+
+#[test]
+fn badge_style_is_the_washed_text_without_padding_rows() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let mut component = UserMessageComponent::new("hello", None, None, Vec::new());
+    let lines = component.render(20);
+
+    // Exactly the message line — no box padding rows — carrying the wash
+    // and the whole OSC zone in order: start, end, final, then the text.
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        lines[0].starts_with(&format!(
+            "{OSC133_ZONE_START}{OSC133_ZONE_END}{OSC133_ZONE_FINAL}"
+        )),
+        "{:?}",
+        lines[0]
+    );
+    assert!(lines[0].contains("hello"), "{:?}", lines[0]);
+    assert!(lines[0].ends_with(BG_RESET), "{:?}", lines[0]);
+}
+
+#[test]
+fn switching_the_style_rebuilds_the_message_layout() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+
+    let mut component = UserMessageComponent::new("hello", None, None, Vec::new());
+    let standard_rows = component.render(20).len();
+
+    set_block_style(BlockStyle::Badge);
+    let badge_rows = component.render(20).len();
+
+    assert_eq!(standard_rows, 3);
+    assert_eq!(badge_rows, 1);
+    set_block_style(BlockStyle::Standard);
 }

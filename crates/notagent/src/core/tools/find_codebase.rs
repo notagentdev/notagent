@@ -25,7 +25,9 @@ use notagent_tui::tui::ComponentRef;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-use crate::core::tools::render_utils::{get_text_output, invalid_arg_text, shorten_path, str_arg};
+use crate::core::tools::render_utils::{
+    call_title, get_text_output, invalid_arg_text, shorten_path, str_arg,
+};
 use crate::core::tools::tool_definition::{
     ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
     render_text_call, render_text_result, wrap_tool_definition,
@@ -231,11 +233,7 @@ fn format_find_codebase_call(args: &Value, theme: &Theme) -> String {
         Some(query) => theme.fg(ThemeColor::Accent, &format!("/{query}/")),
     };
 
-    let mut text = format!(
-        "{} {}",
-        theme.fg(ThemeColor::ToolTitle, &theme.bold("find_codebase")),
-        query_display,
-    );
+    let mut text = format!("{}{}", call_title(theme, "find_codebase"), query_display,);
     if let Some(path) = search_path {
         text.push_str(&theme.fg(ThemeColor::ToolOutput, &format!(" in {path}")));
     }

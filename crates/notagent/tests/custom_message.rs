@@ -9,7 +9,7 @@
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::modes::interactive::components::custom_message::CustomMessageComponent;
-use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::modes::interactive::theme::theme::{BlockStyle, init_theme, set_block_style};
 use notagent::utils::ansi::strip_ansi;
 use notagent_agent::CustomMessage;
 use notagent_ai::types::UserContent;
@@ -17,9 +17,14 @@ use notagent_tui::tui::Component;
 
 fn theme_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(|error| error.into_inner());
+    // The block style is a process global (default: badge); the TS-parity
+    // tests pin the standard layout, the badge tests set Badge themselves.
+    set_block_style(BlockStyle::Standard);
+    guard
 }
 
 fn message() -> CustomMessage {
@@ -61,4 +66,19 @@ fn keeps_the_default_rendering_when_the_output_padding_changes() {
     component.set_output_pad(0);
     let unpadded: Vec<String> = component.render(40).iter().map(|l| strip_ansi(l)).collect();
     assert_eq!(unpadded, padded);
+}
+
+#[test]
+fn badge_style_leads_with_a_type_badge_and_sheds_the_wash() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let mut component = CustomMessageComponent::new(message(), None, Some(1));
+    let raw = component.render(40).join("\n");
+    let rendered = strip_ansi(&raw);
+
+    assert!(rendered.contains("TEST"), "{rendered}");
+    assert!(!rendered.contains("[test]"), "{rendered}");
+    assert!(rendered.contains("custom"), "{rendered}");
 }

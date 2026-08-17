@@ -44,7 +44,7 @@ use crate::core::tasks::manager::{RegisterTaskOptions, TaskManager};
 use crate::core::tasks::subagent_task::{SubagentRunResult, SubagentTask, SubagentTaskOptions};
 use crate::core::tasks::types::{BackgroundTask, ForegroundRelease};
 use crate::core::tools::ToolsOptions;
-use crate::core::tools::render_utils::str_arg;
+use crate::core::tools::render_utils::{call_title, str_arg};
 use crate::core::tools::tool_definition::{
     ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
     render_text_call, render_text_result, wrap_tool_definition,
@@ -389,8 +389,8 @@ impl ToolDefinition for TaskToolDefinition {
         Some(render_text_call(
             context,
             &format!(
-                "{} {} {}{}",
-                theme.fg(ThemeColor::ToolTitle, &theme.bold("task")),
+                "{}{} {}{}",
+                call_title(theme, "task"),
                 theme.fg(ThemeColor::Accent, &mode),
                 theme.fg(ThemeColor::Muted, &suffix),
                 if background {

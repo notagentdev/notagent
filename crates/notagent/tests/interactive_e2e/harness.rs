@@ -355,7 +355,11 @@ impl InteractiveDriver {
         loop {
             self.settle().await;
             let joined = self.joined_rows();
-            if joined.contains(needle) {
+            // The badge style parenthesises the call's first fragment, so a
+            // wrapped path reads `…/d)` + `oes-not-exist.txt` — the closing
+            // paren lands wherever the wrap falls. Searching with parens
+            // stripped heals that seam the same way joining heals the wrap.
+            if joined.contains(needle) || joined.replace(['(', ')'], "").contains(needle) {
                 return joined;
             }
             if Instant::now() >= deadline {

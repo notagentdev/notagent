@@ -14,7 +14,9 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::mini_read::minify_for_path;
 use crate::core::tools::path_utils::resolve_read_path;
-use crate::core::tools::render_utils::{get_text_output, render_tool_path, replace_tabs, str_arg};
+use crate::core::tools::render_utils::{
+    call_title, get_text_output, render_tool_path, replace_tabs, str_arg,
+};
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
     ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
@@ -191,8 +193,8 @@ fn format_call(args: &Value, theme: &Theme, cwd: &str) -> String {
         _ => String::new(),
     };
     format!(
-        "{} {path_display}{}{comments}",
-        theme.fg(ThemeColor::ToolTitle, &theme.bold("read minified")),
+        "{}{path_display}{}{comments}",
+        call_title(theme, "read minified"),
         format_line_range(args, theme)
     )
 }

@@ -15,7 +15,9 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::path_utils::resolve_read_path;
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::render_utils::{get_text_output, render_tool_path, replace_tabs, str_arg};
+use crate::core::tools::render_utils::{
+    call_title, get_text_output, render_tool_path, replace_tabs, str_arg,
+};
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
     ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
@@ -225,8 +227,8 @@ fn format_read_call(args: &Value, theme: &Theme, cwd: &str) -> String {
     let raw_path = read_path_arg(args);
     let path_display = render_tool_path(raw_path.as_deref(), theme, cwd, None);
     format!(
-        "{} {path_display}{}",
-        theme.fg(ThemeColor::ToolTitle, &theme.bold("read")),
+        "{}{path_display}{}",
+        call_title(theme, "read"),
         format_read_line_range(args, theme)
     )
 }
@@ -336,10 +338,23 @@ fn format_compact_read_call(
             + &expand_hint;
     }
 
-    theme.fg(
-        ThemeColor::ToolTitle,
-        &theme.bold(&format!("read {}", classification.kind.as_str())),
-    ) + " "
+    // Badge style: the badge above already says READ, so the header keeps
+    // only the kind word (`docs README* …` instead of `read docs README* …`).
+    let title = if crate::modes::interactive::theme::theme::block_style()
+        == crate::modes::interactive::theme::theme::BlockStyle::Badge
+    {
+        theme.fg(
+            ThemeColor::ToolTitle,
+            &theme.bold(classification.kind.as_str()),
+        )
+    } else {
+        theme.fg(
+            ThemeColor::ToolTitle,
+            &theme.bold(&format!("read {}", classification.kind.as_str())),
+        )
+    };
+    title
+        + " "
         + &theme.fg(ThemeColor::Accent, &classification.label)
         + &format_read_line_range(args, theme)
         + &expand_hint

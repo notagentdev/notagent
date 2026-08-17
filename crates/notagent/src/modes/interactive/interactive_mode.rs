@@ -183,8 +183,8 @@ use crate::modes::interactive::llama_command::{
 };
 use crate::modes::interactive::model_search::{ModelSearchItem, get_model_search_text};
 use crate::modes::interactive::theme::theme::{
-    ThemeBg, ThemeColor, get_available_themes, get_editor_theme, get_markdown_theme,
-    on_theme_change, set_registered_themes, theme,
+    BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_available_themes, get_editor_theme,
+    get_markdown_theme, on_theme_change, set_registered_themes, theme,
 };
 use crate::modes::interactive::theme::theme_controller::InteractiveThemeController;
 use crate::utils::abort::timeout_signal;
@@ -935,6 +935,9 @@ expandable!(
     CustomMessageComponent,
     BashExecutionComponent,
     SearchBlockComponent,
+    // The expand toggle opens and closes the badge-style thinking block
+    // (reference: Ctrl+O reaches every transcript component).
+    AssistantMessageComponent,
 );
 
 /// Whether a finished assistant message ends a run of searches: it carries
@@ -2154,6 +2157,11 @@ impl InteractiveMode {
                 needs_render |= indicator.tick_countdown();
             }
         }
+        // The THINKING badge's live timer advances at most once per second
+        // (reference: the badge timer runs on the animation tick).
+        if let Some(component) = self.streaming_component.clone() {
+            needs_render |= component.borrow_mut().tick_thinking_timer();
+        }
         if needs_render {
             self.ui.request_render();
         }
@@ -3182,6 +3190,11 @@ impl InteractiveMode {
         use crate::modes::interactive::components::subagent_panel::format_elapsed;
         use crate::modes::interactive::components::tasks_panel::single_line;
 
+        // The badge style writes the lifecycle as badge lines (the
+        // reference's `DelegationLine`): the mode on the state fill, the
+        // detail dimmed beside it. Entries are written once and keep the
+        // style they were written in.
+        let badge_style = block_style() == BlockStyle::Badge;
         for task in tasks {
             let TaskInfo::Subagent(info) = task else {
                 continue;
@@ -3189,34 +3202,66 @@ impl InteractiveMode {
             let base = &info.base;
             let theme_instance = theme();
             if self.announced_subagent_starts.insert(base.task_id.clone()) {
-                let line = format!(
-                    " {} {} {}  {}",
-                    theme_instance.fg(ThemeColor::Dim, "○"),
-                    theme_instance.fg(ThemeColor::Text, "subagent started"),
-                    theme_instance.fg(ThemeColor::Text, &info.mode_id),
-                    theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
-                );
+                let line = if badge_style {
+                    format!(
+                        " {}  {} {}",
+                        badge(
+                            &theme_instance,
+                            ThemeBg::ToolPendingBg,
+                            &format!("subagent {}", info.mode_id)
+                        ),
+                        theme_instance.fg(ThemeColor::Text, "started"),
+                        theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
+                    )
+                } else {
+                    format!(
+                        " {} {} {}  {}",
+                        theme_instance.fg(ThemeColor::Dim, "○"),
+                        theme_instance.fg(ThemeColor::Text, "subagent started"),
+                        theme_instance.fg(ThemeColor::Text, &info.mode_id),
+                        theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
+                    )
+                };
                 self.append_subagent_entry(line);
             }
             if is_terminal_task_status(base.status)
                 && self.announced_subagent_ends.insert(base.task_id.clone())
             {
                 let clean = base.status == crate::core::tasks::types::TaskStatus::Completed;
-                let (marker_colour, label) = if clean {
-                    (ThemeColor::Success, "subagent done")
-                } else {
-                    (ThemeColor::Error, "subagent failed")
-                };
                 let ended_at = base
                     .ended_at
                     .unwrap_or_else(crate::modes::interactive::components::tasks_panel::now_ms);
-                let line = format!(
-                    " {} {} {}  {}",
-                    theme_instance.fg(marker_colour, "○"),
-                    theme_instance.fg(ThemeColor::Text, label),
-                    theme_instance.fg(ThemeColor::Text, &info.mode_id),
-                    theme_instance.fg(ThemeColor::Dim, &format_elapsed(base.started_at, ended_at)),
-                );
+                let line = if badge_style {
+                    format!(
+                        " {}  {} {}",
+                        badge(
+                            &theme_instance,
+                            if clean {
+                                ThemeBg::ToolSuccessBg
+                            } else {
+                                ThemeBg::ToolErrorBg
+                            },
+                            &format!("subagent {}", info.mode_id)
+                        ),
+                        theme_instance.fg(ThemeColor::Text, if clean { "done" } else { "failed" }),
+                        theme_instance
+                            .fg(ThemeColor::Dim, &format_elapsed(base.started_at, ended_at)),
+                    )
+                } else {
+                    let (marker_colour, label) = if clean {
+                        (ThemeColor::Success, "subagent done")
+                    } else {
+                        (ThemeColor::Error, "subagent failed")
+                    };
+                    format!(
+                        " {} {} {}  {}",
+                        theme_instance.fg(marker_colour, "○"),
+                        theme_instance.fg(ThemeColor::Text, label),
+                        theme_instance.fg(ThemeColor::Text, &info.mode_id),
+                        theme_instance
+                            .fg(ThemeColor::Dim, &format_elapsed(base.started_at, ended_at)),
+                    )
+                };
                 self.append_subagent_entry(line);
             }
         }
@@ -3841,7 +3886,7 @@ impl InteractiveMode {
             },
             on_block_style_change: {
                 let settings = Arc::clone(&settings);
-                let ui = self.ui.clone();
+                let tx = self.ui_tx.clone();
                 Box::new(move |badge| {
                     settings.set_block_style_setting(badge);
                     crate::modes::interactive::theme::theme::set_block_style(if badge {
@@ -3849,7 +3894,8 @@ impl InteractiveMode {
                     } else {
                         crate::modes::interactive::theme::theme::BlockStyle::Standard
                     });
-                    ui.request_render();
+                    // Rows already on screen rebuild for the new style.
+                    effect(&tx, id, SettingsEffect::InvalidateChat);
                 })
             },
             on_show_images_change: {
@@ -7396,6 +7442,11 @@ impl InteractiveMode {
                     component
                         .borrow_mut()
                         .update_content(message.clone(), Some(true));
+                    component
+                        .borrow_mut()
+                        .set_expanded(self.tool_output_expanded);
+                    self.chat_expandables
+                        .push(Rc::clone(&component) as Rc<RefCell<dyn Expandable>>);
                     self.streaming_component = Some(component);
                     self.streaming_message = Some(message);
                     self.ui.request_render();
@@ -7988,16 +8039,22 @@ impl InteractiveMode {
                 }
             }
             AgentMessage::Assistant(message) => {
-                self.chat_container.borrow_mut().add_child(component_ref(
-                    AssistantMessageComponent::new(
-                        Some(message.clone()),
-                        self.hide_thinking_block,
-                        Some(get_markdown_theme()),
-                        Some(self.hidden_thinking_label.clone()),
-                        Some(self.output_pad),
-                        Vec::new(),
-                    ),
-                ));
+                let component = Rc::new(RefCell::new(AssistantMessageComponent::new(
+                    Some(message.clone()),
+                    self.hide_thinking_block,
+                    Some(get_markdown_theme()),
+                    Some(self.hidden_thinking_label.clone()),
+                    Some(self.output_pad),
+                    Vec::new(),
+                )));
+                component
+                    .borrow_mut()
+                    .set_expanded(self.tool_output_expanded);
+                self.chat_container
+                    .borrow_mut()
+                    .add_child(Rc::clone(&component) as ComponentRef);
+                self.chat_expandables
+                    .push(component as Rc<RefCell<dyn Expandable>>);
             }
             AgentMessage::CompactionSummary(message) => {
                 let component = Rc::new(RefCell::new(CompactionSummaryMessageComponent::new(

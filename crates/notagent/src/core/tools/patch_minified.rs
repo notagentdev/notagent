@@ -27,7 +27,7 @@ use crate::core::mini_read::apply_minified_edit;
 use crate::core::tools::edit_diff::{generate_diff_string, generate_unified_patch, strip_bom};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::render_utils::{render_tool_path, str_arg};
+use crate::core::tools::render_utils::{call_title, render_tool_path, str_arg};
 use crate::core::tools::tool_definition::{
     ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
     tool_render_state, wrap_tool_definition,
@@ -443,10 +443,7 @@ fn patch_path_arg(args: &Value) -> Option<String> {
 
 fn format_patch_call(label: &str, args: &Value, theme: &Theme, cwd: &str) -> String {
     let path_display = render_tool_path(patch_path_arg(args).as_deref(), theme, cwd, None);
-    format!(
-        "{} {path_display}",
-        theme.fg(ThemeColor::ToolTitle, &theme.bold(label))
-    )
+    format!("{}{path_display}", call_title(theme, label))
 }
 
 impl ToolDefinition for PatchMinifiedToolDefinition {

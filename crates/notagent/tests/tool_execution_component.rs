@@ -19,7 +19,7 @@ use notagent::core::tools::tool_definition::{
 use notagent::modes::interactive::components::tool_execution::{
     ToolExecutionComponent, ToolExecutionOptions, ToolExecutionResult,
 };
-use notagent::modes::interactive::theme::theme::{Theme, init_theme};
+use notagent::modes::interactive::theme::theme::{BlockStyle, Theme, init_theme, set_block_style};
 use notagent::utils::ansi::strip_ansi;
 use notagent_agent::types::{AgentToolResult, ToolExecutionError};
 use notagent_ai::types::{TextContent, TextOrImageContent};
@@ -27,12 +27,16 @@ use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, ComponentRef, component_ref};
 use serde_json::{Value, json};
 
-/// The theme is process-global.
+/// The theme and the block style are process-global; the TS-parity cases pin
+/// the standard layout, the badge cases set Badge themselves.
 fn guard() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    set_block_style(BlockStyle::Standard);
+    guard
 }
 
 /// `createBaseToolDefinition(name)` plus the optional renderers of each case.
@@ -272,4 +276,193 @@ fn falls_back_to_the_plain_header_and_output_without_any_definition() {
     assert!(rendered.contains("not_a_tool"), "{rendered}");
     assert!(rendered.contains("\"some\": \"argument\""), "{rendered}");
     assert!(rendered.contains("the output"), "{rendered}");
+}
+
+// ---------------------------------------------------------------------------
+// Badge block style (takeover of the reference's `tool_execution.rs` cases)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn badge_style_leads_with_a_state_badge_and_drops_the_padding_rows() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let tool: ToolDef = std::sync::Arc::new(StubTool {
+        call_text: Some("custom call"),
+        ..StubTool::new("custom_tool")
+    });
+    let mut component = ToolExecutionComponent::new(
+        "custom_tool",
+        "tool-badge",
+        json!({}),
+        ToolExecutionOptions::default(),
+        Some(tool),
+        no_render(),
+        cwd(),
+    );
+    component.update_result(text_result(""), false);
+
+    let stripped: Vec<String> = component
+        .render(60)
+        .iter()
+        .map(|line| strip_ansi(line).trim_end().to_string())
+        .collect();
+
+    // Spacer, then badge and call sharing one row (underscores read as
+    // spaces) — no surface, no padding rows.
+    let expected = vec!["".to_string(), "  CUSTOM TOOL  (custom call)".to_string()];
+    assert_eq!(stripped, expected);
+}
+
+#[test]
+fn badge_style_badge_carries_the_three_states() {
+    use notagent::modes::interactive::theme::theme::{ThemeBg, badge, theme};
+
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let build = |id: &str| {
+        let tool: ToolDef = std::sync::Arc::new(StubTool::new("custom_tool"));
+        ToolExecutionComponent::new(
+            "custom_tool",
+            id,
+            json!({}),
+            ToolExecutionOptions::default(),
+            Some(tool),
+            no_render(),
+            cwd(),
+        )
+    };
+    let mut pending = build("tool-pending");
+    let mut succeeded = build("tool-ok");
+    succeeded.update_result(text_result(""), false);
+    let mut failed = build("tool-err");
+    failed.update_result(
+        ToolExecutionResult {
+            content: Vec::new(),
+            details: Some(json!({})),
+            is_error: true,
+        },
+        false,
+    );
+
+    let theme_instance = theme();
+    let actual = [
+        pending.render(60).join("\n").contains(&badge(
+            &theme_instance,
+            ThemeBg::ToolPendingBg,
+            "custom_tool",
+        )),
+        succeeded.render(60).join("\n").contains(&badge(
+            &theme_instance,
+            ThemeBg::ToolSuccessBg,
+            "custom_tool",
+        )),
+        failed.render(60).join("\n").contains(&badge(
+            &theme_instance,
+            ThemeBg::ToolErrorBg,
+            "custom_tool",
+        )),
+    ];
+    assert_eq!(actual, [true, true, true]);
+}
+
+#[test]
+fn badge_style_fallback_shares_the_badge_row_with_the_first_output_line() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    // No renderer at all — the plain-text fallback.
+    let mut component = ToolExecutionComponent::new(
+        "goal",
+        "tool-goal-badge",
+        json!({}),
+        ToolExecutionOptions::default(),
+        None,
+        no_render(),
+        cwd(),
+    );
+    component.update_result(text_result("done"), false);
+
+    let stripped: Vec<String> = component
+        .render(60)
+        .iter()
+        .map(|line| strip_ansi(line).trim_end().to_string())
+        .collect();
+
+    // Spacer, then the badge (with its pill padding) sharing its row with
+    // the output — no padding rows, no second name line, no argument JSON
+    // while collapsed.
+    let expected = vec!["".to_string(), "  GOAL  done".to_string()];
+    assert_eq!(stripped, expected);
+}
+
+#[test]
+fn badge_style_expanded_result_closes_with_the_collapse_info_line() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let tool: ToolDef = std::sync::Arc::new(StubTool {
+        call_text: Some("custom call"),
+        result_text: Some("full output"),
+        ..StubTool::new("custom_tool")
+    });
+    let mut component = ToolExecutionComponent::new(
+        "custom_tool",
+        "tool-collapse-hint",
+        json!({}),
+        ToolExecutionOptions::default(),
+        Some(tool),
+        no_render(),
+        cwd(),
+    );
+    component.update_result(text_result("hidden detail"), false);
+
+    let collapsed = strip_ansi(&component.render(60).join("\n"));
+    assert!(!collapsed.contains("to collapse)"), "{collapsed}");
+
+    component.set_expanded(true);
+    let expanded: Vec<String> = component
+        .render(60)
+        .iter()
+        .map(|line| strip_ansi(line).trim_end().to_string())
+        .collect();
+    assert!(
+        expanded
+            .last()
+            .is_some_and(|line| line.contains("to collapse)")),
+        "{expanded:?}"
+    );
+}
+
+#[test]
+fn switching_the_style_restyles_an_already_rendered_row() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+
+    let tool: ToolDef = std::sync::Arc::new(StubTool {
+        call_text: Some("custom call"),
+        ..StubTool::new("custom_tool")
+    });
+    let mut component = ToolExecutionComponent::new(
+        "custom_tool",
+        "tool-style-switch",
+        json!({}),
+        ToolExecutionOptions::default(),
+        Some(tool),
+        no_render(),
+        cwd(),
+    );
+    component.update_result(text_result(""), false);
+    let standard = strip_ansi(&component.render(60).join("\n"));
+    assert!(!standard.contains("CUSTOM TOOL"), "{standard}");
+
+    set_block_style(BlockStyle::Badge);
+    let badge = strip_ansi(&component.render(60).join("\n"));
+    assert!(badge.contains("CUSTOM TOOL"), "{badge}");
+    set_block_style(BlockStyle::Standard);
 }

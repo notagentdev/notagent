@@ -139,6 +139,20 @@ pub fn invalid_arg_text(theme: &Theme) -> String {
     theme.fg(ThemeColor::Error, "[invalid arg]")
 }
 
+/// The call line's bold tool-name prefix, with its trailing space (takeover
+/// of the reference's `call_title`). The badge style returns an empty prefix:
+/// the badge above already names the tool, so the call line carries the
+/// arguments alone and the block header reads `READ (src/lib.rs)` instead of
+/// repeating the name.
+pub fn call_title(theme: &Theme, title: &str) -> String {
+    use crate::modes::interactive::theme::theme::{BlockStyle, block_style};
+    if block_style() == BlockStyle::Badge {
+        String::new()
+    } else {
+        format!("{} ", theme.fg(ThemeColor::ToolTitle, &theme.bold(title)))
+    }
+}
+
 /// The path column of a tool header: linked, `~`-shortened and colour-coded.
 pub fn render_tool_path(
     raw_path: Option<&str>,

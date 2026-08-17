@@ -9,7 +9,9 @@ use notagent_tui::components::markdown::{
 };
 use notagent_tui::tui::{Component, Container, component_ref};
 
-use crate::modes::interactive::theme::theme::{ThemeBg, ThemeColor, get_markdown_theme, theme};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, ThemeBg, ThemeColor, block_style, get_markdown_theme, theme,
+};
 
 use super::markdown_transform::{
     MarkdownMessageType, MarkdownTransformer, create_markdown_transform,
@@ -19,13 +21,19 @@ const OSC133_ZONE_START: &str = "\x1b]133;A\x07";
 const OSC133_ZONE_END: &str = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL: &str = "\x1b]133;C\x07";
 
-/// Component that renders a user message
+/// Component that renders a user message: a boxed, washed block in the
+/// standard style, the washed text lines without padding rows in the badge
+/// style (the user message keeps its wash in both styles — reference
+/// `user_message.rs`).
 pub struct UserMessageComponent {
     container: Container,
     text: String,
     markdown_theme: MarkdownTheme,
     output_pad: usize,
     markdown_transformers: Vec<MarkdownTransformer>,
+    /// The block style the layout was built for; a mismatch at render time
+    /// rebuilds, so a live style switch restyles the message.
+    built_style: BlockStyle,
 }
 
 impl UserMessageComponent {
@@ -43,6 +51,7 @@ impl UserMessageComponent {
             markdown_theme: markdown_theme.unwrap_or_else(get_markdown_theme),
             output_pad: output_pad.unwrap_or(1),
             markdown_transformers,
+            built_style: block_style(),
         };
         component.rebuild();
         component
@@ -55,10 +64,18 @@ impl UserMessageComponent {
     }
 
     fn rebuild(&mut self) {
+        self.built_style = block_style();
         self.container.clear();
+        // The badge style sheds the padding rows but keeps the wash, so the
+        // user's turns stay visually anchored (reference `user_message.rs`).
+        let padding_y = if self.built_style == BlockStyle::Badge {
+            0
+        } else {
+            1
+        };
         let mut content_box = BoxComponent::new(
             self.output_pad,
-            1,
+            padding_y,
             Some(Rc::new(|content: &str| {
                 theme().bg(ThemeBg::UserMessageBg, content)
             })),
@@ -91,18 +108,31 @@ impl UserMessageComponent {
 
 impl Component for UserMessageComponent {
     fn render(&mut self, width: usize) -> Vec<String> {
+        if self.built_style != block_style() {
+            self.rebuild();
+        }
         let mut lines = self.container.render(width);
         if lines.is_empty() {
             return lines;
         }
 
-        lines[0] = format!("{OSC133_ZONE_START}{}", lines[0]);
-        let last = lines.len() - 1;
-        lines[last] = format!("{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}", lines[last]);
+        if lines.len() == 1 {
+            // A single line carries the whole zone in order: start, end,
+            // final, then the message (reference `user_message.rs`).
+            lines[0] = format!(
+                "{OSC133_ZONE_START}{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}",
+                lines[0]
+            );
+        } else {
+            lines[0] = format!("{OSC133_ZONE_START}{}", lines[0]);
+            let last = lines.len() - 1;
+            lines[last] = format!("{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}", lines[last]);
+        }
         lines
     }
 
     fn invalidate(&mut self) {
         self.container.invalidate();
+        self.rebuild();
     }
 }

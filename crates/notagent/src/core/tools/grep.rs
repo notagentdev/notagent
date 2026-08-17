@@ -14,7 +14,9 @@ use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::tools::path_utils::resolve_to_cwd;
-use crate::core::tools::render_utils::{get_text_output, invalid_arg_text, shorten_path, str_arg};
+use crate::core::tools::render_utils::{
+    call_title, get_text_output, invalid_arg_text, shorten_path, str_arg,
+};
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
     ToolRenderResultOptions, display_arg, render_text_call, render_text_result,
@@ -98,8 +100,7 @@ fn format_grep_call(args: &Value, theme: &Theme) -> String {
         .map(|raw_path| shorten_path(Some(if raw_path.is_empty() { "." } else { &raw_path })));
     let limit = args.get("limit");
     let invalid_arg = invalid_arg_text(theme);
-    let mut text = theme.fg(ThemeColor::ToolTitle, &theme.bold("grep"))
-        + " "
+    let mut text = call_title(theme, "grep")
         + &match &pattern {
             None => invalid_arg.clone(),
             Some(pattern) => theme.fg(ThemeColor::Accent, &format!("/{pattern}/")),

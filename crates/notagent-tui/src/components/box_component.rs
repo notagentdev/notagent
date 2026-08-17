@@ -61,6 +61,17 @@ impl BoxComponent {
         self.bg_fn = bg_fn;
     }
 
+    /// Change the padding. Port addition for the badge block style, which
+    /// sheds the vertical padding rows of an already-built box.
+    pub fn set_padding(&mut self, padding_x: usize, padding_y: usize) {
+        if self.padding_x == padding_x && self.padding_y == padding_y {
+            return;
+        }
+        self.padding_x = padding_x;
+        self.padding_y = padding_y;
+        self.cache = None;
+    }
+
     fn matches_cache(
         &self,
         width: usize,

@@ -11,8 +11,12 @@ use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Container, component_ref};
 
-use crate::modes::interactive::theme::theme::{ThemeColor, get_markdown_theme, theme};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, ThemeColor, block_style, color_badge, format_elapsed_live, format_elapsed_precise,
+    get_markdown_theme, theme,
+};
 
+use super::keybinding_hints::key_text;
 use super::markdown_transform::{
     MarkdownMessageType, MarkdownTransformer, create_markdown_transform,
 };
@@ -34,6 +38,17 @@ pub struct AssistantMessageComponent {
     last_message: Option<AssistantMessage>,
     has_tool_calls: bool,
     is_streaming: bool,
+    /// Whether the badge-style thinking block shows its text (the expand
+    /// toggle; reference `assistant_message.rs`).
+    thinking_expanded: bool,
+    /// When live thinking started streaming into this component.
+    thinking_started: Option<std::time::Instant>,
+    /// The frozen thinking duration once it ended. Replayed messages carry
+    /// none and show the THOUGHT badge without a runtime.
+    thinking_finished: Option<std::time::Duration>,
+    /// The last rendered timer second, so a tick rebuilds at most once per
+    /// second.
+    last_thinking_tick: Option<u64>,
 }
 
 impl AssistantMessageComponent {
@@ -60,6 +75,10 @@ impl AssistantMessageComponent {
             last_message: None,
             has_tool_calls: false,
             is_streaming: false,
+            thinking_expanded: false,
+            thinking_started: None,
+            thinking_finished: None,
+            last_thinking_tick: None,
         };
         if let Some(message) = message {
             component.update_content(message, None);
@@ -91,10 +110,85 @@ impl AssistantMessageComponent {
         }
     }
 
+    /// Whether this component's thinking is still streaming — the badge
+    /// shows THINKING with a live timer and needs the one-second tick.
+    pub fn has_running_thinking(&self) -> bool {
+        self.thinking_started.is_some() && self.thinking_finished.is_none()
+    }
+
+    /// Advances the THINKING badge's timer. Returns `true` when the visible
+    /// second changed and the caller should request a render (reference
+    /// `tick_thinking_timer`).
+    pub fn tick_thinking_timer(&mut self) -> bool {
+        if !self.has_running_thinking() {
+            return false;
+        }
+        let Some(started) = self.thinking_started else {
+            return false;
+        };
+        let second = started.elapsed().as_secs();
+        if self.last_thinking_tick == Some(second) {
+            return false;
+        }
+        self.last_thinking_tick = Some(second);
+        if let Some(message) = self.last_message.clone() {
+            self.update_content(message, None);
+        }
+        true
+    }
+
+    /// Opens or closes the badge-style thinking block; the expand toggle
+    /// reaches this through the chat's expandables.
+    pub fn set_expanded(&mut self, expanded: bool) {
+        if self.thinking_expanded == expanded {
+            return;
+        }
+        self.thinking_expanded = expanded;
+        if let Some(message) = self.last_message.clone() {
+            self.update_content(message, None);
+        }
+    }
+
+    /// The thinking timer runs from the first streamed thinking content until
+    /// visible text or a tool call follows it (or streaming ends). Derived
+    /// here because the port receives whole messages instead of deltas
+    /// (deviation class 1 from the reference's `append_delta`).
+    fn derive_thinking_timer(&mut self, message: &AssistantMessage) {
+        let has_thinking = message.content.iter().any(|content| {
+            matches!(content, AssistantContent::Thinking(thinking) if !thinking.thinking.trim().is_empty())
+        });
+        if self.is_streaming {
+            if has_thinking && self.thinking_started.is_none() && self.thinking_finished.is_none() {
+                self.thinking_started = Some(std::time::Instant::now());
+            }
+            if let Some(started) = self.thinking_started
+                && self.thinking_finished.is_none()
+            {
+                let last_thinking = message.content.iter().rposition(|content| {
+                    matches!(content, AssistantContent::Thinking(thinking) if !thinking.thinking.trim().is_empty())
+                });
+                let followed = last_thinking.is_some_and(|index| {
+                    message.content[index + 1..].iter().any(|content| {
+                        matches!(content, AssistantContent::Text(text) if !text.text.trim().is_empty())
+                            || matches!(content, AssistantContent::ToolCall(_))
+                    })
+                });
+                if followed {
+                    self.thinking_finished = Some(started.elapsed());
+                }
+            }
+        } else if let Some(started) = self.thinking_started
+            && self.thinking_finished.is_none()
+        {
+            self.thinking_finished = Some(started.elapsed());
+        }
+    }
+
     /// Rebuild the rendered content; `is_streaming` defaults to the current value.
     pub fn update_content(&mut self, message: AssistantMessage, is_streaming: Option<bool>) {
         self.last_message = Some(message.clone());
         self.is_streaming = is_streaming.unwrap_or(self.is_streaming);
+        self.derive_thinking_timer(&message);
 
         // Clear content container
         self.content_container.clear();
@@ -132,6 +226,7 @@ impl AssistantMessageComponent {
                     index += 1;
                 }
                 AssistantContent::Thinking(_) => {
+                    let run_start = index;
                     let mut thinking_blocks: Vec<String> = Vec::new();
                     while index < message.content.len() {
                         let AssistantContent::Thinking(thinking_content) = &message.content[index]
@@ -155,7 +250,99 @@ impl AssistantMessageComponent {
                     let has_visible_content_after =
                         message.content[index..].iter().any(is_visible_content);
 
-                    if self.hide_thinking_block {
+                    if block_style() == BlockStyle::Badge {
+                        // The badge style renders thinking as its own block:
+                        // THINKING with a live timer while it streams, THOUGHT
+                        // with the runtime once it ended, the text itself
+                        // behind the expand toggle (reference
+                        // `assistant_message.rs`).
+                        let is_last_run = !message.content[index..]
+                            .iter()
+                            .any(|content| matches!(content, AssistantContent::Thinking(_)));
+                        let running = is_last_run && self.has_running_thinking();
+                        let theme_instance = theme();
+                        let mut badge_line = color_badge(
+                            &theme_instance,
+                            ThemeColor::ThinkingText,
+                            if running { "Thinking" } else { "Thought" },
+                        );
+                        // The runtime sits next to the badge — live it stays
+                        // invisible below one second, final it reads as ms
+                        // only under a second.
+                        let duration_text = if running {
+                            self.thinking_started
+                                .and_then(|started| format_elapsed_live(started.elapsed()))
+                        } else if is_last_run {
+                            self.thinking_finished.map(format_elapsed_precise)
+                        } else {
+                            None
+                        };
+                        if let Some(duration_text) = duration_text {
+                            badge_line.push_str(&format!(
+                                " {}{}{}",
+                                theme_instance.fg(ThemeColor::Dim, "("),
+                                theme_instance.fg(ThemeColor::ThinkingText, &duration_text),
+                                theme_instance.fg(ThemeColor::Dim, ")")
+                            ));
+                        }
+                        // A thinking run following earlier sections of the
+                        // same message needs its own breathing room — without
+                        // it the badge sticks to the preceding answer text.
+                        if run_start > 0 {
+                            self.content_container
+                                .add_child(component_ref(Spacer::new(1)));
+                        }
+                        self.content_container.add_child(component_ref(Text::new(
+                            badge_line,
+                            self.output_pad,
+                            0,
+                        )));
+                        if self.thinking_expanded {
+                            self.content_container
+                                .add_child(component_ref(Markdown::new(
+                                    thinking_blocks.join("\n\n"),
+                                    self.output_pad,
+                                    0,
+                                    self.markdown_theme.clone(),
+                                    Some(DefaultTextStyle {
+                                        color: Some(Rc::new(|text: &str| {
+                                            theme().fg(ThemeColor::ThinkingText, text)
+                                        })),
+                                        italic: true,
+                                        ..DefaultTextStyle::default()
+                                    }),
+                                    Some(MarkdownOptions {
+                                        transform: Some(create_markdown_transform(
+                                            MarkdownMessageType::AssistantThinking,
+                                            self.is_streaming,
+                                            self.markdown_transformers.clone(),
+                                        )),
+                                        ..MarkdownOptions::default()
+                                    }),
+                                )));
+                        }
+                        // The info line closes the block: under the badge
+                        // collapsed and under the thinking text expanded; the
+                        // runtime lives up on the badge line.
+                        if !running {
+                            self.content_container.add_child(component_ref(Text::new(
+                                theme_instance.fg(
+                                    ThemeColor::Dim,
+                                    &format!(
+                                        "({} to {})",
+                                        key_text("app.tools.expand"),
+                                        if self.thinking_expanded {
+                                            "collapse"
+                                        } else {
+                                            "expand"
+                                        }
+                                    ),
+                                ),
+                                self.output_pad,
+                                0,
+                            )));
+                        }
+                    } else if self.hide_thinking_block {
                         // Show one static label for each run of thinking blocks when hidden.
                         let theme = theme();
                         self.content_container.add_child(component_ref(Text::new(

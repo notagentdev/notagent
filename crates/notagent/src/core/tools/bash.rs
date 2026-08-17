@@ -976,17 +976,30 @@ impl Component for BashPreviewComponent {
             self.cached_width = Some(width);
         }
         let lines = self.cached_lines.clone().unwrap_or_default();
+        // The standard style separates the output from the command with one
+        // blank row; the badge style stacks them directly (reference
+        // `format_bash_result`).
+        let lead = block_style() != BlockStyle::Badge;
         if let Some(skipped) = self.cached_skipped.filter(|skipped| *skipped > 0) {
             let theme = theme();
             let hint = theme.fg(ThemeColor::Muted, &format!("... ({skipped} earlier lines,"))
                 + " "
                 + &key_hint("app.tools.expand", "to expand")
                 + &theme.fg(ThemeColor::Muted, ")");
-            let mut rendered = vec![String::new(), truncate_to_width(&hint, width)];
+            let mut rendered = if lead {
+                vec![String::new()]
+            } else {
+                Vec::new()
+            };
+            rendered.push(truncate_to_width(&hint, width));
             rendered.extend(lines);
             return rendered;
         }
-        let mut rendered = vec![String::new()];
+        let mut rendered = if lead {
+            vec![String::new()]
+        } else {
+            Vec::new()
+        };
         rendered.extend(lines);
         rendered
     }
@@ -1101,8 +1114,15 @@ fn rebuild_bash_result_component(
             .join("\n");
 
         if options.expanded {
+            // The badge style stacks the output directly under the command;
+            // the standard style keeps its separating blank row.
+            let lead = if block_style() == BlockStyle::Badge {
+                ""
+            } else {
+                "\n"
+            };
             component.borrow_mut().add_child(component_ref(Text::new(
-                format!("\n{styled_output}"),
+                format!("{lead}{styled_output}"),
                 0,
                 0,
             )));
@@ -1143,9 +1163,14 @@ fn rebuild_bash_result_component(
                 ));
             }
         }
+        let lead = if block_style() == BlockStyle::Badge {
+            ""
+        } else {
+            "\n"
+        };
         component.borrow_mut().add_child(component_ref(Text::new(
             format!(
-                "\n{}",
+                "{lead}{}",
                 theme.fg(ThemeColor::Warning, &format!("[{}]", warnings.join(". ")))
             ),
             0,
@@ -1175,8 +1200,13 @@ fn rebuild_bash_result_component(
             Some(format!("{label} {}", format_duration(elapsed)))
         };
         if let Some(timing) = timing {
+            let lead = if block_style() == BlockStyle::Badge {
+                ""
+            } else {
+                "\n"
+            };
             component.borrow_mut().add_child(component_ref(Text::new(
-                format!("\n{}", theme.fg(ThemeColor::Muted, &timing)),
+                format!("{lead}{}", theme.fg(ThemeColor::Muted, &timing)),
                 0,
                 0,
             )));

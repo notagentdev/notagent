@@ -373,10 +373,28 @@ pub fn set_block_style(style: BlockStyle) {
 /// A state badge: the label uppercased on the state background, the
 /// reference's `block_paint::badge` reduced to our theme surface.
 pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
-    theme.bg(
-        background,
-        &theme.bold(&format!(" {} ", label.to_uppercase().replace('_', " "))),
-    )
+    theme.bg(background, &theme.bold(&badge_label(label)))
+}
+
+/// Like [`badge`], but painted directly in a foreground colour's tone — the
+/// thinking block's grey, for instance (the reference's
+/// `block_paint::color_badge`). The foreground sequence becomes the badge's
+/// background by swapping the ANSI parameter (38 → 48).
+pub fn color_badge(theme: &Theme, color: ThemeColor, label: &str) -> String {
+    let background = fg_ansi_as_bg(theme.get_fg_ansi(color));
+    format!("{background}{}\x1b[49m", theme.bold(&badge_label(label)))
+}
+
+/// Badge labels read as words: uppercase with pill padding, underscores
+/// become spaces (the reference's `badge_label`).
+fn badge_label(label: &str) -> String {
+    format!(" {} ", label.to_uppercase().replace('_', " "))
+}
+
+/// A foreground colour sequence (`38;2;…`/`38;5;…`) as the matching
+/// background sequence.
+fn fg_ansi_as_bg(ansi: &str) -> String {
+    ansi.replace("\x1b[38;", "\x1b[48;")
 }
 
 /// Elapsed time for a running badge: invisible below one second — a
