@@ -52,6 +52,8 @@ fn config() -> SettingsConfig {
         block_style_badge: true,
         // Port addition (v0.1.19), not in the TS oracle fixture.
         atomic_leases: false,
+        // Port addition (v0.1.20), not in the TS oracle fixture.
+        bash_filter: false,
         show_images: false,
         image_width_cells: 80,
         auto_resize_images: true,

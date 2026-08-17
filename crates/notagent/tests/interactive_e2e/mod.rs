@@ -11,6 +11,7 @@
 
 pub mod harness;
 
+mod bash_filter;
 mod edit_no_full_redraw;
 mod harness_check;
 mod leases;

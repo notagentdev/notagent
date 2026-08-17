@@ -805,3 +805,23 @@ fn atomic_leases_are_off_until_they_are_turned_on() {
     assert!(!manager.get_atomic_leases_enabled());
     assert_eq!(global_settings(&harness)["atomicLeases"], json!(false));
 }
+
+/// The bash filter (port addition, v0.1.20): off unless the user turns it on,
+/// and persisted under the `bashFilter` wire name that `/bash-filter` writes.
+#[test]
+fn the_bash_filter_is_off_until_it_is_turned_on() {
+    let harness = harness();
+    let manager = manager(&harness);
+
+    assert!(!manager.get_bash_filter_enabled());
+
+    manager.set_bash_filter_enabled(true);
+    manager.flush();
+    assert!(manager.get_bash_filter_enabled());
+    assert_eq!(global_settings(&harness)["bashFilter"], json!(true));
+
+    manager.set_bash_filter_enabled(false);
+    manager.flush();
+    assert!(!manager.get_bash_filter_enabled());
+    assert_eq!(global_settings(&harness)["bashFilter"], json!(false));
+}

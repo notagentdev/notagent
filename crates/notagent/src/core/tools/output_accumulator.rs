@@ -180,6 +180,17 @@ impl OutputAccumulator {
         }
     }
 
+    /// Writes the collected output to the temp file even when it was never
+    /// large enough to spill there on its own.
+    ///
+    /// Port addition (v0.1.20): the bash filter replaces the output the caller
+    /// sees with a compacted form, and the raw output has to stay reachable
+    /// afterwards. Nothing in the TS original ever needed that, because nothing
+    /// there rewrote a finished output.
+    pub fn persist(&mut self) {
+        self.ensure_temp_file();
+    }
+
     pub fn get_last_line_bytes(&self) -> usize {
         self.current_line_bytes
     }

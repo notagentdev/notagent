@@ -176,6 +176,9 @@ pub struct SettingsConfig {
     /// Atomic file leases (port addition, v0.1.19): off by default, also
     /// reachable as `/leases on|off`.
     pub atomic_leases: bool,
+    /// Bash filter (port addition, v0.1.20): off by default, also reachable as
+    /// `/bash-filter on|off`.
+    pub bash_filter: bool,
 }
 
 impl Default for SettingsConfig {
@@ -184,6 +187,7 @@ impl Default for SettingsConfig {
             auto_compact: false,
             block_style_badge: true,
             atomic_leases: false,
+            bash_filter: false,
             show_images: false,
             image_width_cells: 0,
             auto_resize_images: false,
@@ -227,6 +231,8 @@ pub struct SettingsCallbacks {
     pub on_block_style_change: Box<dyn FnMut(bool)>,
     /// Atomic file leases toggle (v0.1.19).
     pub on_atomic_leases_change: Box<dyn FnMut(bool)>,
+    /// Bash filter toggle (v0.1.20).
+    pub on_bash_filter_change: Box<dyn FnMut(bool)>,
     pub on_show_images_change: Box<dyn FnMut(bool)>,
     pub on_image_width_cells_change: Box<dyn FnMut(u64)>,
     pub on_auto_resize_images_change: Box<dyn FnMut(bool)>,
@@ -266,6 +272,7 @@ impl Default for SettingsCallbacks {
             on_auto_compact_change: Box::new(|_| {}),
             on_block_style_change: Box::new(|_| {}),
             on_atomic_leases_change: Box::new(|_| {}),
+            on_bash_filter_change: Box::new(|_| {}),
             on_show_images_change: Box::new(|_| {}),
             on_image_width_cells_change: Box::new(|_| {}),
             on_auto_resize_images_change: Box::new(|_| {}),
@@ -1045,6 +1052,17 @@ impl SettingsSelectorComponent {
                 submenu: None,
             },
             SettingItem {
+                id: "bash-filter".to_string(),
+                label: "Bash filter".to_string(),
+                description: Some(
+                    "Compact the output of supported bash commands before it enters the context. The raw output stays reachable. Also reachable as /bash-filter on|off."
+                        .to_string(),
+                ),
+                current_value: bool_value(config.bash_filter),
+                values: Some(vec!["true".to_string(), "false".to_string()]),
+                submenu: None,
+            },
+            SettingItem {
                 id: "quiet-startup".to_string(),
                 label: "Quiet startup".to_string(),
                 description: Some("Disable verbose printing at startup".to_string()),
@@ -1421,6 +1439,7 @@ impl SettingsSelectorComponent {
                     "autocompact" => (callbacks.on_auto_compact_change)(new_value == "true"),
                     "block-style" => (callbacks.on_block_style_change)(new_value == "badge"),
                     "atomic-leases" => (callbacks.on_atomic_leases_change)(new_value == "true"),
+                    "bash-filter" => (callbacks.on_bash_filter_change)(new_value == "true"),
                     "show-images" => (callbacks.on_show_images_change)(new_value == "true"),
                     "image-width-cells" => {
                         (callbacks.on_image_width_cells_change)(parse_int(new_value))

@@ -26,6 +26,7 @@ use notagent_tui::utils::truncate_to_width;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
+use crate::core::bash_filter::{self, PreparedInvocation};
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::tools::output_accumulator::{
     OutputAccumulator, OutputAccumulatorOptions, OutputSnapshot,
@@ -494,6 +495,11 @@ pub trait BashTaskManager: Send + Sync {
     fn get_task(&self, task_id: &str) -> Option<ManagedTaskSnapshot>;
 }
 
+/// Reads whether the bash filter is enabled, at call time, so
+/// `/bash-filter on|off` applies to the next command rather than the next
+/// session. An absent gate means disabled, which is the port's default.
+pub type BashFilterGate = Arc<dyn Fn() -> bool + Send + Sync>;
+
 /// What the shell tool needs in order to detach a command.
 #[derive(Clone)]
 pub struct BashToolSources {
@@ -520,6 +526,8 @@ pub struct BashToolOptions {
     pub spawn_hook: Option<BashSpawnHook>,
     /// Background-task wiring. Without it the tool runs commands directly.
     pub sources: Option<BashToolSources>,
+    /// Whether the bash filter compacts command output; absent means off.
+    pub bash_filter: Option<BashFilterGate>,
 }
 
 fn bash_base_properties() -> Map<String, Value> {
@@ -793,6 +801,15 @@ impl OutputPipeline {
             .expect("output accumulator mutex")
             .get_last_line_bytes()
     }
+
+    /// Writes the raw output to its temp file, whatever its size, and returns
+    /// the path. `None` when the file could not be created.
+    fn persist_full_output(&self) -> Option<String> {
+        let mut accumulator = self.accumulator.lock().expect("output accumulator mutex");
+        accumulator.persist();
+        accumulator.close_temp_file();
+        accumulator.full_output_path()
+    }
 }
 
 /// `details` as the TS object literal serializes: absent keys for `undefined`.
@@ -849,6 +866,72 @@ fn format_output(
     (text, details)
 }
 
+/// The result text once the bash filter has had its shot at the output.
+///
+/// The filter is a whole-output function, so it runs on the finished snapshot
+/// and never on a chunk. Two cases send the raw output through unchanged: a
+/// filter that did not claim it, and a snapshot that was truncated — a summary
+/// computed from a tail states totals it cannot know ("2 passed" for a run of
+/// five hundred), which is worse than an honest truncation notice.
+///
+/// Deviation from the reference: this port interleaves stdout and stderr into
+/// one stream (`BashExecOptions::on_data` carries no stream tag, inherited from
+/// the TypeScript original), so the filter is handed the merged text as stdout
+/// and an empty stderr. A parser that cannot read the mixture claims nothing
+/// and the raw output remains, which is the same outcome as the filter being
+/// off.
+fn format_output_with_filter(
+    pipeline: &OutputPipeline,
+    snapshot: &OutputSnapshot,
+    prepared: Option<&PreparedInvocation>,
+    cwd: &str,
+    exit_code: Option<i32>,
+    empty_text: &str,
+) -> (String, Option<Value>) {
+    let Some(prepared) = prepared else {
+        return format_output(pipeline, snapshot, empty_text);
+    };
+    if snapshot.truncation.truncated {
+        return format_output(pipeline, snapshot, empty_text);
+    }
+    let filtered = bash_filter::filter_with_cwd(
+        prepared,
+        std::path::Path::new(cwd),
+        &snapshot.content,
+        "",
+        exit_code,
+    );
+    if !filtered.changed {
+        return format_output(pipeline, snapshot, empty_text);
+    }
+    let text = if filtered.stdout.is_empty() {
+        empty_text.to_owned()
+    } else {
+        filtered.stdout
+    };
+    // The compacted form is what the caller reads from here on, so the output
+    // the command actually printed has to stay reachable.
+    let created_temp_file = snapshot.full_output_path.is_none();
+    let Some(full_output_path) = pipeline.persist_full_output() else {
+        return (text, None);
+    };
+    let annotated =
+        format!("{text}\n\n[Compacted by the bash filter. Full output: {full_output_path}]");
+    // The pointer to the raw output is part of what the caller reads, so it
+    // counts. On a short output it costs more than the compaction saved, and
+    // then the raw output is the cheaper answer — the filter's own promise, one
+    // level up.
+    if bash_filter::estimate_tokens(&annotated) >= bash_filter::estimate_tokens(&snapshot.content) {
+        if created_temp_file {
+            let _ = std::fs::remove_file(&full_output_path);
+        }
+        return format_output(pipeline, snapshot, empty_text);
+    }
+    let mut details = Map::new();
+    details.insert("fullOutputPath".to_owned(), Value::String(full_output_path));
+    (annotated, Some(Value::Object(details)))
+}
+
 fn append_status(text: &str, status: &str) -> String {
     if text.is_empty() {
         status.to_owned()
@@ -860,6 +943,11 @@ fn append_status(text: &str, status: &str) -> String {
 pub struct BashToolDefinition {
     cwd: String,
     operations: Arc<dyn BashOperations>,
+    /// Whether `operations` is this machine's shell. The bash filter answers
+    /// `find` and the read commands from the local filesystem, which would be
+    /// the wrong filesystem behind operations that run somewhere else.
+    local_operations: bool,
+    bash_filter: Option<BashFilterGate>,
     command_prefix: Option<String>,
     expose_session_environment: bool,
     spawn_hook: Option<BashSpawnHook>,
@@ -877,6 +965,7 @@ pub fn create_bash_tool_definition(
     options: Option<BashToolOptions>,
 ) -> BashToolDefinition {
     let options = options.unwrap_or_default();
+    let local_operations = options.operations.is_none();
     let operations = options.operations.clone().unwrap_or_else(|| {
         Arc::new(create_local_bash_operations(options.shell_path.clone()))
             as Arc<dyn BashOperations>
@@ -884,6 +973,8 @@ pub fn create_bash_tool_definition(
     BashToolDefinition {
         cwd: cwd.to_owned(),
         operations,
+        local_operations,
+        bash_filter: options.bash_filter,
         command_prefix: options.command_prefix,
         expose_session_environment: options.expose_session_environment.unwrap_or(true),
         spawn_hook: options.spawn_hook,
@@ -924,6 +1015,92 @@ impl BashToolDefinition {
                 .and_then(|sources| sources.auto_background_on_timeout.as_ref())
                 .map(|allowed| allowed())
                 .unwrap_or(true)
+    }
+
+    /// The prepared invocation for `command`, or `None` when the filter is off.
+    ///
+    /// Prepared from the command the model wrote, not from the prefixed form:
+    /// a command prefix makes the line multi-line, and the classifier refuses
+    /// those — so preparing after the prefix would switch the filter off for
+    /// every session that sets one.
+    fn prepare_filter(&self, command: &str) -> Option<PreparedInvocation> {
+        self.bash_filter
+            .as_ref()
+            .is_some_and(|enabled| enabled())
+            .then(|| bash_filter::prepare(command))
+    }
+
+    /// Whether this call is answered from the filesystem instead of a process.
+    ///
+    /// Only with the local operations: the adapter reads this machine, and
+    /// operations that run elsewhere would be asked about the wrong one.
+    fn uses_execution_override(&self, prepared: Option<&PreparedInvocation>) -> bool {
+        self.local_operations && prepared.is_some_and(PreparedInvocation::uses_execution_override)
+    }
+
+    /// Re-runs the command as the caller wrote it when the rewritten form
+    /// produced output the filter cannot read, and returns that run's result.
+    ///
+    /// `None` when no retry is warranted, which is the overwhelmingly common
+    /// case: only a rewritten search can ask for one. The retry always takes
+    /// the direct execution path, even when the first attempt went through the
+    /// task manager — it corrects a search, which is short and reads nothing
+    /// but the workspace, so registering a second task for it would say more
+    /// than it means.
+    async fn rerun_original(
+        &self,
+        prepared: Option<&PreparedInvocation>,
+        snapshot: &OutputSnapshot,
+        spawn_context: &BashSpawnContext,
+        signal: Option<CancellationToken>,
+        timeout: f64,
+        exit_code: Option<i32>,
+    ) -> Option<Result<AgentToolResult, ToolExecutionError>> {
+        let prepared = prepared?;
+        if !bash_filter::should_retry_original(prepared, &snapshot.content, exit_code) {
+            return None;
+        }
+        let command = match &self.command_prefix {
+            Some(prefix) => format!("{prefix}\n{}", prepared.original()),
+            None => prepared.original().to_owned(),
+        };
+        let pipeline = OutputPipeline::new(None);
+        let on_data_pipeline = Arc::clone(&pipeline);
+        let result = self
+            .operations
+            .exec(
+                &command,
+                &spawn_context.cwd,
+                BashExecOptions {
+                    on_data: Some(Arc::new(move |data: &[u8]| {
+                        on_data_pipeline.handle_data(data);
+                    })),
+                    signal,
+                    timeout: Some(timeout),
+                    env: Some(spawn_context.env.clone()),
+                    on_spawn: None,
+                },
+            )
+            .await;
+        // A retry that cannot run leaves the first attempt's result standing.
+        let exit_code = result.ok()?.exit_code;
+        let snapshot = pipeline.finish();
+        let (output_text, details) = format_output(&pipeline, &snapshot, "(no output)");
+        if let Some(exit_code) = exit_code
+            && exit_code != 0
+        {
+            return Some(Err(ToolExecutionError::new(append_status(
+                &output_text,
+                &format!("Command exited with code {exit_code}"),
+            ))));
+        }
+        Some(Ok(AgentToolResult {
+            content: vec![TextOrImageContent::Text(TextContent::new(output_text))],
+            details,
+            usage: None,
+            added_tool_names: None,
+            terminate: None,
+        }))
     }
 }
 
@@ -1387,9 +1564,15 @@ impl ToolDefinition for BashToolDefinition {
                 params.get("timeout").and_then(Value::as_f64),
                 starts_in_background,
             )?;
+            // The filter is prepared from what the model wrote; the rewrite it
+            // proposes is what actually runs, and the prefix wraps that.
+            let prepared = self.prepare_filter(&command);
+            let execution_command = prepared
+                .as_ref()
+                .map_or(command.as_str(), PreparedInvocation::execution);
             let resolved_command = match &self.command_prefix {
-                Some(prefix) => format!("{prefix}\n{command}"),
-                None => command.clone(),
+                Some(prefix) => format!("{prefix}\n{execution_command}"),
+                None => execution_command.to_owned(),
             };
             let spawn_context = resolve_spawn_context(
                 &resolved_command,
@@ -1399,11 +1582,72 @@ impl ToolDefinition for BashToolDefinition {
                 context.as_ref(),
             );
 
-            let pipeline = OutputPipeline::new(on_update.clone());
+            // A system filter reshapes output whose form it asked for, so the
+            // live stream would contradict the result. Those calls stay quiet
+            // until they are done; everything else streams as before.
+            let buffers_live_output = prepared
+                .as_ref()
+                .is_some_and(PreparedInvocation::buffers_live_output);
+            let pipeline = OutputPipeline::new(if buffers_live_output {
+                None
+            } else {
+                on_update.clone()
+            });
             if let Some(on_update) = &on_update {
                 on_update(AgentToolResult {
                     content: Vec::new(),
                     details: None,
+                    usage: None,
+                    added_tool_names: None,
+                    terminate: None,
+                });
+            }
+
+            // `find` and the read commands are answered from the filesystem, no
+            // child process involved. Never for a backgrounded call: a
+            // background job has to stream and be killable, and an adapter
+            // provides neither.
+            if !starts_in_background && self.uses_execution_override(prepared.as_ref()) {
+                let executed = {
+                    let prepared = prepared
+                        .clone()
+                        .expect("override implies a prepared filter");
+                    let cwd = std::path::PathBuf::from(&spawn_context.cwd);
+                    tokio::task::spawn_blocking(move || {
+                        bash_filter::execute_override(&prepared, &cwd)
+                    })
+                    .await
+                    .map_err(|error| {
+                        ToolExecutionError::new(format!("bash filter task failed: {error}"))
+                    })?
+                };
+                let Some(executed) = executed else {
+                    return Err(ToolExecutionError::new(
+                        "bash filter declared an execution override but produced none",
+                    ));
+                };
+                pipeline.handle_data(executed.stdout.as_bytes());
+                pipeline.handle_data(executed.stderr.as_bytes());
+                let snapshot = pipeline.finish();
+                let (output_text, details) = format_output_with_filter(
+                    &pipeline,
+                    &snapshot,
+                    prepared.as_ref(),
+                    &spawn_context.cwd,
+                    executed.exit_code,
+                    "(no output)",
+                );
+                if let Some(exit_code) = executed.exit_code
+                    && exit_code != 0
+                {
+                    return Err(ToolExecutionError::new(append_status(
+                        &output_text,
+                        &format!("Command exited with code {exit_code}"),
+                    )));
+                }
+                return Ok(AgentToolResult {
+                    content: vec![TextOrImageContent::Text(TextContent::new(output_text))],
+                    details,
                     usage: None,
                     added_tool_names: None,
                     terminate: None,
@@ -1452,6 +1696,13 @@ impl ToolDefinition for BashToolDefinition {
                     starts_in_background,
                     &pipeline,
                     timeout,
+                    ManagedFilter {
+                        tool: self,
+                        prepared: prepared.as_ref(),
+                        spawn_context: &spawn_context,
+                        signal: signal.clone(),
+                        timeout,
+                    },
                 )
                 .await;
             }
@@ -1478,7 +1729,14 @@ impl ToolDefinition for BashToolDefinition {
                 Ok(result) => result.exit_code,
                 Err(error) => {
                     let snapshot = pipeline.finish();
-                    let (text, _) = format_output(&pipeline, &snapshot, "");
+                    let (text, _) = format_output_with_filter(
+                        &pipeline,
+                        &snapshot,
+                        prepared.as_ref(),
+                        &spawn_context.cwd,
+                        None,
+                        "",
+                    );
                     return Err(match error {
                         BashExecError::Aborted => {
                             ToolExecutionError::new(append_status(&text, "Command aborted"))
@@ -1493,7 +1751,31 @@ impl ToolDefinition for BashToolDefinition {
             };
 
             let snapshot = pipeline.finish();
-            let (output_text, details) = format_output(&pipeline, &snapshot, "(no output)");
+            // A rewritten search whose output will not parse is re-run as the
+            // caller wrote it: the rewrite asked for a machine-readable shape
+            // and did not get one, so what is on screen is neither the caller's
+            // form nor one the filter can read.
+            if let Some(retried) = self
+                .rerun_original(
+                    prepared.as_ref(),
+                    &snapshot,
+                    &spawn_context,
+                    signal.clone(),
+                    timeout,
+                    exit_code,
+                )
+                .await
+            {
+                return retried;
+            }
+            let (output_text, details) = format_output_with_filter(
+                &pipeline,
+                &snapshot,
+                prepared.as_ref(),
+                &spawn_context.cwd,
+                exit_code,
+                "(no output)",
+            );
             if let Some(exit_code) = exit_code
                 && exit_code != 0
             {
@@ -1529,6 +1811,17 @@ fn truncate_command_label(command: &str) -> String {
 /// it, which happens either because the command ended or because it was moved to
 /// the background — by the user, or by its own deadline. Both are ordinary
 /// outcomes here rather than errors.
+/// What a managed run needs in order to filter its output the way a direct one
+/// does: the prepared invocation, where it ran, and enough of the tool to re-run
+/// the caller's own command when the rewritten one produced nothing readable.
+struct ManagedFilter<'a> {
+    tool: &'a BashToolDefinition,
+    prepared: Option<&'a PreparedInvocation>,
+    spawn_context: &'a BashSpawnContext,
+    signal: Option<CancellationToken>,
+    timeout: f64,
+}
+
 async fn run_managed(
     manager: &dyn BashTaskManager,
     task: ShellTaskSpec,
@@ -1536,7 +1829,10 @@ async fn run_managed(
     starts_in_background: bool,
     pipeline: &OutputPipeline,
     timeout_seconds: f64,
+    filter: ManagedFilter<'_>,
 ) -> Result<AgentToolResult, ToolExecutionError> {
+    let cwd = filter.spawn_context.cwd.as_str();
+    let prepared = filter.prepared;
     let description = task.description.clone();
     let task_id = manager
         .register_shell_task(task, options)
@@ -1560,7 +1856,7 @@ async fn run_managed(
         Some(ForegroundRelease::Detached | ForegroundRelease::TimeoutDetached)
     ) {
         let snapshot = pipeline.finish();
-        let (text, _) = format_output(pipeline, &snapshot, "");
+        let (text, _) = format_output_with_filter(pipeline, &snapshot, prepared, cwd, None, "");
         let header = render_detached_result(
             &task_id,
             &description,
@@ -1582,8 +1878,24 @@ async fn run_managed(
     }
 
     let info = manager.get_task(&task_id);
+    let exit_code = info.as_ref().and_then(|info| info.exit_code);
     let snapshot = pipeline.finish();
-    let (output_text, details) = format_output(pipeline, &snapshot, "(no output)");
+    if let Some(retried) = filter
+        .tool
+        .rerun_original(
+            prepared,
+            &snapshot,
+            filter.spawn_context,
+            filter.signal.clone(),
+            filter.timeout,
+            exit_code,
+        )
+        .await
+    {
+        return retried;
+    }
+    let (output_text, details) =
+        format_output_with_filter(pipeline, &snapshot, prepared, cwd, exit_code, "(no output)");
     if let Some(info) = &info {
         if info.status == TaskStatus::TimedOut {
             return Err(ToolExecutionError::new(append_status(
@@ -1598,7 +1910,6 @@ async fn run_managed(
             )));
         }
     }
-    let exit_code = info.as_ref().and_then(|info| info.exit_code);
     if info
         .as_ref()
         .is_some_and(|info| info.status == TaskStatus::Failed)

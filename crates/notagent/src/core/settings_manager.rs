@@ -224,6 +224,10 @@ settings_struct!(
     /// Port addition (v0.1.19): gate of the atomic file leases the mutating
     /// file tools take; absent = off (user decision 2026-08-17).
     atomic_leases: bool,
+    /// Port addition (v0.1.20): gate of the bash filter, which compacts the
+    /// output of supported shell commands; absent = off (user decision
+    /// 2026-08-17).
+    bash_filter: bool,
     /// Port addition (v0.1.9): chat-block style, "standard" | "badge";
     /// absent = badge (user decision 2026-08-17).
     block_style: String,
@@ -1035,6 +1039,17 @@ impl SettingsManager {
 
     pub fn set_atomic_leases_enabled(&self, enabled: bool) {
         self.set_global_field("atomicLeases", Value::from(enabled));
+    }
+
+    /// The bash-filter gate (port addition, v0.1.20). Absent means disabled:
+    /// the filter replaces what the model reads with a compacted form, which
+    /// is a trade the user opts into with `/bash-filter on`.
+    pub fn get_bash_filter_enabled(&self) -> bool {
+        self.settings_snapshot().bash_filter.unwrap_or(false)
+    }
+
+    pub fn set_bash_filter_enabled(&self, enabled: bool) {
+        self.set_global_field("bashFilter", Value::from(enabled));
     }
 
     pub fn get_subagent_provider(&self) -> Option<String> {

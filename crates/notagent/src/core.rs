@@ -6,6 +6,7 @@ pub mod agent_session_services;
 pub mod auth_guidance;
 pub mod auth_storage;
 pub mod bash_executor;
+pub mod bash_filter;
 pub mod cache_stats;
 pub mod compaction;
 pub mod defaults;

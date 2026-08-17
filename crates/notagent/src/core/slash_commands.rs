@@ -87,6 +87,13 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
         "Toggle atomic file leases for the mutating file tools (default: off)",
         "[on|off]",
     ),
+    // Addition over the TS original (user decision 2026-08-17, v0.1.20): the
+    // command form of the reference's shell-output filter setting.
+    command_with_hint(
+        "bash-filter",
+        "Toggle compaction of bash output before it enters the context (default: off)",
+        "[on|off]",
+    ),
     // Addition over the TS original (user decision 2026-08-17, v0.1.11): the
     // command form of the thinking-block toggle, which the TS original only
     // bound to a key.
@@ -157,6 +164,8 @@ mod tests {
                 "index",
                 // Port addition (user decision, v0.1.19), not in the TS list.
                 "leases",
+                // Port addition (user decision, v0.1.20), not in the TS list.
+                "bash-filter",
                 // Port addition (user decision, v0.1.11), not in the TS list.
                 "thinking",
                 "export",
@@ -190,11 +199,18 @@ mod tests {
             .filter(|command| command.argument_hint.is_some())
             .map(|command| command.name)
             .collect();
-        // `subagent-model`, `index` and `leases` are port additions (user
-        // decisions, v0.1.6/v0.1.7/v0.1.19).
+        // `subagent-model`, `index`, `leases` and `bash-filter` are port
+        // additions (user decisions, v0.1.6/v0.1.7/v0.1.19/v0.1.20).
         assert_eq!(
             with_hint,
-            vec!["model", "subagent-model", "index", "leases", "login"]
+            vec![
+                "model",
+                "subagent-model",
+                "index",
+                "leases",
+                "bash-filter",
+                "login"
+            ]
         );
     }
 }

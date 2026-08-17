@@ -1510,6 +1510,7 @@ impl AgentSession {
         let bash_options = BashToolOptions {
             command_prefix: shell_command_prefix.clone(),
             shell_path: shell_path.clone(),
+            bash_filter: Some(self.bash_filter_gate()),
             sources: Some(BashToolSources {
                 manager: {
                     let weak = Arc::downgrade(self);
@@ -1623,6 +1624,9 @@ impl AgentSession {
                 // takes leases on the same terms — without this the feature
                 // would miss exactly the concurrency it exists for.
                 let leases = self.lease_gate();
+                // The same reasoning for the bash filter: a delegated `cargo
+                // test` floods the context exactly as a direct one would.
+                let bash_filter = self.bash_filter_gate();
                 Arc::new(move || {
                     Some(ToolsOptions {
                         read: Some(ReadToolOptions {
@@ -1632,6 +1636,7 @@ impl AgentSession {
                         bash: Some(BashToolOptions {
                             command_prefix: shell_command_prefix.clone(),
                             shell_path: shell_path.clone(),
+                            bash_filter: Some(Arc::clone(&bash_filter)),
                             ..BashToolOptions::default()
                         }),
                         find_codebase: Some(find_codebase.clone()),
@@ -1713,6 +1718,14 @@ impl AgentSession {
     fn lease_gate(&self) -> crate::core::tools::file_lease::LeaseGate {
         let settings = Arc::clone(&self.settings_manager);
         Arc::new(move || settings.get_atomic_leases_enabled())
+    }
+
+    /// The bash-filter gate, read from settings at call time so
+    /// `/bash-filter on|off` applies without a session restart. Absent session
+    /// → disabled, which is the port's default.
+    fn bash_filter_gate(&self) -> crate::core::tools::bash::BashFilterGate {
+        let settings = Arc::clone(&self.settings_manager);
+        Arc::new(move || settings.get_bash_filter_enabled())
     }
 
     /// The `find_codebase` gate, read from settings at call time so `/index

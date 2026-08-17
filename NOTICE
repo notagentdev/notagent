@@ -1,0 +1,24 @@
+Third-party notices
+===================
+
+Bash filter
+-----------
+
+The bash filter in `crates/notagent/src/core/bash_filter/` — its 63 declarative
+filter definitions, its native post-processors and its system adapters —
+derives from the following work:
+
+    RTK (Rust Token Killer)
+    Copyright the RTK authors
+    https://github.com/rtk-ai/rtk
+    Licensed under the Apache License, Version 2.0
+    Baseline taken at commit 5d32d0736f686b69d1e8b9dc45c007d4eb77a0a2 (0.42.4)
+
+A copy of the Apache License, Version 2.0 is available at
+https://www.apache.org/licenses/LICENSE-2.0
+
+Changes made in this port: the command-line interface, the process runner, the
+streaming and tee layers, the trust store, usage tracking, telemetry, the
+session scanner and the editor hook integrations were not carried over. What
+remains is a buffered library API with the built-in filter inventory embedded
+at compile time, and it does not read filter definitions from the filesystem.

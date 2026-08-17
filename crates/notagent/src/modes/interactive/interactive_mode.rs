@@ -3735,6 +3735,31 @@ impl InteractiveMode {
         });
     }
 
+    /// `/bash-filter` (port addition, v0.1.20) — the command form of the
+    /// reference's shell-output filter setting: `on`/`off` set the gate, an
+    /// omitted argument toggles it. Off by default (user decision 2026-08-17);
+    /// the gate is read at call time, so the next `bash` call already follows
+    /// the new state.
+    fn handle_bash_filter_command(&mut self, argument: Option<&str>) {
+        let enabled = match argument {
+            Some(argument) if argument.eq_ignore_ascii_case("on") => true,
+            Some(argument) if argument.eq_ignore_ascii_case("off") => false,
+            Some(other) => {
+                self.show_error(&format!(
+                    "Unknown /bash-filter argument: {other} (use on|off)"
+                ));
+                return;
+            }
+            None => !self.settings().get_bash_filter_enabled(),
+        };
+        self.settings().set_bash_filter_enabled(enabled);
+        self.show_status(if enabled {
+            "Bash filter: enabled"
+        } else {
+            "Bash filter: disabled"
+        });
+    }
+
     /// Runs the build on a blocking thread and streams progress into the
     /// status line via [`UiMessage::IndexBuildProgress`].
     fn start_index_build(&mut self) {
@@ -3908,6 +3933,7 @@ impl InteractiveMode {
             warnings: settings.get_warnings(),
             block_style_badge: settings.get_block_style_badge(),
             atomic_leases: settings.get_atomic_leases_enabled(),
+            bash_filter: settings.get_bash_filter_enabled(),
         };
 
         let callbacks = SettingsCallbacks {
@@ -3939,6 +3965,10 @@ impl InteractiveMode {
             on_atomic_leases_change: {
                 let settings = Arc::clone(&settings);
                 Box::new(move |enabled| settings.set_atomic_leases_enabled(enabled))
+            },
+            on_bash_filter_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |enabled| settings.set_bash_filter_enabled(enabled))
             },
             on_show_images_change: {
                 let settings = Arc::clone(&settings);
@@ -6286,6 +6316,14 @@ impl InteractiveMode {
                 let leases_argument = argument("/leases ");
                 self.clear_editor_text();
                 self.handle_leases_command(leases_argument.as_deref());
+            }
+            // Addition over the TS original (user decision 2026-08-17,
+            // v0.1.20): the command form of the reference's shell-output
+            // filter setting.
+            _ if text == "/bash-filter" || text.starts_with("/bash-filter ") => {
+                let filter_argument = argument("/bash-filter ");
+                self.clear_editor_text();
+                self.handle_bash_filter_command(filter_argument.as_deref());
             }
             // Addition over the TS original (user decision 2026-08-17,
             // v0.1.11): the command form of the thinking-block toggle, which
