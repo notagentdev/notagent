@@ -272,8 +272,11 @@ fn shows_the_latest_cache_hit_rate_when_cache_usage_is_present() {
     assert!(stats_line.contains("CH25.0%"), "stats: {stats_line}");
 }
 
+/// A subscription is paid by the month, so the per-token amount is not money
+/// anyone owes; the footer says the tokens are covered and names no figure
+/// (user decision 2026-08-17, v0.1.15).
 #[test]
-fn marks_kimi_coding_costs_as_subscription_estimates() {
+fn a_subscription_reports_no_price() {
     let _guard = guard();
     let session = create_session(SessionOptions {
         session_name: String::new(),
@@ -283,11 +286,14 @@ fn marks_kimi_coding_costs_as_subscription_estimates() {
     });
     let mut footer = themed_footer(session, 1);
 
-    assert!(strip_ansi(&footer.render(120)[1]).contains("$1.234 (sub)"));
+    let stats = strip_ansi(&footer.render(120)[1]);
+    assert!(stats.contains("sub"), "stats: {stats}");
+    assert!(!stats.contains('$'), "no amount at all: {stats}");
+    assert!(!stats.contains("1.234"), "stats: {stats}");
 }
 
 #[test]
-fn marks_explicitly_identified_subscription_auth() {
+fn an_explicitly_identified_subscription_reports_no_price() {
     let _guard = guard();
     let session = create_session(SessionOptions {
         session_name: String::new(),
@@ -297,7 +303,9 @@ fn marks_explicitly_identified_subscription_auth() {
     });
     let mut footer = themed_footer(session, 1);
 
-    assert!(strip_ansi(&footer.render(120)[1]).contains("$0.000 (sub)"));
+    let stats = strip_ansi(&footer.render(120)[1]);
+    assert!(stats.contains("sub"), "stats: {stats}");
+    assert!(!stats.contains('$'), "no amount at all: {stats}");
 }
 
 #[test]
@@ -311,7 +319,8 @@ fn does_not_mark_generic_oauth_sign_in_as_a_subscription() {
     });
     let mut footer = themed_footer(session, 1);
 
+    // Paid per token, so the amount is real money and stays on screen.
     let stats = strip_ansi(&footer.render(120)[1]);
     assert!(stats.contains("$1.234"), "stats: {stats}");
-    assert!(!stats.contains("(sub)"), "stats: {stats}");
+    assert!(!stats.contains("sub"), "stats: {stats}");
 }

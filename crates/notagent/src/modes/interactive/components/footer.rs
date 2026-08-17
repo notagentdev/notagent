@@ -356,9 +356,14 @@ impl Component for FooterComponent {
         let using_subscription = model.as_ref().is_some_and(|model| {
             model.provider == "kimi-coding" || self.session.is_using_subscription(&model.provider)
         });
-        if usage_totals.cost != 0.0 || using_subscription {
-            let subscription = if using_subscription { " (sub)" } else { "" };
-            stats_parts.push(format!("${:.3}{subscription}", usage_totals.cost));
+        // A subscription is paid for by the month, so the per-token figure is
+        // not money anyone owes — showing it invites reading a bill into it.
+        // The marker stays: it says the tokens are covered (user decision
+        // 2026-08-17, v0.1.15; the reference prints the amount beside it).
+        if using_subscription {
+            stats_parts.push("sub".to_string());
+        } else if usage_totals.cost != 0.0 {
+            stats_parts.push(format!("${:.3}", usage_totals.cost));
         }
 
         // Colorize context percentage based on usage
