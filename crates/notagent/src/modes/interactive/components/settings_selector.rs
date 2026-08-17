@@ -173,6 +173,9 @@ pub struct SettingsConfig {
     /// Chat-block style (port addition, v0.1.9): true = badge (the default,
     /// user decision 2026-08-17), false = standard filled surface.
     pub block_style_badge: bool,
+    /// Atomic file leases (port addition, v0.1.19): off by default, also
+    /// reachable as `/leases on|off`.
+    pub atomic_leases: bool,
 }
 
 impl Default for SettingsConfig {
@@ -180,6 +183,7 @@ impl Default for SettingsConfig {
         Self {
             auto_compact: false,
             block_style_badge: true,
+            atomic_leases: false,
             show_images: false,
             image_width_cells: 0,
             auto_resize_images: false,
@@ -221,6 +225,8 @@ pub struct SettingsCallbacks {
     pub on_auto_compact_change: Box<dyn FnMut(bool)>,
     /// Chat-block style toggle (v0.1.9): true = badge.
     pub on_block_style_change: Box<dyn FnMut(bool)>,
+    /// Atomic file leases toggle (v0.1.19).
+    pub on_atomic_leases_change: Box<dyn FnMut(bool)>,
     pub on_show_images_change: Box<dyn FnMut(bool)>,
     pub on_image_width_cells_change: Box<dyn FnMut(u64)>,
     pub on_auto_resize_images_change: Box<dyn FnMut(bool)>,
@@ -259,6 +265,7 @@ impl Default for SettingsCallbacks {
         Self {
             on_auto_compact_change: Box::new(|_| {}),
             on_block_style_change: Box::new(|_| {}),
+            on_atomic_leases_change: Box::new(|_| {}),
             on_show_images_change: Box::new(|_| {}),
             on_image_width_cells_change: Box::new(|_| {}),
             on_auto_resize_images_change: Box::new(|_| {}),
@@ -1027,6 +1034,17 @@ impl SettingsSelectorComponent {
                 submenu: None,
             },
             SettingItem {
+                id: "atomic-leases".to_string(),
+                label: "Atomic leases".to_string(),
+                description: Some(
+                    "Reserve a file before write, edit or patch_minified changes it, so several agents in one workspace cannot overwrite each other. Also reachable as /leases on|off."
+                        .to_string(),
+                ),
+                current_value: bool_value(config.atomic_leases),
+                values: Some(vec!["true".to_string(), "false".to_string()]),
+                submenu: None,
+            },
+            SettingItem {
                 id: "quiet-startup".to_string(),
                 label: "Quiet startup".to_string(),
                 description: Some("Disable verbose printing at startup".to_string()),
@@ -1402,6 +1420,7 @@ impl SettingsSelectorComponent {
                 match id {
                     "autocompact" => (callbacks.on_auto_compact_change)(new_value == "true"),
                     "block-style" => (callbacks.on_block_style_change)(new_value == "badge"),
+                    "atomic-leases" => (callbacks.on_atomic_leases_change)(new_value == "true"),
                     "show-images" => (callbacks.on_show_images_change)(new_value == "true"),
                     "image-width-cells" => {
                         (callbacks.on_image_width_cells_change)(parse_int(new_value))

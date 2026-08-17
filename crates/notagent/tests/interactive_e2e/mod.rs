@@ -13,6 +13,7 @@ pub mod harness;
 
 mod edit_no_full_redraw;
 mod harness_check;
+mod leases;
 mod prompt_roundtrip;
 mod resize;
 mod selectors;

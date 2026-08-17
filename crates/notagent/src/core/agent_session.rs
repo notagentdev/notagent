@@ -1498,11 +1498,14 @@ impl AgentSession {
         shell_path: Option<String>,
     ) -> ToolsOptions {
         use crate::core::tools::bash::{BashToolOptions, BashToolSources};
+        use crate::core::tools::edit::EditToolOptions;
+        use crate::core::tools::patch_minified::PatchMinifiedToolOptions;
         use crate::core::tools::read::ReadToolOptions;
         use crate::core::tools::skill::{SkillToolSkill, SkillToolSources};
         use crate::core::tools::task::{TaskToolSources, TaskTranscriptStore};
         use crate::core::tools::task_tools::TaskToolsSources;
         use crate::core::tools::todo_write::TodoWriteToolSources;
+        use crate::core::tools::write::WriteToolOptions;
 
         let bash_options = BashToolOptions {
             command_prefix: shell_command_prefix.clone(),
@@ -1616,6 +1619,10 @@ impl AgentSession {
             // background work" structural rather than a rule it could ignore.
             tool_options: Some({
                 let find_codebase = self.find_codebase_options();
+                // A subagent mutates the same workspace as its parent, so it
+                // takes leases on the same terms — without this the feature
+                // would miss exactly the concurrency it exists for.
+                let leases = self.lease_gate();
                 Arc::new(move || {
                     Some(ToolsOptions {
                         read: Some(ReadToolOptions {
@@ -1628,6 +1635,22 @@ impl AgentSession {
                             ..BashToolOptions::default()
                         }),
                         find_codebase: Some(find_codebase.clone()),
+                        write: Some(WriteToolOptions {
+                            leases: Some(Arc::clone(&leases)),
+                            ..WriteToolOptions::default()
+                        }),
+                        edit: Some(EditToolOptions {
+                            leases: Some(Arc::clone(&leases)),
+                            ..EditToolOptions::default()
+                        }),
+                        patch_minified: Some(PatchMinifiedToolOptions {
+                            leases: Some(Arc::clone(&leases)),
+                            ..PatchMinifiedToolOptions::default()
+                        }),
+                        multi_patch_minified: Some(PatchMinifiedToolOptions {
+                            leases: Some(Arc::clone(&leases)),
+                            ..PatchMinifiedToolOptions::default()
+                        }),
                         ..ToolsOptions::default()
                     })
                 })
@@ -1664,8 +1687,32 @@ impl AgentSession {
                 },
             }),
             find_codebase: Some(self.find_codebase_options()),
+            write: Some(WriteToolOptions {
+                leases: Some(self.lease_gate()),
+                ..WriteToolOptions::default()
+            }),
+            edit: Some(EditToolOptions {
+                leases: Some(self.lease_gate()),
+                ..EditToolOptions::default()
+            }),
+            patch_minified: Some(PatchMinifiedToolOptions {
+                leases: Some(self.lease_gate()),
+                ..PatchMinifiedToolOptions::default()
+            }),
+            multi_patch_minified: Some(PatchMinifiedToolOptions {
+                leases: Some(self.lease_gate()),
+                ..PatchMinifiedToolOptions::default()
+            }),
             ..ToolsOptions::default()
         }
+    }
+
+    /// The atomic-lease gate of the mutating file tools, read from settings at
+    /// call time so `/leases on|off` applies without a session restart. Absent
+    /// session → disabled, which is the port's default.
+    fn lease_gate(&self) -> crate::core::tools::file_lease::LeaseGate {
+        let settings = Arc::clone(&self.settings_manager);
+        Arc::new(move || settings.get_atomic_leases_enabled())
     }
 
     /// The `find_codebase` gate, read from settings at call time so `/index

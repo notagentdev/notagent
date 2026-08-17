@@ -221,6 +221,9 @@ settings_struct!(
     subagent_model: String,
     /// Port addition (v0.1.7): gate of the `find_codebase` tool; absent = on.
     find_codebase_enabled: bool,
+    /// Port addition (v0.1.19): gate of the atomic file leases the mutating
+    /// file tools take; absent = off (user decision 2026-08-17).
+    atomic_leases: bool,
     /// Port addition (v0.1.9): chat-block style, "standard" | "badge";
     /// absent = badge (user decision 2026-08-17).
     block_style: String,
@@ -1020,6 +1023,18 @@ impl SettingsManager {
 
     pub fn set_find_codebase_enabled(&self, enabled: bool) {
         self.set_global_field("findCodebaseEnabled", Value::from(enabled));
+    }
+
+    /// The atomic-lease gate of the mutating file tools (port addition,
+    /// v0.1.19). Absent means disabled: leases coordinate several agent
+    /// processes in one workspace, which is not what a single session needs,
+    /// so they are opt-in via `/leases on`.
+    pub fn get_atomic_leases_enabled(&self) -> bool {
+        self.settings_snapshot().atomic_leases.unwrap_or(false)
+    }
+
+    pub fn set_atomic_leases_enabled(&self, enabled: bool) {
+        self.set_global_field("atomicLeases", Value::from(enabled));
     }
 
     pub fn get_subagent_provider(&self) -> Option<String> {

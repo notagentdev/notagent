@@ -785,3 +785,23 @@ fn writes_typed_list_and_model_settings() {
     assert_eq!(manager.get_enabled_models(), None);
     assert!(global_settings(&harness).get("enabledModels").is_none());
 }
+
+/// Atomic file leases (port addition, v0.1.19): off unless the user turns them
+/// on, and persisted under the `atomicLeases` wire name that `/leases` writes.
+#[test]
+fn atomic_leases_are_off_until_they_are_turned_on() {
+    let harness = harness();
+    let manager = manager(&harness);
+
+    assert!(!manager.get_atomic_leases_enabled());
+
+    manager.set_atomic_leases_enabled(true);
+    manager.flush();
+    assert!(manager.get_atomic_leases_enabled());
+    assert_eq!(global_settings(&harness)["atomicLeases"], json!(true));
+
+    manager.set_atomic_leases_enabled(false);
+    manager.flush();
+    assert!(!manager.get_atomic_leases_enabled());
+    assert_eq!(global_settings(&harness)["atomicLeases"], json!(false));
+}

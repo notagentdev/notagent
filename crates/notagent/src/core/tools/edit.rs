@@ -21,6 +21,7 @@ use crate::core::tools::edit_diff::{
     DiffString, Edit, apply_edits_to_normalized_content, compute_edits_diff, detect_line_ending,
     generate_diff_string, generate_unified_patch, normalize_to_lf, restore_line_endings, strip_bom,
 };
+use crate::core::tools::file_lease::{LeaseCoordinator, LeaseGate};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
 use crate::core::tools::render_utils::{render_tool_path, str_arg};
@@ -132,14 +133,20 @@ fn error_code(error: &std::io::Error) -> String {
 #[derive(Clone, Default)]
 pub struct EditToolOptions {
     pub operations: Option<Arc<dyn EditOperations>>,
+    /// Whether atomic file leases are enabled; absent means disabled.
+    pub leases: Option<LeaseGate>,
 }
 
 pub struct EditToolDefinition {
     cwd: String,
     operations: Arc<dyn EditOperations>,
+    leases: LeaseCoordinator,
     parameters: Value,
     constrained_sampling: Option<ConstrainedSampling>,
 }
+
+/// How long an `edit` expects to hold its lease (the reference's `fs_patch`).
+const EDIT_LEASE_DURATION_MS: u64 = 30_000;
 
 pub fn create_edit_tool_definition(
     cwd: &str,
@@ -151,6 +158,7 @@ pub fn create_edit_tool_definition(
         operations: options
             .operations
             .unwrap_or_else(|| Arc::new(LocalEditOperations)),
+        leases: LeaseCoordinator::new(cwd, options.leases),
         parameters: edit_schema(),
         constrained_sampling: get_experimental_tool_sampling(),
     }
@@ -718,70 +726,116 @@ impl ToolDefinition for EditToolDefinition {
                 };
 
                 throw_if_aborted()?;
-                if let Err(error) = self.operations.access(&absolute_path).await {
+                // Reserved inside the mutation queue, which already serializes
+                // this process: a lease conflict therefore always names a
+                // foreign holder, never a second call of our own. `None` when
+                // leases are off, and every lease step below is then a no-op.
+                let lease = self
+                    .leases
+                    .reserve(
+                        std::path::Path::new(&absolute_path),
+                        self.name(),
+                        EDIT_LEASE_DURATION_MS,
+                    )
+                    .await
+                    .map_err(|error| ToolExecutionError::new(error.to_string()))?;
+
+                let result = async {
                     throw_if_aborted()?;
-                    return Err(ToolExecutionError::new(format!(
-                        "Could not edit file: {path}. {error}."
-                    )));
+                    if let Err(error) = self.operations.access(&absolute_path).await {
+                        throw_if_aborted()?;
+                        return Err(ToolExecutionError::new(format!(
+                            "Could not edit file: {path}. {error}."
+                        )));
+                    }
+                    throw_if_aborted()?;
+
+                    let bytes = self
+                        .operations
+                        .read_file(&absolute_path)
+                        .await
+                        .map_err(ToolExecutionError::new)?;
+                    // Deviation from the TS original (user decision 2026-08-16,
+                    // v0.1.4): Node decodes invalid UTF-8 lossily and the TS tool
+                    // writes the U+FFFD replacements back, permanently corrupting
+                    // bytes the edit never touched. Refusing is the only safe
+                    // answer a byte-exact port can give.
+                    let raw_content = String::from_utf8(bytes).map_err(|_| {
+                        ToolExecutionError::new(format!(
+                            "Could not edit file: {path}. The file is not valid UTF-8 \
+                             (binary or unsupported encoding); editing it would corrupt \
+                             bytes outside the edited range."
+                        ))
+                    })?;
+                    throw_if_aborted()?;
+
+                    // The model never includes an invisible BOM in oldText.
+                    let (bom, content) = strip_bom(&raw_content);
+                    let original_ending = detect_line_ending(content);
+                    let normalized_content = normalize_to_lf(content);
+                    let applied =
+                        apply_edits_to_normalized_content(&normalized_content, &edits, &path)
+                            .map_err(ToolExecutionError::new)?;
+                    throw_if_aborted()?;
+
+                    let final_content = format!(
+                        "{bom}{}",
+                        restore_line_endings(&applied.new_content, original_ending)
+                    );
+
+                    // The pre-commit check runs immediately before the write: the
+                    // lease must still be ours and the file must still hold the
+                    // content we read the edits against.
+                    let committed = match &lease {
+                        Some(lease) => Some(
+                            self.leases
+                                .prepare_commit(lease.clone())
+                                .await
+                                .map_err(|error| ToolExecutionError::new(error.to_string()))?,
+                        ),
+                        None => None,
+                    };
+
+                    self.operations
+                        .write_file(&absolute_path, &final_content)
+                        .await
+                        .map_err(ToolExecutionError::new)?;
+
+                    if let Some(committed) = &committed {
+                        self.leases
+                            .release(committed)
+                            .await
+                            .map_err(|error| ToolExecutionError::new(error.to_string()))?;
+                    }
+                    throw_if_aborted()?;
+
+                    let diff = generate_diff_string(&applied.base_content, &applied.new_content, 4);
+                    let patch = generate_unified_patch(
+                        &path,
+                        &applied.base_content,
+                        &applied.new_content,
+                        4,
+                    );
+                    let mut details = Map::new();
+                    details.insert("diff".to_owned(), Value::from(diff.diff));
+                    details.insert("patch".to_owned(), Value::from(patch));
+                    if let Some(first_changed_line) = diff.first_changed_line {
+                        details.insert("firstChangedLine".to_owned(), json!(first_changed_line));
+                    }
+                    Ok(AgentToolResult {
+                        content: vec![TextOrImageContent::Text(TextContent::new(format!(
+                            "Successfully replaced {} block(s) in {path}.",
+                            edits.len()
+                        )))],
+                        details: Some(Value::Object(details)),
+                        usage: None,
+                        added_tool_names: None,
+                        terminate: None,
+                    })
                 }
-                throw_if_aborted()?;
+                .await;
 
-                let bytes = self
-                    .operations
-                    .read_file(&absolute_path)
-                    .await
-                    .map_err(ToolExecutionError::new)?;
-                // Deviation from the TS original (user decision 2026-08-16,
-                // v0.1.4): Node decodes invalid UTF-8 lossily and the TS tool
-                // writes the U+FFFD replacements back, permanently corrupting
-                // bytes the edit never touched. Refusing is the only safe
-                // answer a byte-exact port can give.
-                let raw_content = String::from_utf8(bytes).map_err(|_| {
-                    ToolExecutionError::new(format!(
-                        "Could not edit file: {path}. The file is not valid UTF-8 \
-                         (binary or unsupported encoding); editing it would corrupt \
-                         bytes outside the edited range."
-                    ))
-                })?;
-                throw_if_aborted()?;
-
-                // The model never includes an invisible BOM in oldText.
-                let (bom, content) = strip_bom(&raw_content);
-                let original_ending = detect_line_ending(content);
-                let normalized_content = normalize_to_lf(content);
-                let applied = apply_edits_to_normalized_content(&normalized_content, &edits, &path)
-                    .map_err(ToolExecutionError::new)?;
-                throw_if_aborted()?;
-
-                let final_content = format!(
-                    "{bom}{}",
-                    restore_line_endings(&applied.new_content, original_ending)
-                );
-                self.operations
-                    .write_file(&absolute_path, &final_content)
-                    .await
-                    .map_err(ToolExecutionError::new)?;
-                throw_if_aborted()?;
-
-                let diff = generate_diff_string(&applied.base_content, &applied.new_content, 4);
-                let patch =
-                    generate_unified_patch(&path, &applied.base_content, &applied.new_content, 4);
-                let mut details = Map::new();
-                details.insert("diff".to_owned(), Value::from(diff.diff));
-                details.insert("patch".to_owned(), Value::from(patch));
-                if let Some(first_changed_line) = diff.first_changed_line {
-                    details.insert("firstChangedLine".to_owned(), json!(first_changed_line));
-                }
-                Ok(AgentToolResult {
-                    content: vec![TextOrImageContent::Text(TextContent::new(format!(
-                        "Successfully replaced {} block(s) in {path}.",
-                        edits.len()
-                    )))],
-                    details: Some(Value::Object(details)),
-                    usage: None,
-                    added_tool_names: None,
-                    terminate: None,
-                })
+                self.leases.release_on_error(lease.as_ref(), result).await
             })
             .await
         })
@@ -1095,6 +1149,132 @@ mod tests {
             .expect_err("aborted");
         assert_eq!(error.message, "Operation aborted");
         assert_eq!(directory.read("file.txt"), "content");
+    }
+
+    // ---- atomic leases (port addition, v0.1.19) ---------------------------
+
+    use crate::core::tools::file_lease::{FileLease, FileLeaseStore};
+
+    fn with_leases(enabled: bool) -> Option<EditToolOptions> {
+        Some(EditToolOptions {
+            leases: Some(Arc::new(move || enabled)),
+            ..EditToolOptions::default()
+        })
+    }
+
+    fn one_edit() -> Value {
+        json!({
+            "path": "file.txt",
+            "edits": [{ "oldText": "content", "newText": "changed" }],
+        })
+    }
+
+    /// A lease held by a live process (this one), so it blocks like a foreign
+    /// agent's would.
+    async fn plant_foreign_lease(directory: &TempDir, target: &std::path::Path) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis() as u64;
+        FileLeaseStore::for_workspace(&directory.cwd())
+            .try_acquire(
+                FileLease::new("foreign-lease", target.to_path_buf())
+                    .agent_id(format!("pid:{}", std::process::id()))
+                    .tool_name("edit")
+                    .acquired_at_ms(now)
+                    .expected_duration_ms(60_000)
+                    .lease_until_ms(now + 60_000),
+            )
+            .await
+            .expect("plant");
+    }
+
+    #[tokio::test]
+    async fn edits_under_a_lease_and_releases_it_again() {
+        let directory = TempDir::new();
+        directory.write("file.txt", "content");
+        let tool = create_edit_tool_definition(&directory.cwd(), with_leases(true));
+        tool.execute("call-1", one_edit(), None, None, None)
+            .await
+            .expect("edit");
+
+        assert_eq!(directory.read("file.txt"), "changed");
+        let leases = FileLeaseStore::for_workspace(&directory.cwd());
+        assert_eq!(
+            leases
+                .get_by_path(&directory.path.join("file.txt"))
+                .await
+                .expect("get"),
+            None,
+            "a successful edit releases its lease"
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_a_file_another_holder_has_leased() {
+        let directory = TempDir::new();
+        directory.write("file.txt", "content");
+        plant_foreign_lease(&directory, &directory.path.join("file.txt")).await;
+
+        let tool = create_edit_tool_definition(&directory.cwd(), with_leases(true));
+        let error = tool
+            .execute("call-1", one_edit(), None, None, None)
+            .await
+            .expect_err("leased");
+
+        assert!(
+            error.message.contains("file is currently leased"),
+            "{}",
+            error.message
+        );
+        assert_eq!(
+            directory.read("file.txt"),
+            "content",
+            "a blocked edit leaves the file untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_foreign_lease_is_ignored_while_leases_are_off() {
+        let directory = TempDir::new();
+        directory.write("file.txt", "content");
+        plant_foreign_lease(&directory, &directory.path.join("file.txt")).await;
+
+        let tool = create_edit_tool_definition(&directory.cwd(), with_leases(false));
+        tool.execute("call-1", one_edit(), None, None, None)
+            .await
+            .expect("edit");
+        assert_eq!(directory.read("file.txt"), "changed");
+    }
+
+    #[tokio::test]
+    async fn a_failed_edit_releases_its_lease() {
+        let directory = TempDir::new();
+        directory.write("file.txt", "content");
+        let tool = create_edit_tool_definition(&directory.cwd(), with_leases(true));
+
+        tool.execute(
+            "call-1",
+            json!({
+                "path": "file.txt",
+                "edits": [{ "oldText": "not in the file", "newText": "x" }],
+            }),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("no match");
+
+        let leases = FileLeaseStore::for_workspace(&directory.cwd());
+        assert_eq!(
+            leases
+                .get_by_path(&directory.path.join("file.txt"))
+                .await
+                .expect("get"),
+            None,
+            "the file must not stay blocked until the lease's TTL runs out"
+        );
     }
 
     #[test]

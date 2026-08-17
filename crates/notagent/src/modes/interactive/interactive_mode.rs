@@ -3712,6 +3712,29 @@ impl InteractiveMode {
         }
     }
 
+    /// `/leases` (port addition, v0.1.19) — the command form of the
+    /// reference's Atomic leases setting: `on`/`off` set the gate, an omitted
+    /// argument toggles it, as the reference's own toggle does. Off by default
+    /// (user decision 2026-08-17); the gate is read at call time, so the next
+    /// `write`, `edit` or `patch_minified` already follows the new state.
+    fn handle_leases_command(&mut self, argument: Option<&str>) {
+        let enabled = match argument {
+            Some(argument) if argument.eq_ignore_ascii_case("on") => true,
+            Some(argument) if argument.eq_ignore_ascii_case("off") => false,
+            Some(other) => {
+                self.show_error(&format!("Unknown /leases argument: {other} (use on|off)"));
+                return;
+            }
+            None => !self.settings().get_atomic_leases_enabled(),
+        };
+        self.settings().set_atomic_leases_enabled(enabled);
+        self.show_status(if enabled {
+            "Atomic file leases: enabled"
+        } else {
+            "Atomic file leases: disabled"
+        });
+    }
+
     /// Runs the build on a blocking thread and streams progress into the
     /// status line via [`UiMessage::IndexBuildProgress`].
     fn start_index_build(&mut self) {
@@ -3884,6 +3907,7 @@ impl InteractiveMode {
             fullscreen_scrollbar: scroll_view_scrollbar(settings.get_fullscreen_scrollbar()),
             warnings: settings.get_warnings(),
             block_style_badge: settings.get_block_style_badge(),
+            atomic_leases: settings.get_atomic_leases_enabled(),
         };
 
         let callbacks = SettingsCallbacks {
@@ -3908,6 +3932,13 @@ impl InteractiveMode {
                     // Rows already on screen rebuild for the new style.
                     effect(&tx, id, SettingsEffect::InvalidateChat);
                 })
+            },
+            // The gate is read at call time, so the next mutating tool call
+            // already follows the new state — no session restart, and no
+            // effect to send.
+            on_atomic_leases_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |enabled| settings.set_atomic_leases_enabled(enabled))
             },
             on_show_images_change: {
                 let settings = Arc::clone(&settings);
@@ -6247,6 +6278,14 @@ impl InteractiveMode {
                 let index_argument = argument("/index ");
                 self.clear_editor_text();
                 self.handle_index_command(index_argument.as_deref());
+            }
+            // Addition over the TS original (user decision 2026-08-17,
+            // v0.1.19): the command form of the reference's Atomic leases
+            // setting.
+            _ if text == "/leases" || text.starts_with("/leases ") => {
+                let leases_argument = argument("/leases ");
+                self.clear_editor_text();
+                self.handle_leases_command(leases_argument.as_deref());
             }
             // Addition over the TS original (user decision 2026-08-17,
             // v0.1.11): the command form of the thinking-block toggle, which

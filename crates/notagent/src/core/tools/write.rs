@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
+use crate::core::tools::file_lease::{LeaseCoordinator, LeaseGate};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
 use crate::core::tools::render_utils::{
@@ -85,14 +86,20 @@ impl WriteOperations for LocalWriteOperations {
 #[derive(Clone, Default)]
 pub struct WriteToolOptions {
     pub operations: Option<Arc<dyn WriteOperations>>,
+    /// Whether atomic file leases are enabled; absent means disabled.
+    pub leases: Option<LeaseGate>,
 }
 
 pub struct WriteToolDefinition {
     cwd: String,
     operations: Arc<dyn WriteOperations>,
+    leases: LeaseCoordinator,
     parameters: Value,
     constrained_sampling: Option<ConstrainedSampling>,
 }
+
+/// How long a `write` expects to hold its lease (the reference's `fs_write`).
+const WRITE_LEASE_DURATION_MS: u64 = 15_000;
 
 pub fn create_write_tool_definition(
     cwd: &str,
@@ -104,6 +111,7 @@ pub fn create_write_tool_definition(
         operations: options
             .operations
             .unwrap_or_else(|| Arc::new(LocalWriteOperations)),
+        leases: LeaseCoordinator::new(cwd, options.leases),
         parameters: write_schema(),
         constrained_sampling: get_experimental_tool_sampling(),
     }
@@ -489,28 +497,69 @@ impl ToolDefinition for WriteToolDefinition {
                 };
 
                 throw_if_aborted()?;
-                self.operations
-                    .mkdir(&directory)
+                // Reserved inside the mutation queue, which already serializes
+                // this process: a lease conflict therefore always names a
+                // foreign holder, never a second call of our own. `None` when
+                // leases are off, and every lease step below is then a no-op.
+                let lease = self
+                    .leases
+                    .reserve(
+                        Path::new(&absolute_path),
+                        self.name(),
+                        WRITE_LEASE_DURATION_MS,
+                    )
                     .await
-                    .map_err(ToolExecutionError::new)?;
-                throw_if_aborted()?;
-                self.operations
-                    .write_file(&absolute_path, &content)
-                    .await
-                    .map_err(ToolExecutionError::new)?;
-                throw_if_aborted()?;
+                    .map_err(|error| ToolExecutionError::new(error.to_string()))?;
 
-                // `content.length` in JS counts UTF-16 units, not bytes.
-                let length = content.encode_utf16().count();
-                Ok(AgentToolResult {
-                    content: vec![TextOrImageContent::Text(TextContent::new(format!(
-                        "Successfully wrote {length} bytes to {path}"
-                    )))],
-                    details: None,
-                    usage: None,
-                    added_tool_names: None,
-                    terminate: None,
-                })
+                let result = async {
+                    throw_if_aborted()?;
+                    self.operations
+                        .mkdir(&directory)
+                        .await
+                        .map_err(ToolExecutionError::new)?;
+                    throw_if_aborted()?;
+
+                    // The pre-commit check runs immediately before the write:
+                    // the lease must still be ours and the file must still hold
+                    // the content we reserved it on.
+                    let committed = match &lease {
+                        Some(lease) => Some(
+                            self.leases
+                                .prepare_commit(lease.clone())
+                                .await
+                                .map_err(|error| ToolExecutionError::new(error.to_string()))?,
+                        ),
+                        None => None,
+                    };
+
+                    self.operations
+                        .write_file(&absolute_path, &content)
+                        .await
+                        .map_err(ToolExecutionError::new)?;
+
+                    if let Some(committed) = &committed {
+                        self.leases
+                            .release(committed)
+                            .await
+                            .map_err(|error| ToolExecutionError::new(error.to_string()))?;
+                    }
+                    throw_if_aborted()?;
+
+                    // `content.length` in JS counts UTF-16 units, not bytes.
+                    let length = content.encode_utf16().count();
+                    Ok(AgentToolResult {
+                        content: vec![TextOrImageContent::Text(TextContent::new(format!(
+                            "Successfully wrote {length} bytes to {path}"
+                        )))],
+                        details: None,
+                        usage: None,
+                        added_tool_names: None,
+                        terminate: None,
+                    })
+                }
+                .await;
+
+                self.leases.release_on_error(lease.as_ref(), result).await
             })
             .await
         })
@@ -641,6 +690,150 @@ mod tests {
             .expect_err("aborted");
         assert_eq!(error.message, "Operation aborted");
         assert!(!directory.path.join("file.txt").exists());
+    }
+
+    // ---- atomic leases (port addition, v0.1.19) ---------------------------
+
+    use crate::core::tools::file_lease::{FileLease, FileLeaseStore};
+
+    fn with_leases(enabled: bool) -> Option<WriteToolOptions> {
+        Some(WriteToolOptions {
+            leases: Some(Arc::new(move || enabled)),
+            ..WriteToolOptions::default()
+        })
+    }
+
+    /// A lease held by a live process (this one), so it blocks like a foreign
+    /// agent's would.
+    async fn plant_foreign_lease(directory: &TempDir, target: &std::path::Path) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis() as u64;
+        FileLeaseStore::for_workspace(&directory.cwd())
+            .try_acquire(
+                FileLease::new("foreign-lease", target.to_path_buf())
+                    .agent_id(format!("pid:{}", std::process::id()))
+                    .tool_name("write")
+                    .acquired_at_ms(now)
+                    .expected_duration_ms(60_000)
+                    .lease_until_ms(now + 60_000),
+            )
+            .await
+            .expect("plant");
+    }
+
+    #[tokio::test]
+    async fn writes_under_a_lease_and_releases_it_again() {
+        let directory = TempDir::new();
+        let tool = create_write_tool_definition(&directory.cwd(), with_leases(true));
+        tool.execute(
+            "call-1",
+            json!({ "path": "file.txt", "content": "hello" }),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("write");
+
+        assert_eq!(
+            std::fs::read_to_string(directory.path.join("file.txt")).expect("read"),
+            "hello"
+        );
+        let leases = FileLeaseStore::for_workspace(&directory.cwd());
+        assert_eq!(
+            leases
+                .get_by_path(&directory.path.join("file.txt"))
+                .await
+                .expect("get"),
+            None,
+            "a successful write releases its lease"
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_a_file_another_holder_has_leased() {
+        let directory = TempDir::new();
+        let target = directory.path.join("file.txt");
+        std::fs::write(&target, "old").expect("write");
+        plant_foreign_lease(&directory, &target).await;
+
+        let tool = create_write_tool_definition(&directory.cwd(), with_leases(true));
+        let error = tool
+            .execute(
+                "call-1",
+                json!({ "path": "file.txt", "content": "new" }),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect_err("leased");
+
+        assert!(
+            error.message.contains("file is currently leased"),
+            "{}",
+            error.message
+        );
+        assert!(error.message.contains("retry shortly"), "{}", error.message);
+        assert_eq!(
+            std::fs::read_to_string(&target).expect("read"),
+            "old",
+            "a blocked write leaves the file untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_foreign_lease_is_ignored_while_leases_are_off() {
+        let directory = TempDir::new();
+        let target = directory.path.join("file.txt");
+        std::fs::write(&target, "old").expect("write");
+        plant_foreign_lease(&directory, &target).await;
+
+        // Off is the default, and the default is also what an absent gate means.
+        for options in [None, with_leases(false)] {
+            let tool = create_write_tool_definition(&directory.cwd(), options);
+            tool.execute(
+                "call-1",
+                json!({ "path": "file.txt", "content": "new" }),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("write");
+            assert_eq!(std::fs::read_to_string(&target).expect("read"), "new");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_releases_its_lease() {
+        let directory = TempDir::new();
+        // A file where the write wants a directory, so mkdir fails after the
+        // lease was taken.
+        std::fs::write(directory.path.join("blocker"), "x").expect("write");
+        let tool = create_write_tool_definition(&directory.cwd(), with_leases(true));
+
+        tool.execute(
+            "call-1",
+            json!({ "path": "blocker/file.txt", "content": "hello" }),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("mkdir fails");
+
+        let leases = FileLeaseStore::for_workspace(&directory.cwd());
+        assert_eq!(
+            leases
+                .get_by_path(&directory.path.join("blocker/file.txt"))
+                .await
+                .expect("get"),
+            None,
+            "the file must not stay blocked until the lease's TTL runs out"
+        );
     }
 
     #[test]

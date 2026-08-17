@@ -80,6 +80,13 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
         "Rebuild the local codebase index (find_codebase), or toggle it",
         "[on|off]",
     ),
+    // Addition over the TS original (user decision 2026-08-17, v0.1.19): the
+    // command form of the reference's Atomic leases setting.
+    command_with_hint(
+        "leases",
+        "Toggle atomic file leases for the mutating file tools (default: off)",
+        "[on|off]",
+    ),
     // Addition over the TS original (user decision 2026-08-17, v0.1.11): the
     // command form of the thinking-block toggle, which the TS original only
     // bound to a key.
@@ -148,6 +155,8 @@ mod tests {
                 "scoped-models",
                 // Port addition (user decision, v0.1.7), not in the TS list.
                 "index",
+                // Port addition (user decision, v0.1.19), not in the TS list.
+                "leases",
                 // Port addition (user decision, v0.1.11), not in the TS list.
                 "thinking",
                 "export",
@@ -181,8 +190,11 @@ mod tests {
             .filter(|command| command.argument_hint.is_some())
             .map(|command| command.name)
             .collect();
-        // `subagent-model` and `index` are port additions (user decisions,
-        // v0.1.6/v0.1.7).
-        assert_eq!(with_hint, vec!["model", "subagent-model", "index", "login"]);
+        // `subagent-model`, `index` and `leases` are port additions (user
+        // decisions, v0.1.6/v0.1.7/v0.1.19).
+        assert_eq!(
+            with_hint,
+            vec!["model", "subagent-model", "index", "leases", "login"]
+        );
     }
 }

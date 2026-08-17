@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::mini_read::apply_minified_edit;
 use crate::core::tools::edit_diff::{generate_diff_string, generate_unified_patch, strip_bom};
+use crate::core::tools::file_lease::{LeaseCoordinator, LeaseGate};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
 use crate::core::tools::render_utils::{call_title, render_tool_path, str_arg};
@@ -173,7 +174,13 @@ fn error_code(error: &std::io::Error) -> String {
 #[derive(Clone, Default)]
 pub struct PatchMinifiedToolOptions {
     pub operations: Option<Arc<dyn PatchMinifiedOperations>>,
+    /// Whether atomic file leases are enabled; absent means disabled.
+    pub leases: Option<LeaseGate>,
 }
+
+/// How long a minified patch expects to hold its lease (the reference's
+/// `fs_patch`, of which these tools are the minified-view counterpart).
+const PATCH_MINIFIED_LEASE_DURATION_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MinifiedEditRequest {
@@ -240,14 +247,23 @@ fn apply_minified_replace(
     }
 }
 
+/// The shared write path of `patch_minified` and `multi_patch_minified`.
+///
+/// Takes the tool it runs for rather than its pieces: it needs the cwd, the
+/// operations, the lease coordinator and the tool name, which is the tool
+/// itself.
 async fn run_edits(
-    cwd: &str,
-    operations: &dyn PatchMinifiedOperations,
+    tool: &PatchMinifiedToolDefinition,
     path: &str,
     edits: Vec<MinifiedEditRequest>,
     keep_comments: bool,
     signal: Option<CancellationToken>,
 ) -> Result<AgentToolResult, ToolExecutionError> {
+    let cwd = tool.cwd.as_str();
+    let operations = tool.operations.as_ref();
+    let leases = &tool.leases;
+    let tool_name = tool.name();
+
     if edits.is_empty() {
         return Err(ToolExecutionError::new(
             "Patch tool input is invalid. edits must contain at least one replacement.",
@@ -268,76 +284,116 @@ async fn run_edits(
         };
         throw_if_aborted()?;
 
-        if let Err(error) = operations.access(&absolute_path).await {
-            throw_if_aborted()?;
-            return Err(ToolExecutionError::new(format!(
-                "Could not edit file: {path}. {error}."
-            )));
-        }
-        throw_if_aborted()?;
-
-        let buffer = operations
-            .read_file(&absolute_path)
-            .await
-            .map_err(ToolExecutionError::new)?;
-        let raw_content = String::from_utf8_lossy(&buffer).into_owned();
-        throw_if_aborted()?;
-
-        // Strip the BOM before matching: the model will not include an invisible
-        // BOM in old_string. It is restored verbatim on write.
-        let (bom, original) = strip_bom(&raw_content);
-
-        // Apply every edit sequentially against the result of the previous one,
-        // re-minifying per edit because each splice invalidates the source map.
-        let mut current = original.to_owned();
-        let mut warnings: Vec<String> = Vec::new();
-        for edit in &edits {
-            let (content, edit_warnings) =
-                apply_minified_replace(path, &current, edit, keep_comments)
-                    .map_err(ToolExecutionError::new)?;
-            current = content;
-            warnings.extend(edit_warnings);
-            throw_if_aborted()?;
-        }
-
-        operations
-            .write_file(&absolute_path, &format!("{bom}{current}"))
-            .await
-            .map_err(ToolExecutionError::new)?;
-        throw_if_aborted()?;
-
-        let diff_result = generate_diff_string(original, &current, 4);
-        let patch = generate_unified_patch(path, original, &current, 4);
-        let summary = format!(
-            "Successfully applied {} minified edit(s) to {path}.",
-            edits.len()
-        );
-        let text = if warnings.is_empty() {
-            summary
-        } else {
-            format!(
-                "{summary}\n\nWarnings:\n{}",
-                warnings
-                    .iter()
-                    .map(|warning| format!("- {warning}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+        // Reserved inside the mutation queue, which already serializes this
+        // process: a lease conflict therefore always names a foreign holder,
+        // never a second call of our own. `None` when leases are off, and every
+        // lease step below is then a no-op.
+        let lease = leases
+            .reserve(
+                std::path::Path::new(&absolute_path),
+                tool_name,
+                PATCH_MINIFIED_LEASE_DURATION_MS,
             )
-        };
-        let mut details = Map::new();
-        details.insert("diff".to_owned(), Value::from(diff_result.diff));
-        details.insert("patch".to_owned(), Value::from(patch));
-        if let Some(first_changed_line) = diff_result.first_changed_line {
-            details.insert("firstChangedLine".to_owned(), json!(first_changed_line));
+            .await
+            .map_err(|error| ToolExecutionError::new(error.to_string()))?;
+
+        let result = async {
+            throw_if_aborted()?;
+
+            if let Err(error) = operations.access(&absolute_path).await {
+                throw_if_aborted()?;
+                return Err(ToolExecutionError::new(format!(
+                    "Could not edit file: {path}. {error}."
+                )));
+            }
+            throw_if_aborted()?;
+
+            let buffer = operations
+                .read_file(&absolute_path)
+                .await
+                .map_err(ToolExecutionError::new)?;
+            let raw_content = String::from_utf8_lossy(&buffer).into_owned();
+            throw_if_aborted()?;
+
+            // Strip the BOM before matching: the model will not include an invisible
+            // BOM in old_string. It is restored verbatim on write.
+            let (bom, original) = strip_bom(&raw_content);
+
+            // Apply every edit sequentially against the result of the previous one,
+            // re-minifying per edit because each splice invalidates the source map.
+            let mut current = original.to_owned();
+            let mut warnings: Vec<String> = Vec::new();
+            for edit in &edits {
+                let (content, edit_warnings) =
+                    apply_minified_replace(path, &current, edit, keep_comments)
+                        .map_err(ToolExecutionError::new)?;
+                current = content;
+                warnings.extend(edit_warnings);
+                throw_if_aborted()?;
+            }
+
+            // The pre-commit check runs immediately before the write: the lease
+            // must still be ours and the file must still hold the content the edits
+            // were minified against.
+            let committed = match &lease {
+                Some(lease) => Some(
+                    leases
+                        .prepare_commit(lease.clone())
+                        .await
+                        .map_err(|error| ToolExecutionError::new(error.to_string()))?,
+                ),
+                None => None,
+            };
+
+            operations
+                .write_file(&absolute_path, &format!("{bom}{current}"))
+                .await
+                .map_err(ToolExecutionError::new)?;
+
+            if let Some(committed) = &committed {
+                leases
+                    .release(committed)
+                    .await
+                    .map_err(|error| ToolExecutionError::new(error.to_string()))?;
+            }
+            throw_if_aborted()?;
+
+            let diff_result = generate_diff_string(original, &current, 4);
+            let patch = generate_unified_patch(path, original, &current, 4);
+            let summary = format!(
+                "Successfully applied {} minified edit(s) to {path}.",
+                edits.len()
+            );
+            let text = if warnings.is_empty() {
+                summary
+            } else {
+                format!(
+                    "{summary}\n\nWarnings:\n{}",
+                    warnings
+                        .iter()
+                        .map(|warning| format!("- {warning}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            };
+            let mut details = Map::new();
+            details.insert("diff".to_owned(), Value::from(diff_result.diff));
+            details.insert("patch".to_owned(), Value::from(patch));
+            if let Some(first_changed_line) = diff_result.first_changed_line {
+                details.insert("firstChangedLine".to_owned(), json!(first_changed_line));
+            }
+            details.insert("warnings".to_owned(), json!(warnings));
+            Ok(AgentToolResult {
+                content: vec![TextOrImageContent::Text(TextContent::new(text))],
+                details: Some(Value::Object(details)),
+                usage: None,
+                added_tool_names: None,
+                terminate: None,
+            })
         }
-        details.insert("warnings".to_owned(), json!(warnings));
-        Ok(AgentToolResult {
-            content: vec![TextOrImageContent::Text(TextContent::new(text))],
-            details: Some(Value::Object(details)),
-            usage: None,
-            added_tool_names: None,
-            terminate: None,
-        })
+        .await;
+
+        leases.release_on_error(lease.as_ref(), result).await
     })
     .await
 }
@@ -364,6 +420,7 @@ fn edit_request(value: &Value) -> MinifiedEditRequest {
 pub struct PatchMinifiedToolDefinition {
     cwd: String,
     operations: Arc<dyn PatchMinifiedOperations>,
+    leases: LeaseCoordinator,
     multi: bool,
     description: String,
     parameters: Value,
@@ -380,6 +437,7 @@ pub fn create_patch_minified_tool_definition(
         operations: options
             .operations
             .unwrap_or_else(|| Arc::new(LocalPatchMinifiedOperations)),
+        leases: LeaseCoordinator::new(cwd, options.leases),
         multi: false,
         description: description(&[
             "Performs exact string replacements in the minified view of a file — the precise editing counterpart of `read_minified`.",
@@ -403,6 +461,7 @@ pub fn create_multi_patch_minified_tool_definition(
         operations: options
             .operations
             .unwrap_or_else(|| Arc::new(LocalPatchMinifiedOperations)),
+        leases: LeaseCoordinator::new(cwd, options.leases),
         multi: true,
         description: description(&[
             "Performs multiple sequential precise edits on a single file in the minified view — the multi-edit counterpart of `patch_minified`. Prefer this over several `patch_minified` calls on the same file.",
@@ -600,15 +659,7 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
                 .get("keep_comments")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            run_edits(
-                &self.cwd,
-                self.operations.as_ref(),
-                &path,
-                edits,
-                keep_comments,
-                signal,
-            )
-            .await
+            run_edits(self, &path, edits, keep_comments, signal).await
         })
     }
 }
@@ -633,4 +684,191 @@ pub fn create_multi_patch_minified_tool(
         Arc::new(create_multi_patch_minified_tool_definition(cwd, options)),
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    //! Atomic leases (port addition, v0.1.19). The editing behaviour of these
+    //! two tools is covered by `tests/minified_tools.rs`; what is checked here
+    //! is that they take, release and respect a lease like `write` and `edit`.
+
+    use super::*;
+    use crate::core::tools::file_lease::{FileLease, FileLeaseStore};
+
+    struct TempDir {
+        path: std::path::PathBuf,
+    }
+
+    impl TempDir {
+        fn new() -> Self {
+            let directory = tempfile::Builder::new()
+                .prefix("notagent-patch-minified-lease-")
+                .tempdir()
+                .expect("temp dir");
+            let path = directory.path().to_path_buf();
+            let _ = directory.keep();
+            Self { path }
+        }
+
+        fn cwd(&self) -> String {
+            self.path.to_string_lossy().into_owned()
+        }
+
+        fn write(&self, name: &str, contents: &str) {
+            std::fs::write(self.path.join(name), contents).expect("write");
+        }
+
+        fn read(&self, name: &str) -> String {
+            std::fs::read_to_string(self.path.join(name)).expect("read")
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn with_leases(enabled: bool) -> Option<PatchMinifiedToolOptions> {
+        Some(PatchMinifiedToolOptions {
+            leases: Some(Arc::new(move || enabled)),
+            ..PatchMinifiedToolOptions::default()
+        })
+    }
+
+    fn one_patch() -> Value {
+        json!({ "path": "file.rs", "old_string": "let a = 1;", "new_string": "let a = 2;" })
+    }
+
+    /// A lease held by a live process (this one), so it blocks like a foreign
+    /// agent's would.
+    async fn plant_foreign_lease(directory: &TempDir, target: &std::path::Path) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis() as u64;
+        FileLeaseStore::for_workspace(&directory.cwd())
+            .try_acquire(
+                FileLease::new("foreign-lease", target.to_path_buf())
+                    .agent_id(format!("pid:{}", std::process::id()))
+                    .tool_name("patch_minified")
+                    .acquired_at_ms(now)
+                    .expected_duration_ms(60_000)
+                    .lease_until_ms(now + 60_000),
+            )
+            .await
+            .expect("plant");
+    }
+
+    #[tokio::test]
+    async fn patches_under_a_lease_and_releases_it_again() {
+        let directory = TempDir::new();
+        directory.write("file.rs", "fn main() {\n    let a = 1;\n}\n");
+        let tool = create_patch_minified_tool_definition(&directory.cwd(), with_leases(true));
+        tool.execute("call-1", one_patch(), None, None, None)
+            .await
+            .expect("patch");
+
+        assert!(directory.read("file.rs").contains("let a = 2;"));
+        let leases = FileLeaseStore::for_workspace(&directory.cwd());
+        assert_eq!(
+            leases
+                .get_by_path(&directory.path.join("file.rs"))
+                .await
+                .expect("get"),
+            None,
+            "a successful patch releases its lease"
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_a_file_another_holder_has_leased() {
+        let directory = TempDir::new();
+        directory.write("file.rs", "fn main() {\n    let a = 1;\n}\n");
+        plant_foreign_lease(&directory, &directory.path.join("file.rs")).await;
+
+        let tool = create_patch_minified_tool_definition(&directory.cwd(), with_leases(true));
+        let error = tool
+            .execute("call-1", one_patch(), None, None, None)
+            .await
+            .expect_err("leased");
+
+        assert!(
+            error.message.contains("file is currently leased"),
+            "{}",
+            error.message
+        );
+        assert!(
+            directory.read("file.rs").contains("let a = 1;"),
+            "a blocked patch leaves the file untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_multi_variant_takes_a_lease_too() {
+        let directory = TempDir::new();
+        directory.write("file.rs", "fn main() {\n    let a = 1;\n}\n");
+        plant_foreign_lease(&directory, &directory.path.join("file.rs")).await;
+
+        let tool = create_multi_patch_minified_tool_definition(&directory.cwd(), with_leases(true));
+        let error = tool
+            .execute(
+                "call-1",
+                json!({
+                    "path": "file.rs",
+                    "edits": [{ "old_string": "let a = 1;", "new_string": "let a = 2;" }],
+                }),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect_err("leased");
+
+        assert!(
+            error.message.contains("file is currently leased"),
+            "{}",
+            error.message
+        );
+    }
+
+    #[tokio::test]
+    async fn a_foreign_lease_is_ignored_while_leases_are_off() {
+        let directory = TempDir::new();
+        directory.write("file.rs", "fn main() {\n    let a = 1;\n}\n");
+        plant_foreign_lease(&directory, &directory.path.join("file.rs")).await;
+
+        let tool = create_patch_minified_tool_definition(&directory.cwd(), with_leases(false));
+        tool.execute("call-1", one_patch(), None, None, None)
+            .await
+            .expect("patch");
+        assert!(directory.read("file.rs").contains("let a = 2;"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_patch_releases_its_lease() {
+        let directory = TempDir::new();
+        directory.write("file.rs", "fn main() {\n    let a = 1;\n}\n");
+        let tool = create_patch_minified_tool_definition(&directory.cwd(), with_leases(true));
+
+        tool.execute(
+            "call-1",
+            json!({ "path": "file.rs", "old_string": "not in the file", "new_string": "x" }),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("no match");
+
+        let leases = FileLeaseStore::for_workspace(&directory.cwd());
+        assert_eq!(
+            leases
+                .get_by_path(&directory.path.join("file.rs"))
+                .await
+                .expect("get"),
+            None,
+            "the file must not stay blocked until the lease's TTL runs out"
+        );
+    }
 }

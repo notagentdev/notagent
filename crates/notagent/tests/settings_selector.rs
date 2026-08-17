@@ -50,6 +50,8 @@ fn config() -> SettingsConfig {
         auto_compact: true,
         // Port addition (v0.1.9), not in the TS oracle fixture.
         block_style_badge: true,
+        // Port addition (v0.1.19), not in the TS oracle fixture.
+        atomic_leases: false,
         show_images: false,
         image_width_cells: 80,
         auto_resize_images: true,
