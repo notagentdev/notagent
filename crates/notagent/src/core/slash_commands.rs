@@ -94,6 +94,13 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
         "Toggle compaction of bash output before it enters the context (default: off)",
         "[on|off]",
     ),
+    // Addition over the TS original (user decision 2026-08-17, v0.1.21): goal
+    // mode, where the agent keeps working toward an objective on its own.
+    command_with_hint(
+        "goal",
+        "Set a goal the agent pursues across turns, or show, pause, resume or clear it",
+        "[replace] [strict] <objective> [--turns N] [--tokens N] | pause | resume | clear",
+    ),
     // Addition over the TS original (user decision 2026-08-17, v0.1.11): the
     // command form of the thinking-block toggle, which the TS original only
     // bound to a key.
@@ -166,6 +173,8 @@ mod tests {
                 "leases",
                 // Port addition (user decision, v0.1.20), not in the TS list.
                 "bash-filter",
+                // Port addition (user decision, v0.1.21), not in the TS list.
+                "goal",
                 // Port addition (user decision, v0.1.11), not in the TS list.
                 "thinking",
                 "export",
@@ -199,8 +208,8 @@ mod tests {
             .filter(|command| command.argument_hint.is_some())
             .map(|command| command.name)
             .collect();
-        // `subagent-model`, `index`, `leases` and `bash-filter` are port
-        // additions (user decisions, v0.1.6/v0.1.7/v0.1.19/v0.1.20).
+        // `subagent-model`, `index`, `leases`, `bash-filter` and `goal` are
+        // port additions (user decisions, v0.1.6/v0.1.7/v0.1.19/v0.1.20/v0.1.21).
         assert_eq!(
             with_hint,
             vec![
@@ -209,6 +218,7 @@ mod tests {
                 "index",
                 "leases",
                 "bash-filter",
+                "goal",
                 "login"
             ]
         );

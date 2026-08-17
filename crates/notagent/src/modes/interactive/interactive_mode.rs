@@ -3735,6 +3735,76 @@ impl InteractiveMode {
         });
     }
 
+    /// `/goal` (port addition, v0.1.21) — goal mode: the agent keeps working
+    /// toward an objective across turns until it completes it, reports itself
+    /// blocked, or a budget runs out.
+    ///
+    /// A create that finds a goal already running reports the running one and
+    /// leaves it alone; `replace` is how the user says otherwise. Overwriting
+    /// silently would discard work in progress on a typo.
+    fn handle_goal_command(&mut self, argument: Option<&str>) {
+        use crate::core::goal::{GoalCommand, ThreadGoal, describe_goal, parse_goal_command};
+
+        let state = self.session().goal_state();
+        let mut state = state.lock().expect("goal state");
+        match parse_goal_command(argument.unwrap_or_default()) {
+            GoalCommand::Invalid(message) => self.show_error(&message),
+            GoalCommand::Show => {
+                let text = match state.goal.as_ref() {
+                    Some(goal) => describe_goal(goal),
+                    None => "No goal. Set one with /goal <objective>.".to_owned(),
+                };
+                self.show_status(&text);
+            }
+            GoalCommand::Pause => match state.goal.as_mut() {
+                Some(goal) => {
+                    goal.pause();
+                    self.show_status(&format!("Goal paused: {}", goal.objective));
+                }
+                None => self.show_status("No goal to pause."),
+            },
+            GoalCommand::Resume => match state.goal.as_mut() {
+                Some(goal) => {
+                    goal.resume();
+                    let text = describe_goal(goal);
+                    state.completion.clear();
+                    self.show_status(&text);
+                }
+                None => self.show_status("No goal to resume."),
+            },
+            GoalCommand::Clear => match state.goal.take() {
+                Some(goal) => {
+                    state.completion.clear();
+                    self.show_status(&format!("Goal cleared: {}", goal.objective));
+                }
+                None => self.show_status("No goal to clear."),
+            },
+            GoalCommand::Create {
+                objective,
+                token_budget,
+                turn_budget,
+                replace,
+                strict,
+            } => {
+                if let Some(existing) = state.goal.as_ref()
+                    && !replace
+                {
+                    let text = format!(
+                        "{}\nUse `/goal replace <objective>` to set a different one, or `/goal clear`.",
+                        describe_goal(existing)
+                    );
+                    self.show_status(&text);
+                    return;
+                }
+                let goal = ThreadGoal::new(objective, token_budget, turn_budget).strict(strict);
+                let text = describe_goal(&goal);
+                state.goal = Some(goal);
+                state.completion.clear();
+                self.show_status(&text);
+            }
+        }
+    }
+
     /// `/bash-filter` (port addition, v0.1.20) — the command form of the
     /// reference's shell-output filter setting: `on`/`off` set the gate, an
     /// omitted argument toggles it. Off by default (user decision 2026-08-17);
@@ -6324,6 +6394,13 @@ impl InteractiveMode {
                 let filter_argument = argument("/bash-filter ");
                 self.clear_editor_text();
                 self.handle_bash_filter_command(filter_argument.as_deref());
+            }
+            // Addition over the TS original (user decision 2026-08-17,
+            // v0.1.21): goal mode.
+            _ if text == "/goal" || text.starts_with("/goal ") => {
+                let goal_argument = argument("/goal ");
+                self.clear_editor_text();
+                self.handle_goal_command(goal_argument.as_deref());
             }
             // Addition over the TS original (user decision 2026-08-17,
             // v0.1.11): the command form of the thinking-block toggle, which

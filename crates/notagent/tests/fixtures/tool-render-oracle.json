@@ -2326,7 +2326,7 @@
 		"resultLines": [
 			"                                                                                                    ",
 			"\u001b[38;2;86;156;214mconst\u001b[39m x = \u001b[38;2;181;206;168m1\u001b[39m;                                                                                        ",
-			"\u001b[38;2;255;255;0m[Language not supported for minification \u2014 raw content shown]\u001b[39m                                       "
+			"\u001b[38;2;255;255;0m[Language not supported for minification — raw content shown]\u001b[39m                                       "
 		]
 	},
 	{
@@ -3579,7 +3579,7 @@
 		],
 		"resultLines": [
 			"                                                                                                    ",
-			"\u001b[38;2;181;189;104m\u001b[1m  \udb80\udd35 \u001b[9mRun tests\u001b[29m\u001b[22m\u001b[39m                                                                                       "
+			"\u001b[38;2;181;189;104m\u001b[1m  󰄵 \u001b[9mRun tests\u001b[29m\u001b[22m\u001b[39m                                                                                       "
 		]
 	},
 	{
@@ -3633,8 +3633,8 @@
 		],
 		"resultLines": [
 			"                                                                                                    ",
-			"\u001b[38;2;128;128;128m  \udb80\udd35 \u001b[9mRun tests\u001b[29m\u001b[39m                                                                                       ",
-			"\u001b[38;2;204;102;102m  \udb80\udd31 \u001b[9mShip it\u001b[29m\u001b[39m                                                                                         "
+			"\u001b[38;2;128;128;128m  󰄵 \u001b[9mRun tests\u001b[29m\u001b[39m                                                                                       ",
+			"\u001b[38;2;204;102;102m  󰄱 \u001b[9mShip it\u001b[29m\u001b[39m                                                                                         "
 		]
 	},
 	{
@@ -3694,8 +3694,8 @@
 		],
 		"resultLines": [
 			"                                                                                                    ",
-			"\u001b[38;2;128;128;128m  \udb80\udd31 Keep me\u001b[39m                                                                                         ",
-			"\u001b[38;2;138;190;183m\u001b[1m  \udb80\udd17 New one\u001b[22m\u001b[39m                                                                                         "
+			"\u001b[38;2;128;128;128m  󰄱 Keep me\u001b[39m                                                                                         ",
+			"\u001b[38;2;138;190;183m\u001b[1m  󰄗 New one\u001b[22m\u001b[39m                                                                                         "
 		]
 	},
 	{
@@ -5962,5 +5962,63 @@
 			"                                                                                                    ",
 			"\u001b[38;2;128;128;128m  src/lock.rs:1\u001b[39m\u001b[38;2;128;128;128m  WorkspaceLockManager (struct)\u001b[39m                                                      "
 		]
+	},
+	{
+		"tool": "create_goal",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"objective": "ship the release"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1mcreate goal\u001b[22m\u001b[39m ship the release                                                                        "
+			]
+		],
+		"resultLines": null
+	},
+	{
+		"tool": "update_goal",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"status": "complete"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1mupdate goal\u001b[22m\u001b[39m complete                                                                                "
+			]
+		],
+		"resultLines": null
 	}
 ]

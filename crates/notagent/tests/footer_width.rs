@@ -106,6 +106,10 @@ impl FooterSession for StubSession {
     /// Mirrors `ModelRuntime::is_using_subscription`: the plans that
     /// authenticate with an API key are known by name, everything else is
     /// whatever the fixture declares.
+    fn goal(&self) -> Option<notagent::core::goal::ThreadGoal> {
+        None
+    }
+
     fn is_using_subscription(&self, provider: &str) -> bool {
         self.using_subscription
             || notagent::core::model_runtime::is_subscription_api_key_provider(provider)

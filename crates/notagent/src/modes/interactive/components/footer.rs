@@ -28,6 +28,7 @@ use serde_json::Value;
 use crate::core::agent_session::{AgentSession, ContextUsage};
 use crate::core::experimental::are_experimental_features_enabled;
 use crate::core::footer_data_provider::FooterDataProvider;
+use crate::core::goal::{ThreadGoal, ThreadGoalStatus};
 use crate::core::modes::Mode;
 use crate::core::modes::indicator::{format_mode_label, indicator_color_key};
 use crate::core::modes::shells::ShellId;
@@ -128,6 +129,47 @@ fn relative_path(from: &Path, to: &Path) -> Option<String> {
 }
 
 /// What the footer reads from the session (`AgentSession` in TS).
+/// `[goal ● active · 7/20 turns · 12.4K tokens]`, coloured by status.
+///
+/// A `Complete` goal is not badged: it is cleared from the session the moment
+/// the user is told, and a badge for it would linger over work that is done.
+fn render_goal_badge(goal: &ThreadGoal) -> String {
+    let (label, color) = match goal.status {
+        ThreadGoalStatus::Active if goal.strict => ("active, strict", ThemeColor::Accent),
+        ThreadGoalStatus::Active => ("active", ThemeColor::Accent),
+        ThreadGoalStatus::Paused => ("paused", ThemeColor::Dim),
+        ThreadGoalStatus::Blocked => ("blocked", ThemeColor::Warning),
+        ThreadGoalStatus::BudgetLimited => ("budget reached", ThemeColor::Warning),
+        ThreadGoalStatus::Complete => ("complete", ThemeColor::Dim),
+    };
+    let turns = match goal.turn_budget {
+        Some(budget) => format!("{}/{budget} turns", goal.turns_used),
+        None => format!(
+            "{} {}",
+            goal.turns_used,
+            if goal.turns_used == 1 {
+                "turn"
+            } else {
+                "turns"
+            }
+        ),
+    };
+    let tokens = match goal.token_budget {
+        Some(budget) => format!(
+            "{}/{} tokens",
+            format_tokens(goal.tokens_used.max(0) as u64),
+            format_tokens(budget.max(0) as u64)
+        ),
+        None => format!("{} tokens", format_tokens(goal.tokens_used.max(0) as u64)),
+    };
+    format!(
+        "{}{}{}",
+        theme().fg(ThemeColor::Dim, "[goal "),
+        theme().fg(color, &format!("● {label} · {turns} · {tokens}")),
+        theme().fg(ThemeColor::Dim, "]"),
+    )
+}
+
 pub trait FooterSession: Send + Sync {
     fn model(&self) -> Option<Model>;
     fn thinking_level(&self) -> ThinkingLevel;
@@ -137,6 +179,8 @@ pub trait FooterSession: Send + Sync {
     fn context_usage(&self) -> Option<ContextUsage>;
     fn active_mode(&self) -> Option<Mode>;
     fn is_using_subscription(&self, provider: &str) -> bool;
+    /// The running goal, or `None` (port addition, v0.1.21).
+    fn goal(&self) -> Option<ThreadGoal>;
 }
 
 impl FooterSession for AgentSession {
@@ -166,6 +210,10 @@ impl FooterSession for AgentSession {
 
     fn active_mode(&self) -> Option<Mode> {
         AgentSession::active_mode(self)
+    }
+
+    fn goal(&self) -> Option<ThreadGoal> {
+        AgentSession::goal(self)
     }
 
     fn is_using_subscription(&self, provider: &str) -> bool {
@@ -482,7 +530,14 @@ impl Component for FooterComponent {
             &theme().fg(ThemeColor::Dim, "..."),
             false,
         );
-        vec![pwd_line, format!("{dim_stats_left}{dim_remainder}")]
+        let mut lines = vec![pwd_line, format!("{dim_stats_left}{dim_remainder}")];
+        // The goal badge gets its own line under the stats: a running loop
+        // spending the user's money has to be readable at a glance, and it must
+        // not compete with the model name for the right edge.
+        if let Some(badge) = self.session.goal().as_ref().map(render_goal_badge) {
+            lines.push(truncate_to_width_opts(&badge, width, "", false));
+        }
+        lines
     }
 
     /// No-op: the git branch is cached and invalidated by the provider.

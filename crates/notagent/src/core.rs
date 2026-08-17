@@ -15,6 +15,7 @@ pub mod diagnostics;
 pub mod experimental;
 pub mod export_html;
 pub mod footer_data_provider;
+pub mod goal;
 pub mod hooks;
 pub mod http_dispatcher;
 pub mod keybindings;

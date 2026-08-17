@@ -13,6 +13,7 @@ pub mod harness;
 
 mod bash_filter;
 mod edit_no_full_redraw;
+mod goal;
 mod harness_check;
 mod leases;
 mod prompt_roundtrip;

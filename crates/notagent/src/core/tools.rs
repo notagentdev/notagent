@@ -7,6 +7,7 @@ pub mod file_lease;
 pub mod file_mutation_queue;
 pub mod find;
 pub mod find_codebase;
+pub mod goal;
 pub mod grep;
 pub mod ls;
 pub mod output_accumulator;
@@ -46,6 +47,8 @@ pub enum ToolName {
     TaskOutput,
     TaskStop,
     TodoWrite,
+    CreateGoal,
+    UpdateGoal,
     Write,
     Grep,
     // Renamed from `find` and joined by `find_codebase` (user decision
@@ -57,7 +60,7 @@ pub enum ToolName {
 }
 
 /// Every tool name, in the order `allToolNames` inserts them.
-pub const ALL_TOOL_NAMES: [ToolName; 17] = [
+pub const ALL_TOOL_NAMES: [ToolName; 19] = [
     ToolName::Read,
     ToolName::ReadMinified,
     ToolName::Bash,
@@ -70,6 +73,8 @@ pub const ALL_TOOL_NAMES: [ToolName; 17] = [
     ToolName::TaskOutput,
     ToolName::TaskStop,
     ToolName::TodoWrite,
+    ToolName::CreateGoal,
+    ToolName::UpdateGoal,
     ToolName::Write,
     ToolName::Grep,
     ToolName::FindFilesystem,
@@ -92,6 +97,8 @@ impl ToolName {
             ToolName::TaskOutput => "task_output",
             ToolName::TaskStop => "task_stop",
             ToolName::TodoWrite => "todo_write",
+            ToolName::CreateGoal => "create_goal",
+            ToolName::UpdateGoal => "update_goal",
             ToolName::Write => "write",
             ToolName::Grep => "grep",
             ToolName::FindFilesystem => "find_filesystem",
@@ -129,6 +136,10 @@ use crate::core::tools::edit::{EditToolOptions, create_edit_tool, create_edit_to
 use crate::core::tools::find::{FindToolOptions, create_find_tool, create_find_tool_definition};
 use crate::core::tools::find_codebase::{
     FindCodebaseToolOptions, create_find_codebase_tool, create_find_codebase_tool_definition,
+};
+use crate::core::tools::goal::{
+    GoalToolSources, create_goal_tool, create_goal_tool_definition, create_update_goal_tool,
+    create_update_goal_tool_definition,
 };
 use crate::core::tools::grep::{GrepToolOptions, create_grep_tool, create_grep_tool_definition};
 use crate::core::tools::ls::{LsToolOptions, create_ls_tool, create_ls_tool_definition};
@@ -178,6 +189,9 @@ pub struct ToolsOptions {
     /// Shared by the three observation tools, which read one manager.
     pub tasks: Option<TaskToolsSources>,
     pub todo_write: Option<TodoWriteToolSources>,
+    /// Port addition (v0.1.21): absent inside a subagent, which is what makes
+    /// the two goal tools refuse there.
+    pub goal: Option<GoalToolSources>,
     pub bash: Option<BashToolOptions>,
     pub write: Option<WriteToolOptions>,
     pub edit: Option<EditToolOptions>,
@@ -235,6 +249,12 @@ pub fn create_tool_definition(
         ToolName::TodoWrite => Arc::new(create_todo_write_tool_definition(
             options.and_then(|options| options.todo_write.clone()),
         )),
+        ToolName::CreateGoal => Arc::new(create_goal_tool_definition(
+            options.and_then(|options| options.goal.clone()),
+        )),
+        ToolName::UpdateGoal => Arc::new(create_update_goal_tool_definition(
+            options.and_then(|options| options.goal.clone()),
+        )),
         ToolName::Write => Arc::new(create_write_tool_definition(
             cwd,
             options.and_then(|options| options.write.clone()),
@@ -288,6 +308,10 @@ pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions
         }
         ToolName::TodoWrite => {
             create_todo_write_tool(options.and_then(|options| options.todo_write.clone()))
+        }
+        ToolName::CreateGoal => create_goal_tool(options.and_then(|options| options.goal.clone())),
+        ToolName::UpdateGoal => {
+            create_update_goal_tool(options.and_then(|options| options.goal.clone()))
         }
         ToolName::Write => {
             create_write_tool(cwd, options.and_then(|options| options.write.clone()))

@@ -32,9 +32,13 @@ use crate::core::tools::{ToolName, ToolsOptions, create_tool};
 ///
 /// The three background tools are the second: a subagent's conversation ends
 /// when it answers, and work it detached would outlive it with nobody left to
-/// collect the result. Both exclusions are structural because an instruction is
-/// something a model can decide to ignore.
-const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 5] = [
+/// collect the result.
+///
+/// The two goal tools are the third (port addition, v0.1.21): a goal continues
+/// its agent after every turn, and a child running that loop inside its
+/// parent's multiplies turns with nobody watching. All three exclusions are
+/// structural because an instruction is something a model can decide to ignore.
+const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 7] = [
     ToolName::Task,
     ToolName::TaskList,
     ToolName::TaskOutput,
@@ -43,6 +47,8 @@ const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 5] = [
     // subagent. Its list would also outlive nothing — the conversation ends
     // with its answer.
     ToolName::TodoWrite,
+    ToolName::CreateGoal,
+    ToolName::UpdateGoal,
 ];
 
 /// Longest a child may run before it is stopped.

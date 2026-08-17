@@ -53,6 +53,10 @@ use crate::core::compaction::{
     estimate_context_tokens, estimate_tokens, generate_branch_summary, prepare_compaction,
     should_compact,
 };
+use crate::core::goal::{
+    GOAL_REMINDER_CONTINUATION, GOAL_REMINDER_KIND, GOAL_REMINDER_TYPE, GOAL_REMINDER_WRAP_UP,
+    GoalNudge, GoalState, ThreadGoal,
+};
 use crate::core::hooks::dispatch::HookDispatcher;
 use crate::core::messages::{BashExecutionMessage, CustomMessage};
 use crate::core::modes::cycle::{initial_mode_id, next_mode_id};
@@ -489,6 +493,9 @@ pub struct AgentSession {
     tools: Mutex<ToolState>,
     tasks: Mutex<TaskState>,
     todo_store: Arc<Mutex<TodoStore>>,
+    /// The session's goal and the guard that judges its completion claims
+    /// (port addition, v0.1.21). In memory only, like the todos.
+    goal_state: Arc<Mutex<GoalState>>,
 
     // Compaction state
     compaction_signal: Mutex<Option<CancellationToken>>,
@@ -537,6 +544,7 @@ impl AgentSession {
             tools: Mutex::new(ToolState::default()),
             tasks: Mutex::new(TaskState::default()),
             todo_store: Arc::new(Mutex::new(TodoStore::new())),
+            goal_state: Arc::new(Mutex::new(GoalState::default())),
             compaction_signal: Mutex::new(None),
             auto_compaction_signal: Mutex::new(None),
             overflow_recovery_attempted: AtomicBool::new(false),
@@ -748,6 +756,7 @@ impl AgentSession {
                 && tool_results.is_empty()
             {
                 self.remind_about_open_todos();
+                self.drive_active_goal();
             }
             return;
         };
@@ -761,6 +770,7 @@ impl AgentSession {
             // longer is.
             AgentEvent::TurnEnd { tool_results, .. } if tool_results.is_empty() => {
                 self.remind_about_open_todos();
+                self.drive_active_goal();
             }
             _ => {}
         }
@@ -1499,6 +1509,7 @@ impl AgentSession {
     ) -> ToolsOptions {
         use crate::core::tools::bash::{BashToolOptions, BashToolSources};
         use crate::core::tools::edit::EditToolOptions;
+        use crate::core::tools::goal::GoalToolSources;
         use crate::core::tools::patch_minified::PatchMinifiedToolOptions;
         use crate::core::tools::read::ReadToolOptions;
         use crate::core::tools::skill::{SkillToolSkill, SkillToolSources};
@@ -1689,6 +1700,19 @@ impl AgentSession {
                 store: {
                     let store = Arc::clone(&self.todo_store);
                     Arc::new(move || Some(Arc::clone(&store)))
+                },
+            }),
+            // Only the parent gets these: the children's options below carry no
+            // goal wiring at all, which is what makes "a subagent starts no
+            // goal" structural rather than a rule it could ignore.
+            goal: Some(GoalToolSources {
+                state: {
+                    let state = Arc::clone(&self.goal_state);
+                    Arc::new(move || Some(Arc::clone(&state)))
+                },
+                todos: {
+                    let store = Arc::clone(&self.todo_store);
+                    Arc::new(move || store.lock().expect("poisoned").all().to_vec())
                 },
             }),
             find_codebase: Some(self.find_codebase_options()),
@@ -1919,6 +1943,100 @@ impl AgentSession {
             details: serde_json::to_value(&reminder.details).ok(),
             timestamp: now_millis(),
         }));
+    }
+
+    /// Accounts the finished turn onto an active goal and, while it is still
+    /// active, hands the agent a continuation so the loop keeps turning.
+    ///
+    /// Port addition (v0.1.21). Called at the same point open todos are handed
+    /// back — a turn that produced no tool results is where the run would
+    /// otherwise end.
+    fn drive_active_goal(&self) {
+        let nudge = {
+            let mut state = self.goal_state.lock().expect("goal state");
+            let Some(goal) = state.goal.as_mut() else {
+                return;
+            };
+            // Token accounting first, then the turn: a goal that crosses either
+            // budget this turn is already `BudgetLimited` when the reminder is
+            // chosen, so it wraps up instead of starting more work.
+            goal.observe_total_tokens(self.goal_token_total());
+            goal.observe_turn();
+            let goal = goal.clone();
+            let (continuations, wrap_up_sent) = self.goal_reminders_standing();
+            crate::core::goal::nudge_for(&goal, continuations, wrap_up_sent)
+        };
+        let (text, kind) = match nudge {
+            GoalNudge::Continue(text) => (text, GOAL_REMINDER_CONTINUATION),
+            GoalNudge::WrapUp(text) => (text, GOAL_REMINDER_WRAP_UP),
+            GoalNudge::None => return,
+        };
+        self.agent.follow_up(AgentMessage::Custom(CustomMessage {
+            custom_type: GOAL_REMINDER_TYPE.to_owned(),
+            content: UserContent::Blocks(vec![TextOrImageContent::Text(TextContent::new(text))]),
+            // Hidden: it is addressed to the model, and the user watches the
+            // goal through the footer badge instead.
+            display: false,
+            details: Some(serde_json::json!({ GOAL_REMINDER_KIND: kind })),
+            timestamp: now_millis(),
+        }));
+    }
+
+    /// The session's cumulative token spend, which the goal turns into its own
+    /// usage against the baseline it took when it started.
+    ///
+    /// Read from the session statistics rather than kept separately, so the
+    /// number a goal budgets against is the number the footer and `/session`
+    /// report.
+    fn goal_token_total(&self) -> i64 {
+        i64::try_from(self.get_session_stats().tokens.total).unwrap_or(i64::MAX)
+    }
+
+    /// How many of the driver's own reminders stand since the last real user
+    /// message, and whether one of them was the wrap-up.
+    ///
+    /// Looking back only that far is what makes a real user message reset the
+    /// continuation budget.
+    fn goal_reminders_standing(&self) -> (usize, bool) {
+        let messages = self.agent.state().messages;
+        // A real user message is a `User` message; the driver's own reminders are
+        // `Custom`, so the two cannot be confused here the way they can in a
+        // transcript that carries both as user turns.
+        let region_start = messages
+            .iter()
+            .rposition(|message| matches!(message, AgentMessage::User(_)))
+            .map_or(0, |index| index + 1);
+        let mut continuations = 0;
+        let mut wrap_up = false;
+        for message in &messages[region_start..] {
+            let AgentMessage::Custom(custom) = message else {
+                continue;
+            };
+            if custom.custom_type != GOAL_REMINDER_TYPE {
+                continue;
+            }
+            match custom
+                .details
+                .as_ref()
+                .and_then(|details| details.get(GOAL_REMINDER_KIND))
+                .and_then(Value::as_str)
+            {
+                Some(GOAL_REMINDER_CONTINUATION) => continuations += 1,
+                Some(GOAL_REMINDER_WRAP_UP) => wrap_up = true,
+                _ => {}
+            }
+        }
+        (continuations, wrap_up)
+    }
+
+    /// The session's goal state, for the tools, the command and the footer.
+    pub fn goal_state(&self) -> Arc<Mutex<GoalState>> {
+        Arc::clone(&self.goal_state)
+    }
+
+    /// The session's goal, for the UI that renders it.
+    pub fn goal(&self) -> Option<ThreadGoal> {
+        self.goal_state.lock().expect("goal state").goal.clone()
     }
 
     /// The session's task list, for the UI that renders it.
