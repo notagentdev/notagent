@@ -406,7 +406,14 @@ fn build_edit_call_component(
     };
     let body = match preview {
         Err(error) => theme.fg(ThemeColor::Error, error),
-        Ok(diff) => render_diff(&diff.diff, &RenderDiffOptions::default()),
+        // The path decides the syntax colours of the preview, the same way it
+        // does for the settled result below.
+        Ok(diff) => render_diff(
+            &diff.diff,
+            &RenderDiffOptions {
+                file_path: edit_path_arg(args),
+            },
+        ),
     };
     // The badge style stacks the diff directly under the header row.
     if !badge_style {

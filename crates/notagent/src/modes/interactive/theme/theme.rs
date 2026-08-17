@@ -447,6 +447,19 @@ fn badge_label(label: &str) -> String {
     format!(" {} ", label.to_uppercase().replace('_', " "))
 }
 
+/// Serialises the tests that install a theme or a block style.
+///
+/// Both are process globals, so a test that sets one and a test that reads it
+/// have to take the same lock — one guard per module would leave them racing
+/// against each other inside the same test binary.
+#[cfg(test)]
+pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// A foreground colour sequence (`38;2;…`/`38;5;…`) as the matching
 /// background sequence.
 fn fg_ansi_as_bg(ansi: &str) -> String {

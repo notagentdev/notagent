@@ -42,6 +42,11 @@ fn diff_wash(added: bool, emphasis: bool) -> String {
     } else {
         (ThemeBg::ToolErrorBg, ThemeColor::ToolDiffRemoved)
     };
+    // Built from the badge fill rather than the block background, for the same
+    // reason the badges are: a wash mixed from the barely-tinted block colour
+    // comes out olive and brown instead of green and red. The reference mixes
+    // from its own saturated values, which are exactly these.
+    let bg_token = bg_token.badge_fill();
     let base = ansi_rgb(theme.get_bg_ansi(bg_token));
     let accent = ansi_rgb(theme.get_fg_ansi(fg_token));
     match (base, accent) {
@@ -66,6 +71,123 @@ fn emphasis_style(added: bool) -> (String, String) {
         }
     }
     ("\x1b[7m".to_string(), "\x1b[27m".to_string())
+}
+
+/// Half-open visible character ranges within one line.
+type CharSpans = Vec<(usize, usize)>;
+
+/// The visible character ranges of the changed tokens on each side of a
+/// single-line modification, following the same leading-whitespace rule as
+/// [`render_intra_line_diff`] (reference `intra_line_change_spans`).
+///
+/// The badge style needs positions rather than a rendered string, because it
+/// marks the ranges *on top of* the syntax-highlighted line.
+fn intra_line_change_spans(old_content: &str, new_content: &str) -> (CharSpans, CharSpans) {
+    let word_diff = word_diff::diff_words(old_content, new_content);
+    let mut removed_spans = Vec::new();
+    let mut added_spans = Vec::new();
+    let mut removed_pos = 0usize;
+    let mut added_pos = 0usize;
+    let mut is_first_removed = true;
+    let mut is_first_added = true;
+
+    for part in &word_diff {
+        let chars = part.value.chars().count();
+        if part.removed {
+            let mut start = removed_pos;
+            if is_first_removed {
+                start += word_diff::leading_ws(&part.value).chars().count();
+                is_first_removed = false;
+            }
+            let end = removed_pos + chars;
+            if end > start {
+                removed_spans.push((start, end));
+            }
+            removed_pos = end;
+        } else if part.added {
+            let mut start = added_pos;
+            if is_first_added {
+                start += word_diff::leading_ws(&part.value).chars().count();
+                is_first_added = false;
+            }
+            let end = added_pos + chars;
+            if end > start {
+                added_spans.push((start, end));
+            }
+            added_pos = end;
+        } else {
+            removed_pos += chars;
+            added_pos += chars;
+        }
+    }
+
+    (removed_spans, added_spans)
+}
+
+/// Wraps the given visible-character ranges of an ANSI-styled line in `open`,
+/// restoring `close` behind each range; escape sequences in the line are left
+/// untouched (reference `emphasize_spans`).
+fn emphasize_spans(ansi: &str, spans: &[(usize, usize)], open: &str, close: &str) -> String {
+    if spans.is_empty() || open.is_empty() {
+        return ansi.to_string();
+    }
+    let mut out = String::new();
+    let mut visible = 0usize;
+    let mut in_span = false;
+    let mut span_iter = spans.iter().copied().peekable();
+    let mut chars = ansi.chars();
+
+    while let Some(character) = chars.next() {
+        if character == '\x1b' {
+            out.push(character);
+            for escape in chars.by_ref() {
+                out.push(escape);
+                if escape.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            continue;
+        }
+        loop {
+            match span_iter.peek().copied() {
+                Some((start, _)) if !in_span && visible == start => {
+                    out.push_str(open);
+                    in_span = true;
+                }
+                Some((_, end)) if in_span && visible == end => {
+                    out.push_str(close);
+                    in_span = false;
+                    span_iter.next();
+                }
+                _ => break,
+            }
+        }
+        out.push(character);
+        visible += 1;
+    }
+    if in_span {
+        out.push_str(close);
+    }
+    out
+}
+
+/// One line of diff content through the syntax highlighter.
+///
+/// The highlighter closes every line with a full reset, which would drop the
+/// wash painted behind it — the callers close themselves, so the reset is
+/// stripped here (reference `render_diff`'s `highlight` closure).
+fn highlight_content(content: &str, lang: Option<&str>) -> String {
+    let text = replace_tabs(content);
+    let Some(lang) = lang else {
+        return text;
+    };
+    let highlighted = crate::modes::interactive::theme::theme::highlight_code(&text, Some(lang))
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    highlighted
+        .strip_suffix("\x1b[0m")
+        .map_or(highlighted.clone(), str::to_string)
 }
 
 /// Parsed shape of a diff line.
@@ -144,11 +266,10 @@ fn render_intra_line_diff(old_content: &str, new_content: &str) -> (String, Stri
     let mut is_first_removed = true;
     let mut is_first_added = true;
 
-    // The changed tokens read as inverse in the standard style, and as the
-    // stronger emphasis wash restoring to the line's own wash in the badge
-    // style (reference `washed_diff_line`).
-    let (removed_open, removed_close) = emphasis_style(false);
-    let (added_open, added_close) = emphasis_style(true);
+    // The standard style marks changed tokens with inverse, exactly as the
+    // TypeScript original does; the badge style takes the span path instead
+    // (see `washed_diff_line`), so this stays untouched by it.
+    let theme = theme();
     for part in &word_diff {
         if part.removed {
             let mut value = part.value.as_str();
@@ -160,7 +281,7 @@ fn render_intra_line_diff(old_content: &str, new_content: &str) -> (String, Stri
                 is_first_removed = false;
             }
             if !value.is_empty() {
-                removed_line.push_str(&format!("{removed_open}{value}{removed_close}"));
+                removed_line.push_str(&theme.inverse(value));
             }
         } else if part.added {
             let mut value = part.value.as_str();
@@ -172,7 +293,7 @@ fn render_intra_line_diff(old_content: &str, new_content: &str) -> (String, Stri
                 is_first_added = false;
             }
             if !value.is_empty() {
-                added_line.push_str(&format!("{added_open}{value}{added_close}"));
+                added_line.push_str(&theme.inverse(value));
             }
         } else {
             removed_line.push_str(&part.value);
@@ -183,6 +304,49 @@ fn render_intra_line_diff(old_content: &str, new_content: &str) -> (String, Stri
     (removed_line, added_line)
 }
 
+/// One washed diff row of the badge style: the line's wash, the signed line
+/// number in the diff colour, then the syntax-highlighted content with the
+/// changed tokens emphasised on top (reference `washed_diff_line`).
+fn washed_diff_line(
+    kind: char,
+    line_num: &str,
+    content: &str,
+    spans: &[(usize, usize)],
+    lang: Option<&str>,
+) -> String {
+    let theme = theme();
+    let added = kind == '+';
+    let background = diff_wash(added, false);
+    let (open, close) = emphasis_style(added);
+    // Behind each emphasised range the line's own wash is restored; with no
+    // wash to restore (no truecolor) the inverse pair closes itself.
+    let close = if close.starts_with("\x1b[48") || close == "\x1b[27m" {
+        close
+    } else {
+        background.clone()
+    };
+    let code = emphasize_spans(&highlight_content(content, lang), spans, &open, &close);
+    let prefix_color = if added {
+        ThemeColor::ToolDiffAdded
+    } else {
+        ThemeColor::ToolDiffRemoved
+    };
+    format!(
+        "{background}{} {code}\x1b[0m",
+        theme.fg(prefix_color, &format!("{kind}{line_num}"))
+    )
+}
+
+/// A context row of the badge style: the line number dimmed, the content in
+/// its own syntax colours (reference `context_line`).
+fn context_line(line_num: &str, content: &str, lang: Option<&str>) -> String {
+    format!(
+        "{} {}\x1b[0m",
+        theme().fg(ThemeColor::ToolDiffContext, &format!(" {line_num}")),
+        highlight_content(content, lang)
+    )
+}
+
 /// Options of [`render_diff`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RenderDiffOptions {
@@ -190,36 +354,33 @@ pub struct RenderDiffOptions {
     pub file_path: Option<String>,
 }
 
-/// One removed/added diff row. The standard style colours the whole line in
-/// the diff foreground; the badge style washes it with the blended block
-/// background, keeps the content in the terminal's own text colour and closes
-/// with a full reset (reference `washed_diff_line`).
-fn diff_line(added: bool, num: &str, content: &str) -> String {
-    let theme = theme();
-    let (kind, color) = if added {
-        ('+', ThemeColor::ToolDiffAdded)
-    } else {
-        ('-', ThemeColor::ToolDiffRemoved)
-    };
-    if block_style() == BlockStyle::Badge {
-        format!(
-            "{}{} {content}\x1b[0m",
-            diff_wash(added, false),
-            theme.fg(color, &format!("{kind}{num}")),
-        )
-    } else {
-        theme.fg(color, &format!("{kind}{num} {content}"))
-    }
-}
-
 /// Render a diff string with colored lines and intra-line change highlighting.
 /// - Context lines: dim/gray
 /// - Removed lines: red, with inverse on changed tokens
 /// - Added lines: green, with inverse on changed tokens
-pub fn render_diff(diff_text: &str, _options: &RenderDiffOptions) -> String {
+///
+/// The badge style renders the same diff differently (takeover of the
+/// reference's `render_diff`, user decision 2026-08-17, v0.1.13): added and
+/// removed lines are washed with the block backgrounds pulled toward the diff
+/// accents, the content keeps its own syntax colours — context lines included
+/// — and the changed tokens of a single-line modification are emphasised on
+/// top of that. The standard style is the TypeScript original untouched.
+pub fn render_diff(diff_text: &str, options: &RenderDiffOptions) -> String {
     let lines: Vec<&str> = diff_text.split('\n').collect();
     let mut result: Vec<String> = Vec::new();
     let theme = theme();
+    let badge_style = block_style() == BlockStyle::Badge;
+    // Only the badge style paints the code, so the language is only resolved
+    // there; the standard style has no syntax colours to place.
+    let lang = badge_style
+        .then(|| {
+            options
+                .file_path
+                .as_deref()
+                .and_then(crate::modes::interactive::theme::theme::get_language_from_path)
+        })
+        .flatten();
+    let lang = lang.as_deref();
 
     let mut i = 0;
     while i < lines.len() {
@@ -259,41 +420,232 @@ pub fn render_diff(diff_text: &str, _options: &RenderDiffOptions) -> String {
 
             // Only do intra-line diffing when there's exactly one removed and one added line
             // (indicating a single line modification). Otherwise, show lines as-is.
-            if removed_lines.len() == 1 && added_lines.len() == 1 {
+            let single_modification = removed_lines.len() == 1 && added_lines.len() == 1;
+            if badge_style {
+                let (removed_spans, added_spans) = if single_modification {
+                    intra_line_change_spans(
+                        &replace_tabs(&removed_lines[0].1),
+                        &replace_tabs(&added_lines[0].1),
+                    )
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+                for removed in &removed_lines {
+                    result.push(washed_diff_line(
+                        '-',
+                        &removed.0,
+                        &removed.1,
+                        &removed_spans,
+                        lang,
+                    ));
+                }
+                for added in &added_lines {
+                    result.push(washed_diff_line(
+                        '+',
+                        &added.0,
+                        &added.1,
+                        &added_spans,
+                        lang,
+                    ));
+                }
+            } else if single_modification {
                 let removed = &removed_lines[0];
                 let added = &added_lines[0];
 
                 let (removed_line, added_line) =
                     render_intra_line_diff(&replace_tabs(&removed.1), &replace_tabs(&added.1));
 
-                result.push(diff_line(false, &removed.0, &removed_line));
-                result.push(diff_line(true, &added.0, &added_line));
+                result.push(theme.fg(
+                    ThemeColor::ToolDiffRemoved,
+                    &format!("-{} {removed_line}", removed.0),
+                ));
+                result.push(theme.fg(
+                    ThemeColor::ToolDiffAdded,
+                    &format!("+{} {added_line}", added.0),
+                ));
             } else {
                 // Show all removed lines first, then all added lines
                 for removed in &removed_lines {
-                    result.push(diff_line(false, &removed.0, &replace_tabs(&removed.1)));
+                    result.push(theme.fg(
+                        ThemeColor::ToolDiffRemoved,
+                        &format!("-{} {}", removed.0, replace_tabs(&removed.1)),
+                    ));
                 }
                 for added in &added_lines {
-                    result.push(diff_line(true, &added.0, &replace_tabs(&added.1)));
+                    result.push(theme.fg(
+                        ThemeColor::ToolDiffAdded,
+                        &format!("+{} {}", added.0, replace_tabs(&added.1)),
+                    ));
                 }
             }
         } else if parsed.prefix == '+' {
             // Standalone added line
-            result.push(diff_line(
-                true,
-                parsed.line_num,
-                &replace_tabs(parsed.content),
-            ));
+            if badge_style {
+                result.push(washed_diff_line(
+                    '+',
+                    parsed.line_num,
+                    parsed.content,
+                    &[],
+                    lang,
+                ));
+            } else {
+                result.push(theme.fg(
+                    ThemeColor::ToolDiffAdded,
+                    &format!("+{} {}", parsed.line_num, replace_tabs(parsed.content)),
+                ));
+            }
             i += 1;
         } else {
             // Context line
-            result.push(theme.fg(
-                ThemeColor::ToolDiffContext,
-                &format!(" {} {}", parsed.line_num, replace_tabs(parsed.content)),
-            ));
+            if badge_style {
+                result.push(context_line(parsed.line_num, parsed.content, lang));
+            } else {
+                result.push(theme.fg(
+                    ThemeColor::ToolDiffContext,
+                    &format!(" {} {}", parsed.line_num, replace_tabs(parsed.content)),
+                ));
+            }
             i += 1;
         }
     }
 
     result.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::MutexGuard;
+
+    use super::*;
+    use crate::modes::interactive::theme::theme::{init_theme, set_block_style, test_lock};
+    use crate::utils::ansi::strip_ansi;
+
+    /// The theme and the block style are process globals; every test that
+    /// touches them shares one lock.
+    fn theme_lock(style: BlockStyle) -> MutexGuard<'static, ()> {
+        let guard = test_lock();
+        init_theme(Some("dark"), false);
+        set_block_style(style);
+        guard
+    }
+
+    const RUST_DIFF: &str = "  10 fn main() {\n- 11     let x = 1;\n+ 11     let x = 2;\n  12 }";
+
+    fn rust_options() -> RenderDiffOptions {
+        RenderDiffOptions {
+            file_path: Some("src/main.rs".to_string()),
+        }
+    }
+
+    /// The opening sequence the `rust` grammar paints a keyword with — the
+    /// highlighted `fn` without the word itself.
+    fn keyword_ansi() -> String {
+        let highlighted =
+            crate::modes::interactive::theme::theme::highlight_code("fn", Some("rust"))
+                .into_iter()
+                .next()
+                .unwrap_or_default();
+        highlighted
+            .split("fn")
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    #[test]
+    fn the_badge_style_keeps_the_code_in_its_own_syntax_colours() {
+        let _guard = theme_lock(BlockStyle::Badge);
+        let rendered = render_diff(RUST_DIFF, &rust_options());
+        let keyword = keyword_ansi();
+        assert!(!keyword.is_empty(), "the fixture needs a highlighter");
+        // `fn` on the context row and `let` on both changed rows.
+        assert_eq!(
+            rendered.matches(&keyword).count(),
+            3,
+            "context and changed rows are highlighted: {rendered:?}"
+        );
+        // The text itself survives the colouring.
+        assert!(strip_ansi(&rendered).contains("let x = 2;"), "{rendered:?}");
+    }
+
+    #[test]
+    fn the_badge_style_washes_the_changed_rows_and_leaves_context_bare() {
+        let _guard = theme_lock(BlockStyle::Badge);
+        let rendered = render_diff(RUST_DIFF, &rust_options());
+        let rows: Vec<&str> = rendered.lines().collect();
+
+        assert_eq!(rows.len(), 4, "{rendered:?}");
+        assert!(
+            !rows[0].contains("\x1b[48;"),
+            "context row is unwashed: {:?}",
+            rows[0]
+        );
+        assert!(
+            rows[1].starts_with(&diff_wash(false, false)),
+            "{:?}",
+            rows[1]
+        );
+        assert!(
+            rows[2].starts_with(&diff_wash(true, false)),
+            "{:?}",
+            rows[2]
+        );
+        assert!(
+            !rows[3].contains("\x1b[48;"),
+            "context row is unwashed: {:?}",
+            rows[3]
+        );
+    }
+
+    /// The changed token of a single-line modification gets the stronger wash
+    /// on top of the syntax colours, and the line's own wash behind it again.
+    #[test]
+    fn the_badge_style_emphasises_only_the_changed_token() {
+        let _guard = theme_lock(BlockStyle::Badge);
+        let rendered = render_diff(RUST_DIFF, &rust_options());
+        let added = rendered.lines().nth(2).expect("added row");
+
+        assert!(added.contains(&diff_wash(true, true)), "{added:?}");
+        // The emphasis covers `2` and nothing else: it opens once and hands
+        // back to the line wash before the semicolon.
+        assert_eq!(
+            added.matches(&diff_wash(true, true)).count(),
+            1,
+            "{added:?}"
+        );
+        assert!(strip_ansi(added).contains("let x = 2;"), "{added:?}");
+    }
+
+    /// The washes are mixed from the badge fills; mixing from the block
+    /// backgrounds produced olive and brown instead of green and red.
+    #[test]
+    fn the_diff_washes_read_as_green_and_red() {
+        let _guard = theme_lock(BlockStyle::Badge);
+        let added = ansi_rgb(&diff_wash(true, false)).expect("truecolor wash");
+        let removed = ansi_rgb(&diff_wash(false, false)).expect("truecolor wash");
+
+        assert!(
+            added.1 > added.0 && added.1 > added.2,
+            "the added wash is green: {added:?}"
+        );
+        assert!(
+            removed.0 > removed.1 && removed.0 > removed.2,
+            "the removed wash is red: {removed:?}"
+        );
+    }
+
+    /// The standard style is the TypeScript original and stays free of both
+    /// the wash and the syntax colours (the oracle pins the exact bytes).
+    #[test]
+    fn the_standard_style_paints_neither_wash_nor_syntax() {
+        let _guard = theme_lock(BlockStyle::Standard);
+        let rendered = render_diff(RUST_DIFF, &rust_options());
+
+        assert!(!rendered.contains("\x1b[48;"), "no wash: {rendered:?}");
+        assert!(
+            !rendered.contains(&keyword_ansi()),
+            "no syntax colours: {rendered:?}"
+        );
+        assert!(rendered.contains("\x1b[7m"), "inverse marks the change");
+    }
 }

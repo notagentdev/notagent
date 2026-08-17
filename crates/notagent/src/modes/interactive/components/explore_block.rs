@@ -445,18 +445,14 @@ fn paint_row(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use std::sync::MutexGuard;
 
     use super::*;
     use crate::modes::interactive::theme::theme::{init_theme, set_block_style};
     use crate::utils::ansi::strip_ansi;
 
     fn theme_lock() -> MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let guard = LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let guard = crate::modes::interactive::theme::theme::test_lock();
         init_theme(None, false);
         // The block style is a process global (default: badge); the layout
         // tests pin the standard surface unless they say otherwise.
