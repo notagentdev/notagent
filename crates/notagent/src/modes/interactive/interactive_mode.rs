@@ -6237,6 +6237,13 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_index_command(index_argument.as_deref());
             }
+            // Addition over the TS original (user decision 2026-08-17,
+            // v0.1.11): the command form of the thinking-block toggle, which
+            // until now only existed as a keybinding.
+            "/thinking" => {
+                self.clear_editor_text();
+                self.toggle_thinking_block_visibility();
+            }
             _ if text == "/export" || text.starts_with("/export ") => {
                 self.handle_export_command(text).await;
                 self.clear_editor_text();

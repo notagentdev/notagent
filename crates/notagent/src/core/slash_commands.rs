@@ -80,6 +80,13 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
         "Rebuild the local codebase index (find_codebase), or toggle it",
         "[on|off]",
     ),
+    // Addition over the TS original (user decision 2026-08-17, v0.1.11): the
+    // command form of the thinking-block toggle, which the TS original only
+    // bound to a key.
+    command(
+        "thinking",
+        "Show or hide the thinking blocks in the transcript",
+    ),
     command(
         "export",
         "Export session (HTML default, or specify path: .html/.jsonl)",
@@ -141,6 +148,8 @@ mod tests {
                 "scoped-models",
                 // Port addition (user decision, v0.1.7), not in the TS list.
                 "index",
+                // Port addition (user decision, v0.1.11), not in the TS list.
+                "thinking",
                 "export",
                 "import",
                 "share",

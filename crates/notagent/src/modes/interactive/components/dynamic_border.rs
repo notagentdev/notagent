@@ -12,12 +12,17 @@ pub struct DynamicBorder {
 }
 
 impl DynamicBorder {
-    /// New border; `None` uses the theme's `border` colour, like the TypeScript
-    /// default parameter (which also reads the global theme per call).
+    /// New border; `None` uses the theme's `borderMuted` colour, read per call
+    /// from the global theme like the TypeScript default parameter.
+    ///
+    /// Deviation from the TS original (user decision 2026-08-17, v0.1.11),
+    /// which used `border` — the accent blue. A dialog's rules are furniture,
+    /// not a signal, and the blue read as one; `borderMuted` is the grey the
+    /// input frame already draws itself in, so the two now match.
     pub fn new(color: Option<StyleFn>) -> Self {
         Self {
             color: color.unwrap_or_else(|| {
-                std::rc::Rc::new(|text: &str| theme().fg(ThemeColor::Border, text))
+                std::rc::Rc::new(|text: &str| theme().fg(ThemeColor::BorderMuted, text))
             }),
         }
     }

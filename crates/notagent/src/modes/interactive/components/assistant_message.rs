@@ -244,6 +244,13 @@ impl AssistantMessageComponent {
                         continue;
                     }
 
+                    // Hidden thinking is hidden in every style. The badge
+                    // style has no static label to fall back to — the badge
+                    // itself is the block — so hiding drops the block whole.
+                    if self.hide_thinking_block && block_style() == BlockStyle::Badge {
+                        continue;
+                    }
+
                     // Add spacing only when another visible assistant content block follows.
                     // This avoids a superfluous blank line before separately-rendered tool
                     // execution blocks.

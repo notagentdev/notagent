@@ -106,13 +106,16 @@ fn draws_a_rule_across_the_width() {
 }
 
 #[test]
-fn uses_the_theme_border_color_by_default() {
+fn uses_the_muted_border_color_by_default() {
+    // Deviation from the TS original (user decision 2026-08-17, v0.1.11):
+    // the rules of a dialog are furniture, so they take the same muted grey
+    // the input frame draws itself in instead of the accent blue.
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
     let mut border = DynamicBorder::new(None);
     assert_eq!(
         border.render(3),
-        vec![theme().fg(ThemeColor::Border, "───")]
+        vec![theme().fg(ThemeColor::BorderMuted, "───")]
     );
 }
 

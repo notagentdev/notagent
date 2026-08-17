@@ -434,16 +434,16 @@ fn badge_style_expand_toggle_reveals_the_thinking_text() {
 }
 
 #[test]
-fn badge_style_ignores_the_hidden_thinking_label() {
-    // The badge branch outranks `hide_thinking_block`: thinking always
-    // renders as its badge block (reference behaviour).
+fn badge_style_hiding_thinking_drops_the_block_whole() {
+    // The badge style has no static label to fall back to — the badge is the
+    // block — so hiding drops it entirely and the answer stands alone.
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
     set_block_style(BlockStyle::Badge);
 
     let mut component = AssistantMessageComponent::new(
         Some(create_assistant_message(
-            vec![thinking("secret reasoning")],
+            vec![thinking("secret reasoning"), text("answer")],
             StopReason::Stop,
         )),
         true,
@@ -453,8 +453,15 @@ fn badge_style_ignores_the_hidden_thinking_label() {
         Vec::new(),
     );
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    assert!(!rendered.contains("THOUGHT"), "{rendered}");
     assert!(!rendered.contains("Thinking..."), "{rendered}");
+    assert!(!rendered.contains("secret reasoning"), "{rendered}");
+    assert!(rendered.contains("answer"), "{rendered}");
+
+    // Showing them again brings the badge back.
+    component.set_hide_thinking_block(false);
+    let shown = strip_ansi(&component.render(80).join("\n"));
+    assert!(shown.contains("THOUGHT"), "{shown}");
 }
 
 #[test]

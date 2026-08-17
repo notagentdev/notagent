@@ -63,6 +63,38 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
         let e2e = InteractiveE2e::new().await;
         e2e.faux().set_responses(vec![
             tool_call_reply(
+                "ls",
+                "call-1",
+                json!({ "path": e2e.path("does-not-exist") }),
+            ),
+            reply("The directory is missing."),
+        ]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("list the missing directory").await;
+
+        // The row names the tool, its target and the error the tool returned.
+        // The path is the one assertion that has to survive the wrap: it is
+        // longer than the 80 columns of the terminal. The badge style (the
+        // default) names the tool uppercase in its state badge.
+        driver.wait_for("LS").await;
+        driver.wait_for_across_wraps("does-not-exist").await;
+        driver.assert_shows("Path not found");
+        driver.wait_for("The directory is missing.").await;
+    })
+    .await;
+}
+
+/// Reads join the searches in the compact block instead of getting a row of
+/// their own (user decision 2026-08-17, v0.1.11): the block names the file and
+/// counts the failure rather than printing the tool's error text.
+#[tokio::test(flavor = "current_thread")]
+async fn a_failing_read_is_counted_in_the_search_block() {
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        e2e.faux().set_responses(vec![
+            tool_call_reply(
                 "read",
                 "call-1",
                 json!({ "path": e2e.path("does-not-exist.txt") }),
@@ -74,12 +106,8 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
 
         driver.submit("read the missing file").await;
 
-        // The row names the tool, its target and the error the tool returned.
-        // The path is the one assertion that has to survive the wrap: it is
-        // longer than the 80 columns of the terminal.
-        driver.wait_for("read").await;
-        driver.wait_for_across_wraps("does-not-exist.txt").await;
-        driver.assert_shows("No such file or directory");
+        driver.wait_for("Read does-not-exist.txt").await;
+        driver.wait_for("1 read, 1 failed").await;
         driver.wait_for("The file is missing.").await;
     })
     .await;

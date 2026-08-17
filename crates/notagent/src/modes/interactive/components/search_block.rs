@@ -2,17 +2,18 @@
 //!
 //! Takeover of `ExploreBlockComponent` from ../notagent-main-rust
 //! (`crates/notagent_tui/src/explore_block.rs`), user decision 2026-08-17
-//! (v0.1.8), with two deliberate renames and one scope change:
-//! - The phase labels read "Searching..." / "Searched" instead of
-//!   "Exploring..." / "Explored".
-//! - It groups the search tools — `grep`, `find_filesystem`, `find_codebase` —
-//!   and only those. The reference also folded `read`/`read_minified` in; the
-//!   user scoped this block to searches.
+//! (v0.1.8), with one deliberate rename: the phase labels read
+//! "Searching..." / "Searched" instead of "Exploring..." / "Explored".
+//!
+//! It groups the search tools — `grep`, `find_filesystem`, `find_codebase` —
+//! together with the reads (`read`, `read_minified`), exactly as the reference
+//! does (user decision 2026-08-17, v0.1.11; v0.1.8 had left the reads out).
 //!
 //! The mechanics are the reference's: one row per call id (a call announced
 //! before its arguments stays one row), the last four rows as the collapsed
-//! preview, ctrl+o to expand, a summary line, and the pending/success/error
-//! block background carrying the state.
+//! preview, ctrl+o to expand, a summary line counting searches and reads
+//! separately, and the pending/success/error block background carrying the
+//! state.
 
 use std::collections::HashMap;
 
@@ -30,7 +31,17 @@ const PREVIEW_ROWS: usize = 4;
 /// Returns whether a tool call belongs in the compact search block.
 #[must_use]
 pub fn is_search_tool(name: &str) -> bool {
-    matches!(name, "grep" | "find_filesystem" | "find_codebase")
+    matches!(
+        name,
+        "grep" | "find_filesystem" | "find_codebase" | "read" | "read_minified"
+    )
+}
+
+/// What an entry stands for; the summary counts the two kinds separately.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchKind {
+    Search,
+    Read,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,19 +49,41 @@ struct SearchEntry {
     call_id: String,
     label: &'static str,
     detail: String,
+    /// The line range of a read, e.g. `L1-200`.
+    range: Option<String>,
+    kind: SearchKind,
     complete: bool,
     failed: bool,
 }
 
 impl SearchEntry {
     fn new(tool_name: &str, call_id: String, args: &serde_json::Value) -> Self {
-        let (label, detail) = match tool_name {
+        let (label, detail, range, kind) = match tool_name {
+            "read" | "read_minified" => {
+                // The file's name alone: the block is a list of what was
+                // looked at, and the full path costs the whole row.
+                let path = args
+                    .get("file_path")
+                    .filter(|value| !value.is_null())
+                    .or_else(|| args.get("path"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let name = path
+                    .rsplit('/')
+                    .next()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or(path)
+                    .to_string();
+                ("Read", name, read_range(args), SearchKind::Read)
+            }
             "find_filesystem" => (
                 "Searched files",
                 args.get("pattern")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("")
                     .to_string(),
+                None,
+                SearchKind::Search,
             ),
             "find_codebase" => (
                 "Searched code",
@@ -58,6 +91,8 @@ impl SearchEntry {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("")
                     .to_string(),
+                None,
+                SearchKind::Search,
             ),
             "grep" => (
                 "Searched text",
@@ -65,8 +100,10 @@ impl SearchEntry {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("")
                     .to_string(),
+                None,
+                SearchKind::Search,
             ),
-            _ => ("Searched", String::new()),
+            _ => ("Searched", String::new(), None, SearchKind::Search),
         };
         // A search pattern or query may span lines; `render_entry` returns one
         // string per entry and the renderer counts it as one row.
@@ -75,9 +112,33 @@ impl SearchEntry {
             call_id,
             label,
             detail,
+            range,
+            kind,
             complete: false,
             failed: false,
         }
+    }
+}
+
+/// The line range of a read as `L{start}-{end}`, or `L{start}-` when the read
+/// runs to the end of the file. `None` when the call reads the whole file.
+///
+/// The reference reads a `range` object; our read tool takes `offset`/`limit`
+/// (`read.rs`), so the range is derived from those the same way the read
+/// renderer derives its own header.
+fn read_range(args: &serde_json::Value) -> Option<String> {
+    let offset = args.get("offset").filter(|value| !value.is_null());
+    let limit = args.get("limit").filter(|value| !value.is_null());
+    if offset.is_none() && limit.is_none() {
+        return None;
+    }
+    let start = offset
+        .and_then(serde_json::Value::as_i64)
+        .filter(|start| *start > 0)
+        .unwrap_or(1);
+    match limit.and_then(serde_json::Value::as_i64) {
+        Some(limit) if limit > 0 => Some(format!("L{start}-{}", start + limit - 1)),
+        _ => Some(format!("L{start}-")),
     }
 }
 
@@ -182,7 +243,16 @@ impl SearchBlockComponent {
     }
 
     fn summary(&self) -> String {
-        let searches = self.entries.len();
+        let searches = self
+            .entries
+            .iter()
+            .filter(|entry| entry.kind == SearchKind::Search)
+            .count();
+        let reads = self
+            .entries
+            .iter()
+            .filter(|entry| entry.kind == SearchKind::Read)
+            .count();
         let failed = self.failed_count();
         let mut parts = Vec::new();
         if searches > 0 {
@@ -190,6 +260,9 @@ impl SearchBlockComponent {
                 "{searches} search{}",
                 if searches == 1 { "" } else { "es" }
             ));
+        }
+        if reads > 0 {
+            parts.push(format!("{reads} read{}", if reads == 1 { "" } else { "s" }));
         }
         if failed > 0 {
             parts.push(format!("{failed} failed"));
@@ -229,6 +302,10 @@ impl Component for SearchBlockComponent {
             if !entry.detail.is_empty() {
                 line.push(' ');
                 line.push_str(&theme_instance.fg(ThemeColor::ToolTitle, &entry.detail));
+            }
+            if let Some(range) = &entry.range {
+                line.push(' ');
+                line.push_str(&theme_instance.fg(ThemeColor::Dim, range));
             }
             truncate_to_width_opts(&line, width, "…", false)
         };
@@ -391,13 +468,88 @@ mod tests {
     }
 
     #[test]
-    fn the_search_tools_and_only_those_are_grouped() {
-        for name in ["grep", "find_filesystem", "find_codebase"] {
+    fn the_search_and_read_tools_and_only_those_are_grouped() {
+        for name in [
+            "grep",
+            "find_filesystem",
+            "find_codebase",
+            "read",
+            "read_minified",
+        ] {
             assert!(is_search_tool(name), "{name}");
         }
-        for name in ["read", "read_minified", "ls", "bash", "todo_write"] {
+        for name in ["ls", "bash", "todo_write", "write", "edit"] {
             assert!(!is_search_tool(name), "{name}");
         }
+    }
+
+    #[test]
+    fn a_read_shows_its_file_name_and_line_range() {
+        let _guard = theme_lock();
+        let mut block = SearchBlockComponent::new();
+        block.push_call(
+            "read",
+            "read-1".to_string(),
+            &serde_json::json!({ "file_path": "/repo/crates/notagent/src/lib.rs", "offset": 1, "limit": 200 }),
+        );
+        block.complete_call("read-1", false);
+        block.close();
+        let actual = rendered(&mut block).join("\n");
+        // The name alone, not the path, plus the range the reference shows.
+        assert!(actual.contains("Read lib.rs L1-200"), "{actual}");
+        assert!(!actual.contains("/repo/crates"), "{actual}");
+        assert!(actual.contains("1 read"), "{actual}");
+    }
+
+    #[test]
+    fn a_whole_file_read_shows_no_range_and_an_open_read_shows_one() {
+        let _guard = theme_lock();
+        let mut whole = SearchBlockComponent::new();
+        whole.push_call(
+            "read",
+            "read-1".to_string(),
+            &serde_json::json!({ "file_path": "README.md" }),
+        );
+        let whole = rendered(&mut whole).join("\n");
+        assert!(whole.contains("Read README.md"), "{whole}");
+        assert!(!whole.contains(" L"), "{whole}");
+
+        let _guard2 = ();
+        let mut open = SearchBlockComponent::new();
+        open.push_call(
+            "read_minified",
+            "read-2".to_string(),
+            &serde_json::json!({ "file_path": "README.md", "offset": 40 }),
+        );
+        let open = rendered(&mut open).join("\n");
+        assert!(open.contains("Read README.md L40-"), "{open}");
+    }
+
+    #[test]
+    fn the_summary_counts_searches_and_reads_separately() {
+        let _guard = theme_lock();
+        let mut block = SearchBlockComponent::new();
+        block.push_call(
+            "grep",
+            "search-1".to_string(),
+            &serde_json::json!({ "pattern": "needle" }),
+        );
+        block.push_call(
+            "read",
+            "read-1".to_string(),
+            &serde_json::json!({ "file_path": "a.rs" }),
+        );
+        block.push_call(
+            "read",
+            "read-2".to_string(),
+            &serde_json::json!({ "file_path": "b.rs" }),
+        );
+        for call_id in ["search-1", "read-1", "read-2"] {
+            block.complete_call(call_id, false);
+        }
+        block.close();
+        let actual = rendered(&mut block).join("\n");
+        assert!(actual.contains("1 search, 2 reads"), "{actual}");
     }
 
     #[test]

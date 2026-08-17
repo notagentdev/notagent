@@ -371,9 +371,20 @@ pub fn set_block_style(style: BlockStyle) {
 }
 
 /// A state badge: the label uppercased on the state background, the
-/// reference's `block_paint::badge` reduced to our theme surface.
+/// reference's `block_paint::badge`.
+///
+/// The label carries the theme's ordinary text colour, so it reads like every
+/// other word in the transcript and only the fill says which block this is —
+/// without naming it, the label would inherit whatever colour was last set and
+/// vanish into its own fill. Closed with a full reset so a repaint after it
+/// starts clean.
 pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
-    theme.bg(background, &theme.bold(&badge_label(label)))
+    format!(
+        "{}{}{}\x1b[0m",
+        theme.get_bg_ansi(background),
+        badge_text_ansi(theme),
+        badge_label(label)
+    )
 }
 
 /// Like [`badge`], but painted directly in a foreground colour's tone — the
@@ -381,8 +392,19 @@ pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
 /// `block_paint::color_badge`). The foreground sequence becomes the badge's
 /// background by swapping the ANSI parameter (38 → 48).
 pub fn color_badge(theme: &Theme, color: ThemeColor, label: &str) -> String {
-    let background = fg_ansi_as_bg(theme.get_fg_ansi(color));
-    format!("{background}{}\x1b[49m", theme.bold(&badge_label(label)))
+    format!(
+        "{}{}{}\x1b[0m",
+        fg_ansi_as_bg(theme.get_fg_ansi(color)),
+        badge_text_ansi(theme),
+        badge_label(label)
+    )
+}
+
+/// The foreground sequence a badge label is painted in: the theme's ordinary
+/// text colour (the reference resolves `badgeText` here, which no theme of
+/// ours overrides).
+fn badge_text_ansi(theme: &Theme) -> &str {
+    theme.get_fg_ansi(ThemeColor::Text)
 }
 
 /// Badge labels read as words: uppercase with pill padding, underscores
