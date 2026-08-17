@@ -22,7 +22,7 @@ use serde_json::Value;
 use crate::types::Model;
 
 /// The embedded per-provider catalog files, keyed by provider id.
-pub const MODEL_DATA: [(&str, &str); 39] = [
+pub const MODEL_DATA: [(&str, &str); 40] = [
     (
         "amazon-bedrock",
         include_str!("../data/amazon-bedrock.json"),
@@ -43,6 +43,7 @@ pub const MODEL_DATA: [(&str, &str); 39] = [
         "cloudflare-workers-ai",
         include_str!("../data/cloudflare-workers-ai.json"),
     ),
+    ("cline-pass", include_str!("../data/cline-pass.json")),
     ("deepseek", include_str!("../data/deepseek.json")),
     ("fireworks", include_str!("../data/fireworks.json")),
     (

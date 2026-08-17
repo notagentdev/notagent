@@ -173,6 +173,10 @@ async fn builtin_models_registers_every_builtin_provider_with_models() {
     }
 }
 
+/// Providers this port adds, which the TypeScript fixture cannot contain.
+/// They are checked on their own (see `cline_pass_is_an_openai_compatible_provider`).
+const PORT_ADDED_PROVIDERS: [&str; 1] = ["cline-pass"];
+
 #[test]
 fn every_builtin_provider_matches_the_typescript_fixture() {
     let fixture: Vec<Value> = include_str!("fixtures/providers.jsonl")
@@ -180,7 +184,10 @@ fn every_builtin_provider_matches_the_typescript_fixture() {
         .filter(|line| !line.trim().is_empty())
         .map(|line| serde_json::from_str(line).expect("fixture line"))
         .collect();
-    let providers = builtin_providers();
+    let providers: Vec<_> = builtin_providers()
+        .into_iter()
+        .filter(|provider| !PORT_ADDED_PROVIDERS.contains(&provider.id()))
+        .collect();
     assert_eq!(providers.len(), fixture.len());
 
     for (provider, expected) in providers.iter().zip(&fixture) {
@@ -220,7 +227,17 @@ fn every_builtin_provider_matches_the_typescript_fixture() {
             "{id} dynamic"
         );
 
-        let models = provider.get_models();
+        // Models this port adds keep the fixture readable as the TS snapshot it
+        // is: they are named here rather than written into it (v0.1.16).
+        let port_added: &[&str] = match id {
+            "zai" | "zai-coding-cn" => &["glm-5.3"],
+            _ => &[],
+        };
+        let models: Vec<_> = provider
+            .get_models()
+            .into_iter()
+            .filter(|model| !port_added.contains(&model.id.as_str()))
+            .collect();
         assert_eq!(
             models.len(),
             expected["modelCount"].as_u64().expect("count") as usize,
@@ -1010,5 +1027,67 @@ async fn bedrock_dispatches_through_the_aws_sdk_and_reports_transport_failures()
     assert!(
         message.contains("dispatch failure") || message.contains("error"),
         "the transport failure surfaces in-band: {message}"
+    );
+}
+
+/// ClinePass is a port addition taken from ../notagent-main-rust, where it is
+/// a provider entry in `crates/notagent_repo/src/provider/provider.json`
+/// (user decision 2026-08-17): an OpenAI-compatible endpoint on an API key,
+/// with the plan covering the tokens — hence no per-token price.
+#[test]
+fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
+    let provider = builtin_providers()
+        .into_iter()
+        .find(|provider| provider.id() == "cline-pass")
+        .expect("cline-pass is registered");
+
+    assert_eq!(provider.name(), "ClinePass");
+    assert_eq!(provider.base_url(), Some("https://api.cline.bot/api/v1"));
+
+    let models = builtin_models(None);
+    let list = models.get_models(Some("cline-pass"));
+    assert_eq!(list.len(), 11, "every ClinePass model is present");
+    for model in &list {
+        assert!(model.id.starts_with("cline-pass/"), "{}", model.id);
+        assert_eq!(model.api, "openai-completions");
+        assert!(model.reasoning, "{} reasons", model.id);
+        assert_eq!(model.cost.input, 0.0, "{} is covered by the plan", model.id);
+        assert_eq!(
+            model.cost.output, 0.0,
+            "{} is covered by the plan",
+            model.id
+        );
+        assert!(
+            model.thinking_level_map.is_some(),
+            "{} carries its level map",
+            model.id
+        );
+    }
+}
+
+/// GLM-5.3 joins z.ai with the values of GLM-5.2 (user decision 2026-08-17).
+/// ClinePass does not offer it yet, so it is not in that catalog.
+#[test]
+fn glm_5_3_matches_glm_5_2_on_zai_and_is_absent_from_cline_pass() {
+    let models = builtin_models(None);
+
+    for provider in ["zai", "zai-coding-cn"] {
+        let older = models.get_model(provider, "glm-5.2").expect("glm-5.2");
+        let newer = models.get_model(provider, "glm-5.3").expect("glm-5.3");
+
+        assert_eq!(newer.name, "GLM-5.3");
+        assert_eq!(newer.context_window, older.context_window);
+        assert_eq!(newer.max_tokens, older.max_tokens);
+        assert_eq!(newer.reasoning, older.reasoning);
+        assert_eq!(newer.thinking_level_map, older.thinking_level_map);
+        assert_eq!(newer.compat, older.compat);
+        assert_eq!(newer.base_url, older.base_url);
+    }
+
+    assert!(
+        models
+            .get_model("cline-pass", "cline-pass/glm-5.3")
+            .is_none(),
+        "ClinePass does not carry GLM-5.3 yet"
     );
 }

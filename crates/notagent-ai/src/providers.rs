@@ -11,6 +11,7 @@ pub mod anthropic;
 pub mod azure_openai_responses;
 pub mod baseten;
 pub mod cerebras;
+pub mod cline_pass;
 pub mod cloudflare_ai_gateway;
 pub mod cloudflare_auth;
 pub mod cloudflare_stream;

@@ -32,6 +32,7 @@ pub fn builtin_providers() -> Vec<Arc<dyn Provider>> {
         crate::providers::baseten::baseten_provider(),
         crate::providers::cerebras::cerebras_provider(),
         crate::providers::cloudflare_ai_gateway::cloudflare_ai_gateway_provider(),
+        crate::providers::cline_pass::cline_pass_provider(),
         crate::providers::cloudflare_workers_ai::cloudflare_workers_ai_provider(),
         crate::providers::deepseek::deepseek_provider(),
         crate::providers::fireworks::fireworks_provider(),

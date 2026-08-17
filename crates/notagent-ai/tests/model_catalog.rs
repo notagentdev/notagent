@@ -32,7 +32,7 @@ fn manifest_has_schema_version_three_and_a_structure_hash() {
 fn every_embedded_file_matches_its_manifest_digest() {
     let manifest = manifest();
     let files = manifest["files"].as_object().expect("files map");
-    assert_eq!(files.len(), 39, "the snapshot has 39 provider files");
+    assert_eq!(files.len(), 40, "the snapshot has 40 provider files");
 
     for (provider, raw) in MODEL_DATA {
         let file_name = format!("{provider}.json");
@@ -62,9 +62,10 @@ fn every_embedded_file_matches_its_manifest_digest() {
 }
 
 #[test]
-fn the_catalog_contains_exactly_1224_models_across_39_providers() {
-    assert_eq!(get_builtin_providers().len(), 39);
-    assert_eq!(all_builtin_models().len(), 1224);
+fn the_catalog_contains_exactly_1237_models_across_40_providers() {
+    // +11 ClinePass models, +2 GLM-5.3 (zai, zai-coding-cn); v0.1.16.
+    assert_eq!(get_builtin_providers().len(), 40);
+    assert_eq!(all_builtin_models().len(), 1237);
 }
 
 #[test]

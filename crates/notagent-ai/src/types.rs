@@ -51,7 +51,7 @@ pub const KNOWN_APIS: [&str; 10] = [
 pub const KNOWN_IMAGES_APIS: [&str; 1] = ["openrouter-images"];
 
 /// Die 40 `KnownProvider`-Werte aus `types.ts:35-74`.
-pub const KNOWN_PROVIDERS: [&str; 40] = [
+pub const KNOWN_PROVIDERS: [&str; 41] = [
     "amazon-bedrock",
     "ant-ling",
     "anthropic",
@@ -83,6 +83,7 @@ pub const KNOWN_PROVIDERS: [&str; 40] = [
     "opencode",
     "opencode-go",
     "kimi-coding",
+    "cline-pass",
     "cloudflare-workers-ai",
     "cloudflare-ai-gateway",
     "qwen-token-plan",

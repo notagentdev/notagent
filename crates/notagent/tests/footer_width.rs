@@ -324,3 +324,21 @@ fn does_not_mark_generic_oauth_sign_in_as_a_subscription() {
     assert!(stats.contains("$1.234"), "stats: {stats}");
     assert!(!stats.contains("sub"), "stats: {stats}");
 }
+
+/// ClinePass is a subscription behind API-key authentication, like Kimi
+/// Coding: the plan covers the tokens, so no price is reported.
+#[test]
+fn cline_pass_reports_no_price() {
+    let _guard = guard();
+    let session = create_session(SessionOptions {
+        session_name: String::new(),
+        provider: Some("cline-pass".to_string()),
+        usage: Some((100, 10, 0, 0, 0.5)),
+        ..SessionOptions::default()
+    });
+    let mut footer = themed_footer(session, 1);
+
+    let stats = strip_ansi(&footer.render(120)[1]);
+    assert!(stats.contains("sub"), "stats: {stats}");
+    assert!(!stats.contains('$'), "no amount at all: {stats}");
+}
