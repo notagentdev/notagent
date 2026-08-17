@@ -276,3 +276,41 @@ async fn a_new_turn_starts_its_own_block() {
     })
     .await;
 }
+
+/// An exploration cut short settles red rather than reading as one that went
+/// fine (user decision 2026-08-17). A failed turn is the reachable form of the
+/// abort here; both take the same path.
+#[tokio::test(flavor = "current_thread")]
+async fn an_interrupted_exploration_settles_red() {
+    use notagent::modes::interactive::theme::theme::{ThemeBg, badge, theme};
+
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        let project = e2e.path(".");
+        e2e.faux().set_responses(vec![
+            tool_call_reply("ls", "call-1", json!({ "path": &project })),
+            crate::app_runtime::error_reply("the provider gave up"),
+        ]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("look around").await;
+        driver.wait_for("EXPLORED").await;
+
+        // The badge carries the error fill, not the success one — read off the
+        // raw writes, since the fill only exists as an escape sequence.
+        let raw = driver.terminal().get_writes();
+        let theme = theme();
+        assert!(
+            raw.contains(&badge(&theme, ThemeBg::ToolErrorBg, "explored")),
+            "the interrupted block settles red:\n{}",
+            driver.screen()
+        );
+        assert!(
+            !raw.contains(&badge(&theme, ThemeBg::ToolSuccessBg, "explored")),
+            "and never green:\n{}",
+            driver.screen()
+        );
+    })
+    .await;
+}

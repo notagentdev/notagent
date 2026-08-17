@@ -7540,12 +7540,14 @@ impl InteractiveMode {
                         }
                         self.maybe_show_cache_miss_notice(&message);
                     }
-                    // Visible assistant text between searches ends the block —
-                    // unless this very message announced search calls (its
-                    // text preceded the searches it started).
-                    if assistant_message_ends_search_run(&message)
-                        || matches!(message.stop_reason, StopReason::Aborted | StopReason::Error)
-                    {
+                    // An aborted or failed turn settles the block red: the
+                    // exploration was cut off, so it must not read as one that
+                    // went fine. Visible assistant text ends the run too —
+                    // unless this very message announced the exploration its
+                    // text introduces.
+                    if matches!(message.stop_reason, StopReason::Aborted | StopReason::Error) {
+                        self.abort_explore_block();
+                    } else if assistant_message_ends_search_run(&message) {
                         self.close_explore_block();
                     }
                     self.streaming_component = None;
@@ -7804,6 +7806,13 @@ impl InteractiveMode {
         }
     }
 
+    /// Ends the run on an aborted or failed turn, settling the block red.
+    fn abort_explore_block(&mut self) {
+        if let Some(block) = self.explore_block.take() {
+            block.borrow_mut().close_aborted();
+        }
+    }
+
     /// The open search block, or a fresh one appended to the chat.
     fn open_explore_block(&mut self, replayed: bool) -> Rc<RefCell<ExploreBlockComponent>> {
         if let Some(block) = self
@@ -7969,6 +7978,12 @@ impl InteractiveMode {
                         } else {
                             rendered_pending.push((call.id.clone(), component));
                         }
+                    }
+                    // After the message's own calls have joined the block, so
+                    // that a restored abort settles the same single block the
+                    // live path settles — not a fresh one behind it.
+                    if matches!(message.stop_reason, StopReason::Aborted | StopReason::Error) {
+                        self.abort_explore_block();
                     }
                 }
                 AgentMessage::ToolResult(result) => {

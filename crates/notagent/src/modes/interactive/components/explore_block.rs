@@ -173,6 +173,13 @@ pub struct ExploreBlockComponent {
     /// Total runtime, frozen when the block closes. Replayed blocks carry no
     /// meaningful runtime and stay `None`.
     finished: Option<std::time::Duration>,
+    /// Whether the turn was aborted or failed while this block was open.
+    ///
+    /// Deviation from the reference (user decision 2026-08-17, v0.1.18),
+    /// which has no such state: there an interrupted block keeps the pending
+    /// grey when a call never returned, and stays green when the abort landed
+    /// between calls — so a cancelled run reads as one that went fine.
+    aborted: bool,
 }
 
 impl ExploreBlockComponent {
@@ -187,13 +194,19 @@ impl ExploreBlockComponent {
             replayed: false,
             started: std::time::Instant::now(),
             finished: None,
+            aborted: false,
         }
     }
 
     /// Whether calls are still running, i.e. the badge runtime still counts.
+    ///
+    /// An aborted block is finished whatever its calls were doing: nothing is
+    /// going to complete them.
     #[must_use]
     pub fn is_running(&self) -> bool {
-        !self.replayed && (self.open || self.entries.iter().any(|entry| !entry.complete))
+        !self.replayed
+            && !self.aborted
+            && (self.open || self.entries.iter().any(|entry| !entry.complete))
     }
 
     /// Marks the block as replayed history.
@@ -239,6 +252,16 @@ impl ExploreBlockComponent {
         if self.finished.is_none() && !self.replayed {
             self.finished = Some(self.started.elapsed());
         }
+    }
+
+    /// Closes the block on an aborted or failed turn, which settles it red.
+    ///
+    /// The exploration did not finish — a call may have been cut off, and the
+    /// answer it was gathered for never came — so it must not read as one
+    /// that went fine.
+    pub fn close_aborted(&mut self) {
+        self.aborted = true;
+        self.close();
     }
 
     /// Returns whether this block is still accepting consecutive search calls.
@@ -295,7 +318,13 @@ impl ExploreBlockComponent {
     }
 
     fn background(&self) -> ThemeBg {
-        if self.open || self.entries.iter().any(|entry| !entry.complete) {
+        if self.aborted {
+            // An abort has already ended the block, so it outranks the pending
+            // state a cut-off call would otherwise leave behind.
+            ThemeBg::ToolErrorBg
+        } else if self.open || self.entries.iter().any(|entry| !entry.complete) {
+            // While the run is going the block is at work; a single failed call
+            // shows up in the summary and settles the colour only at the close.
             ThemeBg::ToolPendingBg
         } else if self.failed_count() > 0 {
             ThemeBg::ToolErrorBg
@@ -339,7 +368,9 @@ impl Component for ExploreBlockComponent {
         // beside it (the reference's `BlockStyle::Bar` rendering).
         let badge_style = block_style() == BlockStyle::Badge;
         let mut lines = if badge_style {
-            let label = if self.open || self.entries.iter().any(|entry| !entry.complete) {
+            // An aborted block is over, whatever its calls were doing, so it
+            // must not sit there saying it is still exploring.
+            let label = if self.is_running() {
                 "Exploring"
             } else {
                 "Explored"
@@ -784,6 +815,47 @@ mod tests {
             collapsed[collapsed.len() - 2].contains("5 searches"),
             "summary right above the info line: {collapsed:?}"
         );
+    }
+
+    /// An aborted turn settles the block red and stops it claiming to still
+    /// explore, however far its calls had got (user decision 2026-08-17).
+    #[test]
+    fn an_aborted_block_settles_red_and_stops_running() {
+        let _guard = theme_lock();
+        set_block_style(BlockStyle::Badge);
+        let mut block = ExploreBlockComponent::new();
+        block.push_call(
+            "grep",
+            "call-1".to_string(),
+            &serde_json::json!({ "pattern": "needle" }),
+        );
+        // The call never returned — the turn was cut off under it.
+        assert!(block.is_running());
+        block.close_aborted();
+
+        assert!(!block.is_running(), "nothing will complete it now");
+        assert_eq!(block.background(), ThemeBg::ToolErrorBg);
+        let actual = rendered(&mut block).join("\n");
+        assert!(actual.contains("EXPLORED"), "{actual}");
+        assert!(!actual.contains("EXPLORING"), "{actual}");
+    }
+
+    /// An abort outranks a clean set of calls: every call may have returned
+    /// before the turn was cut off, and the block still did not deliver what it
+    /// was gathered for.
+    #[test]
+    fn an_abort_outranks_completed_calls() {
+        let _guard = theme_lock();
+        let mut block = ExploreBlockComponent::new();
+        block.push_call(
+            "read",
+            "call-1".to_string(),
+            &serde_json::json!({ "file_path": "a.rs" }),
+        );
+        block.complete_call("call-1", false);
+        block.close_aborted();
+
+        assert_eq!(block.background(), ThemeBg::ToolErrorBg);
     }
 
     #[test]
