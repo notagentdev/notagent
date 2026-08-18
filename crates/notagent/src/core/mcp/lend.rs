@@ -16,19 +16,32 @@
 //! with its session, and an external agent outliving the endpoint it was started
 //! with is exactly the failure that reads as "cannot connect" on every call.
 //!
-//! What may be lent is not decided here. The session's active tool list decides
-//! it, the same list a turn of ours draws from. A second list beside that one
-//! would be a rule to keep in step, and it would drift.
+//! What may be lent is not decided here, and neither is whether a borrowed call
+//! may run. The session's active tool list decides the first and its permission
+//! chain decides the second, both the same ones a turn of ours meets. A second
+//! list or a second gate beside them would be a rule to keep in step, and it
+//! would drift.
+//!
+//! That is not a detail. The permission chain is installed on the agent loop
+//! (`crate::core::sdk`), not on the tool, so an endpoint that reaches straight
+//! for a tool definition meets no gate at all — which is what this module did
+//! until v0.1.22, and it meant a borrowed agent could run `bash` and `write`
+//! with no approval in a session whose mode required one. The reference says so
+//! in as many words: a borrowed call goes through the same door a turn uses "so
+//! the permission gate, file tracking and hooks apply unchanged"
+//! (`../notagent-main-rust/crates/notagent_app/src/mcp_lend.rs:158`).
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use notagent_agent::types::BoxFuture;
 use rmcp::model::{
     CallToolRequestParam, CallToolResult, Content, Implementation, ListToolsResult,
     PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
+use tokio_util::sync::CancellationToken;
 
 use crate::core::tools::tool_definition::ToolDefinition;
 
@@ -42,9 +55,40 @@ struct Scope {
 ///
 /// A trait rather than the session itself, so this module does not reach back
 /// into the session's internals — and so the tests can lend something small.
+///
+/// Running a borrowed tool is the source's job, not this module's. The
+/// reference is explicit that a borrowed call goes through the same door a turn
+/// of ours uses, "so the permission gate, file tracking and hooks apply
+/// unchanged" (`../notagent-main-rust/crates/notagent_app/src/mcp_lend.rs:158`).
+/// This module calling `execute` on a definition itself is exactly how that
+/// property gets lost: the permission chain is installed on the agent loop
+/// (`crates/notagent/src/core/sdk.rs:204`), not on the tool, so a call that
+/// reaches past the loop meets no gate at all.
 pub trait LentToolSource: Send + Sync {
     /// The tools that may be borrowed right now.
     fn lendable(&self) -> Vec<Arc<dyn ToolDefinition>>;
+
+    /// Runs one of them, through everything a turn's call goes through.
+    ///
+    /// `signal` is the borrowing client's own cancellation, so an agent that
+    /// gives up stops the work it started — and so a permission prompt raised
+    /// for this call is settled when the asker goes away, rather than waiting
+    /// on a turn that may not be running.
+    fn call<'a>(
+        &'a self,
+        tool: &'a str,
+        arguments: serde_json::Value,
+        signal: CancellationToken,
+    ) -> BoxFuture<'a, Result<LentCallOutcome, String>>;
+}
+
+/// What running a borrowed tool produced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LentCallOutcome {
+    pub text: String,
+    /// Set when the tool failed or the call was refused. The borrowing agent
+    /// reads the text and adapts; it does not lose its connection over it.
+    pub is_error: bool,
 }
 
 /// The tokens in force and what each grants.
@@ -253,59 +297,38 @@ impl ServerHandler for LentTools {
     ) -> Result<CallToolResult, ErrorData> {
         let scope = self.scope_of(&context)?;
         let name = request.name.as_ref();
-        // Looked up in the same list that was advertised, so a tool the session
-        // stopped offering between the two is refused rather than run.
-        let Some(definition) = scope
+        // Checked against the same list that was advertised, so a tool the
+        // session stopped offering between the two is refused rather than run.
+        if !scope
             .tools
             .lendable()
-            .into_iter()
-            .find(|definition| definition.name() == name)
-        else {
+            .iter()
+            .any(|definition| definition.name() == name)
+        {
             return Err(ErrorData::invalid_params(
                 format!("`{name}` is not available"),
                 None,
             ));
-        };
+        }
 
         let arguments = request
             .arguments
             .map(serde_json::Value::Object)
             .unwrap_or(serde_json::Value::Null);
-        let call_id = uuid::Uuid::new_v4().simple().to_string();
-        match definition
-            .execute(&call_id, arguments, None, None, None)
-            .await
-        {
-            Ok(result) => Ok(CallToolResult::success(vec![Content::text(text_of(
-                &result.content,
-            ))])),
-            Err(error) => Ok(CallToolResult::error(vec![Content::text(
-                error.to_string(),
-            )])),
+        // `context.ct` is cancelled when the borrowing client sends a
+        // `CancelledNotification`. That is the right thing to stop this call by:
+        // the session's own turn has nothing to do with it, and may not exist.
+        match scope.tools.call(name, arguments, context.ct.clone()).await {
+            Ok(outcome) => {
+                let content = vec![Content::text(outcome.text)];
+                Ok(match outcome.is_error {
+                    true => CallToolResult::error(content),
+                    false => CallToolResult::success(content),
+                })
+            }
+            Err(error) => Ok(CallToolResult::error(vec![Content::text(error)])),
         }
     }
-}
-
-/// The text of a result, which is what an MCP client reads.
-///
-/// Images have no place in this direction yet; they are named so the borrowing
-/// agent knows the answer is incomplete rather than believing it is all there.
-fn text_of(content: &[notagent_ai::types::TextOrImageContent]) -> String {
-    use notagent_ai::types::TextOrImageContent;
-    let mut parts = Vec::new();
-    let mut images = 0;
-    for block in content {
-        match block {
-            TextOrImageContent::Text(text) => parts.push(text.text.clone()),
-            TextOrImageContent::Image(_) => images += 1,
-        }
-    }
-    if images > 0 {
-        parts.push(format!(
-            "[The result also held {images} image(s), which this endpoint cannot carry.]"
-        ));
-    }
-    parts.join("\n")
 }
 
 #[cfg(test)]
@@ -317,6 +340,15 @@ mod tests {
     impl LentToolSource for NoTools {
         fn lendable(&self) -> Vec<Arc<dyn ToolDefinition>> {
             Vec::new()
+        }
+
+        fn call<'a>(
+            &'a self,
+            tool: &'a str,
+            _arguments: serde_json::Value,
+            _signal: CancellationToken,
+        ) -> BoxFuture<'a, Result<LentCallOutcome, String>> {
+            Box::pin(async move { Err(format!("`{tool}` is not available")) })
         }
     }
 
@@ -377,22 +409,5 @@ mod tests {
         assert!(entry.contains("http://127.0.0.1:9/mcp"), "{entry}");
         assert!(entry.contains("Bearer abc"), "{entry}");
         assert!(entry.contains("notagent"), "{entry}");
-    }
-
-    #[test]
-    fn an_image_in_a_result_is_named_rather_than_dropped() {
-        use notagent_ai::types::{ImageContent, TextContent, TextOrImageContent};
-        let content = vec![
-            TextOrImageContent::Text(TextContent::new("the answer".to_owned())),
-            TextOrImageContent::Image(ImageContent {
-                data: "AAAA".to_owned(),
-                mime_type: "image/png".to_owned(),
-            }),
-        ];
-
-        let text = text_of(&content);
-
-        assert!(text.contains("the answer"), "{text}");
-        assert!(text.contains("1 image"), "{text}");
     }
 }

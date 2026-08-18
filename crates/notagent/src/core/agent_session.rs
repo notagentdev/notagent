@@ -316,6 +316,10 @@ pub struct AgentSessionConfig {
     pub base_tools_override: Option<Vec<Arc<dyn AgentTool>>>,
     /// The user's hooks, dispatched at the points the extension runner emitted.
     pub hooks: Option<Arc<HookDispatcher>>,
+    /// The permission chain. It is installed on the agent as `before_tool_call`
+    /// and also kept here, because a tool call can arrive from outside the agent
+    /// loop — a tool borrowed over `/mcp lend` — and must meet the same gate.
+    pub permissions: Option<Arc<crate::core::permissions::gate::PermissionGate>>,
     /// Why this session was started, for the `SessionStart` hook.
     pub session_start_reason: String,
 }
@@ -482,6 +486,9 @@ pub struct AgentSession {
     model_runtime: Arc<dyn SessionModelRuntime>,
     resource_loader: Arc<dyn ResourceLoader>,
     hooks: Option<Arc<HookDispatcher>>,
+    /// The same chain the agent loop awaits, kept so a call arriving from
+    /// outside that loop can be put through it too.
+    permissions: Option<Arc<crate::core::permissions::gate::PermissionGate>>,
     session_start_reason: String,
     cwd: String,
 
@@ -548,6 +555,7 @@ impl AgentSession {
             model_runtime: config.model_runtime,
             resource_loader: config.resource_loader,
             hooks: config.hooks,
+            permissions: config.permissions,
             session_start_reason: config.session_start_reason,
             cwd: config.cwd,
             scoped_models: Mutex::new(config.scoped_models),
@@ -4692,4 +4700,92 @@ impl crate::core::mcp::lend::LentToolSource for SessionLentTools {
             .filter_map(|name| session.get_tool_definition(&name))
             .collect()
     }
+
+    /// Runs a borrowed tool the way a turn of ours runs one.
+    ///
+    /// Three things have to be the same or the endpoint is a way around the
+    /// session rather than a way into it: the permission chain decides, the tool
+    /// learns the same about its session, and the call stops when the borrower
+    /// stops asking. The chain is the load-bearing one — it is installed on the
+    /// agent loop (`crate::core::sdk`), and a call that reaches the tool
+    /// directly meets no gate at all.
+    fn call<'a>(
+        &'a self,
+        tool: &'a str,
+        arguments: serde_json::Value,
+        signal: CancellationToken,
+    ) -> BoxFuture<'a, Result<crate::core::mcp::lend::LentCallOutcome, String>> {
+        Box::pin(async move {
+            let Some(session) = self.session.upgrade() else {
+                return Err("the session that lent this tool is gone".to_owned());
+            };
+            let Some(definition) = session.get_tool_definition(tool) else {
+                return Err(format!("`{tool}` is not available"));
+            };
+
+            // A session with no chain cannot decide, and running the call
+            // anyway would be the endpoint quietly dropping the check in some
+            // configurations. Refusing is the only answer that stays true to
+            // what the gate is for.
+            let Some(permissions) = session.permissions.clone() else {
+                return Err(format!(
+                    "`{tool}` cannot be lent: this session has no permission chain to decide it"
+                ));
+            };
+            let input = arguments.as_object().cloned().unwrap_or_default();
+            if let Some(block) = permissions
+                .before_tool_call(tool, &input, Some(&signal))
+                .await
+            {
+                return Ok(crate::core::mcp::lend::LentCallOutcome {
+                    text: block
+                        .reason
+                        .unwrap_or_else(|| format!("`{tool}` was not permitted")),
+                    is_error: true,
+                });
+            }
+
+            // The same context a turn's call gets, resolved now rather than
+            // captured: the factory reads the session live, so there is nothing
+            // to keep in step.
+            let context = (session.tool_context_factory())();
+            let call_id = uuid::Uuid::new_v4().simple().to_string();
+            let outcome = definition
+                .execute(&call_id, arguments, Some(signal), None, Some(context))
+                .await;
+            Ok(match outcome {
+                Ok(result) => crate::core::mcp::lend::LentCallOutcome {
+                    text: lent_result_text(&result.content),
+                    is_error: false,
+                },
+                Err(error) => crate::core::mcp::lend::LentCallOutcome {
+                    text: error.to_string(),
+                    is_error: true,
+                },
+            })
+        })
+    }
+}
+
+/// The text of a borrowed call's result, which is what an MCP client reads.
+///
+/// Images have nowhere to go in this direction; they are counted so the
+/// borrowing agent knows the answer is incomplete rather than believing it has
+/// all of it.
+fn lent_result_text(content: &[notagent_ai::types::TextOrImageContent]) -> String {
+    use notagent_ai::types::TextOrImageContent;
+    let mut parts = Vec::new();
+    let mut images = 0;
+    for block in content {
+        match block {
+            TextOrImageContent::Text(text) => parts.push(text.text.clone()),
+            TextOrImageContent::Image(_) => images += 1,
+        }
+    }
+    if images > 0 {
+        parts.push(format!(
+            "[The result also held {images} image(s), which this endpoint cannot carry.]"
+        ));
+    }
+    parts.join("\n")
 }

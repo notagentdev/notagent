@@ -135,6 +135,9 @@ pub struct HarnessOptions {
     pub tokens_per_second: Option<f64>,
     /// The user's hooks, for the cases that assert a dispatch point.
     pub hooks: Option<Arc<notagent::core::hooks::dispatch::HookDispatcher>>,
+    /// The permission chain, for the cases that assert a call was gated —
+    /// including the ones that borrow a tool over the lending endpoint.
+    pub permissions: Option<Arc<notagent::core::permissions::gate::PermissionGate>>,
 }
 
 pub struct Harness {
@@ -316,6 +319,7 @@ pub fn create_harness(options: HarnessOptions) -> Harness {
         excluded_tool_names: options.excluded_tool_names.clone(),
         base_tools_override: options.tools.clone(),
         hooks: options.hooks.clone(),
+        permissions: options.permissions.clone(),
         session_start_reason: "startup".to_string(),
     });
 

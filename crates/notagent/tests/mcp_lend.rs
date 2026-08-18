@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use notagent::core::mcp::client::McpConnection;
-use notagent::core::mcp::lend::{LentToolSource, lend_tools};
+use notagent::core::mcp::lend::{LentCallOutcome, LentToolSource, lend_tools};
 use notagent::core::mcp::{McpHttpServer, McpServerConfig};
 use notagent::core::tools::tool_definition::ToolDefinition;
 
@@ -76,7 +76,25 @@ impl ToolDefinition for Echo {
     }
 }
 
-struct OneTool;
+/// One tool, behind a stand-in for the permission chain.
+///
+/// `permitted` is what the session's chain would have decided. The endpoint
+/// must never run the tool when it says no, and the tool must record that it
+/// did not run — a refusal that still executes is the failure this exists to
+/// catch.
+struct OneTool {
+    permitted: bool,
+    ran: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl OneTool {
+    fn new(permitted: bool) -> Self {
+        Self {
+            permitted,
+            ran: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+}
 
 impl LentToolSource for OneTool {
     fn lendable(&self) -> Vec<Arc<dyn ToolDefinition>> {
@@ -86,6 +104,55 @@ impl LentToolSource for OneTool {
                 "properties": { "say": { "type": "string" } },
             }),
         })]
+    }
+
+    fn call<'a>(
+        &'a self,
+        tool: &'a str,
+        arguments: serde_json::Value,
+        signal: tokio_util::sync::CancellationToken,
+    ) -> notagent_agent::types::BoxFuture<'a, Result<LentCallOutcome, String>> {
+        Box::pin(async move {
+            if !self.permitted {
+                return Ok(LentCallOutcome {
+                    text: format!("`{tool}` was not permitted"),
+                    is_error: true,
+                });
+            }
+            let Some(definition) = self
+                .lendable()
+                .into_iter()
+                .find(|definition| definition.name() == tool)
+            else {
+                return Err(format!("`{tool}` is not available"));
+            };
+            self.ran.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(
+                match definition
+                    .execute("id", arguments, Some(signal), None, None)
+                    .await
+                {
+                    Ok(result) => LentCallOutcome {
+                        text: result
+                            .content
+                            .iter()
+                            .filter_map(|block| match block {
+                                notagent_ai::types::TextOrImageContent::Text(text) => {
+                                    Some(text.text.clone())
+                                }
+                                notagent_ai::types::TextOrImageContent::Image(_) => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        is_error: false,
+                    },
+                    Err(error) => LentCallOutcome {
+                        text: error.to_string(),
+                        is_error: true,
+                    },
+                },
+            )
+        })
     }
 }
 
@@ -105,7 +172,8 @@ fn client_config(url: &str, authorization: Option<&str>) -> McpServerConfig {
 
 #[tokio::test]
 async fn the_endpoint_serves_what_it_lends_and_nothing_else() {
-    let endpoint = lend_tools(Arc::new(OneTool)).await.expect("lends");
+    let source = Arc::new(OneTool::new(true));
+    let endpoint = lend_tools(source.clone()).await.expect("lends");
     let authorized = client_config(&endpoint.url, Some(&endpoint.authorization));
 
     // Without the token there is no way in. Loopback is not a boundary — every
@@ -175,4 +243,34 @@ async fn the_endpoint_serves_what_it_lends_and_nothing_else() {
         notagent::core::mcp::client::is_unauthorized_text(&revoked.to_string()),
         "{revoked}"
     );
+
+    // A refused call comes back as a refusal and the tool never ran. This is
+    // the property the endpoint existed without: the permission chain is
+    // installed on the agent loop, so a call that reaches the tool directly
+    // meets no gate at all.
+    let denying = Arc::new(OneTool::new(false));
+    let closed = lend_tools(denying.clone()).await.expect("lends");
+    let connection = McpConnection::connect(
+        &client_config(&closed.url, Some(&closed.authorization)),
+        &BTreeMap::new(),
+    )
+    .await
+    .expect("connects");
+
+    let mut denied = serde_json::Map::new();
+    denied.insert("say".to_owned(), serde_json::json!("hello"));
+    let outcome = connection.call_tool("echo", denied).await.expect("answers");
+
+    assert_eq!(outcome.is_error, Some(true));
+    assert!(
+        !denying.ran.load(std::sync::atomic::Ordering::SeqCst),
+        "a refused call ran the tool anyway"
+    );
+    let reason = outcome
+        .content
+        .iter()
+        .filter_map(|block| block.as_text().map(|text| text.text.clone()))
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(reason.contains("not permitted"), "{reason}");
 }
