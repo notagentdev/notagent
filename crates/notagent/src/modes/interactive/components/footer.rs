@@ -301,11 +301,24 @@ impl FooterComponent {
     pub fn dispose(&mut self) {}
 }
 
-/// The theme slot [`indicator_color_key`] names, as the enum `Theme::fg` takes.
-fn mode_indicator_color(shell: ShellId) -> ThemeColor {
-    match indicator_color_key(shell) {
-        "success" => ThemeColor::Success,
-        _ => ThemeColor::Warning,
+/// The colour of the footer's mode label.
+///
+/// The built-in modes take the reference's mode palette (takeover, user
+/// decision 2026-08-18): plan green, auto yellow, yolo red; `manual` stays
+/// neutral like the reference's `permission on`. A user-authored mode keeps
+/// the shell signal [`indicator_color_key`] names — read-only green, working
+/// yellow — so the one restriction worth seeing survives.
+fn mode_indicator_color(id: &str, shell: ShellId) -> ThemeColor {
+    match id {
+        "plan" => ThemeColor::ModePlan,
+        "auto" => ThemeColor::ModeAuto,
+        "yolo" => ThemeColor::ModeYolo,
+        "accept-edits" => ThemeColor::ModeAcceptEdits,
+        "manual" => ThemeColor::Dim,
+        _ => match indicator_color_key(shell) {
+            "success" => ThemeColor::Success,
+            _ => ThemeColor::Warning,
+        },
     }
 }
 
@@ -413,7 +426,7 @@ impl Component for FooterComponent {
         // so a user-authored read-only mode inherits the same signal.
         if let Some(active_mode) = self.session.active_mode() {
             stats_parts.push(theme().bold(&theme().fg(
-                mode_indicator_color(active_mode.shell),
+                mode_indicator_color(&active_mode.id, active_mode.shell),
                 &format_mode_label(&active_mode.id, active_mode.shell),
             )));
         }
@@ -501,11 +514,15 @@ impl Component for FooterComponent {
             .map(|model| model.id.clone())
             .unwrap_or_else(|| "no-model".to_string());
 
-        let mut stats_left_width = visible_width(&stats_left);
+        // Every footer row is inset by one column on both sides, like the
+        // reference's `FOOTER_PADDING_X` (takeover, user decision 2026-08-18).
+        let indent = " ";
+        let content_width = width.saturating_sub(2);
 
         // If statsLeft is too wide, truncate it
-        if stats_left_width > width {
-            stats_left = truncate_to_width_opts(&stats_left, width, "...", false);
+        let mut stats_left_width = visible_width(&stats_left);
+        if stats_left_width > content_width {
+            stats_left = truncate_to_width_opts(&stats_left, content_width, "...", false);
             stats_left_width = visible_width(&stats_left);
         }
 
@@ -531,7 +548,7 @@ impl Component for FooterComponent {
             && let Some(model) = model.as_ref()
         {
             right_side = format!("({}) {right_side_without_provider}", model.provider);
-            if stats_left_width + min_padding + visible_width(&right_side) > width {
+            if stats_left_width + min_padding + visible_width(&right_side) > content_width {
                 // Too wide, fall back
                 right_side = right_side_without_provider.clone();
             }
@@ -540,19 +557,19 @@ impl Component for FooterComponent {
         let right_side_width = visible_width(&right_side);
         let total_needed = stats_left_width + min_padding + right_side_width;
 
-        let stats_line = if total_needed <= width {
+        let stats_line = if total_needed <= content_width {
             // Both fit - add padding to right-align model
-            let padding = " ".repeat(width - stats_left_width - right_side_width);
+            let padding = " ".repeat(content_width - stats_left_width - right_side_width);
             format!("{stats_left}{padding}{right_side}")
         } else {
             // Need to truncate right side
-            let available_for_right = width.saturating_sub(stats_left_width + min_padding);
+            let available_for_right = content_width.saturating_sub(stats_left_width + min_padding);
             if available_for_right > 0 {
                 let truncated_right =
                     truncate_to_width_opts(&right_side, available_for_right, "", false);
                 let truncated_right_width = visible_width(&truncated_right);
                 let padding = " ".repeat(
-                    width
+                    content_width
                         .saturating_sub(stats_left_width)
                         .saturating_sub(truncated_right_width),
                 );
@@ -571,18 +588,27 @@ impl Component for FooterComponent {
         let remainder = &stats_line[stats_left.len()..]; // padding + rightSide
         let dim_remainder = theme().fg(ThemeColor::Dim, remainder);
 
-        let pwd_line = truncate_to_width_opts(
-            &theme().fg(ThemeColor::Dim, &pwd),
-            width,
-            &theme().fg(ThemeColor::Dim, "..."),
-            false,
+        // The footer stacks under the input as: the mode/stats line with the
+        // model right-aligned on it, then the working directory with its git
+        // branch (user decision 2026-08-18).
+        let pwd_line = format!(
+            "{indent}{}",
+            truncate_to_width_opts(
+                &theme().fg(ThemeColor::Dim, &pwd),
+                content_width,
+                &theme().fg(ThemeColor::Dim, "..."),
+                false,
+            )
         );
-        let mut lines = vec![pwd_line, format!("{dim_stats_left}{dim_remainder}")];
+        let mut lines = vec![format!("{indent}{dim_stats_left}{dim_remainder}"), pwd_line];
         // The goal badge gets its own line under the stats: a running loop
         // spending the user's money has to be readable at a glance, and it must
         // not compete with the model name for the right edge.
         if let Some(badge) = self.session.goal().as_ref().map(render_goal_badge) {
-            lines.push(truncate_to_width_opts(&badge, width, "", false));
+            lines.push(format!(
+                "{indent}{}",
+                truncate_to_width_opts(&badge, content_width, "", false)
+            ));
         }
         shared_lines(lines)
     }

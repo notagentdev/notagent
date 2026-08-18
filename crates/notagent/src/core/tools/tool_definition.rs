@@ -27,7 +27,7 @@ use notagent_tui::tui::ComponentRef;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::modes::interactive::theme::theme::Theme;
+use crate::modes::interactive::theme::theme::{BlockStyle, Theme, block_style};
 
 /// The runtime context handed to a tool call.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -192,7 +192,27 @@ pub fn render_text_call(context: &ToolRenderContext, text: &str) -> ComponentRef
 }
 
 /// `renderResult` of every tool whose result display is a single `Text`.
+///
+/// The renderers prefix their result with `\n`, which the standard style's
+/// filled box needs as a separator row. The badge style stacks the result
+/// directly under the badge line, so the leading blank is dropped here for
+/// every text-result tool at once.
 pub fn render_text_result(context: &ToolRenderContext, text: &str) -> ComponentRef {
+    // The renderers sometimes colour the whole result, putting the `\n`
+    // inside the ANSI sequence — so the check is "is the first line visibly
+    // empty", not "does the text start with a newline".
+    let stripped;
+    let text = if block_style() == BlockStyle::Badge {
+        match text.split_once('\n') {
+            Some((first, rest)) if crate::utils::ansi::strip_ansi(first).trim().is_empty() => {
+                stripped = format!("{first}{rest}");
+                &stripped
+            }
+            _ => text,
+        }
+    } else {
+        text
+    };
     let mut state = tool_render_state::<TextRenderSlots>(&context.state);
     set_slot_text(&mut state.result, text)
 }

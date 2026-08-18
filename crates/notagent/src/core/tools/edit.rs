@@ -31,7 +31,9 @@ use crate::core::tools::tool_definition::{
     wrap_tool_definition,
 };
 use crate::modes::interactive::components::diff::{RenderDiffOptions, render_diff};
-use crate::modes::interactive::theme::theme::{Theme, ThemeBg, ThemeColor};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, Theme, ThemeBg, ThemeColor, block_style,
+};
 
 pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -653,9 +655,13 @@ impl ToolDefinition for EditToolDefinition {
         let Some(output) = output else {
             return Some(container as ComponentRef);
         };
-        container
-            .borrow_mut()
-            .add_child(component_ref(Spacer::new(1)));
+        // The blank row separates the result in the standard style's box; the
+        // badge style stacks it directly under the badge line.
+        if block_style() != BlockStyle::Badge {
+            container
+                .borrow_mut()
+                .add_child(component_ref(Spacer::new(1)));
+        }
         container
             .borrow_mut()
             .add_child(component_ref(Text::new(output, 1, 0)));

@@ -858,6 +858,17 @@ enum UiMessage {
         id: u64,
         provider: Box<AuthSelectorProvider>,
     },
+    /// The auth flow finished; posted by the login side-future so the flow
+    /// never blocks this loop (it has to keep serving the AuthPrompt/AuthEvent
+    /// bridge the login posts back while it runs).
+    LoginFinished {
+        id: u64,
+        provider_id: String,
+        provider_name: String,
+        auth_type: AuthType,
+        previous_model: Option<Box<Model>>,
+        result: Result<(), String>,
+    },
     LogoutProvider {
         id: u64,
         provider: Box<AuthSelectorProvider>,
@@ -2272,7 +2283,7 @@ impl InteractiveMode {
                             .into_iter()
                             .find(|provider| provider.auth_type == auth_type)
                         {
-                            self.start_provider_login(provider).await;
+                            self.start_provider_login(provider);
                         }
                     }
                     None => self.show_login_provider_selector(Some(auth_type), None),
@@ -2280,7 +2291,38 @@ impl InteractiveMode {
             }
             UiMessage::LoginProvider { id, provider } => {
                 self.close_selector(id);
-                self.start_provider_login(*provider).await;
+                self.start_provider_login(*provider);
+            }
+            UiMessage::LoginFinished {
+                id,
+                provider_id,
+                provider_name,
+                auth_type,
+                previous_model,
+                result,
+            } => {
+                self.login_dialog = None;
+                self.close_selector(id);
+                match result {
+                    Ok(()) => {
+                        self.complete_provider_authentication(
+                            &provider_id,
+                            &provider_name,
+                            auth_type,
+                            previous_model.map(|model| *model),
+                        )
+                        .await
+                    }
+                    Err(message) => {
+                        if message != "Login cancelled" {
+                            self.show_error(&if auth_type == AuthType::OAuth {
+                                format!("Failed to login to {provider_name}: {message}")
+                            } else {
+                                format!("Failed to save API key for {provider_name}: {message}")
+                            });
+                        }
+                    }
+                }
             }
             UiMessage::LogoutProvider { id, provider } => {
                 self.close_selector(id);
@@ -5865,14 +5907,14 @@ impl InteractiveMode {
     }
 
     /// `handleLoginCommand(providerRef)` (`interactive-mode.ts:5512-5533`).
-    async fn handle_login_command(&mut self, provider_ref: Option<&str>) {
+    fn handle_login_command(&mut self, provider_ref: Option<&str>) {
         let Some(provider_ref) = provider_ref else {
             self.show_login_auth_type_selector(None);
             return;
         };
         let options = self.find_login_provider_options(provider_ref);
         if options.len() == 1 {
-            self.start_provider_login(options[0].clone()).await;
+            self.start_provider_login(options[0].clone());
             return;
         }
         if options.len() > 1 {
@@ -5889,15 +5931,15 @@ impl InteractiveMode {
     }
 
     /// `startProviderLogin(providerOption)` (`interactive-mode.ts:5535-5543`).
-    async fn start_provider_login(&mut self, provider: AuthSelectorProvider) {
+    fn start_provider_login(&mut self, provider: AuthSelectorProvider) {
         match (&provider.auth_type, &provider.method) {
-            (AuthType::OAuth, _) => self.show_login_dialog(provider, AuthType::OAuth).await,
+            (AuthType::OAuth, _) => self.show_login_dialog(provider, AuthType::OAuth),
             // `providerOption.method?.login` — a method without an interactive
             // setup is ambient-only.
             (AuthType::ApiKey, Some(AuthSelectorMethod::ApiKey(api_key)))
                 if has_api_key_login(api_key.as_ref()) =>
             {
-                self.show_login_dialog(provider, AuthType::ApiKey).await
+                self.show_login_dialog(provider, AuthType::ApiKey)
             }
             _ => self.show_ambient_auth_dialog(provider),
         }
@@ -6135,7 +6177,12 @@ impl InteractiveMode {
     /// needs a `Send` interaction, while the dialog is `!Send`. The interaction
     /// therefore posts its prompts and events into this loop and waits on
     /// `oneshot`s, the same bridge the approval dialog uses.
-    async fn show_login_dialog(&mut self, provider: AuthSelectorProvider, auth_type: AuthType) {
+    ///
+    /// The login itself runs as a side-future beside this loop, like the free
+    /// promise it is in TS: awaiting it inside a message handler starves the
+    /// loop, which must keep serving that prompt/event bridge — the dialog
+    /// then never got past its title and no browser opened (found 2026-08-18).
+    fn show_login_dialog(&mut self, provider: AuthSelectorProvider, auth_type: AuthType) {
         let previous_model = self.session().model();
         let id = self.selector_id + 1;
         let complete_tx = self.ui_tx.clone();
@@ -6177,33 +6224,21 @@ impl InteractiveMode {
         };
         let provider_id = provider.id.clone();
         let provider_name = provider.name.clone();
-        let result = model_runtime
-            .login(&provider_id, auth_type, &interaction)
-            .await;
-        self.login_dialog = None;
-        self.close_selector(id);
-
-        match result {
-            Ok(_) => {
-                self.complete_provider_authentication(
-                    &provider_id,
-                    &provider_name,
-                    auth_type,
-                    previous_model,
-                )
+        self.side_futures.push(Box::pin(async move {
+            let result = model_runtime
+                .login(&provider_id, auth_type, &interaction)
                 .await
+                .map(|_| ())
+                .map_err(|error| error.to_string());
+            UiMessage::LoginFinished {
+                id,
+                provider_id,
+                provider_name,
+                auth_type,
+                previous_model: previous_model.map(Box::new),
+                result,
             }
-            Err(error) => {
-                let message = error.to_string();
-                if message != "Login cancelled" {
-                    self.show_error(&if auth_type == AuthType::OAuth {
-                        format!("Failed to login to {provider_name}: {message}")
-                    } else {
-                        format!("Failed to save API key for {provider_name}: {message}")
-                    });
-                }
-            }
-        }
+        }));
     }
 
     /// `completeProviderAuthentication(...)` (`interactive-mode.ts:5706-5776`).
@@ -6899,7 +6934,7 @@ impl InteractiveMode {
             _ if text == "/login" || text.starts_with("/login ") => {
                 let provider_ref = argument("/login ");
                 self.clear_editor_text();
-                self.handle_login_command(provider_ref.as_deref()).await;
+                self.handle_login_command(provider_ref.as_deref());
             }
             "/logout" => {
                 self.show_logout_selector().await;

@@ -178,6 +178,13 @@ pub enum ThemeColor {
     ThinkingXhigh,
     ThinkingMax,
     BashMode,
+    /// Footer label of the built-in modes (takeover of the reference's mode
+    /// palette, user decision 2026-08-18). All optional; a theme that names
+    /// none keeps the previous shell-based colours via the fallbacks.
+    ModePlan,
+    ModeAcceptEdits,
+    ModeAuto,
+    ModeYolo,
 }
 
 impl ThemeColor {
@@ -232,6 +239,10 @@ impl ThemeColor {
             ThemeColor::ThinkingXhigh => "thinkingXhigh",
             ThemeColor::ThinkingMax => "thinkingMax",
             ThemeColor::BashMode => "bashMode",
+            ThemeColor::ModePlan => "modePlan",
+            ThemeColor::ModeAcceptEdits => "modeAcceptEdits",
+            ThemeColor::ModeAuto => "modeAuto",
+            ThemeColor::ModeYolo => "modeYolo",
         }
     }
 
@@ -245,7 +256,7 @@ impl ThemeColor {
 }
 
 /// Every foreground slot, in schema declaration order.
-pub const ALL_THEME_COLORS: [ThemeColor; 48] = [
+pub const ALL_THEME_COLORS: [ThemeColor; 52] = [
     ThemeColor::Accent,
     ThemeColor::Border,
     ThemeColor::BorderAccent,
@@ -294,6 +305,10 @@ pub const ALL_THEME_COLORS: [ThemeColor; 48] = [
     ThemeColor::ThinkingXhigh,
     ThemeColor::ThinkingMax,
     ThemeColor::BashMode,
+    ThemeColor::ModePlan,
+    ThemeColor::ModeAcceptEdits,
+    ThemeColor::ModeAuto,
+    ThemeColor::ModeYolo,
 ];
 
 /// Background colour slots (`ThemeBg` in TypeScript).
@@ -897,6 +912,13 @@ impl Theme {
         // names one of its own — a light theme carrying deep badge fills needs
         // a light label (the reference's `badgeText`).
         apply_fg_fallback(&mut colors, ThemeColor::BadgeText, ThemeColor::Text);
+        // A theme without the mode palette keeps the previous shell signal:
+        // read-only modes were green, working modes yellow, yolo is a warning
+        // by nature.
+        apply_fg_fallback(&mut colors, ThemeColor::ModePlan, ThemeColor::Success);
+        apply_fg_fallback(&mut colors, ThemeColor::ModeAcceptEdits, ThemeColor::Accent);
+        apply_fg_fallback(&mut colors, ThemeColor::ModeAuto, ThemeColor::Warning);
+        apply_fg_fallback(&mut colors, ThemeColor::ModeYolo, ThemeColor::Error);
         let mut fg_map = HashMap::new();
         for (key, value) in &colors {
             fg_map.insert(*key, fg_ansi(value, mode)?);
@@ -1057,7 +1079,7 @@ fn apply_bg_fallback(colors: &mut Vec<(ThemeBg, ColorValue)>, key: ThemeBg, fall
 
 /// The colour slots of `ThemeJsonSchema` in declaration order; `true` marks the
 /// optional ones (`Type.Optional`).
-const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 60] = [
+const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 64] = [
     ("accent", false),
     ("border", false),
     ("borderAccent", false),
@@ -1120,6 +1142,12 @@ const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 60] = [
     ("thinkingXhigh", false),
     ("thinkingMax", true),
     ("bashMode", false),
+    // The mode palette (reference takeover, 2026-08-18); optional, with
+    // shell-signal fallbacks in `Theme::new`.
+    ("modePlan", true),
+    ("modeAcceptEdits", true),
+    ("modeAuto", true),
+    ("modeYolo", true),
 ];
 
 /// TypeBox's `Errors()` iterator stops after this many errors (verified against

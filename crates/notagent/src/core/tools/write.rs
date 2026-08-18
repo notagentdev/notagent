@@ -25,9 +25,10 @@ use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
     ToolRenderResultOptions, tool_render_state, wrap_tool_definition,
 };
+use crate::modes::interactive::components::diff::{info_line_text, washed_added_row};
 use crate::modes::interactive::components::keybinding_hints::key_hint;
 use crate::modes::interactive::theme::theme::{
-    Theme, ThemeColor, get_language_from_path, highlight_code,
+    BlockStyle, Theme, ThemeColor, block_style, get_language_from_path, highlight_code,
 };
 
 pub const WRITE_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
@@ -280,8 +281,13 @@ fn format_write_call(
     let mut text = format!("{}{path_display}", call_title(theme, "write"));
 
     let Some(file_content) = file_content else {
+        let lead = if block_style() == BlockStyle::Badge {
+            "\n"
+        } else {
+            "\n\n"
+        };
         text += &format!(
-            "\n\n{}",
+            "{lead}{}",
             theme.fg(ThemeColor::Error, "[invalid content arg - expected string]")
         );
         return text;
@@ -311,17 +317,35 @@ fn format_write_call(
     };
     let display_lines = &lines[..max_lines.min(lines.len())];
     let remaining = lines.len() as isize - max_lines as isize;
-    text += &format!(
-        "\n\n{}",
-        display_lines
-            .iter()
-            .map(|line| match &lang {
+    let badge_style = block_style() == BlockStyle::Badge;
+    if badge_style {
+        // The badge style shows the written file the way a diff shows it:
+        // every line is new, so each preview row is a washed added row with
+        // its line number, directly under the badge line (no blank row), and
+        // the summary line closes the block. The standard style below is the
+        // TS original, which the render oracle pins.
+        let num_width = total_lines.to_string().len();
+        for (index, line) in display_lines.iter().enumerate() {
+            let content = match &lang {
                 Some(_) => line.clone(),
                 None => theme.fg(ThemeColor::ToolOutput, &replace_tabs(line)),
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
+            };
+            let line_num = format!("{:>num_width$}", index + 1);
+            text += &format!("\n{}", washed_added_row(&line_num, &content));
+        }
+    } else {
+        text += &format!(
+            "\n\n{}",
+            display_lines
+                .iter()
+                .map(|line| match &lang {
+                    Some(_) => line.clone(),
+                    None => theme.fg(ThemeColor::ToolOutput, &replace_tabs(line)),
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
     if remaining > 0 {
         text += &format!(
             "{} {}{}",
@@ -332,6 +356,9 @@ fn format_write_call(
             key_hint("app.tools.expand", "to expand"),
             theme.fg(ThemeColor::Muted, ")")
         );
+    }
+    if badge_style && let Some(info) = info_line_text(total_lines, 0) {
+        text += &format!("\n{info}");
     }
     text
 }

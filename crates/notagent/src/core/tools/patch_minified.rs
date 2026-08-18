@@ -33,8 +33,8 @@ use crate::core::tools::tool_definition::{
     ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
     tool_render_state, wrap_tool_definition,
 };
-use crate::modes::interactive::components::diff::{RenderDiffOptions, render_diff};
-use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
+use crate::modes::interactive::components::diff::{RenderDiffOptions, diff_info_line, render_diff};
+use crate::modes::interactive::theme::theme::{BlockStyle, Theme, ThemeColor, block_style};
 
 fn minified_edit_properties() -> Value {
     json!({
@@ -584,6 +584,7 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
                 .and_then(Value::as_str)
                 .filter(|diff| !diff.is_empty())
         };
+        let badge_style = block_style() == BlockStyle::Badge;
         if let Some(diff) = diff {
             sections.push(render_diff(
                 diff,
@@ -591,6 +592,11 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
                     file_path: raw_path,
                 },
             ));
+            // The badge style closes the diff with its summary; the standard
+            // style stays the TS original, which the render oracle pins.
+            if badge_style && let Some(info) = diff_info_line(diff) {
+                sections.push(info);
+            }
         }
         if let Some(warnings) = result
             .details
@@ -617,14 +623,12 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
         let component = state
             .result_text
             .get_or_insert_with(|| Rc::new(RefCell::new(Text::new("", 0, 0))));
-        component.borrow_mut().set_text(format!(
-            "
-{}",
-            sections.join(
-                "
-"
-            )
-        ));
+        // The leading blank row separates the result in the standard style's
+        // box; the badge style stacks it directly under the badge line.
+        let lead = if badge_style { "" } else { "\n" };
+        component
+            .borrow_mut()
+            .set_text(format!("{lead}{}", sections.join("\n")));
         Some(Rc::clone(component) as ComponentRef)
     }
 

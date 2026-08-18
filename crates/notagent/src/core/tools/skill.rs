@@ -278,6 +278,14 @@ impl ToolDefinition for SkillToolDefinition {
         theme: &Theme,
         context: &ToolRenderContext,
     ) -> Option<ComponentRef> {
+        // A failed skill says so; the loaded-tokens line would print with an
+        // empty count and claim a load that never happened.
+        if context.is_error {
+            return Some(render_text_result(
+                context,
+                &format!("\n{}", theme.fg(ThemeColor::Muted, "failed")),
+            ));
+        }
         let Some(details) = result.details else {
             return Some(render_text_result(context, ""));
         };

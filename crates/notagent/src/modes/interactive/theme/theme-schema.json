@@ -308,6 +308,22 @@
 				"bashMode": {
 					"$ref": "#/$defs/colorValue",
 					"description": "Editor border color in bash mode"
+				},
+				"modePlan": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Footer label color of the plan mode (optional)"
+				},
+				"modeAcceptEdits": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Footer label color of the accept-edits mode (optional)"
+				},
+				"modeAuto": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Footer label color of the auto mode (optional)"
+				},
+				"modeYolo": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Footer label color of the yolo mode (optional)"
 				}
 			},
 			"additionalProperties": false

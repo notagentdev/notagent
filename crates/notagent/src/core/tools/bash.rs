@@ -60,16 +60,14 @@ const MAX_TIMEOUT_SECONDS: f64 = MAX_TIMEOUT_MS / 1000.0;
 
 /// Deadlines, foreground and background.
 ///
-/// They differ because the two are used for different things. A foreground
-/// command is one the conversation is waiting on, so a minute is already long;
-/// a background command is a build, a watcher or a server, where ten minutes is
-/// ordinary and a day is the outer bound of anything sane.
-///
-/// The foreground default is only safe because reaching it moves the command to
-/// the background rather than killing it. Where that behaviour is switched off,
-/// the description says the command is killed instead.
-pub const DEFAULT_TIMEOUT_S: f64 = 60.0;
-pub const MAX_TIMEOUT_S: f64 = 5.0 * 60.0;
+/// The foreground default is ten minutes (user decision 2026-08-18): builds
+/// and test runs the conversation waits on routinely take that long, and
+/// reaching the deadline moves the command to the background rather than
+/// killing it. Where that behaviour is switched off, the description says the
+/// command is killed instead. A background command is a build, a watcher or a
+/// server, where a day is the outer bound of anything sane.
+pub const DEFAULT_TIMEOUT_S: f64 = 10.0 * 60.0;
+pub const MAX_TIMEOUT_S: f64 = 60.0 * 60.0;
 pub const DEFAULT_BACKGROUND_TIMEOUT_S: f64 = 10.0 * 60.0;
 pub const MAX_BACKGROUND_TIMEOUT_S: f64 = 24.0 * 60.0 * 60.0;
 

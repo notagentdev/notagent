@@ -347,6 +347,53 @@ fn context_line(line_num: &str, content: &str, lang: Option<&str>) -> String {
     )
 }
 
+/// One washed added row from already-highlighted content — the badge style's
+/// diff look for lines that are new by construction (the `write` preview).
+/// The caller keeps its own highlight cache, so no highlighting happens here.
+pub fn washed_added_row(line_num: &str, highlighted_content: &str) -> String {
+    let theme = theme();
+    let background = diff_wash(true, false);
+    format!(
+        "{background}{} {highlighted_content}\x1b[0m",
+        theme.fg(ThemeColor::ToolDiffAdded, &format!("+{line_num}"))
+    )
+}
+
+/// The summary line under a rendered diff: "Added N lines, removed M lines".
+///
+/// Counts the tool diff format (`+NN content` / `-NN content`); returns `None`
+/// when the diff has no signed lines.
+pub fn diff_info_line(diff_text: &str) -> Option<String> {
+    let mut added = 0usize;
+    let mut removed = 0usize;
+    for line in diff_text.split('\n') {
+        match line.chars().next() {
+            Some('+') => added += 1,
+            Some('-') => removed += 1,
+            _ => {}
+        }
+    }
+    info_line_text(added, removed)
+}
+
+/// The "Added N lines, removed M lines" text from raw counts.
+pub fn info_line_text(added: usize, removed: usize) -> Option<String> {
+    fn lines(count: usize) -> String {
+        if count == 1 {
+            "1 line".to_string()
+        } else {
+            format!("{count} lines")
+        }
+    }
+    let text = match (added, removed) {
+        (0, 0) => return None,
+        (added, 0) => format!("Added {}", lines(added)),
+        (0, removed) => format!("Removed {}", lines(removed)),
+        (added, removed) => format!("Added {}, removed {}", lines(added), lines(removed)),
+    };
+    Some(theme().fg(ThemeColor::Muted, &text))
+}
+
 /// Options of [`render_diff`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RenderDiffOptions {

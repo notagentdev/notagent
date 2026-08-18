@@ -266,7 +266,7 @@ fn includes_summary_and_tool_result_usage_in_the_total_cost() {
     });
     let mut footer = themed_footer(session, 1);
 
-    let stats_line = strip_ansi(&footer.render(120)[1]);
+    let stats_line = strip_ansi(&footer.render(120)[0]);
     assert!(stats_line.contains("$1.250"), "stats: {stats_line}");
 }
 
@@ -280,7 +280,7 @@ fn shows_the_latest_cache_hit_rate_when_cache_usage_is_present() {
     });
     let mut footer = themed_footer(session, 1);
 
-    let stats_line = strip_ansi(&footer.render(120)[1]);
+    let stats_line = strip_ansi(&footer.render(120)[0]);
     assert!(stats_line.contains("CH25.0%"), "stats: {stats_line}");
 }
 
@@ -298,7 +298,7 @@ fn a_subscription_reports_no_price() {
     });
     let mut footer = themed_footer(session, 1);
 
-    let stats = strip_ansi(&footer.render(120)[1]);
+    let stats = strip_ansi(&footer.render(120)[0]);
     assert!(stats.contains("sub"), "stats: {stats}");
     assert!(!stats.contains('$'), "no amount at all: {stats}");
     assert!(!stats.contains("1.234"), "stats: {stats}");
@@ -315,7 +315,7 @@ fn an_explicitly_identified_subscription_reports_no_price() {
     });
     let mut footer = themed_footer(session, 1);
 
-    let stats = strip_ansi(&footer.render(120)[1]);
+    let stats = strip_ansi(&footer.render(120)[0]);
     assert!(stats.contains("sub"), "stats: {stats}");
     assert!(!stats.contains('$'), "no amount at all: {stats}");
 }
@@ -332,7 +332,7 @@ fn does_not_mark_generic_oauth_sign_in_as_a_subscription() {
     let mut footer = themed_footer(session, 1);
 
     // Paid per token, so the amount is real money and stays on screen.
-    let stats = strip_ansi(&footer.render(120)[1]);
+    let stats = strip_ansi(&footer.render(120)[0]);
     assert!(stats.contains("$1.234"), "stats: {stats}");
     assert!(!stats.contains("sub"), "stats: {stats}");
 }
@@ -350,7 +350,7 @@ fn cline_pass_reports_no_price() {
     });
     let mut footer = themed_footer(session, 1);
 
-    let stats = strip_ansi(&footer.render(120)[1]);
+    let stats = strip_ansi(&footer.render(120)[0]);
     assert!(stats.contains("sub"), "stats: {stats}");
     assert!(!stats.contains('$'), "no amount at all: {stats}");
 }
