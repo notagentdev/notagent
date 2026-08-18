@@ -14,6 +14,13 @@ path = "src/lib.rs"
 name = "notagent"
 path = "src/bin/notagent.rs"
 
+# The MCP client tests spawn this as a real server. It is a test fixture that
+# has to be a separate process, which is what makes it a bin rather than a
+# module: `cargo test` builds it and hands the integration tests its path.
+[[bin]]
+name = "mcp_test_server"
+path = "src/bin/mcp_test_server.rs"
+
 [dependencies]
 notagent-agent = { workspace = true }
 notagent-index = { workspace = true }
@@ -35,6 +42,8 @@ notify = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
+rmcp = { workspace = true }
+oauth2 = { workspace = true }
 serde = { workspace = true }
 similar = { workspace = true }
 serde_json = { workspace = true }

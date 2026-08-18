@@ -16,6 +16,7 @@ mod edit_no_full_redraw;
 mod goal;
 mod harness_check;
 mod leases;
+mod mcp;
 mod prompt_roundtrip;
 mod resize;
 mod selectors;

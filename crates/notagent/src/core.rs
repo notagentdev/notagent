@@ -20,6 +20,7 @@ pub mod hooks;
 pub mod http_dispatcher;
 pub mod keybindings;
 pub mod llama;
+pub mod mcp;
 pub mod messages;
 pub mod mini_read;
 pub mod model_config;

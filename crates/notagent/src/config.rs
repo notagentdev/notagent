@@ -83,6 +83,15 @@ pub fn get_auth_path() -> PathBuf {
     get_agent_dir().join("auth.json")
 }
 
+/// Get path to the MCP OAuth credential file.
+///
+/// Kept apart from auth.json: those are the model providers' credentials, these
+/// are third-party servers', and a session that reads one has no business
+/// holding the other.
+pub fn get_mcp_credentials_path() -> PathBuf {
+    get_agent_dir().join("mcp-credentials.json")
+}
+
 /// Get path to settings.json.
 pub fn get_settings_path() -> PathBuf {
     get_agent_dir().join("settings.json")

@@ -110,6 +110,10 @@ impl FooterSession for StubSession {
         None
     }
 
+    fn mcp_summary(&self) -> notagent::modes::interactive::components::footer::McpSummary {
+        Default::default()
+    }
+
     fn is_using_subscription(&self, provider: &str) -> bool {
         self.using_subscription
             || notagent::core::model_runtime::is_subscription_api_key_provider(provider)

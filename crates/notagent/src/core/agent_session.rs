@@ -58,6 +58,11 @@ use crate::core::goal::{
     GoalNudge, GoalState, ThreadGoal,
 };
 use crate::core::hooks::dispatch::HookDispatcher;
+use crate::core::mcp::manager::{McpManager, McpToolInfo};
+use crate::core::mcp::{
+    McpConfigFile, McpServerConfig, McpTrustResponse, ServerName, load_mcp_trust_store,
+    read_all_mcp_configs, save_mcp_trust_store,
+};
 use crate::core::messages::{BashExecutionMessage, CustomMessage};
 use crate::core::modes::cycle::{initial_mode_id, next_mode_id};
 use crate::core::modes::indicator::estimate_injected_tokens;
@@ -496,6 +501,15 @@ pub struct AgentSession {
     /// The session's goal and the guard that judges its completion claims
     /// (port addition, v0.1.21). In memory only, like the todos.
     goal_state: Arc<Mutex<GoalState>>,
+    /// The configured MCP servers and their connections (port addition,
+    /// v0.1.22). Empty when no `.mcp.json` was found or none was trusted.
+    mcp: Mutex<Arc<McpManager>>,
+    /// The tools those servers offered, as of the last discovery. Held apart
+    /// from the manager so the registry can be rebuilt without awaiting.
+    mcp_tools: Arc<Mutex<Vec<McpToolInfo>>>,
+    /// Servers waiting on a login, as of the same discovery. Each contributes a
+    /// synthetic `authenticate` tool in place of the tools it is withholding.
+    mcp_auth_servers: Arc<Mutex<Vec<ServerName>>>,
 
     // Compaction state
     compaction_signal: Mutex<Option<CancellationToken>>,
@@ -545,6 +559,9 @@ impl AgentSession {
             tasks: Mutex::new(TaskState::default()),
             todo_store: Arc::new(Mutex::new(TodoStore::new())),
             goal_state: Arc::new(Mutex::new(GoalState::default())),
+            mcp: Mutex::new(Arc::new(McpManager::empty())),
+            mcp_tools: Arc::new(Mutex::new(Vec::new())),
+            mcp_auth_servers: Arc::new(Mutex::new(Vec::new())),
             compaction_signal: Mutex::new(None),
             auto_compaction_signal: Mutex::new(None),
             overflow_recovery_attempted: AtomicBool::new(false),
@@ -1465,6 +1482,26 @@ impl AgentSession {
                     .collect()
             }
         };
+        // MCP tools join the built-ins as ordinary name-keyed entries. The
+        // built-ins claim their names first, so a server offering a colliding
+        // name loses its tool rather than taking one over.
+        let base_definitions = {
+            let mut taken: std::collections::BTreeSet<String> = base_definitions
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect();
+            let discovered = self.mcp_tools.lock().expect("poisoned").clone();
+            let mut definitions = base_definitions;
+            let manager = self.mcp();
+            definitions.extend(crate::core::tools::mcp::mcp_tool_definitions(
+                discovered,
+                &manager,
+                auto_resize_images,
+                &mut taken,
+            ));
+            definitions.extend(self.mcp_auth_tool_definitions(&manager, &mut taken));
+            definitions
+        };
         {
             let mut state = self.tools.lock().expect("poisoned");
             state.base_definitions = base_definitions;
@@ -1475,7 +1512,27 @@ impl AgentSession {
         // shell bounds.
         let default_active = match self.base_tools_override.as_ref() {
             Some(tools) => tools.iter().map(|tool| tool.name().to_string()).collect(),
-            None => self.active_mode_tool_names(),
+            // A mode's allowlist is typed against the built-in names and cannot
+            // mention a server that may not exist, so MCP tools are active
+            // whenever they are registered and gated by permissions instead.
+            None => {
+                let mut names = self.active_mode_tool_names();
+                names.extend(
+                    self.mcp_tools
+                        .lock()
+                        .expect("poisoned")
+                        .iter()
+                        .map(|tool| tool.qualified_name.clone()),
+                );
+                names.extend(
+                    self.mcp_auth_servers
+                        .lock()
+                        .expect("poisoned")
+                        .iter()
+                        .map(crate::core::tools::mcp_auth::auth_tool_name),
+                );
+                names
+            }
         };
         let base_active = options.active_tool_names.clone().unwrap_or(default_active);
         self.refresh_tool_registry(Some(base_active));
@@ -2027,6 +2084,152 @@ impl AgentSession {
             }
         }
         (continuations, wrap_up)
+    }
+
+    /// Reads the configured MCP servers, honours the trust decision, connects
+    /// them and registers their tools.
+    ///
+    /// Port addition (v0.1.22). Called once the session is running rather than
+    /// at process start, so a session that never reaches a server never spawns
+    /// one. `decide` is asked about a project-local file that has no remembered
+    /// answer; returning `None` leaves the file untrusted for this session
+    /// without recording a rejection.
+    pub async fn load_mcp_servers<F>(self: &Arc<Self>, decide: F) -> Result<(), String>
+    where
+        F: Fn(&McpConfigFile) -> Option<McpTrustResponse>,
+    {
+        // A file that does not parse is reported to the caller and nothing is
+        // connected from it; running with no servers and no reason given is
+        // worse than an error.
+        let files = read_all_mcp_configs(std::path::Path::new(&self.cwd))
+            .map_err(|error| error.to_string())?;
+        if files.is_empty() {
+            return Ok(());
+        }
+
+        let mut store = load_mcp_trust_store();
+        let mut changed = false;
+        let mut configs: BTreeMap<ServerName, McpServerConfig> = BTreeMap::new();
+        // Project first, so its entry wins a name collision.
+        for file in &files {
+            if store.needs_decision(file) {
+                match decide(file) {
+                    Some(McpTrustResponse::Accept) => {
+                        store.remember(file.path.clone(), file.config.content_hash());
+                        changed = true;
+                    }
+                    Some(McpTrustResponse::Reject) => {
+                        store.reject(file.path.clone(), file.config.content_hash());
+                        changed = true;
+                    }
+                    None => continue,
+                }
+            }
+            if !store.allows(file) {
+                continue;
+            }
+            for (name, config) in &file.config.mcp_servers {
+                configs
+                    .entry(name.clone())
+                    .or_insert_with(|| config.clone());
+            }
+        }
+        if changed {
+            let _ = save_mcp_trust_store(&store);
+        }
+        if configs.is_empty() {
+            return Ok(());
+        }
+
+        let manager = Arc::new(
+            McpManager::new(configs, crate::utils::shell::get_shell_env())
+                .with_credentials(crate::config::get_mcp_credentials_path()),
+        );
+        // The fields are replaced rather than mutated so a reload starts from
+        // the configuration on disk rather than from what the last one found.
+        self.take_discovery_from(&manager).await;
+        *self.mcp.lock().expect("poisoned") = manager;
+        self.refresh_tool_registry(None);
+        Ok(())
+    }
+
+    /// Connects what has not been tried and records what came back.
+    async fn take_discovery_from(&self, manager: &Arc<McpManager>) {
+        let tools = manager.ensure_all_connected().await;
+        let mut waiting = Vec::new();
+        for name in manager.servers_needing_auth().await {
+            if manager.can_authenticate(&name).await {
+                waiting.push(name);
+            }
+        }
+        *self.mcp_tools.lock().expect("poisoned") = tools;
+        *self.mcp_auth_servers.lock().expect("poisoned") = waiting;
+    }
+
+    /// One `authenticate` tool per server that is waiting on a login.
+    ///
+    /// The built-ins and the discovered MCP tools have claimed their names by
+    /// the time this runs, so a server that offers a tool of its own literally
+    /// called `authenticate` keeps it and gets no synthetic twin.
+    fn mcp_auth_tool_definitions(
+        &self,
+        manager: &Arc<McpManager>,
+        taken: &mut std::collections::BTreeSet<String>,
+    ) -> Vec<(String, Arc<dyn ToolDefinition>)> {
+        let waiting = self.mcp_auth_servers.lock().expect("poisoned").clone();
+        if waiting.is_empty() {
+            return Vec::new();
+        }
+        // The rebuild that follows a login belongs to the session, and the tool
+        // outlives nothing: a weak handle keeps the registry from holding the
+        // session alive through the tools it owns.
+        let weak = self.weak_self.lock().expect("poisoned").clone();
+        let tools_changed: crate::core::tools::mcp_auth::McpToolsChanged = Arc::new(move || {
+            let weak = weak.clone();
+            Box::pin(async move {
+                if let Some(session) = weak.upgrade() {
+                    session.refresh_mcp_tools().await;
+                }
+            })
+        });
+
+        let mut definitions: Vec<(String, Arc<dyn ToolDefinition>)> = Vec::new();
+        for server in waiting {
+            let name = crate::core::tools::mcp_auth::auth_tool_name(&server);
+            if !taken.insert(name.clone()) {
+                continue;
+            }
+            definitions.push((
+                name,
+                Arc::new(
+                    crate::core::tools::mcp_auth::create_mcp_auth_tool_definition(
+                        server,
+                        Arc::clone(manager),
+                        Some(Arc::clone(&tools_changed)),
+                    ),
+                ) as Arc<dyn ToolDefinition>,
+            ));
+        }
+        definitions
+    }
+
+    /// The MCP manager, for `/mcp` and the footer.
+    pub fn mcp(&self) -> Arc<McpManager> {
+        Arc::clone(&self.mcp.lock().expect("poisoned"))
+    }
+
+    /// Re-reads what the manager offers and rebuilds the registry, after a
+    /// `/mcp reconnect` has changed a server's state.
+    pub async fn refresh_mcp_tools(self: &Arc<Self>) {
+        let manager = self.mcp();
+        self.take_discovery_from(&manager).await;
+        self.refresh_tool_registry(None);
+    }
+
+    /// Closes every MCP connection. Called when the session ends, so no server
+    /// this session started outlives it.
+    pub async fn shutdown_mcp_servers(&self) {
+        self.mcp().shutdown().await;
     }
 
     /// The session's goal state, for the tools, the command and the footer.

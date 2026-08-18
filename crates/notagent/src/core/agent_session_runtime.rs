@@ -437,6 +437,9 @@ impl AgentSessionRuntime {
         session
             .shutdown_hooks(ReplacementReason::Quit.as_str())
             .await;
+        // Every MCP server this session started is a process it owns; the
+        // session ending is where they go (port addition, v0.1.22).
+        session.shutdown_mcp_servers().await;
         if let Some(before) = self
             .before_session_invalidate
             .lock()

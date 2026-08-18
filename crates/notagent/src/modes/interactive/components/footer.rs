@@ -29,6 +29,7 @@ use crate::core::agent_session::{AgentSession, ContextUsage};
 use crate::core::experimental::are_experimental_features_enabled;
 use crate::core::footer_data_provider::FooterDataProvider;
 use crate::core::goal::{ThreadGoal, ThreadGoalStatus};
+use crate::core::mcp::manager::McpServerStatus;
 use crate::core::modes::Mode;
 use crate::core::modes::indicator::{format_mode_label, indicator_color_key};
 use crate::core::modes::shells::ShellId;
@@ -181,6 +182,18 @@ pub trait FooterSession: Send + Sync {
     fn is_using_subscription(&self, provider: &str) -> bool;
     /// The running goal, or `None` (port addition, v0.1.21).
     fn goal(&self) -> Option<ThreadGoal>;
+    /// How many MCP servers are connected, and how many want attention
+    /// (port addition, v0.1.22).
+    fn mcp_summary(&self) -> McpSummary;
+}
+
+/// The MCP servers reduced to what the footer shows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct McpSummary {
+    pub connected: usize,
+    /// Failed or awaiting authentication: a server that quietly failed at
+    /// connect looks exactly like one whose tools the model chose not to use.
+    pub needs_attention: usize,
 }
 
 impl FooterSession for AgentSession {
@@ -214,6 +227,28 @@ impl FooterSession for AgentSession {
 
     fn goal(&self) -> Option<ThreadGoal> {
         AgentSession::goal(self)
+    }
+
+    fn mcp_summary(&self) -> McpSummary {
+        // The entries are already in memory; reading them needs the async lock,
+        // and the footer renders on the UI thread. `try_lock` is the right
+        // trade here: a summary that is one render out of date costs nothing,
+        // a blocked render costs everything.
+        let manager = AgentSession::mcp(self);
+        let Some(servers) = manager.try_entries() else {
+            return McpSummary::default();
+        };
+        let mut summary = McpSummary::default();
+        for entry in servers {
+            match entry.status {
+                McpServerStatus::Connected => summary.connected += 1,
+                McpServerStatus::Failed | McpServerStatus::NeedsAuth => {
+                    summary.needs_attention += 1;
+                }
+                _ => {}
+            }
+        }
+        summary
     }
 
     fn is_using_subscription(&self, provider: &str) -> bool {
@@ -410,6 +445,18 @@ impl Component for FooterComponent {
         // not money anyone owes — showing it invites reading a bill into it.
         // The marker stays: it says the tokens are covered (user decision
         // 2026-08-17, v0.1.15; the reference prints the amount beside it).
+        let mcp = self.session.mcp_summary();
+        if mcp.connected > 0 || mcp.needs_attention > 0 {
+            let mut label = format!("mcp {}", mcp.connected);
+            if mcp.needs_attention > 0 {
+                label.push_str(&format!("+{}!", mcp.needs_attention));
+            }
+            stats_parts.push(if mcp.needs_attention > 0 {
+                theme().fg(ThemeColor::Warning, &label)
+            } else {
+                label
+            });
+        }
         if using_subscription {
             stats_parts.push("sub".to_string());
         } else if usage_totals.cost != 0.0 {

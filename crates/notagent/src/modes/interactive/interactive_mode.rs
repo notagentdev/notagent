@@ -1871,6 +1871,7 @@ impl InteractiveMode {
         }
         self.maybe_warn_about_anthropic_subscription_auth(None)
             .await;
+        self.load_mcp_servers().await;
 
         if let Some(initial) = self.options.initial_message.take() {
             self.pending_user_inputs.push_back(initial);
@@ -3733,6 +3734,158 @@ impl InteractiveMode {
         } else {
             "Atomic file leases: disabled"
         });
+    }
+
+    /// Connects the configured MCP servers and registers their tools
+    /// (port addition, v0.1.22).
+    ///
+    /// A project-local `.mcp.json` names programs to run on this machine, so
+    /// one with no remembered answer is accepted only when the project itself
+    /// is already trusted. Anything else waits for `/mcp` rather than
+    /// interrupting startup with a dialog the user did not ask for.
+    async fn load_mcp_servers(&mut self) {
+        let session = Arc::clone(&self.runtime.session());
+        let project_trusted = self.settings().is_project_trusted();
+        let outcome = session
+            .load_mcp_servers(|file| match file.scope {
+                crate::core::mcp::McpConfigScope::User => {
+                    Some(crate::core::mcp::McpTrustResponse::Accept)
+                }
+                crate::core::mcp::McpConfigScope::Project if project_trusted => {
+                    Some(crate::core::mcp::McpTrustResponse::Accept)
+                }
+                crate::core::mcp::McpConfigScope::Project => None,
+            })
+            .await;
+        if let Err(error) = outcome {
+            self.show_error(&format!("MCP configuration ignored: {error}"));
+            return;
+        }
+        let entries = session.mcp().entries().await;
+        let untrusted = std::path::Path::new(&self.cwd()).join(".mcp.json");
+        if entries.is_empty() && untrusted.exists() && !project_trusted {
+            self.show_status(
+                "This project has an .mcp.json, which names programs to run on your machine. Trust the project with /trust to use them.",
+            );
+            return;
+        }
+        let failed = entries
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.status,
+                    crate::core::mcp::manager::McpServerStatus::Failed
+                        | crate::core::mcp::manager::McpServerStatus::NeedsAuth
+                )
+            })
+            .count();
+        if failed > 0 {
+            self.show_warning(&format!(
+                "{failed} of {} MCP servers need attention — see /mcp",
+                entries.len()
+            ));
+        }
+    }
+
+    /// `/mcp` (port addition, v0.1.22) — the configured MCP servers.
+    ///
+    /// Bare `/mcp` reports each server's state and tool count; `reconnect
+    /// <server>` retries one whose cause has been fixed. Six states are worth
+    /// nothing if the user cannot see which one a server is in, and a failed
+    /// server with no way to retry means a restart.
+    async fn handle_mcp_command(&mut self, argument: Option<&str>) {
+        use crate::core::mcp::ServerName;
+
+        let session = Arc::clone(&self.runtime.session());
+        let manager = session.mcp();
+        match argument.map(str::trim) {
+            None => {
+                let entries = manager.entries().await;
+                if entries.is_empty() {
+                    self.show_status(
+                        "No MCP servers configured. Add them to .mcp.json in this project or in the agent directory.",
+                    );
+                    return;
+                }
+                let mut lines = vec!["MCP servers:".to_owned()];
+                for entry in entries {
+                    let detail = match entry.error.as_deref() {
+                        Some(error) => format!(" — {error}"),
+                        None => String::new(),
+                    };
+                    lines.push(format!(
+                        "  {} [{}] {} · {} tools{detail}",
+                        entry.name,
+                        entry.transport,
+                        entry.status.as_str(),
+                        entry.tool_count
+                    ));
+                }
+                self.show_status(&lines.join("\n"));
+            }
+            Some(argument) => {
+                if let Some(name) = argument.strip_prefix("reconnect").map(str::trim) {
+                    if name.is_empty() {
+                        self.show_error("Usage: /mcp reconnect <server>");
+                        return;
+                    }
+                    let server = ServerName::from(name);
+                    match manager.reconnect(&server).await {
+                        Ok(count) => {
+                            session.refresh_mcp_tools().await;
+                            self.show_status(&format!("MCP `{name}`: connected, {count} tools"));
+                        }
+                        Err(error) => self.show_error(&format!("MCP `{name}`: {error}")),
+                    }
+                    return;
+                }
+                let Some(name) = argument.strip_prefix("login").map(str::trim) else {
+                    self.show_error(&format!(
+                        "Unknown /mcp argument: {argument} (use `reconnect <server>` or `login <server>`)"
+                    ));
+                    return;
+                };
+                if name.is_empty() {
+                    self.show_error("Usage: /mcp login <server>");
+                    return;
+                }
+                let server = ServerName::from(name);
+                // The URL is printed the moment it exists rather than after the
+                // wait: a browser that did not come up otherwise leaves the
+                // user watching a login they cannot reach.
+                let (announce_tx, announce_rx) = tokio::sync::oneshot::channel();
+                let announce = move |prompt| {
+                    let _ = announce_tx.send(prompt);
+                };
+                let login = manager.authenticate(&server, announce);
+                tokio::pin!(login);
+                let mut pending = Some(announce_rx);
+                let outcome = loop {
+                    let Some(mut announce_rx) = pending.take() else {
+                        break login.await;
+                    };
+                    tokio::select! {
+                        outcome = &mut login => break outcome,
+                        announced = &mut announce_rx => {
+                            if let Ok(prompt) = announced {
+                                let prompt: crate::core::mcp::auth::McpAuthPrompt = prompt;
+                                self.show_status(&format!(
+                                    "Opening the browser to sign in to `{name}`.\n{}",
+                                    prompt.authorization_url
+                                ));
+                            }
+                        }
+                    }
+                };
+                match outcome {
+                    Ok(count) => {
+                        session.refresh_mcp_tools().await;
+                        self.show_status(&format!("MCP `{name}`: signed in, {count} tools"));
+                    }
+                    Err(error) => self.show_error(&format!("MCP `{name}`: {error}")),
+                }
+            }
+        }
     }
 
     /// `/goal` (port addition, v0.1.21) — goal mode: the agent keeps working
@@ -6401,6 +6554,13 @@ impl InteractiveMode {
                 let goal_argument = argument("/goal ");
                 self.clear_editor_text();
                 self.handle_goal_command(goal_argument.as_deref());
+            }
+            // Addition over the TS original (user decision 2026-08-18,
+            // v0.1.22): the configured MCP servers.
+            _ if text == "/mcp" || text.starts_with("/mcp ") => {
+                let mcp_argument = argument("/mcp ");
+                self.clear_editor_text();
+                self.handle_mcp_command(mcp_argument.as_deref()).await;
             }
             // Addition over the TS original (user decision 2026-08-17,
             // v0.1.11): the command form of the thinking-block toggle, which
