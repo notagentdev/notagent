@@ -374,6 +374,72 @@ pub async fn stored_access_token(server_url: &str, path: &Path) -> Option<String
     manager.get_access_token().await.ok()
 }
 
+/// What is stored for a server, as a line a user reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpAuthStatus {
+    /// Nothing stored; a call will be refused until there is.
+    NotAuthenticated,
+    /// A token that can be presented now.
+    Authenticated,
+    /// A token past its lifetime, with a refresh token to replace it. The next
+    /// connect does that silently, so this is not a problem to act on.
+    ExpiredWithRefresh,
+    /// A token past its lifetime and nothing to renew it with; only a fresh
+    /// login gets past this.
+    Expired,
+}
+
+impl McpAuthStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAuthenticated => "not signed in",
+            Self::Authenticated => "signed in",
+            Self::ExpiredWithRefresh => "signed in (token due for renewal)",
+            Self::Expired => "sign-in expired",
+        }
+    }
+}
+
+/// What is on disk for a server, without touching the network.
+pub fn auth_status(server_url: &str, path: &Path) -> McpAuthStatus {
+    let store = McpCredentialStore::load(path);
+    let Some(entry) = store.get(server_url) else {
+        return McpAuthStatus::NotAuthenticated;
+    };
+    if entry.tokens.access_token.is_empty() {
+        return McpAuthStatus::NotAuthenticated;
+    }
+    let Some(expires_at) = entry.tokens.expires_at else {
+        // A token with no stated lifetime is one the provider did not bound.
+        return McpAuthStatus::Authenticated;
+    };
+    if expires_at > now_seconds() {
+        return McpAuthStatus::Authenticated;
+    }
+    match entry.tokens.refresh_token.is_some() {
+        true => McpAuthStatus::ExpiredWithRefresh,
+        false => McpAuthStatus::Expired,
+    }
+}
+
+/// Forgets one server's credentials, registration included.
+pub async fn forget(server_url: &str, path: &Path) -> Result<(), String> {
+    McpTokenStorage::new(server_url, path)
+        .clear()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Forgets every server's credentials.
+///
+/// The file is emptied rather than deleted, so its mode and its place stay put
+/// and the next login does not have to re-create either.
+pub async fn forget_all(path: &Path) -> Result<usize, String> {
+    let count = McpCredentialStore::load(path).credentials.len();
+    McpCredentialStore::update(path, |store| store.credentials.clear()).await?;
+    Ok(count)
+}
+
 /// Where the browser is being sent, so the caller can show it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpAuthPrompt {
@@ -855,6 +921,100 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn the_stored_state_is_reported_as_it_stands() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("mcp-credentials.json");
+
+        assert_eq!(
+            auth_status("https://a/mcp", &path),
+            McpAuthStatus::NotAuthenticated
+        );
+
+        McpCredentialStore::update(&path, |store| {
+            store.set(entry("https://a/mcp", "token"));
+        })
+        .await
+        .unwrap();
+        // No stated lifetime means the provider did not bound it.
+        assert_eq!(
+            auth_status("https://a/mcp", &path),
+            McpAuthStatus::Authenticated
+        );
+
+        McpCredentialStore::update(&path, |store| {
+            store.set(McpCredentialEntry {
+                server_url: "https://a/mcp".to_owned(),
+                tokens: McpOAuthTokens {
+                    access_token: "token".to_owned(),
+                    refresh_token: Some("refresh".to_owned()),
+                    expires_at: Some(1),
+                    scope: None,
+                },
+                client_registration: None,
+            });
+        })
+        .await
+        .unwrap();
+        // Renewable: the next connect fixes it without asking anyone.
+        assert_eq!(
+            auth_status("https://a/mcp", &path),
+            McpAuthStatus::ExpiredWithRefresh
+        );
+
+        McpCredentialStore::update(&path, |store| {
+            store.set(McpCredentialEntry {
+                server_url: "https://a/mcp".to_owned(),
+                tokens: McpOAuthTokens {
+                    access_token: "token".to_owned(),
+                    refresh_token: None,
+                    expires_at: Some(1),
+                    scope: None,
+                },
+                client_registration: None,
+            });
+        })
+        .await
+        .unwrap();
+        assert_eq!(auth_status("https://a/mcp", &path), McpAuthStatus::Expired);
+    }
+
+    #[tokio::test]
+    async fn signing_out_of_one_server_leaves_the_others() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("mcp-credentials.json");
+        McpCredentialStore::update(&path, |store| {
+            store.set(entry("https://a/mcp", "a"));
+            store.set(entry("https://b/mcp", "b"));
+        })
+        .await
+        .unwrap();
+
+        forget("https://a/mcp", &path).await.unwrap();
+
+        let store = McpCredentialStore::load(&path);
+        assert!(!store.has_credentials("https://a/mcp"));
+        assert!(store.has_credentials("https://b/mcp"));
+    }
+
+    #[tokio::test]
+    async fn signing_out_of_everything_empties_the_file_without_removing_it() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("mcp-credentials.json");
+        McpCredentialStore::update(&path, |store| {
+            store.set(entry("https://a/mcp", "a"));
+            store.set(entry("https://b/mcp", "b"));
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(forget_all(&path).await.unwrap(), 2);
+
+        // The file stays, so its mode and its place survive the next login.
+        assert!(path.exists());
+        assert!(McpCredentialStore::load(&path).credentials.is_empty());
     }
 
     #[test]

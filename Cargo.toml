@@ -104,10 +104,16 @@ rmcp = { version = "0.10.0", features = [
     "transport-streamable-http-client",
     "transport-streamable-http-client-reqwest",
     "auth",
+    # The server half, for lending this agent's own tools to an external one
+    # over a loopback endpoint.
+    "server",
+    "transport-streamable-http-server",
 ] }
 # oauth2: rmcp's OAuth types are this crate's, and the credential store this
 # port keeps on disk has to be converted into and out of them.
 oauth2 = "5.0"
+# axum: the HTTP server rmcp's streamable-http server transport mounts into.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 regex = "1"
 
 # --- tree-sitter (Versionen aus plans/facts/rust-minify-reference.md) ---

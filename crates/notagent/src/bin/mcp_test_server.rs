@@ -80,7 +80,10 @@ fn main() {
 
         match method.as_str() {
             "initialize" => {
-                if behaviour == "hang-handshake" {
+                // A suffix makes a distinct process name without a distinct
+                // behaviour, so two tests that count running servers by their
+                // argument do not count each other's.
+                if behaviour.starts_with("hang-handshake") {
                     park();
                 }
                 if behaviour == "needs-auth" {

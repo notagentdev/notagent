@@ -3800,7 +3800,9 @@ impl InteractiveMode {
         let manager = session.mcp();
         match argument.map(str::trim) {
             None => {
-                let entries = manager.entries().await;
+                // Probed rather than read: a server that died while idle would
+                // otherwise be listed as connected.
+                let entries = manager.probed_entries().await;
                 if entries.is_empty() {
                     self.show_status(
                         "No MCP servers configured. Add them to .mcp.json in this project or in the agent directory.",
@@ -3813,8 +3815,16 @@ impl InteractiveMode {
                         Some(error) => format!(" — {error}"),
                         None => String::new(),
                     };
+                    // The stored sign-in is a separate fact from the connection
+                    // state: a server can be connected on a token that is about
+                    // to need renewing, and the user should see that before it
+                    // starts failing.
+                    let auth = match manager.auth_status(&entry.name).await {
+                        Some(status) => format!(" · {}", status.as_str()),
+                        None => String::new(),
+                    };
                     lines.push(format!(
-                        "  {} [{}] {} · {} tools{detail}",
+                        "  {} [{}] {} · {} tools{auth}{detail}",
                         entry.name,
                         entry.transport,
                         entry.status.as_str(),
@@ -3839,9 +3849,76 @@ impl InteractiveMode {
                     }
                     return;
                 }
+                if let Some(name) = argument.strip_prefix("logout").map(str::trim) {
+                    if name.is_empty() {
+                        self.show_error("Usage: /mcp logout <server|all>");
+                        return;
+                    }
+                    // `all` is spelled out rather than implied by a bare
+                    // `logout`: forgetting every sign-in is not something to do
+                    // by leaving a word off.
+                    if name == "all" {
+                        // The credential file is the user's, not the project's,
+                        // so this works in a session with no `.mcp.json` at all
+                        // — which is exactly where someone tidying up their
+                        // stored sign-ins is likely to be standing.
+                        let path = crate::config::get_mcp_credentials_path();
+                        match crate::core::mcp::auth::forget_all(&path).await {
+                            Ok(count) => {
+                                manager.drop_authenticated_connections().await;
+                                session.refresh_mcp_tools().await;
+                                self.show_status(&format!(
+                                    "MCP: forgot {count} stored sign-in{}",
+                                    if count == 1 { "" } else { "s" }
+                                ));
+                            }
+                            Err(error) => self.show_error(&format!("MCP: {error}")),
+                        }
+                        return;
+                    }
+                    match manager.sign_out(&ServerName::from(name)).await {
+                        Ok(()) => {
+                            session.refresh_mcp_tools().await;
+                            self.show_status(&format!("MCP `{name}`: signed out"));
+                        }
+                        Err(error) => self.show_error(&format!("MCP `{name}`: {error}")),
+                    }
+                    return;
+                }
+                if let Some(rest) = argument.strip_prefix("lend").map(str::trim) {
+                    self.handle_mcp_lend(rest).await;
+                    return;
+                }
+                if let Some(rest) = argument.strip_prefix("import").map(str::trim) {
+                    self.handle_mcp_import(rest).await;
+                    return;
+                }
+                if let Some(rest) = argument.strip_prefix("remove").map(str::trim) {
+                    self.handle_mcp_remove(rest).await;
+                    return;
+                }
+                if let Some(name) = argument.strip_prefix("show").map(str::trim) {
+                    self.handle_mcp_show(name).await;
+                    return;
+                }
+                if argument == "reload" {
+                    // Re-reads `.mcp.json` from disk, so a server added or
+                    // edited during the session takes effect without a restart.
+                    match session.reload_mcp_servers().await {
+                        Ok(count) => self.show_status(&format!(
+                            "MCP: reloaded, {count} server{} configured",
+                            if count == 1 { "" } else { "s" }
+                        )),
+                        Err(error) => self.show_error(&format!("MCP: {error}")),
+                    }
+                    return;
+                }
                 let Some(name) = argument.strip_prefix("login").map(str::trim) else {
                     self.show_error(&format!(
-                        "Unknown /mcp argument: {argument} (use `reconnect <server>` or `login <server>`)"
+                        "Unknown /mcp argument: {argument} (use `lend [off]`, `import [user] <json>`, \
+                         `remove [user] <server>`, `show <server>`, \
+                         `reconnect <server>`, `login <server>`, \
+                         `logout <server|all>` or `reload`)"
                     ));
                     return;
                 };
@@ -3885,6 +3962,204 @@ impl InteractiveMode {
                     Err(error) => self.show_error(&format!("MCP `{name}`: {error}")),
                 }
             }
+        }
+    }
+
+    /// `/mcp lend [off]` — serves this session's tools to an external agent.
+    ///
+    /// Prints the `.mcp.json` entry rather than only the URL, because the token
+    /// belongs in a header and a URL alone invites pasting it somewhere that
+    /// drops the header and then fails with an unexplained 401.
+    async fn handle_mcp_lend(&mut self, argument: &str) {
+        if argument == "off" {
+            let message = match self.session().stop_lending_tools() {
+                true => "MCP: stopped lending; the token is revoked.",
+                false => "MCP: nothing was being lent.",
+            };
+            self.show_status(message);
+            return;
+        }
+        if !argument.is_empty() {
+            self.show_error("Usage: /mcp lend [off]");
+            return;
+        }
+
+        let session = Arc::clone(&self.runtime.session());
+        match session.lend_tools().await {
+            Ok(endpoint) => {
+                let count = session.get_active_tool_names().len();
+                self.show_status(&format!(
+                    "MCP: lending {count} tool(s) on {}\n\
+                     The token is revoked when the session ends or on `/mcp lend off`.\n{}",
+                    endpoint.url,
+                    endpoint.as_config_entry(crate::config::APP_NAME)
+                ));
+            }
+            Err(error) => self.show_error(&format!("MCP: {error}")),
+        }
+    }
+
+    /// `/mcp import [user] <json>` — adds servers to a configuration file.
+    ///
+    /// The JSON is the shape `.mcp.json` already has, so what a server's
+    /// documentation prints can be pasted straight in. Only the named scope's
+    /// own file is touched: merging into the other one would move a server
+    /// between "shared with the repository" and "mine alone" without saying so.
+    async fn handle_mcp_import(&mut self, argument: &str) {
+        use crate::core::mcp::{McpConfig, McpConfigScope, read_mcp_config, write_mcp_config};
+
+        let (scope, json) = split_scope(argument);
+        if json.is_empty() {
+            self.show_error("Usage: /mcp import [user] <json>");
+            return;
+        }
+        let incoming: McpConfig = match serde_json::from_str(json) {
+            Ok(config) => config,
+            Err(error) => {
+                self.show_error(&format!(
+                    "Not usable MCP configuration: {error}. \
+                     Expected {{\"mcpServers\": {{ … }}}}."
+                ));
+                return;
+            }
+        };
+        if incoming.mcp_servers.is_empty() {
+            self.show_error("That configuration names no servers.");
+            return;
+        }
+
+        let path = self.mcp_config_path(scope);
+        let mut config = match read_mcp_config(&path, scope) {
+            Ok(Some(file)) => file.config,
+            Ok(None) => McpConfig::default(),
+            Err(error) => {
+                self.show_error(&format!("MCP: {error}"));
+                return;
+            }
+        };
+        let mut added = Vec::new();
+        for (name, server) in incoming.mcp_servers {
+            config.mcp_servers.insert(name.clone(), server);
+            added.push(name.to_string());
+        }
+        if let Err(error) = write_mcp_config(&path, &config) {
+            self.show_error(&format!("MCP: {error}"));
+            return;
+        }
+
+        // Writing the project file changes its hash, so the trust decision that
+        // covered the old contents no longer applies. Saying so is the
+        // difference between a server that is simply missing and one the user
+        // knows to accept.
+        let note = match scope {
+            McpConfigScope::Project => "\nThe project file changed, so it needs accepting again.",
+            McpConfigScope::User => "",
+        };
+        let reloaded = self.reload_after_config_change().await;
+        self.show_status(&format!(
+            "MCP: added {} to {}{note}{reloaded}",
+            added.join(", "),
+            path.display()
+        ));
+    }
+
+    /// `/mcp remove [user] <server>` — drops a server from a file.
+    async fn handle_mcp_remove(&mut self, argument: &str) {
+        use crate::core::mcp::{McpConfig, ServerName, read_mcp_config, write_mcp_config};
+
+        let (scope, name) = split_scope(argument);
+        if name.is_empty() {
+            self.show_error("Usage: /mcp remove [user] <server>");
+            return;
+        }
+        let path = self.mcp_config_path(scope);
+        let mut config = match read_mcp_config(&path, scope) {
+            Ok(Some(file)) => file.config,
+            Ok(None) => McpConfig::default(),
+            Err(error) => {
+                self.show_error(&format!("MCP: {error}"));
+                return;
+            }
+        };
+        if config.mcp_servers.remove(&ServerName::from(name)).is_none() {
+            self.show_error(&format!("MCP: `{name}` is not in {}", path.display()));
+            return;
+        }
+        if let Err(error) = write_mcp_config(&path, &config) {
+            self.show_error(&format!("MCP: {error}"));
+            return;
+        }
+        let reloaded = self.reload_after_config_change().await;
+        self.show_status(&format!(
+            "MCP: removed `{name}` from {}{reloaded}",
+            path.display()
+        ));
+    }
+
+    /// `/mcp show <server>` — the configuration a server is running under.
+    ///
+    /// Reads the merged view rather than one file, because that is the one the
+    /// session actually uses, and prints the error alongside when there is one:
+    /// the configuration and the reason it did not work belong together.
+    async fn handle_mcp_show(&mut self, name: &str) {
+        use crate::core::mcp::{ServerName, read_all_mcp_configs};
+
+        if name.is_empty() {
+            self.show_error("Usage: /mcp show <server>");
+            return;
+        }
+        let files = match read_all_mcp_configs(std::path::Path::new(&self.cwd())) {
+            Ok(files) => files,
+            Err(error) => {
+                self.show_error(&format!("MCP: {error}"));
+                return;
+            }
+        };
+        let wanted = ServerName::from(name);
+        // Project first, as everywhere else, so what is shown is what wins.
+        let Some((file, server)) = files
+            .iter()
+            .find_map(|file| file.config.mcp_servers.get(&wanted).map(|s| (file, s)))
+        else {
+            self.show_error(&format!("MCP: no server named `{name}` is configured"));
+            return;
+        };
+        let rendered = serde_json::to_string_pretty(server)
+            .unwrap_or_else(|error| format!("(could not be rendered: {error})"));
+        let mut lines = vec![
+            format!("MCP `{name}` from {}:", file.path.display()),
+            rendered,
+        ];
+        if let Some(entry) = self
+            .session()
+            .mcp()
+            .entries()
+            .await
+            .into_iter()
+            .find(|entry| entry.name == wanted)
+        {
+            lines.push(format!("status: {}", entry.status.as_str()));
+            if let Some(error) = entry.error {
+                lines.push(format!("error: {error}"));
+            }
+        }
+        self.show_status(&lines.join("\n"));
+    }
+
+    /// The file a scope writes to.
+    fn mcp_config_path(&self, scope: crate::core::mcp::McpConfigScope) -> std::path::PathBuf {
+        crate::core::mcp::mcp_config_paths(std::path::Path::new(&self.cwd()))
+            .into_iter()
+            .find(|(_, candidate)| *candidate == scope)
+            .map(|(path, _)| path)
+            .unwrap_or_default()
+    }
+
+    /// Re-reads the configuration after it was edited, as a sentence to append.
+    async fn reload_after_config_change(&mut self) -> String {
+        match self.session().reload_mcp_servers().await {
+            Ok(count) => format!("\nReloaded: {count} server(s) configured."),
+            Err(error) => format!("\nThe reload failed: {error}"),
         }
     }
 
@@ -8915,5 +9190,19 @@ fn error_result(message: &str) -> ToolExecutionResult {
         })],
         details: None,
         is_error: true,
+    }
+}
+
+/// Splits an optional leading `user` off an `/mcp` argument.
+///
+/// The project file is the default because that is the one a repository shares;
+/// reaching the user's own file is the deliberate act and is spelled out.
+fn split_scope(argument: &str) -> (crate::core::mcp::McpConfigScope, &str) {
+    use crate::core::mcp::McpConfigScope;
+    match argument.strip_prefix("user") {
+        Some(rest) if rest.is_empty() || rest.starts_with(char::is_whitespace) => {
+            (McpConfigScope::User, rest.trim())
+        }
+        _ => (McpConfigScope::Project, argument.trim()),
     }
 }

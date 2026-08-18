@@ -510,6 +510,9 @@ pub struct AgentSession {
     /// Servers waiting on a login, as of the same discovery. Each contributes a
     /// synthetic `authenticate` tool in place of the tools it is withholding.
     mcp_auth_servers: Arc<Mutex<Vec<ServerName>>>,
+    /// The endpoint lending this session's tools out, while one is open.
+    /// Dropping it revokes the token.
+    lent_tools: Mutex<Option<Arc<crate::core::mcp::lend::LentToolsEndpoint>>>,
 
     // Compaction state
     compaction_signal: Mutex<Option<CancellationToken>>,
@@ -562,6 +565,7 @@ impl AgentSession {
             mcp: Mutex::new(Arc::new(McpManager::empty())),
             mcp_tools: Arc::new(Mutex::new(Vec::new())),
             mcp_auth_servers: Arc::new(Mutex::new(Vec::new())),
+            lent_tools: Mutex::new(None),
             compaction_signal: Mutex::new(None),
             auto_compaction_signal: Mutex::new(None),
             overflow_recovery_attempted: AtomicBool::new(false),
@@ -2137,10 +2141,9 @@ impl AgentSession {
         if changed {
             let _ = save_mcp_trust_store(&store);
         }
-        if configs.is_empty() {
-            return Ok(());
-        }
-
+        // Not short-circuited when empty: a reload that finds the last server
+        // gone has to take the old ones down, and returning here would leave
+        // them connected and their tools registered.
         let manager = Arc::new(
             McpManager::new(configs, crate::utils::shell::get_shell_env())
                 .with_credentials(crate::config::get_mcp_credentials_path()),
@@ -2211,6 +2214,49 @@ impl AgentSession {
             ));
         }
         definitions
+    }
+
+    /// Opens an endpoint an external agent can reach this session's tools
+    /// through, or returns the one already open.
+    ///
+    /// Idempotent on purpose: the token was handed to an agent that cannot be
+    /// told a new one, so asking twice must not invalidate what the first answer
+    /// gave out.
+    pub async fn lend_tools(
+        self: &Arc<Self>,
+    ) -> Result<Arc<crate::core::mcp::lend::LentToolsEndpoint>, String> {
+        if let Some(open) = self.lent_tools.lock().expect("poisoned").clone() {
+            return Ok(open);
+        }
+        let source: Arc<dyn crate::core::mcp::lend::LentToolSource> = Arc::new(SessionLentTools {
+            session: Arc::downgrade(self),
+        });
+        let endpoint = Arc::new(crate::core::mcp::lend::lend_tools(source).await?);
+        *self.lent_tools.lock().expect("poisoned") = Some(Arc::clone(&endpoint));
+        Ok(endpoint)
+    }
+
+    /// Closes the endpoint, revoking the token with it.
+    pub fn stop_lending_tools(&self) -> bool {
+        self.lent_tools.lock().expect("poisoned").take().is_some()
+    }
+
+    /// Whether an endpoint is open right now.
+    pub fn is_lending_tools(&self) -> bool {
+        self.lent_tools.lock().expect("poisoned").is_some()
+    }
+
+    /// Re-reads the MCP configuration from disk and rebuilds from it.
+    ///
+    /// A file edited during a session is otherwise invisible until the next
+    /// start. Nothing is re-prompted: a file whose contents changed since it
+    /// was accepted has a different hash and is simply not honoured, which is
+    /// the same answer the trust store gives at startup — asking mid-session
+    /// would put a decision in front of the user in the middle of a turn.
+    pub async fn reload_mcp_servers(self: &Arc<Self>) -> Result<usize, String> {
+        self.shutdown_mcp_servers().await;
+        self.load_mcp_servers(|_| None).await?;
+        Ok(self.mcp().entries().await.len())
     }
 
     /// The MCP manager, for `/mcp` and the footer.
@@ -4623,5 +4669,27 @@ impl SessionModelRuntime for crate::core::model_runtime::ModelRuntime {
 
     fn get_model(&self, provider: &str, id: &str) -> Option<Model> {
         crate::core::model_runtime::ModelRuntime::get_model(self, provider, id)
+    }
+}
+
+/// This session's active tools, as the lending endpoint sees them.
+///
+/// Resolved on every request rather than captured once: the active set changes
+/// with the mode, and an endpoint still offering a tool the session has put away
+/// would be lending something a turn of ours could not run.
+struct SessionLentTools {
+    session: Weak<AgentSession>,
+}
+
+impl crate::core::mcp::lend::LentToolSource for SessionLentTools {
+    fn lendable(&self) -> Vec<Arc<dyn ToolDefinition>> {
+        let Some(session) = self.session.upgrade() else {
+            return Vec::new();
+        };
+        session
+            .get_active_tool_names()
+            .into_iter()
+            .filter_map(|name| session.get_tool_definition(&name))
+            .collect()
     }
 }

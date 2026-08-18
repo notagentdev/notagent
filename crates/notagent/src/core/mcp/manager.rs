@@ -19,7 +19,9 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::core::mcp::auth::{McpAuthPrompt, authorize, stored_access_token};
+use crate::core::mcp::auth::{
+    McpAuthPrompt, McpAuthStatus, auth_status, authorize, forget, stored_access_token,
+};
 use crate::core::mcp::client::{McpCallError, McpConnection};
 use crate::core::mcp::{McpServerConfig, ServerName};
 
@@ -117,9 +119,85 @@ impl Server {
     }
 }
 
-/// Qualifies a server's tool name the way both references do.
+/// What a provider accepts as a tool name.
+///
+/// Anthropic's is `^[a-zA-Z0-9_-]{1,128}$` and the others are no wider in
+/// practice. This matters more than it looks: the tool list goes out whole, so
+/// one name a provider will not take fails the entire request, not the one tool
+/// it belongs to.
+pub const MAX_QUALIFIED_NAME_CHARS: usize = 128;
+
+/// Qualifies a server's tool name, in an alphabet a provider will accept.
+///
+/// A server names its tools for people — `Add comment`, `read.channel`,
+/// `search:web` are all ordinary — and none of those survive the round trip.
+/// Every character outside the alphabet becomes an underscore.
+///
+/// Unlike `../notagent-main-rust`, which lowercases as well, case is kept:
+/// the providers accept it, and folding it would collide two tools that a
+/// server deliberately told apart.
 pub fn qualify_tool_name(server: &ServerName, tool: &str) -> String {
-    format!("mcp__{server}__{tool}")
+    let qualified = format!(
+        "mcp__{}__{}",
+        sanitize_name(server.as_str()),
+        sanitize_name(tool)
+    );
+    shorten_to_limit(&qualified)
+}
+
+/// Replaces everything a provider will not take, and tidies what is left.
+///
+/// The result can be empty — a tool named entirely in characters that do not
+/// survive has no usable name, and the caller drops it.
+fn sanitize_name(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut gap = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+            // A run of rejected characters becomes one underscore, so `a - b`
+            // does not turn into `a___b`, and a leading or trailing run
+            // disappears instead of leaving a bare separator. A name that
+            // already carries its own underscores keeps them exactly, so
+            // `read__all` stays the two-word name the server chose.
+            if gap && !out.is_empty() && character != '_' {
+                out.push('_');
+            }
+            gap = false;
+            out.push(character);
+        } else {
+            gap = true;
+        }
+    }
+    out
+}
+
+/// Cuts an over-long name down, keeping it unique.
+///
+/// The tail is what distinguishes two tools of the same server, so it is the
+/// tail that is kept along with a digest of the whole: truncating alone would
+/// map two long names onto one.
+fn shorten_to_limit(qualified: &str) -> String {
+    if qualified.len() <= MAX_QUALIFIED_NAME_CHARS {
+        return qualified.to_owned();
+    }
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(qualified.as_bytes());
+    let suffix: String = std::iter::once('_')
+        .chain(
+            digest
+                .iter()
+                .take(4)
+                .flat_map(|byte| format!("{byte:02x}").chars().collect::<Vec<_>>()),
+        )
+        .collect();
+    let keep = MAX_QUALIFIED_NAME_CHARS - suffix.len();
+    let mut head: String = qualified.chars().take(keep).collect();
+    // The truncation may land mid-run and leave a trailing underscore; the
+    // suffix supplies its own separator.
+    while head.ends_with('_') {
+        head.pop();
+    }
+    format!("{head}{suffix}")
 }
 
 /// The server and tool a qualified name refers to.
@@ -135,12 +213,13 @@ pub fn split_qualified_name(qualified: &str) -> Option<(ServerName, String)> {
 
 /// Whether a server may be configured under this name.
 ///
-/// A name containing the separator would make its qualified tool names
-/// ambiguous, and one with whitespace or a leading `mcp__` would confuse the
-/// same lookup.
+/// A name that sanitizes to nothing has no tool names to give, and one
+/// containing the separator would make the ones it gives ambiguous. Anything
+/// else is accepted and cleaned up at qualification time — a server called
+/// `claude.ai Slack` is a normal thing to write in a config file.
 pub fn is_usable_server_name(name: &ServerName) -> bool {
     let value = name.as_str();
-    !value.is_empty() && !value.contains("__") && !value.contains(char::is_whitespace)
+    !value.contains("__") && !sanitize_name(value).is_empty()
 }
 
 /// The configured servers, their connections and their tools.
@@ -195,6 +274,40 @@ impl McpManager {
                 continue;
             };
             let server = server.lock().await;
+            entries.push(server.entry(&name));
+        }
+        entries
+    }
+
+    /// Every configured server, with each connection checked before reporting.
+    ///
+    /// A server that died while nobody was calling it still reads as
+    /// `connected` on the entry: `rmcp` gives a running service no way to say it
+    /// ended without consuming the handle the calls need. A tool call finds out
+    /// on its own — the triage reconnects and repeats it — but a status list
+    /// that says `connected` about a dead process is simply wrong, and this is
+    /// the one place a user reads it. The probe is a ping per connected server
+    /// and only runs when asked.
+    pub async fn probed_entries(&self) -> Vec<McpServerEntry> {
+        let mut entries = Vec::new();
+        for name in self.names().await {
+            let Some(handle) = self.server(&name).await else {
+                continue;
+            };
+            let mut server = handle.lock().await;
+            if server.status == McpServerStatus::Connected
+                && let Some(connection) = server.connection.clone()
+                && !connection.is_alive().await
+            {
+                server.status = McpServerStatus::Failed;
+                server.error = Some("the server stopped answering".to_owned());
+                server.tools.clear();
+                if let Some(connection) = server.connection.take()
+                    && let Ok(connection) = Arc::try_unwrap(connection)
+                {
+                    connection.close().await;
+                }
+            }
             entries.push(server.entry(&name));
         }
         entries
@@ -294,7 +407,7 @@ impl McpManager {
             };
         match connection.list_tools().await {
             Ok(tools) => {
-                server.tools = accept_tools(name, tools);
+                server.tools = accept_tools_filtered(name, tools, server.config.tool_filters());
                 server.status = McpServerStatus::Connected;
                 server.error = None;
                 server.connection = Some(Arc::new(connection));
@@ -380,6 +493,84 @@ impl McpManager {
         self.reconnect(name).await
     }
 
+    /// What is stored for a server, without touching the network.
+    ///
+    /// `None` means the question does not apply: a local process, a server with
+    /// OAuth switched off, or a session that keeps no credentials.
+    pub async fn auth_status(&self, name: &ServerName) -> Option<McpAuthStatus> {
+        let credentials = self.credentials.as_ref()?;
+        let handle = self.server(name).await?;
+        let server = handle.lock().await;
+        let McpServerConfig::Http(http) = &server.config else {
+            return None;
+        };
+        if http.is_oauth_disabled() {
+            return None;
+        }
+        Some(auth_status(&http.url, credentials))
+    }
+
+    /// Forgets one server's stored credentials and drops its connection.
+    ///
+    /// The connection goes with them: leaving it up would keep answering on a
+    /// token the user just asked to be rid of.
+    pub async fn sign_out(&self, name: &ServerName) -> Result<(), String> {
+        let Some(credentials) = self.credentials.clone() else {
+            return Err("this session keeps no MCP credentials".to_owned());
+        };
+        let Some(handle) = self.server(name).await else {
+            return Err(format!("no server named `{name}` is configured"));
+        };
+        let url = {
+            let server = handle.lock().await;
+            match &server.config {
+                McpServerConfig::Http(http) => http.url.clone(),
+                McpServerConfig::Stdio(_) => {
+                    return Err(format!(
+                        "`{name}` runs as a local process, which has no sign-in to forget"
+                    ));
+                }
+            }
+        };
+        forget(&url, &credentials).await?;
+
+        let mut server = handle.lock().await;
+        if let Some(connection) = server.connection.take()
+            && let Ok(connection) = Arc::try_unwrap(connection)
+        {
+            connection.close().await;
+        }
+        server.tools.clear();
+        server.status = McpServerStatus::Pending;
+        server.error = None;
+        Ok(())
+    }
+
+    /// Drops every connection that was made on a stored token.
+    ///
+    /// The credential file is the user's rather than the project's, so emptying
+    /// it belongs to the command that owns that file; what belongs here is that
+    /// no connection keeps answering on a sign-in that was just discarded.
+    pub async fn drop_authenticated_connections(&self) {
+        for name in self.names().await {
+            let Some(handle) = self.server(&name).await else {
+                continue;
+            };
+            let mut server = handle.lock().await;
+            if !matches!(&server.config, McpServerConfig::Http(http) if !http.is_oauth_disabled()) {
+                continue;
+            }
+            if let Some(connection) = server.connection.take()
+                && let Ok(connection) = Arc::try_unwrap(connection)
+            {
+                connection.close().await;
+            }
+            server.tools.clear();
+            server.status = McpServerStatus::Pending;
+            server.error = None;
+        }
+    }
+
     /// Every server waiting for a login.
     pub async fn servers_needing_auth(&self) -> Vec<ServerName> {
         let mut waiting = Vec::new();
@@ -458,7 +649,22 @@ fn describe(error: &McpCallError, phase: &str) -> String {
 /// A server is remote input. An unnamed tool has nothing to call, a duplicate
 /// would shadow its twin, and a manifest without a ceiling is a cost paid on
 /// every turn for as long as the server is connected.
+#[cfg(test)]
 fn accept_tools(name: &ServerName, tools: Vec<rmcp::model::Tool>) -> Vec<McpToolInfo> {
+    accept_tools_filtered(name, tools, (None, None))
+}
+
+/// The same, with the server's own allow and deny lists applied.
+///
+/// The lists name tools the way the server does, because that is how its
+/// documentation lists them; the qualified name is this port's business and
+/// nobody writing a config should have to know it.
+fn accept_tools_filtered(
+    name: &ServerName,
+    tools: Vec<rmcp::model::Tool>,
+    filters: (Option<&[String]>, Option<&[String]>),
+) -> Vec<McpToolInfo> {
+    let (enabled, disabled) = filters;
     let mut accepted: Vec<McpToolInfo> = Vec::new();
     for tool in tools {
         if accepted.len() >= MAX_TOOLS_PER_SERVER {
@@ -468,7 +674,21 @@ fn accept_tools(name: &ServerName, tools: Vec<rmcp::model::Tool>) -> Vec<McpTool
         if tool_name.trim().is_empty() {
             continue;
         }
+        // An allow list that names nothing keeps nothing: an empty list is a
+        // statement, not an oversight, and reading it as "everything" would be
+        // the opposite of what it says.
+        if enabled.is_some_and(|names| !names.iter().any(|allowed| allowed == &tool_name)) {
+            continue;
+        }
+        if disabled.is_some_and(|names| names.iter().any(|denied| denied == &tool_name)) {
+            continue;
+        }
         let qualified_name = qualify_tool_name(name, &tool_name);
+        // A name written entirely in characters no provider takes leaves
+        // nothing to call it by.
+        if qualified_name.ends_with("__") {
+            continue;
+        }
         if accepted
             .iter()
             .any(|existing| existing.qualified_name == qualified_name)
@@ -517,6 +737,192 @@ mod tests {
     }
 
     #[test]
+    fn an_allow_list_keeps_only_what_it_names() {
+        let tools = accept_tools_filtered(
+            &ServerName::from("s"),
+            vec![
+                tool("read", None),
+                tool("write", None),
+                tool("delete", None),
+            ],
+            (Some(&["read".to_owned(), "write".to_owned()]), None),
+        );
+
+        let names: Vec<&str> = tools.iter().map(|tool| tool.tool_name.as_str()).collect();
+        assert_eq!(names, vec!["read", "write"]);
+    }
+
+    #[test]
+    fn a_deny_list_removes_what_it_names() {
+        let tools = accept_tools_filtered(
+            &ServerName::from("s"),
+            vec![tool("read", None), tool("delete", None)],
+            (None, Some(&["delete".to_owned()])),
+        );
+
+        let names: Vec<&str> = tools.iter().map(|tool| tool.tool_name.as_str()).collect();
+        assert_eq!(names, vec!["read"]);
+    }
+
+    #[test]
+    fn a_denial_wins_over_an_allowance() {
+        let tools = accept_tools_filtered(
+            &ServerName::from("s"),
+            vec![tool("read", None)],
+            (Some(&["read".to_owned()]), Some(&["read".to_owned()])),
+        );
+
+        assert!(tools.is_empty());
+    }
+
+    #[test]
+    fn an_empty_allow_list_keeps_nothing() {
+        // An empty list is a statement, not an oversight; reading it as
+        // "everything" would be the opposite of what it says.
+        let tools = accept_tools_filtered(
+            &ServerName::from("s"),
+            vec![tool("read", None)],
+            (Some(&[]), None),
+        );
+
+        assert!(tools.is_empty());
+    }
+
+    #[test]
+    fn the_lists_use_the_server_s_own_naming() {
+        // Nobody writing a config should have to know this port's qualified
+        // form, so the filter matches the name the server's documentation uses.
+        let tools = accept_tools_filtered(
+            &ServerName::from("s"),
+            vec![tool("Add comment", None)],
+            (Some(&["Add comment".to_owned()]), None),
+        );
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].qualified_name, "mcp__s__Add_comment");
+    }
+
+    #[test]
+    fn a_name_a_provider_would_reject_is_made_acceptable() {
+        // Anthropic takes `^[a-zA-Z0-9_-]{1,128}$`, and the tool list goes out
+        // whole: one name outside it fails the request, not the tool.
+        let server = ServerName::from("claude.ai Slack");
+
+        let qualified = qualify_tool_name(&server, "Add comment");
+
+        assert_eq!(qualified, "mcp__claude_ai_Slack__Add_comment");
+        assert!(is_provider_safe(&qualified), "{qualified}");
+    }
+
+    #[test]
+    fn every_shape_a_server_might_use_survives() {
+        for (server, tool) in [
+            ("github", "read-channel"),
+            ("hugging face", "search:web"),
+            ("a.b.c", "do/it"),
+            ("Ünïcøde", "naïve"),
+            ("srv", "  spaced  "),
+            ("srv", "trailing---"),
+        ] {
+            let qualified = qualify_tool_name(&ServerName::from(server), tool);
+            assert!(
+                is_provider_safe(&qualified),
+                "`{server}`/`{tool}` -> {qualified}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_hyphen_is_kept_because_the_providers_take_it() {
+        // The reference folds it to an underscore; that is its own legacy
+        // separator's business, not the alphabet's.
+        assert_eq!(
+            qualify_tool_name(&ServerName::from("gh"), "read-channel"),
+            "mcp__gh__read-channel"
+        );
+    }
+
+    #[test]
+    fn case_is_kept_so_two_tools_do_not_become_one() {
+        let lower = qualify_tool_name(&ServerName::from("s"), "getUser");
+        let upper = qualify_tool_name(&ServerName::from("s"), "getuser");
+        assert_ne!(lower, upper);
+    }
+
+    #[test]
+    fn runs_of_rejected_characters_collapse() {
+        assert_eq!(
+            qualify_tool_name(&ServerName::from("s"), "a ... b"),
+            "mcp__s__a_b"
+        );
+    }
+
+    #[test]
+    fn an_over_long_name_is_cut_to_the_limit() {
+        let qualified = qualify_tool_name(&ServerName::from("s"), &"x".repeat(400));
+
+        assert_eq!(qualified.len(), MAX_QUALIFIED_NAME_CHARS);
+        assert!(is_provider_safe(&qualified), "{qualified}");
+    }
+
+    #[test]
+    fn two_over_long_names_stay_apart() {
+        // Truncation alone would map both onto the same head.
+        let first = qualify_tool_name(&ServerName::from("s"), &format!("{}a", "x".repeat(400)));
+        let second = qualify_tool_name(&ServerName::from("s"), &format!("{}b", "x".repeat(400)));
+
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn a_name_with_nothing_usable_in_it_produces_no_tool() {
+        let tools = accept_tools(
+            &ServerName::from("s"),
+            vec![tool("！！！", None), tool("ok", None)],
+        );
+
+        let names: Vec<&str> = tools.iter().map(|tool| tool.tool_name.as_str()).collect();
+        assert_eq!(names, vec!["ok"]);
+    }
+
+    #[test]
+    fn two_tools_that_sanitize_alike_keep_one_entry() {
+        let tools = accept_tools(
+            &ServerName::from("s"),
+            vec![tool("read channel", None), tool("read.channel", None)],
+        );
+
+        assert_eq!(tools.len(), 1);
+    }
+
+    #[test]
+    fn the_wire_name_is_never_the_sanitized_one() {
+        // The server knows its tool by the name it gave; only the model sees
+        // the cleaned-up one.
+        let tools = accept_tools(&ServerName::from("s"), vec![tool("Add comment", None)]);
+
+        assert_eq!(tools[0].tool_name, "Add comment");
+        assert_eq!(tools[0].qualified_name, "mcp__s__Add_comment");
+    }
+
+    #[test]
+    fn a_server_named_in_punctuation_alone_is_refused() {
+        assert!(!is_usable_server_name(&ServerName::from("...")));
+        assert!(!is_usable_server_name(&ServerName::from("")));
+        assert!(!is_usable_server_name(&ServerName::from("a__b")));
+        assert!(is_usable_server_name(&ServerName::from("claude.ai Slack")));
+    }
+
+    /// The alphabet every provider in use accepts.
+    fn is_provider_safe(name: &str) -> bool {
+        !name.is_empty()
+            && name.len() <= MAX_QUALIFIED_NAME_CHARS
+            && name.chars().all(|character| {
+                character.is_ascii_alphanumeric() || character == '_' || character == '-'
+            })
+    }
+
+    #[test]
     fn a_qualified_name_round_trips() {
         let server = ServerName::from("files");
         let qualified = qualify_tool_name(&server, "read");
@@ -549,7 +955,13 @@ mod tests {
         for value in ["files", "my-files", "files.v2"] {
             assert!(is_usable_server_name(&ServerName::from(value)), "{value}");
         }
-        for value in ["", "my__files", "my files"] {
+        // A name is only refused where it leaves nothing to build tool names
+        // from, or where it would make them ambiguous. Anything else is
+        // cleaned up at qualification time.
+        for value in ["files.v2", "my files", "claude.ai Slack"] {
+            assert!(is_usable_server_name(&ServerName::from(value)), "{value}");
+        }
+        for value in ["", "my__files", "..."] {
             assert!(!is_usable_server_name(&ServerName::from(value)), "{value}");
         }
     }

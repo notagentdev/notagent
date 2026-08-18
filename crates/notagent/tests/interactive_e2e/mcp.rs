@@ -29,10 +29,11 @@ async fn the_mcp_command_reports_its_servers_and_every_argument() {
         // An argument that is not a subcommand names the ones that are.
         driver.submit("/mcp sometimes").await;
         driver.wait_for("Unknown /mcp argument: sometimes").await;
-        // Matched in halves: the notice wraps at the pane's width, and a match
+        // Matched in pieces: the notice wraps at the pane's width, and a match
         // that spans the wrap point would be pinning the width, not the text.
         driver.wait_for("reconnect <server>").await;
-        driver.wait_for("or `login").await;
+        driver.wait_for("logout <server|all>").await;
+        driver.wait_for("reload").await;
 
         // Each subcommand without a server says what it wanted.
         driver.submit("/mcp reconnect").await;
@@ -52,6 +53,23 @@ async fn the_mcp_command_reports_its_servers_and_every_argument() {
         driver
             .wait_for("MCP `nowhere`: no server named `nowhere` is configured")
             .await;
+
+        driver.submit("/mcp logout").await;
+        driver.wait_for("Usage: /mcp logout <server|all>").await;
+
+        driver.submit("/mcp logout nowhere").await;
+        driver
+            .wait_for("MCP `nowhere`: no server named `nowhere` is configured")
+            .await;
+
+        // `/mcp logout all` is deliberately not driven from here: it writes the
+        // user-level credential file, and this harness shares the real agent
+        // directory rather than a temporary one. It is covered against a
+        // temporary path in `core/mcp/auth.rs` instead.
+
+        // A reload with no file configured settles at nothing configured.
+        driver.submit("/mcp reload").await;
+        driver.wait_for("MCP: reloaded, 0 servers configured").await;
     })
     .await;
 }

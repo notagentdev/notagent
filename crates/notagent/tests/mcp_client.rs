@@ -592,3 +592,113 @@ async fn a_cancelled_call_leaves_no_child_behind() {
 
     assert_eq!(wait_for_no_servers("hang-call-lifetime").await, 0);
 }
+
+#[tokio::test]
+async fn a_server_that_fails_to_start_reports_what_it_said() {
+    // The reason a stdio server did not come up is almost always on its
+    // stderr; without it the user gets "connecting failed" and nothing to act
+    // on.
+    let config = McpServerConfig::Stdio(McpStdioServer {
+        command: "sh".to_owned(),
+        args: vec![
+            "-c".to_owned(),
+            "echo 'Error: Cannot find module @acme/mcp-server' >&2; exit 1".to_owned(),
+        ],
+        timeout: Some(10),
+        ..McpStdioServer::default()
+    });
+
+    let error = McpConnection::connect(&config, &BTreeMap::new())
+        .await
+        .expect_err("the server exits at once");
+
+    assert!(
+        error
+            .to_string()
+            .contains("Cannot find module @acme/mcp-server"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn a_chatty_server_does_not_turn_its_output_into_the_error() {
+    let config = McpServerConfig::Stdio(McpStdioServer {
+        command: "sh".to_owned(),
+        args: vec![
+            "-c".to_owned(),
+            "i=0; while [ $i -lt 500 ]; do echo \"line $i\" >&2; i=$((i+1)); done; exit 1"
+                .to_owned(),
+        ],
+        timeout: Some(10),
+        ..McpStdioServer::default()
+    });
+
+    let error = McpConnection::connect(&config, &BTreeMap::new())
+        .await
+        .expect_err("the server exits at once")
+        .to_string();
+
+    // Only the tail, and only the last lines of it.
+    assert!(error.contains("line 499"), "{error}");
+    assert!(!error.contains("line 0\n"), "{error}");
+    assert!(
+        error.lines().count() <= 14,
+        "{} lines",
+        error.lines().count()
+    );
+}
+
+#[tokio::test]
+async fn a_server_that_starts_cleanly_carries_no_stderr_notice() {
+    let connection = connect("normal", 10).await.expect("connects");
+    drop(connection);
+}
+
+#[tokio::test]
+async fn a_server_runs_where_its_config_says() {
+    let directory = std::env::temp_dir().join("notagent-mcp-cwd");
+    std::fs::create_dir_all(&directory).expect("creates the directory");
+    let marker = directory.join("ran-here");
+    let _ = std::fs::remove_file(&marker);
+
+    let config = McpServerConfig::Stdio(McpStdioServer {
+        command: "sh".to_owned(),
+        args: vec!["-c".to_owned(), "touch ran-here; exit 1".to_owned()],
+        cwd: Some(directory.to_string_lossy().into_owned()),
+        timeout: Some(10),
+        ..McpStdioServer::default()
+    });
+
+    let _ = McpConnection::connect(&config, &BTreeMap::new()).await;
+
+    assert!(
+        marker.exists(),
+        "the server did not run in {}",
+        directory.display()
+    );
+}
+
+#[tokio::test]
+async fn a_handshake_that_hangs_costs_the_startup_deadline_not_the_call_one() {
+    // One number for both waits has to be the larger of the two, which makes a
+    // server that never comes up cost the whole of it.
+    let config = McpServerConfig::Stdio(McpStdioServer {
+        command: env!("CARGO_BIN_EXE_mcp_test_server").to_owned(),
+        args: vec!["hang-handshake-split".to_owned()],
+        timeout: Some(600),
+        startup_timeout: Some(1),
+        ..McpStdioServer::default()
+    });
+
+    let started = Instant::now();
+    let error = McpConnection::connect(&config, &BTreeMap::new())
+        .await
+        .expect_err("the handshake never answers");
+
+    assert!(matches!(error, McpCallError::TimedOut(_)), "{error}");
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "waited {:?}",
+        started.elapsed()
+    );
+}

@@ -24,6 +24,7 @@
 pub mod auth;
 pub mod call;
 pub mod client;
+pub mod lend;
 pub mod manager;
 pub mod output;
 
@@ -41,6 +42,14 @@ pub const MCP_CONFIG_FILE: &str = ".mcp.json";
 /// nothing. The reference documents 300 seconds for this and never applies it;
 /// here it is the default the deadline actually uses.
 pub const DEFAULT_MCP_TIMEOUT_SECS: u64 = 300;
+
+/// How long getting a server up and its tools listed may take when its config
+/// says nothing.
+///
+/// Far shorter than the call deadline on purpose: a server that has not
+/// finished its handshake in half a minute is not slow, it is broken, and the
+/// session waits for this before the first turn.
+pub const DEFAULT_MCP_STARTUP_TIMEOUT_SECS: u64 = 30;
 
 /// A server's name, as the config file spells it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
@@ -92,6 +101,10 @@ impl McpServerConfig {
         env: Option<BTreeMap<String, String>>,
     ) -> Self {
         Self::Stdio(McpStdioServer {
+            enabled_tools: None,
+            disabled_tools: None,
+            cwd: None,
+            startup_timeout: None,
             command: command.into(),
             args,
             env: env.unwrap_or_default(),
@@ -102,6 +115,9 @@ impl McpServerConfig {
 
     pub fn new_http(url: impl Into<String>) -> Self {
         Self::Http(McpHttpServer {
+            enabled_tools: None,
+            disabled_tools: None,
+            startup_timeout: None,
             url: url.into(),
             headers: BTreeMap::new(),
             timeout: None,
@@ -126,12 +142,38 @@ impl McpServerConfig {
     }
 
     /// The deadline for this server's operations.
+    /// The per-server tool filters, in the server's own naming.
+    pub fn tool_filters(&self) -> (Option<&[String]>, Option<&[String]>) {
+        let (enabled, disabled) = match self {
+            Self::Stdio(server) => (&server.enabled_tools, &server.disabled_tools),
+            Self::Http(server) => (&server.enabled_tools, &server.disabled_tools),
+        };
+        (enabled.as_deref(), disabled.as_deref())
+    }
+
     pub fn timeout(&self) -> std::time::Duration {
         let seconds = match self {
             Self::Stdio(server) => server.timeout,
             Self::Http(server) => server.timeout,
         };
         std::time::Duration::from_secs(seconds.unwrap_or(DEFAULT_MCP_TIMEOUT_SECS))
+    }
+
+    /// The deadline for coming up and listing tools.
+    ///
+    /// Falls back to `startupTimeout`, then to `timeout`, then to
+    /// [`DEFAULT_MCP_STARTUP_TIMEOUT_SECS`] — so a file that only sets
+    /// `timeout` keeps behaving exactly as it did.
+    pub fn startup_timeout(&self) -> std::time::Duration {
+        let (startup, timeout) = match self {
+            Self::Stdio(server) => (server.startup_timeout, server.timeout),
+            Self::Http(server) => (server.startup_timeout, server.timeout),
+        };
+        std::time::Duration::from_secs(
+            startup
+                .or(timeout)
+                .unwrap_or(DEFAULT_MCP_STARTUP_TIMEOUT_SECS),
+        )
     }
 }
 
@@ -147,14 +189,60 @@ pub struct McpStdioServer {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
 
+    /// The directory the program is started in; absent means this session's.
+    ///
+    /// A server that resolves paths relative to where it runs needs this, and
+    /// inheriting the agent's directory silently is the kind of thing that
+    /// works until someone starts the agent from somewhere else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+
     /// Deadline in seconds for this server's operations; absent means
     /// [`DEFAULT_MCP_TIMEOUT_SECS`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u64>,
 
+    /// Deadline in seconds for getting the server up and its tools listed.
+    ///
+    /// Separate from `timeout` because the two are different waits: a server
+    /// that has not answered its handshake in ten seconds is broken, while a
+    /// tool doing real work may legitimately take minutes. One number for both
+    /// has to be the larger, which makes a broken server cost the whole of it.
+    #[serde(
+        default,
+        rename = "startupTimeout",
+        alias = "startup_timeout",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub startup_timeout: Option<u64>,
+
     /// Switch the server off without removing it from the file.
     #[serde(default)]
     pub disable: bool,
+
+    /// Only these tools are offered, when given. Taken from
+    /// `../kimi-code-main`'s `enabledTools`.
+    ///
+    /// A server with sixty tools costs its whole manifest on every turn, and
+    /// most configurations want three of them. The names are the server's own,
+    /// before qualification, because that is what its documentation lists.
+    #[serde(
+        default,
+        rename = "enabledTools",
+        alias = "enabled_tools",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub enabled_tools: Option<Vec<String>>,
+
+    /// These tools are never offered. Applied after `enabled_tools`, so a
+    /// denial wins.
+    #[serde(
+        default,
+        rename = "disabledTools",
+        alias = "disabled_tools",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub disabled_tools: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -172,8 +260,41 @@ pub struct McpHttpServer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u64>,
 
+    /// See [`McpStdioServer::startup_timeout`].
+    #[serde(
+        default,
+        rename = "startupTimeout",
+        alias = "startup_timeout",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub startup_timeout: Option<u64>,
+
     #[serde(default)]
     pub disable: bool,
+
+    /// Only these tools are offered, when given. Taken from
+    /// `../kimi-code-main`'s `enabledTools`.
+    ///
+    /// A server with sixty tools costs its whole manifest on every turn, and
+    /// most configurations want three of them. The names are the server's own,
+    /// before qualification, because that is what its documentation lists.
+    #[serde(
+        default,
+        rename = "enabledTools",
+        alias = "enabled_tools",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub enabled_tools: Option<Vec<String>>,
+
+    /// These tools are never offered. Applied after `enabled_tools`, so a
+    /// denial wins.
+    #[serde(
+        default,
+        rename = "disabledTools",
+        alias = "disabled_tools",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub disabled_tools: Option<Vec<String>>,
 
     /// Absent means auto-detect, `false` disables, an object configures.
     #[serde(
@@ -383,6 +504,34 @@ pub fn read_mcp_config(
         scope,
         config,
     }))
+}
+
+/// Writes one scope's file, replacing it whole.
+///
+/// Through a temporary file and a rename, like every other config this port
+/// writes: a crash mid-write must not leave a `.mcp.json` that no longer
+/// parses, because the next start would then refuse to configure anything and
+/// say only that the file is broken.
+///
+/// A config with no servers left still writes `{"mcpServers": {}}` rather than
+/// deleting the file. Removing it would also remove the trust decision attached
+/// to its path, so re-adding a server would ask again for a file the user
+/// already answered for.
+pub fn write_mcp_config(path: &Path, config: &McpConfig) -> Result<(), McpConfigError> {
+    let fail = |message: String| McpConfigError::Read {
+        path: path.display().to_string(),
+        message,
+    };
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|error| fail(error.to_string()))?;
+    }
+    let rendered = serde_json::to_string_pretty(config).map_err(|error| fail(error.to_string()))?;
+    // 0644: a config file, not a credential — its point is to be readable and
+    // committable, unlike the token store beside it.
+    crate::utils::atomic_write::write_secret_file_atomic(path, &format!("{rendered}\n"), 0o644)
+        .map_err(|error| fail(error.to_string()))
 }
 
 /// The two files, project first.
@@ -713,6 +862,131 @@ mod tests {
         assert_eq!(
             resolve_env_template("{{.env.TOKEN}}/{{.env.TOKEN}}", &variables),
             "s3cret/s3cret"
+        );
+    }
+
+    #[test]
+    fn a_written_config_reads_back_as_what_was_written() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("nested").join(MCP_CONFIG_FILE);
+        let mut config = McpConfig::default();
+        config.mcp_servers.insert(
+            ServerName::from("files"),
+            McpServerConfig::new_stdio("node", vec!["server.js".to_owned()], None),
+        );
+
+        write_mcp_config(&path, &config).expect("writes");
+
+        let read = read_mcp_config(&path, McpConfigScope::Project)
+            .expect("reads")
+            .expect("exists");
+        assert_eq!(read.config, config);
+    }
+
+    #[test]
+    fn a_config_emptied_of_servers_keeps_its_file() {
+        // Deleting it would drop the trust decision attached to the path, so
+        // re-adding a server would ask again for a file already answered for.
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join(MCP_CONFIG_FILE);
+
+        write_mcp_config(&path, &McpConfig::default()).expect("writes");
+
+        assert!(path.exists());
+        assert!(
+            read_mcp_config(&path, McpConfigScope::Project)
+                .expect("reads")
+                .expect("exists")
+                .config
+                .mcp_servers
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_file_that_only_sets_timeout_keeps_behaving_as_it_did() {
+        let config = McpServerConfig::Stdio(McpStdioServer {
+            command: "x".to_owned(),
+            timeout: Some(45),
+            ..McpStdioServer::default()
+        });
+
+        assert_eq!(config.timeout().as_secs(), 45);
+        // No separate startup deadline: the one number covers both, as before.
+        assert_eq!(config.startup_timeout().as_secs(), 45);
+    }
+
+    #[test]
+    fn the_two_deadlines_are_separate_where_both_are_given() {
+        let config = McpServerConfig::Stdio(McpStdioServer {
+            command: "x".to_owned(),
+            timeout: Some(300),
+            startup_timeout: Some(10),
+            ..McpStdioServer::default()
+        });
+
+        assert_eq!(config.timeout().as_secs(), 300);
+        assert_eq!(config.startup_timeout().as_secs(), 10);
+    }
+
+    #[test]
+    fn a_config_that_says_nothing_starts_fast_and_calls_slow() {
+        let config = McpServerConfig::new_stdio("x", Vec::new(), None);
+
+        assert_eq!(config.timeout().as_secs(), DEFAULT_MCP_TIMEOUT_SECS);
+        assert_eq!(
+            config.startup_timeout().as_secs(),
+            DEFAULT_MCP_STARTUP_TIMEOUT_SECS
+        );
+        assert!(config.startup_timeout() < config.timeout());
+    }
+
+    #[test]
+    fn the_camel_case_spellings_of_the_new_keys_are_read() {
+        let parsed: McpConfig = serde_json::from_str(
+            r#"{
+                "mcpServers": {
+                    "s": {
+                        "command": "x",
+                        "cwd": "/srv",
+                        "startupTimeout": 12,
+                        "enabledTools": ["read"],
+                        "disabledTools": ["delete"]
+                    }
+                }
+            }"#,
+        )
+        .expect("parses");
+
+        let McpServerConfig::Stdio(server) = &parsed.mcp_servers[&ServerName::from("s")] else {
+            panic!("a command is a stdio server");
+        };
+        assert_eq!(server.cwd.as_deref(), Some("/srv"));
+        assert_eq!(server.startup_timeout, Some(12));
+        assert_eq!(
+            server.enabled_tools.as_deref(),
+            Some(&["read".to_owned()][..])
+        );
+        assert_eq!(
+            server.disabled_tools.as_deref(),
+            Some(&["delete".to_owned()][..])
+        );
+    }
+
+    #[test]
+    fn the_snake_case_spellings_are_read_too() {
+        let parsed: McpConfig = serde_json::from_str(
+            r#"{"mcpServers":{"s":{"command":"x","startup_timeout":9,"enabled_tools":["read"]}}}"#,
+        )
+        .expect("parses");
+
+        let McpServerConfig::Stdio(server) = &parsed.mcp_servers[&ServerName::from("s")] else {
+            panic!("a command is a stdio server");
+        };
+        assert_eq!(server.startup_timeout, Some(9));
+        assert_eq!(
+            server.enabled_tools.as_deref(),
+            Some(&["read".to_owned()][..])
         );
     }
 

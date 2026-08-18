@@ -105,8 +105,9 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
     // configured MCP servers and their state.
     command_with_hint(
         "mcp",
-        "List the configured MCP servers, reconnect one, or sign in to one",
-        "[reconnect <server> | login <server>]",
+        "List, add, remove, inspect, reconnect, sign in to or out of the MCP servers",
+        "[lend [off] | import [user] <json> | remove [user] <server> | show <server> | \
+         reconnect <server> | login <server> | logout <server|all> | reload]",
     ),
     // Addition over the TS original (user decision 2026-08-17, v0.1.11): the
     // command form of the thinking-block toggle, which the TS original only

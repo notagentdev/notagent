@@ -80,6 +80,63 @@ impl McpCallError {
     }
 }
 
+/// How many stderr lines are kept, and how much of each.
+///
+/// Enough for a stack trace's first frames or a missing-module message; not so
+/// much that a chatty server's output becomes the error.
+const STDERR_TAIL_LINES: usize = 10;
+const STDERR_LINE_CHARS: usize = 200;
+
+/// How long a failed start is given to finish saying why.
+const STDERR_SETTLE: Duration = Duration::from_millis(250);
+
+/// The last few things a stdio server said before it went wrong.
+///
+/// Shared with the draining task, which is the only writer; the connect path
+/// reads it once, if it has to explain a failure.
+#[derive(Clone, Default)]
+struct StderrTail {
+    lines: Arc<std::sync::Mutex<std::collections::VecDeque<String>>>,
+}
+
+impl StderrTail {
+    fn push(&self, line: String) {
+        let line = line.trim_end().to_owned();
+        if line.is_empty() {
+            return;
+        }
+        let line: String = match line.chars().count() > STDERR_LINE_CHARS {
+            true => line.chars().take(STDERR_LINE_CHARS).collect::<String>() + "…",
+            false => line,
+        };
+        let Ok(mut lines) = self.lines.lock() else {
+            return;
+        };
+        if lines.len() == STDERR_TAIL_LINES {
+            lines.pop_front();
+        }
+        lines.push_back(line);
+    }
+
+    /// The failure with the server's own last words attached, when it had any.
+    fn explain(&self, failure: &str) -> String {
+        let Ok(lines) = self.lines.lock() else {
+            return failure.to_owned();
+        };
+        if lines.is_empty() {
+            return failure.to_owned();
+        }
+        format!(
+            "{failure}\nthe server's last output was:\n{}",
+            lines
+                .iter()
+                .map(|line| format!("  {line}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    }
+}
+
 /// What the server is told when a turn ends mid-call.
 const CANCELLED_REASON: &str = "the client cancelled the turn";
 
@@ -104,6 +161,7 @@ fn client_info() -> ClientInfo {
 pub struct McpConnection {
     service: Arc<Running>,
     timeout: Duration,
+    startup: Duration,
 }
 
 impl McpConnection {
@@ -130,14 +188,17 @@ impl McpConnection {
         env: &BTreeMap<String, String>,
         token: Option<&str>,
     ) -> Result<Self, McpCallError> {
-        let timeout = config.timeout();
+        // Coming up and answering calls are different waits: a handshake that
+        // has not finished is broken, a tool call may legitimately be long.
+        let startup = config.startup_timeout();
         let connecting = Self::establish(config, env, token);
-        let service = tokio::time::timeout(timeout, connecting)
+        let service = tokio::time::timeout(startup, connecting)
             .await
-            .map_err(|_| McpCallError::TimedOut(timeout))??;
+            .map_err(|_| McpCallError::TimedOut(startup))??;
         Ok(Self {
             service: Arc::new(service),
-            timeout,
+            timeout: config.timeout(),
+            startup,
         })
     }
 
@@ -159,6 +220,9 @@ impl McpConnection {
         for (key, value) in &stdio.env {
             command.env(key, value);
         }
+        if let Some(directory) = &stdio.cwd {
+            command.current_dir(directory);
+        }
         command.args(&stdio.args).kill_on_drop(true);
 
         let (transport, stderr) = TokioChildProcess::builder(command)
@@ -167,20 +231,34 @@ impl McpConnection {
             .map_err(|error| McpCallError::Connect(error.to_string()))?;
 
         // A child whose stderr nobody reads blocks once the pipe fills, which
-        // looks from here like a server that stopped answering. The lines are
-        // drained and dropped: this port has no logger, and the server's own
-        // diagnostics are not the agent's output.
-        if let Some(stderr) = stderr {
+        // looks from here like a server that stopped answering. So it is read
+        // continuously — and the last few lines are kept, because a server that
+        // fails to start almost always says why there. Without them the user
+        // gets "connecting failed" and no reason at all.
+        let tail = StderrTail::default();
+        let draining = stderr.map(|stderr| {
+            let collecting = tail.clone();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
-                while let Ok(Some(_line)) = lines.next_line().await {}
-            });
-        }
+                while let Ok(Some(line)) = lines.next_line().await {
+                    collecting.push(line);
+                }
+            })
+        });
 
-        client_info()
-            .serve(transport)
-            .await
-            .map_err(|error| McpCallError::Connect(error.to_string()))
+        let failure = match client_info().serve(transport).await {
+            Ok(service) => return Ok(service),
+            Err(error) => error.to_string(),
+        };
+
+        // The child that just failed usually wrote its reason and exited, which
+        // closes the pipe and ends the drain. Waiting for that end makes the
+        // reason part of the error rather than a race — bounded, because a
+        // server that is still alive will never close it.
+        if let Some(draining) = draining {
+            let _ = tokio::time::timeout(STDERR_SETTLE, draining).await;
+        }
+        Err(McpCallError::Connect(tail.explain(&failure)))
     }
 
     async fn establish_http(
@@ -310,7 +388,18 @@ impl McpConnection {
     }
 
     /// Every tool the server offers, following pagination.
+    ///
+    /// Bounded by the startup deadline rather than the call one: discovery runs
+    /// before the session can do anything, so a server that is slow to answer
+    /// it holds up the whole start.
     pub async fn list_tools(&self) -> Result<Vec<rmcp::model::Tool>, McpCallError> {
+        let listing = self.list_tools_inner();
+        tokio::time::timeout(self.startup, listing)
+            .await
+            .map_err(|_| McpCallError::TimedOut(self.startup))?
+    }
+
+    async fn list_tools_inner(&self) -> Result<Vec<rmcp::model::Tool>, McpCallError> {
         let mut tools = Vec::new();
         let mut cursor = None;
         loop {
