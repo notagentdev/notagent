@@ -25,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::cli::config_selector::ConfigSelectorOptions;
 use crate::config::{
     APP_NAME, CONFIG_DIR_NAME, InstallEnv, InstallMethod, PACKAGE_NAME, SelfUpdateCommand,
+    USER_CONFIG_DIR_NAME,
     SelfUpdatePackageTarget, VERSION, detect_install_method, get_agent_dir,
     get_self_update_command, get_self_update_unavailable_instruction,
 };
@@ -853,7 +854,7 @@ fn config_command_usage() -> String {
 fn print_config_command_help(runtime: &PackageCommandRuntime) {
     let paint = runtime.paint();
     runtime.console.log(&format!(
-        "{}\n  {}\n\nOpen the resource configuration TUI to enable or disable package resources.\nWithout -l, starts in global settings (~/{CONFIG_DIR_NAME}/agent/settings.json).\nPress Tab in the TUI to switch between global and project-local modes.\n\nOptions:\n  -l, --local       Edit project overrides ({CONFIG_DIR_NAME}/settings.json)\n  -a, --approve     Trust project-local files for this command with -l\n  -na, --no-approve Ignore project-local files for this command with -l\n",
+        "{}\n  {}\n\nOpen the resource configuration TUI to enable or disable package resources.\nWithout -l, starts in global settings (~/{USER_CONFIG_DIR_NAME}/agent/settings.json).\nPress Tab in the TUI to switch between global and project-local modes.\n\nOptions:\n  -l, --local       Edit project overrides ({CONFIG_DIR_NAME}/settings.json)\n  -a, --approve     Trust project-local files for this command with -l\n  -na, --no-approve Ignore project-local files for this command with -l\n",
         paint.bold("Usage:"),
         config_command_usage(),
     ));

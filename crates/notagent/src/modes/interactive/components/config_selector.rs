@@ -36,7 +36,7 @@ use notagent_tui::tui::{
 };
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
-use crate::config::CONFIG_DIR_NAME;
+use crate::config::{CONFIG_DIR_NAME, USER_CONFIG_DIR_NAME};
 use crate::core::resource_loader::{ResolvedResource, ResolvedResources};
 use crate::core::settings_manager::{
     PackageSource, PackageSourceFilter, Settings, SettingsManager,
@@ -445,7 +445,7 @@ impl Component for ConfigSelectorHeader {
         } else {
             theme.fg(
                 ThemeColor::Muted,
-                &format!("~/{CONFIG_DIR_NAME}/agent/settings.json"),
+                &format!("~/{USER_CONFIG_DIR_NAME}/agent/settings.json"),
             )
         };
 

@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use notagent_agent::types::ThinkingLevel;
 
-use crate::config::{APP_NAME, CONFIG_DIR_NAME, env_agent_dir, env_session_dir};
+use crate::config::{APP_NAME, USER_CONFIG_DIR_NAME, env_agent_dir, env_session_dir};
 use crate::core::settings_manager::TuiMode;
 
 /// `--mode <mode>`.
@@ -550,7 +550,7 @@ Examples:
   {APP_NAME} --exclude-tools ask_question
 
   # Export a session file to HTML
-  {APP_NAME} --export ~/{CONFIG_DIR_NAME}/agent/sessions/--path--/session.jsonl
+  {APP_NAME} --export ~/{USER_CONFIG_DIR_NAME}/agent/sessions/--path--/session.jsonl
   {APP_NAME} --export session.jsonl output.html
 
 Environment Variables:
@@ -596,7 +596,7 @@ Environment Variables:
   AWS_SECRET_ACCESS_KEY            - AWS secret key for Amazon Bedrock
   AWS_BEARER_TOKEN_BEDROCK         - Bedrock API key (bearer token)
   AWS_REGION                       - AWS region for Amazon Bedrock (e.g., us-east-1)
-  {agent_dir_env} - Config directory (default: ~/{CONFIG_DIR_NAME}/agent)
+  {agent_dir_env} - Config directory (default: ~/{USER_CONFIG_DIR_NAME}/agent)
   {session_dir_env} - Session storage directory (overridden by --session-dir)
   NOTAGENT_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
   NOTAGENT_OFFLINE                       - Disable startup network operations when set to 1/true/yes
