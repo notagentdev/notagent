@@ -4,7 +4,7 @@
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, Container, component_ref};
+use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::config::APP_NAME;
 use crate::modes::interactive::theme::theme::{TerminalTheme, ThemeColor, theme};
@@ -202,7 +202,7 @@ fn clamp_index(index: usize, delta: isize, len: usize) -> usize {
 }
 
 impl Component for FirstTimeSetupComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

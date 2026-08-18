@@ -1,7 +1,9 @@
 //! Port von `packages/tui/test/tab-width.test.ts` (88 LOC).
 //!
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, OverlayOptions, SizeValue, TuiStopOptions, component_ref};
+use notagent_tui::tui::{
+    Component, Line, OverlayOptions, SizeValue, TuiStopOptions, component_ref,
+};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 use notagent_tui::{extract_segments, normalize_terminal_output, slice_with_width, visible_width};
 
@@ -9,10 +11,10 @@ use notagent_tui::{extract_segments, normalize_terminal_output, slice_with_width
 struct FullViewportContent;
 
 impl Component for FullViewportContent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         ["base 0", "base 1", "base 2"]
             .iter()
-            .map(|line| format!("{line:<width$}"))
+            .map(|line| Line::from(format!("{line:<width$}")))
             .collect()
     }
 
@@ -23,8 +25,8 @@ impl Component for FullViewportContent {
 struct TabStatusOverlay;
 
 impl Component for TabStatusOverlay {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        vec!["\tX".to_string()]
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        vec![Line::from("\tX")]
     }
 
     fn invalidate(&mut self) {}

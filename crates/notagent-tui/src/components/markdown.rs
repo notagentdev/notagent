@@ -3,13 +3,19 @@
 //! Port of `packages/tui/src/components/markdown.ts` (1010 LOC). The token
 //! stream comes from [`crate::markdown_lexer`], which reproduces marked's
 //! output (verified in `tests/markdown_oracle.rs`).
+//!
+//! Deviation (class 1): the cache stores finished lines — normalized and
+//! segment-reset-terminated, what `apply_line_resets` would produce — so the
+//! paint pass skips them and an unchanged transcript line keeps its pointer
+//! identity for the screen diff. TS resets only in the paint path; the byte
+//! oracle in `tests/markdown.rs` strips the suffix before comparing.
 
 use std::rc::Rc;
 
 use crate::latex::{RenderLatexOptions, render_latex};
 use crate::markdown_lexer::{TableCell, Token, lex};
 use crate::terminal_image::{get_capabilities, hyperlink, is_image_line};
-use crate::tui::Component;
+use crate::tui::{Component, Line, finish_line};
 use crate::utils::{apply_background_to_line, visible_width, wrap_text_with_ansi};
 
 /// A styling function.
@@ -105,7 +111,7 @@ pub struct Markdown {
     default_style_prefix: Option<String>,
     cached_text: Option<String>,
     cached_width: Option<usize>,
-    cached_lines: Option<Vec<String>>,
+    cached_lines: Option<Vec<Line>>,
 }
 
 impl Markdown {
@@ -889,7 +895,7 @@ impl Markdown {
 }
 
 impl Component for Markdown {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if let Some(cached) = &self.cached_lines
             && self.cached_text.as_deref() == Some(self.text.as_str())
             && self.cached_width == Some(width)
@@ -904,7 +910,7 @@ impl Component for Markdown {
         };
 
         if text.trim().is_empty() {
-            let result: Vec<String> = Vec::new();
+            let result: Vec<Line> = Vec::new();
             self.cached_text = Some(self.text.clone());
             self.cached_width = Some(width);
             self.cached_lines = Some(result.clone());
@@ -976,12 +982,28 @@ impl Component for Markdown {
         result.extend(content_lines);
         result.extend(empty_lines);
 
+        // Shared and finished from here on: every non-image line is stored the
+        // way `apply_line_resets` would leave it (normalized, reset at the
+        // end), so the paint pass skips it and a cache hit keeps its pointer
+        // identity across frames. Deliberate deviation from the TS original,
+        // which resets only in the paint path; the reference moved exactly
+        // this one component (`../notagent-main-rust/.../markdown.rs:351`).
+        let result: Vec<Line> = result
+            .into_iter()
+            .map(|line| {
+                if is_image_line(&line) {
+                    Line::from(line)
+                } else {
+                    Line::from(finish_line(&line))
+                }
+            })
+            .collect();
         self.cached_text = Some(self.text.clone());
         self.cached_width = Some(width);
         self.cached_lines = Some(result.clone());
 
         if result.is_empty() {
-            vec![String::new()]
+            vec![Line::from("")]
         } else {
             result
         }

@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, Focusable, component_ref};
+use notagent_tui::tui::{Component, Focusable, Line, component_ref, shared_lines};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 use super::harness::{InteractiveDriver, KEY_DOWN, KEY_ENTER, LIST_CURSOR, run_local};
@@ -35,8 +35,8 @@ struct Stub {
 }
 
 impl Component for Stub {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.lines.0.borrow().clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.lines.0.borrow().clone())
     }
 
     fn handle_input(&mut self, data: &str) {
@@ -80,14 +80,14 @@ impl StubList {
 }
 
 impl Component for StubList {
-    fn render(&mut self, _width: usize) -> Vec<String> {
+    fn render(&mut self, _width: usize) -> Vec<Line> {
         let index = *self.index.borrow();
         self.rows
             .iter()
             .enumerate()
             .map(|(row, label)| {
                 let marker = if row == index { LIST_CURSOR } else { "  " };
-                format!("{marker}{label}")
+                Line::from(format!("{marker}{label}"))
             })
             .collect()
     }

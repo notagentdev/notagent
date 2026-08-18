@@ -135,7 +135,8 @@ fn renders_in_the_roster_style_of_the_reference() {
     )]);
     let lines = panel.render(60);
     assert_eq!(
-        lines[0], "",
+        lines[0].as_ref(),
+        "",
         "a blank row separates the panel from the footer"
     );
     let heading = strip_ansi(&lines[1]);

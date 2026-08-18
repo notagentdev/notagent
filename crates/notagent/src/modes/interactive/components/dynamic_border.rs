@@ -2,7 +2,7 @@
 //! `packages/coding-agent/src/modes/interactive/components/dynamic-border.ts` (25 LOC).
 
 use notagent_tui::components::markdown::StyleFn;
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
@@ -33,7 +33,7 @@ impl Component for DynamicBorder {
         // No cached state to invalidate currently
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
-        vec![(self.color)(&"─".repeat(width.max(1)))]
+    fn render(&mut self, width: usize) -> Vec<Line> {
+        vec![Line::from((self.color)(&"─".repeat(width.max(1))))]
     }
 }

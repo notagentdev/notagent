@@ -9,7 +9,9 @@ use notagent_tui::components::input::Input;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, component_ref};
+use notagent_tui::tui::{
+    Component, ComponentRef, Container, Focusable, Line, component_ref, shared_lines,
+};
 use notagent_tui::utils::{truncate_to_width, truncate_to_width_opts, visible_width};
 
 use crate::core::keybindings::KeybindingsManager;
@@ -219,7 +221,7 @@ impl SessionSelectorHeader {
 impl Component for SessionSelectorHeader {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme = theme();
         let title = if self.scope == SessionScope::Current {
             "Resume Session (Current Folder)"
@@ -323,9 +325,9 @@ impl Component for SessionSelectorHeader {
         };
 
         vec![
-            format!("{left}{}{right_text}", " ".repeat(spacing)),
-            hint_line1,
-            hint_line2,
+            Line::from(format!("{left}{}{right_text}", " ".repeat(spacing))),
+            Line::from(hint_line1),
+            Line::from(hint_line2),
         ]
     }
 }
@@ -672,12 +674,18 @@ impl SessionList {
 impl Component for SessionList {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme = theme();
         let mut lines: Vec<String> = Vec::new();
 
-        // Render search input
-        lines.extend(self.search_input.render(width));
+        // Render search input (one fresh line per frame; the copy back into
+        // the owned builder is a single line).
+        lines.extend(
+            self.search_input
+                .render(width)
+                .iter()
+                .map(|line| line.to_string()),
+        );
         lines.push(String::new()); // Blank line after search
 
         if self.filtered_sessions.is_empty() {
@@ -701,7 +709,7 @@ impl Component for SessionList {
                 ThemeColor::Muted,
                 &truncate_to_width_opts(&empty_message, width, "…", false),
             ));
-            return lines;
+            return shared_lines(lines);
         }
 
         // Calculate visible range with scrolling
@@ -825,7 +833,7 @@ impl Component for SessionList {
             ));
         }
 
-        lines
+        shared_lines(lines)
     }
 
     fn handle_input(&mut self, key_data: &str) {
@@ -1640,7 +1648,7 @@ impl SessionSelectorComponent {
 }
 
 impl Component for SessionSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

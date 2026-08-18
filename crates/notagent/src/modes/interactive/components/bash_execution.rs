@@ -9,7 +9,7 @@ use std::rc::Rc;
 use notagent_tui::components::loader::Loader;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 
 use crate::core::tools::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncationOptions, TruncationResult, truncate_tail,
@@ -38,11 +38,11 @@ enum Status {
 struct PreviewLines {
     styled_input: String,
     cached_width: Option<usize>,
-    cached_lines: Option<Vec<String>>,
+    cached_lines: Option<Vec<Line>>,
 }
 
 impl Component for PreviewLines {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if self.cached_lines.is_none() || self.cached_width != Some(width) {
             let result = truncate_to_visual_lines(&self.styled_input, PREVIEW_LINES, width, 1);
             self.cached_lines = Some(result.visual_lines);
@@ -340,7 +340,7 @@ fn format_exit_code(exit_code: Option<i64>) -> String {
 }
 
 impl Component for BashExecutionComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

@@ -11,7 +11,7 @@ use std::rc::Rc;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
@@ -168,7 +168,7 @@ impl ListSelectorComponent {
 }
 
 impl Component for ListSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

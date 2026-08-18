@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use crate::tui::Component;
+use crate::tui::{Component, Line, shared_lines};
 
 /// Background function applied to a rendered line.
 pub type BackgroundFn = Rc<dyn Fn(&str) -> String>;
@@ -18,7 +18,7 @@ pub struct Text {
     custom_bg_fn: Option<BackgroundFn>,
     cached_text: Option<String>,
     cached_width: Option<usize>,
-    cached_lines: Option<Vec<String>>,
+    cached_lines: Option<Vec<Line>>,
 }
 
 impl Text {
@@ -55,7 +55,7 @@ impl Text {
 }
 
 impl Component for Text {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if let Some(lines) = &self.cached_lines
             && self.cached_text.as_deref() == Some(self.text.as_str())
             && self.cached_width == Some(width)
@@ -105,12 +105,15 @@ impl Component for Text {
         result.extend(content_lines);
         result.extend(empty_lines);
 
+        // Shared from here on: the cache holds `Line`s, so a hit is a refcount
+        // bump per line instead of a deep copy.
+        let result = shared_lines(result);
         self.cached_text = Some(self.text.clone());
         self.cached_width = Some(width);
         self.cached_lines = Some(result.clone());
 
         if result.is_empty() {
-            vec![String::new()]
+            vec![Line::from("")]
         } else {
             result
         }

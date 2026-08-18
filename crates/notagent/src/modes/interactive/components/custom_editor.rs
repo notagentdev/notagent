@@ -7,7 +7,7 @@ use std::rc::Rc;
 use notagent_tui::autocomplete::AutocompleteProvider;
 use notagent_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use notagent_tui::editor_component::EditorComponent;
-use notagent_tui::tui::{Component, Focusable, TuiCore};
+use notagent_tui::tui::{Component, Focusable, Line, TuiCore};
 
 use crate::core::keybindings::KeybindingsManager;
 
@@ -113,7 +113,7 @@ impl CustomEditor {
 }
 
 impl Component for CustomEditor {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.editor.render(width)
     }
 

@@ -12,7 +12,7 @@ use crate::layout_node::{
     LayoutNode, LayoutViewport, ScrollStateRef, StackAlign, StackBasis, StackKind, get_layout_node,
 };
 use crate::terminal_image::{crop_kitty_image_line, get_kitty_image_metadata, is_image_line};
-use crate::tui::{CURSOR_MARKER, ComponentRef, composite_tui_line};
+use crate::tui::{CURSOR_MARKER, ComponentRef, Line, composite_tui_line};
 use crate::utils::{extract_ansi_code, get_grapheme_cell_range, slice_by_column, visible_width};
 
 /// Rectangle in cell coordinates.
@@ -39,13 +39,13 @@ pub struct LayoutBox {
     /// Child boxes.
     pub children: Vec<LayoutBox>,
     /// Rendered lines of a leaf box.
-    pub lines: Option<Vec<String>>,
+    pub lines: Option<Vec<Line>>,
     /// First rendered line shown (used to keep the cursor visible).
     pub line_offset: usize,
     /// Scroll state when this box is a scroll viewport.
     pub scroll_view: Option<ScrollStateRef>,
     /// Rendered content lines of a scroll viewport.
-    pub scroll_content_lines: Option<Vec<String>>,
+    pub scroll_content_lines: Option<Vec<Line>>,
     /// Painting layer.
     pub layer: usize,
 }
@@ -59,7 +59,7 @@ pub struct LayoutFrame {
     /// Frame height.
     pub height: usize,
     /// Painted lines (exactly `height` entries).
-    pub lines: Vec<String>,
+    pub lines: Vec<Line>,
     /// Primary scroll view of this frame, if any.
     pub primary_scroll_view: Option<ScrollStateRef>,
 }
@@ -83,7 +83,7 @@ pub struct ScrollbarGeometry {
 
 struct LayoutContext {
     viewport: LayoutViewport,
-    render_cache: HashMap<usize, HashMap<usize, Vec<String>>>,
+    render_cache: HashMap<usize, HashMap<usize, Vec<Line>>>,
     render_requested: bool,
     primary_scroll_view: Option<ScrollStateRef>,
 }
@@ -105,7 +105,7 @@ fn intersect(a: LayoutRect, b: LayoutRect) -> LayoutRect {
     }
 }
 
-fn render_cached(context: &mut LayoutContext, component: &ComponentRef, width: i64) -> Vec<String> {
+fn render_cached(context: &mut LayoutContext, component: &ComponentRef, width: i64) -> Vec<Line> {
     let safe_width = width.max(1) as usize;
     let key = component_key(component);
     if let Some(lines) = context
@@ -517,7 +517,7 @@ fn scroll_view_is_scrollbar_visible(state: &ScrollStateRef) -> bool {
     crate::components::scroll_view::scrollbar_visible(state)
 }
 
-fn paint_scrollbar(layout_box: &LayoutBox, screen: &mut [String], total_width: i64) {
+fn paint_scrollbar(layout_box: &LayoutBox, screen: &mut [Line], total_width: i64) {
     let Some(geometry) = get_scrollbar_geometry(layout_box) else {
         return;
     };
@@ -535,11 +535,16 @@ fn paint_scrollbar(layout_box: &LayoutBox, screen: &mut [String], total_width: i
             continue;
         }
         let index = row as usize;
-        screen[index] = style_scrollbar_cell(&screen[index], geometry.column, total_width, &*style);
+        screen[index] = Line::from(style_scrollbar_cell(
+            &screen[index],
+            geometry.column,
+            total_width,
+            &*style,
+        ));
     }
 }
 
-fn paint_box(layout_box: &LayoutBox, screen: &mut Vec<String>, total_width: i64) {
+fn paint_box(layout_box: &LayoutBox, screen: &mut Vec<Line>, total_width: i64) {
     if let Some(lines) = &layout_box.lines {
         let offset = layout_box.line_offset as i64;
         let first_row = layout_box.rect.y.max(layout_box.clip.y).max(0);
@@ -554,13 +559,20 @@ fn paint_box(layout_box: &LayoutBox, screen: &mut Vec<String>, total_width: i64)
             let Some(source_line) = lines.get(source_index as usize) else {
                 continue;
             };
-            let mut line = strip_osc133_zone_prefix(source_line).to_string();
+            // An unchanged source line stays the same shared line, so the
+            // screen diff can settle it by pointer identity.
+            let stripped = strip_osc133_zone_prefix(source_line);
+            let mut line: Line = if stripped.len() == source_line.len() {
+                source_line.clone()
+            } else {
+                Line::from(stripped)
+            };
             if let Some(metadata) = get_kitty_image_metadata(&line) {
                 let clip_bottom =
                     (screen.len() as i64).min(layout_box.clip.y + layout_box.clip.height);
                 let visible_rows = (metadata.rows as i64).min(clip_bottom - row).max(0) as usize;
                 if visible_rows < metadata.rows {
-                    line = crop_kitty_image_line(&line, 0, visible_rows);
+                    line = Line::from(crop_kitty_image_line(&line, 0, visible_rows));
                 }
             }
             let index = row as usize;
@@ -575,13 +587,13 @@ fn paint_box(layout_box: &LayoutBox, screen: &mut Vec<String>, total_width: i64)
             {
                 screen[index] = line;
             } else {
-                screen[index] = composite_tui_line(
+                screen[index] = Line::from(composite_tui_line(
                     &screen[index],
                     &line,
                     layout_box.rect.x.max(0) as usize,
                     layout_box.rect.width.max(0) as usize,
                     total_width.max(0) as usize,
-                );
+                ));
             }
         }
     }
@@ -606,7 +618,7 @@ fn paint_box(layout_box: &LayoutBox, screen: &mut Vec<String>, total_width: i64)
                         if layout_box.rect.x == 0 && layout_box.rect.width >= total_width {
                             let index = layout_box.rect.y.max(0) as usize;
                             if index < screen.len() {
-                                screen[index] = cropped;
+                                screen[index] = Line::from(cropped);
                             }
                         }
                     }
@@ -649,7 +661,7 @@ pub fn render_layout_frame(root: &ComponentRef, width: usize, height: usize) -> 
             height: safe_height as i64,
         },
     );
-    let mut lines = vec![String::new(); safe_height];
+    let mut lines = vec![Line::from(""); safe_height];
     paint_box(&root_box, &mut lines, safe_width as i64);
     let _ = context.render_requested;
     LayoutFrame {

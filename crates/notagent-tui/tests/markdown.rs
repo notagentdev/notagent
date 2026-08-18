@@ -17,8 +17,12 @@ use notagent_tui::components::markdown::{
 use notagent_tui::terminal_image::{
     ImageProtocol, TerminalCapabilities, reset_capabilities_cache, set_capabilities,
 };
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 use serde_json::Value;
+
+/// SGR reset plus OSC 8 link close — what the paint pass appends and the
+/// component now bakes into its cache (`tui.rs`, `SEGMENT_RESET`).
+const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
 
 /// Serializes the cases, which share the global terminal capabilities.
 static CAPABILITY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -115,11 +119,11 @@ fn renders_exactly_like_the_typescript_component() {
         let source = case["source"].as_str().expect("source");
         let variant = case["variant"].as_str().expect("variant");
         let width = case["width"].as_u64().expect("width") as usize;
-        let expected: Vec<String> = case["lines"]
+        let expected: Vec<Line> = case["lines"]
             .as_array()
             .expect("lines")
             .iter()
-            .map(|line| line.as_str().expect("line").to_string())
+            .map(|line| Line::from(line.as_str().expect("line")))
             .collect();
 
         let (padding_x, padding_y) = padding_for(variant);
@@ -131,7 +135,15 @@ fn renders_exactly_like_the_typescript_component() {
             None,
             options_for(variant),
         );
-        let actual = markdown.render(width);
+        // The component finishes its lines with the segment reset since the
+        // shared-line change (deliberate deviation from TS, which resets only
+        // in the paint path); the oracle pins the TS output, so the reset is
+        // stripped before comparing.
+        let actual: Vec<Line> = markdown
+            .render(width)
+            .iter()
+            .map(|line| Line::from(line.strip_suffix(SEGMENT_RESET).unwrap_or(line)))
+            .collect();
         if actual != expected {
             mismatches.push(format!(
                 "source {source:?} variant {variant} width {width} hyperlinks {hyperlinks}\n  expected {expected:?}\n  actual   {actual:?}"
@@ -202,7 +214,7 @@ fn caches_transformed_markdown_by_source_and_available_width() {
     assert_eq!(calls.borrow().len(), 4);
 }
 
-fn strip_ansi_trimmed(lines: &[String]) -> Vec<String> {
+fn strip_ansi_trimmed(lines: &[Line]) -> Vec<String> {
     lines
         .iter()
         .map(|line| {
@@ -259,4 +271,35 @@ fn shows_the_url_in_parentheses_without_hyperlink_support() {
     assert!(output.contains("example (https://example.com)"));
 
     reset_capabilities_cache();
+}
+
+#[test]
+fn finishes_its_cached_lines_and_a_hit_keeps_their_identity() {
+    // Step 8 of the line-sharing plan: every non-image line leaves `render`
+    // the way `apply_line_resets` would leave it — normalized, reset at the
+    // end — so the paint pass skips it and an unchanged transcript line can
+    // settle by pointer identity in the screen diff (step 7).
+    let mut markdown = Markdown::new(
+        "A paragraph with **bold** text.",
+        1,
+        1,
+        default_markdown_theme(),
+        None,
+        None,
+    );
+
+    let first = markdown.render(32);
+    assert!(!first.is_empty());
+    for line in &first {
+        assert!(line.ends_with(SEGMENT_RESET), "unfinished line: {line:?}");
+    }
+
+    let second = markdown.render(32);
+    assert_eq!(first.len(), second.len());
+    for (line, repeat) in first.iter().zip(second.iter()) {
+        assert!(
+            Line::ptr_eq(line, repeat),
+            "a cache hit must return the same shared line: {line:?}"
+        );
+    }
 }

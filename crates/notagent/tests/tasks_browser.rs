@@ -364,7 +364,7 @@ fn shows_the_counts_and_the_filter_in_the_header() {
         browser
             .render(100)
             .first()
-            .map(String::as_str)
+            .map(|line| line.as_ref())
             .unwrap_or(""),
     );
     assert!(header.contains("filter=ALL"), "{header}");
@@ -476,7 +476,13 @@ fn asks_before_it_kills() {
     );
     browser.handle_input("s");
     assert!(stopped.borrow().is_empty());
-    let footer = strip_ansi(browser.render(100).last().map(String::as_str).unwrap_or(""));
+    let footer = strip_ansi(
+        browser
+            .render(100)
+            .last()
+            .map(|line| line.as_ref())
+            .unwrap_or(""),
+    );
     assert!(footer.contains("Stop bash-1?"), "{footer}");
 }
 
@@ -525,7 +531,13 @@ fn treats_anything_but_yes_as_no() {
     browser.handle_input("j");
     assert!(stopped.borrow().is_empty());
     // And the key that cancelled it does not also move the selection.
-    let footer = strip_ansi(browser.render(100).last().map(String::as_str).unwrap_or(""));
+    let footer = strip_ansi(
+        browser
+            .render(100)
+            .last()
+            .map(|line| line.as_ref())
+            .unwrap_or(""),
+    );
     assert!(!footer.contains("Stop bash-1?"), "{footer}");
 }
 
@@ -577,14 +589,21 @@ fn does_not_advertise_the_key_on_something_it_cannot_stop() {
         24,
     );
     assert!(
-        strip_ansi(running.render(100).last().map(String::as_str).unwrap_or("")).contains("stop")
+        strip_ansi(
+            running
+                .render(100)
+                .last()
+                .map(|line| line.as_ref())
+                .unwrap_or("")
+        )
+        .contains("stop")
     );
     assert!(
         !strip_ansi(
             finished
                 .render(100)
                 .last()
-                .map(String::as_str)
+                .map(|line| line.as_ref())
                 .unwrap_or("")
         )
         .contains("stop")
@@ -614,7 +633,13 @@ fn drops_the_question_when_the_task_ends_on_its_own_meanwhile() {
         )],
         PropOverrides::default(),
     ));
-    let footer = strip_ansi(browser.render(100).last().map(String::as_str).unwrap_or(""));
+    let footer = strip_ansi(
+        browser
+            .render(100)
+            .last()
+            .map(|line| line.as_ref())
+            .unwrap_or(""),
+    );
     assert!(!footer.contains("Stop bash-1?"), "{footer}");
 }
 

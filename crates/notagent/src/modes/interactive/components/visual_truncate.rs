@@ -5,13 +5,13 @@
 //! Used by both tool-execution.rs and bash-execution.rs for consistent behavior.
 
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 
 /// Result of [`truncate_to_visual_lines`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VisualTruncateResult {
     /// The visual lines to display
-    pub visual_lines: Vec<String>,
+    pub visual_lines: Vec<Line>,
     /// Number of visual lines that were skipped (hidden)
     pub skipped_count: usize,
 }

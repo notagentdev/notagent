@@ -8,7 +8,7 @@ use crate::terminal_image::{
     ImageDimensions, ImageProtocol, ImageRenderOptions, allocate_image_id, get_capabilities,
     get_cell_dimensions, get_image_dimensions, image_fallback, render_image,
 };
-use crate::tui::Component;
+use crate::tui::{Component, Line, shared_lines};
 use crate::utils::truncate_to_width;
 
 /// Colouring of the text fallback.
@@ -38,7 +38,7 @@ pub struct Image {
     theme: ImageTheme,
     options: ImageOptions,
     image_id: Option<u32>,
-    cached_lines: Option<Vec<String>>,
+    cached_lines: Option<Vec<Line>>,
     cached_width: Option<usize>,
 }
 
@@ -91,7 +91,7 @@ impl Image {
 }
 
 impl Component for Image {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if let Some(lines) = &self.cached_lines
             && self.cached_width == Some(width)
         {
@@ -163,6 +163,7 @@ impl Component for Image {
             }
         };
 
+        let lines = shared_lines(lines);
         self.cached_lines = Some(lines.clone());
         self.cached_width = Some(width);
         lines

@@ -20,7 +20,7 @@ use notagent_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::native_modifiers::{ModifierKey, is_native_modifier_pressed};
-use notagent_tui::tui::{Component, component_ref};
+use notagent_tui::tui::{Component, Line, component_ref};
 use notagent_tui::utils::visible_width;
 
 const ESCAPE: &str = "\x1b";
@@ -35,8 +35,8 @@ fn plain() -> Rc<dyn Fn(&str) -> String> {
 fn a_spacer_renders_that_many_empty_lines_whatever_the_width() {
     let mut spacer = Spacer::new(3);
 
-    assert_eq!(spacer.render(80), vec!["", "", ""]);
-    assert_eq!(spacer.render(1), vec!["", "", ""]);
+    assert_eq!(spacer.render(80), vec![Line::from(""); 3]);
+    assert_eq!(spacer.render(1), vec![Line::from(""); 3]);
 
     spacer.set_lines(0);
     assert!(spacer.render(80).is_empty());
@@ -57,9 +57,9 @@ fn a_box_pads_its_children_and_stays_empty_without_them() {
 
     // paddingY above and below, paddingX in front — every line padded to width.
     assert_eq!(lines.len(), 3);
-    assert_eq!(lines[0], " ".repeat(20));
-    assert_eq!(lines[1], format!("  hi{}", " ".repeat(16)));
-    assert_eq!(lines[2], " ".repeat(20));
+    assert_eq!(lines[0].as_ref(), " ".repeat(20));
+    assert_eq!(lines[1].as_ref(), format!("  hi{}", " ".repeat(16)));
+    assert_eq!(lines[2].as_ref(), " ".repeat(20));
 
     boxed.clear();
     assert!(boxed.render(20).is_empty());
@@ -109,7 +109,7 @@ fn the_loader_leads_with_a_blank_line_and_paints_frame_and_message() {
         2,
         "`render` is `[\"\", ...super.render(width)]`"
     );
-    assert_eq!(lines[0], "");
+    assert_eq!(lines[0].as_ref(), "");
     assert!(
         lines[1].contains("[⠋]"),
         "the first frame, coloured: {lines:?}"
@@ -210,7 +210,7 @@ fn escape_cancels_the_token_and_calls_back_once_per_press() {
     assert_eq!(*aborts.borrow(), 1);
 
     // It renders its loader, blank line included.
-    assert_eq!(loader.render(20)[0], "");
+    assert_eq!(loader.render(20)[0].as_ref(), "");
 }
 
 // --- alt-screen-flash.ts -----------------------------------------------------
@@ -223,7 +223,7 @@ fn a_flash_is_inverse_video_padded_by_a_space_and_truncated_to_the_width() {
     flashes.flash("copied", None);
     let lines = flashes.render(20);
     assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0], "\x1b[7m copied \x1b[27m");
+    assert_eq!(lines[0].as_ref(), "\x1b[7m copied \x1b[27m");
     assert!(flashes.take_render_request(), "a flash asks for a frame");
     assert!(!flashes.take_render_request(), "and only once");
 

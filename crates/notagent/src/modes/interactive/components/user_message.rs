@@ -7,7 +7,7 @@ use notagent_tui::components::box_component::BoxComponent;
 use notagent_tui::components::markdown::{
     DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme,
 };
-use notagent_tui::tui::{Component, Container, component_ref};
+use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
     BlockStyle, ThemeBg, ThemeColor, block_style, get_markdown_theme, theme,
@@ -107,7 +107,7 @@ impl UserMessageComponent {
 }
 
 impl Component for UserMessageComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if self.built_style != block_style() {
             self.rebuild();
         }
@@ -119,14 +119,17 @@ impl Component for UserMessageComponent {
         if lines.len() == 1 {
             // A single line carries the whole zone in order: start, end,
             // final, then the message (reference `user_message.rs`).
-            lines[0] = format!(
+            lines[0] = Line::from(format!(
                 "{OSC133_ZONE_START}{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}",
                 lines[0]
-            );
+            ));
         } else {
-            lines[0] = format!("{OSC133_ZONE_START}{}", lines[0]);
+            lines[0] = Line::from(format!("{OSC133_ZONE_START}{}", lines[0]));
             let last = lines.len() - 1;
-            lines[last] = format!("{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}", lines[last]);
+            lines[last] = Line::from(format!(
+                "{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}",
+                lines[last]
+            ));
         }
         lines
     }

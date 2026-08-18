@@ -14,7 +14,7 @@
 
 use std::time::{Duration, Instant};
 
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
 use crate::core::tasks::types::{TaskInfo, TaskStatus, is_terminal_task_status};
@@ -367,17 +367,17 @@ impl Component for TasksBrowserComponent {
         }
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme_instance = theme();
         let height = self.rows.max(1);
         if width < MIN_WIDTH || height < MIN_HEIGHT {
-            return vec![exactly(
+            return vec![Line::from(exactly(
                 &theme_instance.fg(
                     ThemeColor::Error,
                     &format!("Terminal too small (need ≥ {MIN_WIDTH} × {MIN_HEIGHT})"),
                 ),
                 width,
-            )];
+            ))];
         }
 
         let body_height = height - 2;
@@ -401,7 +401,7 @@ impl Component for TasksBrowserComponent {
             lines.push(left_line + &right_line);
         }
         lines.push(self.render_footer(width));
-        lines
+        shared_lines(lines)
     }
 }
 

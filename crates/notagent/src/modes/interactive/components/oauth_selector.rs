@@ -11,7 +11,7 @@ use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::truncated_text::TruncatedText;
 use notagent_tui::fuzzy::fuzzy_filter;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, Line, component_ref};
 use regex::Regex;
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
@@ -313,7 +313,7 @@ fn env_var_list_pattern() -> &'static Regex {
 }
 
 impl Component for OAuthSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

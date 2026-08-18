@@ -12,7 +12,7 @@ use notagent_tui::terminal_image::{
     image_fallback, is_image_line, register_kitty_image_metadata, render_image,
     reset_capabilities_cache, set_capabilities, set_cell_dimensions,
 };
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 use notagent_tui::visible_width;
 
 // === isImageLine ===
@@ -545,7 +545,7 @@ fn places_the_image_sequence_on_the_first_line_with_empty_padding_rows() {
         assert!(lines[0].contains(",C=1,"));
         assert!(lines[0].contains(&format!(",i={image_id}")));
         assert!(lines[0].ends_with("\x1b\\"));
-        assert_eq!(&lines[1..], [""]);
+        assert_eq!(&lines[1..], [Line::from("")]);
     });
 }
 

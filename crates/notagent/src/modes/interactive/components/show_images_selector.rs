@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use notagent_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::get_select_list_theme;
 
@@ -86,7 +86,7 @@ impl ShowImagesSelectorComponent {
 }
 
 impl Component for ShowImagesSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

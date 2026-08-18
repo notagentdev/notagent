@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use notagent_ai::types::TextOrImageContent;
-use notagent_tui::tui::ComponentRef;
+use notagent_tui::tui::{ComponentRef, Line};
 use serde_json::Value;
 
 use super::ansi_to_html::ansi_lines_to_html;
@@ -199,7 +199,7 @@ impl ToolHtmlRenderer for ToolDefinitionHtmlRenderer {
             .collect();
         let details = (!details.is_null()).then_some(details);
 
-        let render = |expanded: bool| -> Option<Vec<String>> {
+        let render = |expanded: bool| -> Option<Vec<Line>> {
             let last = self.result_components.borrow().get(tool_call_id).cloned();
             let context = self.context(tool_call_id, last, expanded, false, is_error);
             let component = definition.render_result(

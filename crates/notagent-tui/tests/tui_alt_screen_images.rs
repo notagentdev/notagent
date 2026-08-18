@@ -19,7 +19,9 @@ use notagent_tui::terminal_image::{
     encode_kitty, register_kitty_image_metadata, reset_capabilities_cache, set_capabilities,
 };
 use notagent_tui::test_terminal::{TerminalEvent, VirtualTerminal};
-use notagent_tui::tui::{Component, ComponentRef, TuiStopOptions, component_ref};
+use notagent_tui::tui::{
+    Component, ComponentRef, Line, TuiStopOptions, component_ref, shared_lines,
+};
 use notagent_tui::tui_alt_screen::{TuiAltScreen, TuiAltScreenOptions};
 
 /// Serializes the cases of this binary, which all share the global capabilities
@@ -62,8 +64,8 @@ fn use_capabilities(images: ImageProtocol) {
 struct Lines(Vec<String>);
 
 impl Component for Lines {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.0.clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.0.clone())
     }
 
     fn invalidate(&mut self) {}

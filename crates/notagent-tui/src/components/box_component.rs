@@ -4,14 +4,15 @@
 //! named `box_component` because `box` is a Rust keyword.
 
 use crate::components::text::BackgroundFn;
-use crate::tui::{Component, ComponentRef, Container};
+use crate::tui::{Component, ComponentRef, Container, Line, shared_lines};
 use crate::utils::{apply_background_to_line, visible_width};
 
 struct RenderCache {
+    /// Cache key: the padded child lines, compared by content each frame.
     child_lines: Vec<String>,
     width: usize,
     bg_sample: Option<String>,
-    lines: Vec<String>,
+    lines: Vec<Line>,
 }
 
 /// Container applying padding and a background to all children.
@@ -96,7 +97,7 @@ impl BoxComponent {
 }
 
 impl Component for BoxComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if self.container.children.is_empty() {
             return Vec::new();
         }
@@ -107,6 +108,14 @@ impl Component for BoxComponent {
         let mut child_lines: Vec<String> = Vec::new();
         for child in &self.container.children {
             for line in child.borrow_mut().render(content_width) {
+                // A child that finishes its lines (markdown bakes the segment
+                // reset into its cache) would carry a full SGR reset into the
+                // middle of this box's background wash and cut it off before
+                // the right padding column. Strip it; the paint pass appends
+                // it again at the true end of the boxed line.
+                let line = line
+                    .strip_suffix(crate::tui::SEGMENT_RESET)
+                    .unwrap_or(&line);
                 child_lines.push(format!("{left_pad}{line}"));
             }
         }
@@ -132,6 +141,7 @@ impl Component for BoxComponent {
             result.push(self.apply_bg("", width));
         }
 
+        let result = shared_lines(result);
         self.cache = Some(RenderCache {
             child_lines,
             width,

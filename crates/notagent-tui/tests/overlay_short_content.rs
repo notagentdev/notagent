@@ -1,14 +1,14 @@
 //! Port of `packages/tui/test/overlay-short-content.test.ts` (62 LOC).
 
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, TuiStopOptions, component_ref};
+use notagent_tui::tui::{Component, Line, TuiStopOptions, component_ref, shared_lines};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 struct SimpleContent(Vec<String>);
 
 impl Component for SimpleContent {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.0.clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.0.clone())
     }
     fn invalidate(&mut self) {}
 }
@@ -16,11 +16,11 @@ impl Component for SimpleContent {
 struct SimpleOverlay;
 
 impl Component for SimpleOverlay {
-    fn render(&mut self, _width: usize) -> Vec<String> {
+    fn render(&mut self, _width: usize) -> Vec<Line> {
         vec![
-            "OVERLAY_TOP".to_string(),
-            "OVERLAY_MID".to_string(),
-            "OVERLAY_BOT".to_string(),
+            Line::from("OVERLAY_TOP"),
+            Line::from("OVERLAY_MID"),
+            Line::from("OVERLAY_BOT"),
         ]
     }
     fn invalidate(&mut self) {}

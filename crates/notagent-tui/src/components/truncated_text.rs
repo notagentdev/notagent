@@ -2,7 +2,7 @@
 //!
 //! 1:1 port of `packages/tui/src/components/truncated-text.ts` (65 LOC).
 
-use crate::tui::Component;
+use crate::tui::{Component, Line, shared_lines};
 use crate::utils::{truncate_to_width, visible_width};
 
 /// Text truncated to one line.
@@ -29,7 +29,7 @@ impl TruncatedText {
 }
 
 impl Component for TruncatedText {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let mut result: Vec<String> = Vec::new();
         let empty_line = " ".repeat(width);
 
@@ -54,7 +54,7 @@ impl Component for TruncatedText {
             result.push(empty_line.clone());
         }
 
-        result
+        shared_lines(result)
     }
 
     fn invalidate(&mut self) {

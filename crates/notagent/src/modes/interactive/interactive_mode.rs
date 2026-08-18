@@ -67,7 +67,7 @@ use notagent_tui::keybindings::set_keybindings;
 use notagent_tui::layout_node::StackBasis;
 use notagent_tui::terminal::{ProcessTerminal, Terminal, TerminalPump};
 use notagent_tui::tui::{
-    Component, ComponentRef, Container, RenderLoop, TuiCore, TuiStopOptions, component_ref,
+    Component, ComponentRef, Container, Line, RenderLoop, TuiCore, TuiStopOptions, component_ref,
 };
 use notagent_tui::tui_alt_screen::TuiAltScreen;
 use notagent_tui::tui_main_screen::TuiMainScreen;
@@ -1008,7 +1008,7 @@ impl ExpandableText {
 }
 
 impl Component for ExpandableText {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.text.render(width)
     }
 
@@ -7653,7 +7653,7 @@ impl InteractiveMode {
     fn handle_debug_command(&mut self) {
         let width = self.ui.columns();
         let height = self.ui.rows();
-        let lines: Vec<String> = self
+        let lines: Vec<Line> = self
             .ui
             .children()
             .iter()

@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use notagent_tui::components::loader::{Loader, LoaderIndicatorOptions};
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
@@ -203,7 +203,7 @@ impl StatusIndicator {
 }
 
 impl Component for StatusIndicator {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.loader.render(width)
     }
 
@@ -220,8 +220,8 @@ impl Component for IdleStatus {
         // No cached state to invalidate.
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
-        let empty_line = " ".repeat(width);
+    fn render(&mut self, width: usize) -> Vec<Line> {
+        let empty_line = Line::from(" ".repeat(width));
         vec![empty_line.clone(), empty_line]
     }
 }

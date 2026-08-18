@@ -1,14 +1,14 @@
 //! Port of `packages/tui/test/tui-shrink.test.ts` (45 LOC).
 
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, TuiStopOptions, component_ref};
+use notagent_tui::tui::{Component, Line, TuiStopOptions, component_ref, shared_lines};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 struct Lines(Vec<String>);
 
 impl Component for Lines {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.0.clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.0.clone())
     }
     fn invalidate(&mut self) {}
 }

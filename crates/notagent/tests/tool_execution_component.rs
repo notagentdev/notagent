@@ -192,7 +192,7 @@ fn self_rendered_empty_tool_rows_take_no_layout_space() {
         no_render(),
         cwd(),
     );
-    assert_eq!(component.render(120), Vec::<String>::new());
+    assert_eq!(component.render(120), Vec::<notagent_tui::tui::Line>::new());
 
     component.update_result(
         ToolExecutionResult {
@@ -203,7 +203,7 @@ fn self_rendered_empty_tool_rows_take_no_layout_space() {
         false,
     );
 
-    assert_eq!(component.render(120), Vec::<String>::new());
+    assert_eq!(component.render(120), Vec::<notagent_tui::tui::Line>::new());
 }
 
 #[test]

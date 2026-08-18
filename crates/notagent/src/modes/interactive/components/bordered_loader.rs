@@ -7,7 +7,7 @@ use notagent_tui::components::cancellable_loader::CancellableLoader;
 use notagent_tui::components::loader::Loader;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, Container, component_ref};
+use notagent_tui::tui::{Component, Container, Line, component_ref};
 use tokio_util::sync::CancellationToken;
 
 use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
@@ -115,7 +115,7 @@ impl BorderedLoader {
 }
 
 impl Component for BorderedLoader {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

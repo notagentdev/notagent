@@ -18,7 +18,7 @@
 //! occupied a row to say "no tasks" would cost every user a line of terminal
 //! for a fact almost all of them do not need.
 
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
 use crate::core::tasks::types::{TaskInfo, TaskStatus, is_terminal_task_status};
@@ -176,7 +176,7 @@ impl TasksPanel {
 impl Component for TasksPanel {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme_instance = theme();
         let visible = self.visible();
         if visible.is_empty() {
@@ -254,6 +254,6 @@ impl Component for TasksPanel {
             truncate_to_width_opts(&heading, width, "…", false),
         ];
         lines.extend(rows);
-        lines
+        shared_lines(lines)
     }
 }

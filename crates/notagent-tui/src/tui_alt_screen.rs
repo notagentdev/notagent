@@ -29,7 +29,7 @@ use crate::terminal_image::{
     set_capabilities,
 };
 use crate::tui::{
-    CURSOR_MARKER, Component, ComponentRef, OverlayAnchor, OverlayHandle, OverlayMargin,
+    CURSOR_MARKER, Component, ComponentRef, Line, OverlayAnchor, OverlayHandle, OverlayMargin,
     OverlayOptions, SizeValue, TuiCore, TuiMode, TuiStopOptions, component_ref,
 };
 use crate::utils::{
@@ -115,8 +115,8 @@ impl Default for TuiAltScreenOptions {
 /// Renders into the terminal's alternate screen.
 pub struct TuiAltScreen {
     core: TuiCore,
-    previous_screen: Vec<String>,
-    last_document: Vec<String>,
+    previous_screen: Vec<Line>,
+    last_document: Vec<Line>,
     previous_screen_width: usize,
     previous_screen_height: usize,
     layout_root: Option<ComponentRef>,
@@ -245,7 +245,7 @@ struct ImplicitDocument {
 }
 
 impl Component for ImplicitDocument {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.core.render_children(width)
     }
 
@@ -672,7 +672,7 @@ impl TuiAltScreen {
         result
     }
 
-    fn apply_search_highlights(&self, screen: Vec<String>, layout: &LayoutFrame) -> Vec<String> {
+    fn apply_search_highlights(&self, screen: Vec<Line>, layout: &LayoutFrame) -> Vec<Line> {
         let Some(search) = &self.active_search else {
             return screen;
         };
@@ -742,10 +742,10 @@ impl TuiAltScreen {
                 let highlighted = slice_by_column(line, start_col, end_col - start_col, true);
                 let after =
                     slice_by_column(line, end_col, line_width.saturating_sub(end_col), true);
-                *line = format!(
+                *line = Line::from(format!(
                     "{before}{}{after}",
                     self.apply_search_text_highlight(&highlighted, range.current)
-                );
+                ));
             }
         }
         result
@@ -1074,7 +1074,7 @@ impl TuiAltScreen {
         })
     }
 
-    fn get_selection_source_line(&self, point: &SelectionPoint) -> String {
+    fn get_selection_source_line(&self, point: &SelectionPoint) -> Line {
         if let Some(key) = point.scroll_view
             && let Some(layout) = &self.current_layout
             && let Some(scroll_view) = self.scroll_view_by_key(key)
@@ -1254,7 +1254,7 @@ impl TuiAltScreen {
         result
     }
 
-    fn apply_selection(&self, screen: Vec<String>) -> Vec<String> {
+    fn apply_selection(&self, screen: Vec<Line>) -> Vec<Line> {
         let Some(selection) = self.get_selection_bounds() else {
             return screen;
         };
@@ -1322,10 +1322,10 @@ impl TuiAltScreen {
                 let before = slice_by_column(&line, 0, start, true);
                 let selected = slice_by_column(&line, start, end - start, true);
                 let after = slice_by_column(&line, end, line_width.saturating_sub(end), true);
-                format!(
+                Line::from(format!(
                     "{before}{}{after}",
                     Self::apply_selection_highlight(&selected)
-                )
+                ))
             })
             .collect()
     }
@@ -1334,7 +1334,7 @@ impl TuiAltScreen {
         let Some(selection) = self.get_selection_bounds() else {
             return;
         };
-        let source_lines: Vec<String> = match selection.start.scroll_view {
+        let source_lines: Vec<Line> = match selection.start.scroll_view {
             None => self.previous_screen.clone(),
             Some(key) => {
                 let (Some(layout), Some(scroll_view)) =
@@ -1458,7 +1458,9 @@ impl TuiAltScreen {
             let row = event.y.clamp(0, self.core.rows() as i64 - 1).max(0) as usize;
             let col = event.x.clamp(0, self.core.columns() as i64 - 1).max(0) as usize;
             get_osc8_link_at_column(
-                self.previous_screen.get(row).map_or("", String::as_str),
+                self.previous_screen
+                    .get(row)
+                    .map_or("", |line| line.as_ref()),
                 col,
             )
         };
@@ -1684,11 +1686,11 @@ impl TuiAltScreen {
     }
 
     /// The document written into the scrollback on exit.
-    pub fn last_document(&self) -> &[String] {
+    pub fn last_document(&self) -> &[Line] {
         &self.last_document
     }
 
-    fn render_root(&self, width: usize) -> Vec<String> {
+    fn render_root(&self, width: usize) -> Vec<Line> {
         match &self.layout_root {
             Some(root) => root.borrow_mut().render(width),
             None => self.core.render_children(width),
@@ -1712,9 +1714,9 @@ impl TuiAltScreen {
 
     /// Replace already transmitted images by pure placements and evict the
     /// offscreen cache when it grows past its limits.
-    fn prepare_kitty_screen(&mut self, screen: &[String]) -> (Vec<String>, String) {
+    fn prepare_kitty_screen(&mut self, screen: &[Line]) -> (Vec<Line>, String) {
         let mut visible_image_ids: Vec<u32> = Vec::new();
-        let lines: Vec<String> = screen
+        let lines: Vec<Line> = screen
             .iter()
             .map(|line| {
                 let Some(placement) = get_kitty_image_placement(line) else {
@@ -1739,7 +1741,7 @@ impl TuiAltScreen {
                     Some(cached)
                         if cached.transmission_generation == placement.transmission_generation =>
                     {
-                        placement.replacement_line
+                        Line::from(placement.replacement_line)
                     }
                     _ => line.clone(),
                 }
@@ -1857,10 +1859,10 @@ impl TuiAltScreen {
             self.core.with_terminal(|terminal| terminal.write(&buffer));
         } else {
             let width = self.core.columns().max(1);
-            let mut document: Vec<String> = self
+            let mut document: Vec<Line> = self
                 .render_root(width)
                 .iter()
-                .map(|line| strip_osc133_zone_prefix(line).replace(CURSOR_MARKER, ""))
+                .map(|line| Line::from(strip_osc133_zone_prefix(line).replace(CURSOR_MARKER, "")))
                 .collect();
             self.core.apply_line_resets(&mut document);
             self.last_document = document
@@ -1869,7 +1871,7 @@ impl TuiAltScreen {
                     if is_image_line(&line) || visible_width(&line) <= width {
                         line
                     } else {
-                        slice_by_column(&line, 0, width, true)
+                        Line::from(slice_by_column(&line, 0, width, true))
                     }
                 })
                 .collect();
@@ -1941,12 +1943,7 @@ impl TuiAltScreen {
         }
     }
 
-    fn composite_flashes(
-        &mut self,
-        screen: Vec<String>,
-        width: usize,
-        height: usize,
-    ) -> Vec<String> {
+    fn composite_flashes(&mut self, screen: Vec<Line>, width: usize, height: usize) -> Vec<Line> {
         self.flashes.borrow_mut().expire();
         let mut flash_lines = self.flashes.borrow_mut().render(width);
         if flash_lines.len() > height {
@@ -1956,19 +1953,19 @@ impl TuiAltScreen {
             return screen;
         }
         let mut result = screen;
-        result.resize(result.len().max(height), String::new());
+        result.resize(result.len().max(height), Line::from(""));
         for (row, flash_line) in flash_lines.iter().enumerate() {
             let flash_width = visible_width(flash_line);
             if flash_width == 0 {
                 continue;
             }
-            result[row] = crate::tui::composite_tui_line(
+            result[row] = Line::from(crate::tui::composite_tui_line(
                 &result[row],
                 flash_line,
                 width.saturating_sub(flash_width),
                 flash_width,
                 width,
-            );
+            ));
         }
         result
     }
@@ -1988,10 +1985,19 @@ impl TuiAltScreen {
             next_layout = render_layout_frame(&root, width, height);
         }
 
-        let mut screen: Vec<String> = next_layout
+        // A line without the zone prefix passes through as the same shared
+        // line, keeping its identity for the row diff below.
+        let mut screen: Vec<Line> = next_layout
             .lines
             .iter()
-            .map(|line| strip_osc133_zone_prefix(line).to_string())
+            .map(|line| {
+                let stripped = strip_osc133_zone_prefix(line);
+                if stripped.len() == line.len() {
+                    line.clone()
+                } else {
+                    Line::from(stripped)
+                }
+            })
             .collect();
         screen = self.apply_search_highlights(screen, &next_layout);
         screen = self.core.composite_overlays(screen, width, height);
@@ -2003,24 +2009,27 @@ impl TuiAltScreen {
 
         let cursor_pos = self.core.extract_cursor_position(&mut screen, height);
         self.core.apply_line_resets(&mut screen);
-        let mut screen: Vec<String> = screen
+        let mut screen: Vec<Line> = screen
             .into_iter()
             .map(|line| {
                 if is_image_line(&line) || visible_width(&line) <= width {
                     line
                 } else {
-                    slice_by_column(&line, 0, width, true)
+                    Line::from(slice_by_column(&line, 0, width, true))
                 }
             })
             .collect();
-        screen.resize(height, String::new());
+        screen.resize(height, Line::from(""));
 
         let full_redraw = self.previous_screen.is_empty()
             || self.previous_screen_width != width
             || self.previous_screen_height != height;
         let images_need_redraw = screen.iter().enumerate().any(|(row, line)| {
-            let previous = self.previous_screen.get(row).map_or("", String::as_str);
-            *line != previous && (is_image_line(line) || is_image_line(previous))
+            let previous = self
+                .previous_screen
+                .get(row)
+                .map_or("", |line| line.as_ref());
+            line.as_ref() != previous && (is_image_line(line) || is_image_line(previous))
         });
         let redraw_images = full_redraw || images_need_redraw;
         let had_uploaded_kitty_images = !self.uploaded_kitty_images.is_empty();
@@ -2051,16 +2060,21 @@ impl TuiAltScreen {
         buffer.push_str(&evicted_image_deletion);
 
         for row in 0..height {
-            if !full_redraw
-                && !images_need_redraw
-                && screen.get(row) == self.previous_screen.get(row)
-            {
+            // Pointer identity first, content comparison as the fallback —
+            // same shape as the main screen's diff.
+            let new_line = screen.get(row);
+            let old_line = self.previous_screen.get(row);
+            let unchanged = match (new_line, old_line) {
+                (Some(new), Some(old)) => Line::ptr_eq(new, old) || new == old,
+                _ => new_line == old_line,
+            };
+            if !full_redraw && !images_need_redraw && unchanged {
                 continue;
             }
             buffer.push_str(&format!(
                 "\x1b[{};1H\x1b[2K{}",
                 row + 1,
-                prepared_lines.get(row).map_or("", String::as_str)
+                prepared_lines.get(row).map_or("", |line| line.as_ref())
             ));
         }
 

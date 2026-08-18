@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{
-    Component, ComponentRef, OverlayAnchor, OverlayMargin, OverlayOptions, SizeValue,
-    TuiStopOptions, component_ref,
+    Component, ComponentRef, Line, OverlayAnchor, OverlayMargin, OverlayOptions, SizeValue,
+    TuiStopOptions, component_ref, shared_lines,
 };
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
@@ -17,9 +17,9 @@ struct StaticOverlay {
 }
 
 impl Component for StaticOverlay {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.requested_width.set(Some(width));
-        self.lines.clone()
+        shared_lines(self.lines.clone())
     }
     fn invalidate(&mut self) {}
 }
@@ -36,7 +36,7 @@ fn static_overlay<S: Into<String>>(lines: Vec<S>) -> (Rc<Cell<Option<usize>>>, C
 struct EmptyContent;
 
 impl Component for EmptyContent {
-    fn render(&mut self, _width: usize) -> Vec<String> {
+    fn render(&mut self, _width: usize) -> Vec<Line> {
         Vec::new()
     }
     fn invalidate(&mut self) {}
@@ -46,8 +46,8 @@ impl Component for EmptyContent {
 struct FnContent(fn(usize) -> Vec<String>);
 
 impl Component for FnContent {
-    fn render(&mut self, width: usize) -> Vec<String> {
-        (self.0)(width)
+    fn render(&mut self, width: usize) -> Vec<Line> {
+        shared_lines((self.0)(width))
     }
     fn invalidate(&mut self) {}
 }

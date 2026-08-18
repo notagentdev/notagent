@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{
-    Component, ComponentRef, Container, Focusable, OverlayHandle, OverlayOptions,
-    OverlayUnfocusOptions, TuiStopOptions, component_ref,
+    Component, ComponentRef, Container, Focusable, Line, OverlayHandle, OverlayOptions,
+    OverlayUnfocusOptions, TuiStopOptions, component_ref, shared_lines,
 };
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
@@ -37,8 +37,8 @@ struct FocusableOverlay {
 }
 
 impl Component for FocusableOverlay {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.lines.clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.lines.clone())
     }
 
     fn handle_input(&mut self, data: &str) {
@@ -74,7 +74,7 @@ fn focusable(line: &str) -> (Probe, ComponentRef) {
 struct EmptyContent;
 
 impl Component for EmptyContent {
-    fn render(&mut self, _width: usize) -> Vec<String> {
+    fn render(&mut self, _width: usize) -> Vec<Line> {
         Vec::new()
     }
     fn invalidate(&mut self) {}
@@ -340,8 +340,8 @@ struct ReactiveOverlay {
 }
 
 impl Component for ReactiveOverlay {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.lines.clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.lines.clone())
     }
 
     fn handle_input(&mut self, data: &str) {
@@ -1022,8 +1022,8 @@ async fn hiding_focused_overlay_falls_back_to_next_visual_frontmost_overlay() {
 struct StaticOverlay(Vec<String>);
 
 impl Component for StaticOverlay {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.0.clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.0.clone())
     }
     fn invalidate(&mut self) {}
 }

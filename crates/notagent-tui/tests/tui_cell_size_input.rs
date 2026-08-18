@@ -8,7 +8,7 @@ use notagent_tui::terminal_image::{
     CellDimensions, get_cell_dimensions, reset_capabilities_cache, set_cell_dimensions,
 };
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, TuiStopOptions, component_ref};
+use notagent_tui::tui::{Component, Line, TuiStopOptions, component_ref};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 fn guard() -> MutexGuard<'static, ()> {
@@ -24,8 +24,8 @@ struct InputRecorder {
 }
 
 impl Component for InputRecorder {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        vec![String::new()]
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        vec![Line::from("")]
     }
 
     fn handle_input(&mut self, data: &str) {

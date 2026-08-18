@@ -12,7 +12,7 @@ use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use notagent_tui::components::box_component::BoxComponent;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -266,7 +266,7 @@ impl EditCallComponent {
 }
 
 impl Component for EditCallComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.header.render(width)
     }
 

@@ -18,7 +18,7 @@ use crate::components::select_list::{
 use crate::keybindings::{keybinding_keys, keybindings_match};
 use crate::keys::{decode_printable_key, matches_key};
 use crate::kill_ring::{KillRing, KillRingPushOptions};
-use crate::tui::{CURSOR_MARKER, Component, Focusable, TuiCore};
+use crate::tui::{CURSOR_MARKER, Component, Focusable, Line, TuiCore, shared_lines};
 use crate::undo_stack::UndoStack;
 use crate::utils::{
     graphemes, is_cjk_break, is_whitespace_char, slice_by_column, visible_width, word_segments,
@@ -2185,7 +2185,7 @@ impl Editor {
 }
 
 impl Component for Editor {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let max_padding = width.saturating_sub(1) / 2;
         let padding_x = self.padding_x.min(max_padding);
         let content_width = width.saturating_sub(padding_x * 2).max(1);
@@ -2305,7 +2305,7 @@ impl Component for Editor {
             }
         }
 
-        result
+        shared_lines(result)
     }
 
     fn invalidate(&mut self) {}

@@ -6,7 +6,7 @@ use crate::components::stack::{
     Stack, StackEntryOptions, StackOptions, allocate_stack_sizes, visible_stack_entries,
 };
 use crate::layout_node::{LayoutNode, LayoutViewport, StackKind};
-use crate::tui::{Component, ComponentRef, Container};
+use crate::tui::{Component, ComponentRef, Container, Line};
 
 /// Vertical stack; renders children top to bottom.
 pub struct VStack {
@@ -43,7 +43,7 @@ impl VStack {
 }
 
 impl Component for VStack {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let viewport = LayoutViewport {
             width: width.max(1),
             height: usize::MAX,
@@ -52,7 +52,7 @@ impl Component for VStack {
             return Vec::new();
         };
         let entries = visible_stack_entries(&entries, viewport);
-        let rendered: Vec<Vec<String>> = entries
+        let rendered: Vec<Vec<Line>> = entries
             .iter()
             .map(|entry| entry.component.borrow_mut().render(viewport.width))
             .collect();
@@ -62,17 +62,17 @@ impl Component for VStack {
             None,
             gap,
         );
-        let mut lines: Vec<String> = Vec::new();
+        let mut lines: Vec<Line> = Vec::new();
         for (index, child_lines) in rendered.iter().enumerate() {
             if index > 0 {
                 for _ in 0..gap {
-                    lines.push(String::new());
+                    lines.push(Line::from(""));
                 }
             }
             let taken = child_lines.len().min(sizes[index]);
             lines.extend(child_lines[..taken].iter().cloned());
             for _ in taken..sizes[index] {
-                lines.push(String::new());
+                lines.push(Line::from(""));
             }
         }
         lines

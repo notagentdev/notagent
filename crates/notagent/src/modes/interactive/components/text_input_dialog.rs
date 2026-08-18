@@ -29,7 +29,9 @@ use notagent_tui::components::editor::{Editor, EditorOptions};
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, TuiCore, component_ref};
+use notagent_tui::tui::{
+    Component, ComponentRef, Container, Focusable, Line, TuiCore, component_ref,
+};
 
 use crate::core::keybindings::KeybindingsManager;
 use crate::modes::interactive::theme::theme::{ThemeColor, get_editor_theme, theme};
@@ -162,7 +164,7 @@ impl TextInputDialogComponent {
 }
 
 impl Component for TextInputDialogComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

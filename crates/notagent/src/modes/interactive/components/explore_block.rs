@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::truncate_to_width_opts;
 
 use crate::modes::interactive::components::tasks_panel::single_line;
@@ -343,7 +343,7 @@ impl Default for ExploreBlockComponent {
 impl Component for ExploreBlockComponent {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if self.entries.is_empty() || width == 0 {
             return Vec::new();
         }
@@ -451,7 +451,7 @@ impl Component for ExploreBlockComponent {
                     .map(|line| paint_row(&theme_instance, background, &line, width)),
             );
         }
-        rendered
+        shared_lines(rendered)
     }
 
     fn handle_input(&mut self, data: &str) {

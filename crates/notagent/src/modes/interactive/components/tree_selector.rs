@@ -10,7 +10,9 @@ use notagent_tui::components::input::Input;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::keybindings::{keybinding_keys, keybindings_match};
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, component_ref};
+use notagent_tui::tui::{
+    Component, ComponentRef, Container, Focusable, Line, component_ref, shared_lines,
+};
 use notagent_tui::utils::{
     slice_by_column, truncate_to_width, truncate_to_width_opts, visible_width, wrap_text_with_ansi,
 };
@@ -1183,7 +1185,7 @@ enum Direction {
 impl Component for TreeList {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme_instance = theme();
         let mut lines: Vec<String> = Vec::new();
 
@@ -1199,7 +1201,7 @@ impl Component for TreeList {
                 ),
                 width,
             ));
-            return lines;
+            return shared_lines(lines);
         }
 
         let start_index = (self.selected_index - (self.max_visible_lines / 2) as isize)
@@ -1356,7 +1358,7 @@ impl Component for TreeList {
             width,
         ));
 
-        lines
+        shared_lines(lines)
     }
 
     fn handle_input(&mut self, key_data: &str) {
@@ -1748,27 +1750,27 @@ struct SearchLine {
 impl Component for SearchLine {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme_instance = theme();
         let tree_list = self.tree_list.borrow();
         let query = tree_list.get_search_query();
         if !query.is_empty() {
-            return vec![truncate_to_width(
+            return vec![Line::from(truncate_to_width(
                 &format!(
                     "  {} {}",
                     theme_instance.fg(ThemeColor::Muted, "Type to search:"),
                     theme_instance.fg(ThemeColor::Accent, query)
                 ),
                 width,
-            )];
+            ))];
         }
-        vec![truncate_to_width(
+        vec![Line::from(truncate_to_width(
             &format!(
                 "  {}",
                 theme_instance.fg(ThemeColor::Muted, "Type to search:")
             ),
             width,
-        )]
+        ))]
     }
 
     fn handle_input(&mut self, _key_data: &str) {}
@@ -1780,7 +1782,7 @@ struct TreeHelp;
 impl Component for TreeHelp {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme_instance = theme();
         let items: Vec<String> = TREE_HELP_ITEMS
             .iter()
@@ -1837,7 +1839,7 @@ impl Component for TreeHelp {
 
         lines
             .into_iter()
-            .map(|line| theme_instance.fg(ThemeColor::Muted, &line))
+            .map(|line| Line::from(theme_instance.fg(ThemeColor::Muted, &line)))
             .collect()
     }
 }
@@ -1995,7 +1997,7 @@ impl LabelInput {
 impl Component for LabelInput {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme_instance = theme();
         let mut lines: Vec<String> = Vec::new();
         let indent = "  ";
@@ -2021,7 +2023,7 @@ impl Component for LabelInput {
             ),
             width,
         ));
-        lines
+        shared_lines(lines)
     }
 
     fn handle_input(&mut self, key_data: &str) {
@@ -2181,7 +2183,7 @@ impl TreeSelectorComponent {
 }
 
 impl Component for TreeSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

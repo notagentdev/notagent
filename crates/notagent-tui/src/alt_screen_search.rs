@@ -4,7 +4,7 @@
 //! with its row/column mapping, the match search and the overlay component.
 
 use crate::components::input::Input;
-use crate::tui::{Component, Focusable};
+use crate::tui::{Component, Focusable, Line};
 use crate::utils::{graphemes, strip_terminal_sequences, truncate_to_width_opts, visible_width};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +49,7 @@ impl SearchCorpus {
     }
 }
 
-fn build_search_corpus(lines: &[String]) -> SearchCorpus {
+fn build_search_corpus(lines: &[Line]) -> SearchCorpus {
     let mut corpus = SearchCorpus::default();
     let mut pending_separator = false;
 
@@ -105,7 +105,7 @@ fn normalize_query(query: &str) -> String {
 }
 
 /// Find all case-insensitive matches of `query` in the rendered `lines`.
-pub fn find_alt_screen_search_matches(lines: &[String], query: &str) -> Vec<AltScreenSearchMatch> {
+pub fn find_alt_screen_search_matches(lines: &[Line], query: &str) -> Vec<AltScreenSearchMatch> {
     let normalized_query = normalize_query(query);
     if normalized_query.is_empty() {
         return Vec::new();
@@ -232,7 +232,7 @@ impl AltScreenSearchComponent {
 }
 
 impl Component for AltScreenSearchComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let safe_width = width.max(1);
         let label = " Find transcript";
         let query = self.input.get_value().to_string();
@@ -248,7 +248,7 @@ impl Component for AltScreenSearchComponent {
         let gap = " ".repeat(safe_width.saturating_sub(label_width + status_width).max(1));
         let title = truncate_to_width_opts(&format!("{label}{gap}{status}"), safe_width, "", false);
         let padding = " ".repeat(safe_width.saturating_sub(visible_width(&title)));
-        let mut lines = vec![format!("\x1b[7m{title}{padding}\x1b[27m")];
+        let mut lines = vec![Line::from(format!("\x1b[7m{title}{padding}\x1b[27m"))];
         lines.extend(self.input.render(safe_width));
         lines
     }

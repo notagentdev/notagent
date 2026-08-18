@@ -21,7 +21,7 @@ use std::sync::Arc;
 use notagent_agent::types::ThinkingLevel;
 use notagent_ai::types::Model;
 use notagent_ai::types::Usage;
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 use serde_json::Value;
 
@@ -327,7 +327,7 @@ fn entry_usage(value: Option<&Value>) -> Option<Usage> {
 }
 
 impl Component for FooterComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let model = self.session.model();
 
         // Calculate cumulative usage from ALL session entries (not just
@@ -584,7 +584,7 @@ impl Component for FooterComponent {
         if let Some(badge) = self.session.goal().as_ref().map(render_goal_badge) {
             lines.push(truncate_to_width_opts(&badge, width, "", false));
         }
-        lines
+        shared_lines(lines)
     }
 
     /// No-op: the git branch is cached and invalidated by the provider.

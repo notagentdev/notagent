@@ -101,13 +101,13 @@ fn expand(value: &Value) -> Value {
 }
 
 /// The lines as the case compares them.
-fn comparable(lines: &[String], compare: &str) -> Vec<String> {
+fn comparable<S: AsRef<str>>(lines: &[S], compare: &str) -> Vec<String> {
     match compare {
         "plain" => lines
             .iter()
-            .map(|line| strip_ansi(line).trim_end().to_string())
+            .map(|line| strip_ansi(line.as_ref()).trim_end().to_string())
             .collect(),
-        _ => lines.to_vec(),
+        _ => lines.iter().map(|line| line.as_ref().to_string()).collect(),
     }
 }
 

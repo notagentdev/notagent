@@ -12,7 +12,7 @@ use notagent_tui::components::text::Text;
 use notagent_tui::fuzzy::fuzzy_filter;
 use notagent_tui::keybindings::keybindings_match;
 use notagent_tui::keys::matches_key;
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, Line, component_ref};
 
 use crate::modes::interactive::model_search::{ModelSearchItem, get_model_search_text};
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
@@ -509,7 +509,7 @@ impl ScopedModelsSelectorComponent {
 }
 
 impl Component for ScopedModelsSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

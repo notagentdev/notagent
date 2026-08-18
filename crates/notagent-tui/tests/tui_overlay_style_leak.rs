@@ -1,14 +1,16 @@
 //! Port of `packages/tui/test/tui-overlay-style-leak.test.ts` (81 LOC).
 
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, OverlayOptions, SizeValue, TuiStopOptions, component_ref};
+use notagent_tui::tui::{
+    Component, Line, OverlayOptions, SizeValue, TuiStopOptions, component_ref, shared_lines,
+};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 struct StaticLines(Vec<String>);
 
 impl Component for StaticLines {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.0.clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.0.clone())
     }
     fn invalidate(&mut self) {}
 }
@@ -16,8 +18,8 @@ impl Component for StaticLines {
 struct StaticOverlay(String);
 
 impl Component for StaticOverlay {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        vec![self.0.clone()]
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        vec![Line::from(self.0.clone())]
     }
     fn invalidate(&mut self) {}
 }

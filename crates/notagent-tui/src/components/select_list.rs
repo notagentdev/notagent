@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use crate::keybindings::keybindings_match;
-use crate::tui::Component;
+use crate::tui::{Component, Line, shared_lines};
 use crate::utils::{truncate_to_width_opts, visible_width};
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH: usize = 32;
@@ -265,9 +265,9 @@ fn display_value(item: &SelectItem) -> &str {
 }
 
 impl Component for SelectList {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if self.filtered_items.is_empty() {
-            return vec![(self.theme.no_match)("  No matching commands")];
+            return vec![Line::from((self.theme.no_match)("  No matching commands"))];
         }
 
         let primary_column_width = self.get_primary_column_width();
@@ -304,7 +304,7 @@ impl Component for SelectList {
             )));
         }
 
-        lines
+        shared_lines(lines)
     }
 
     fn handle_input(&mut self, data: &str) {

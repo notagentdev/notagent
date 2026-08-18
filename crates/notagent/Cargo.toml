@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Interactive coding agent (binary) — port of packages/coding-agent."
+# `cargo run -p notagent` (notagent-test.sh) means the app, not the MCP test
+# server that ships as a second binary for the integration tests.
+default-run = "notagent"
 
 [lib]
 name = "notagent"

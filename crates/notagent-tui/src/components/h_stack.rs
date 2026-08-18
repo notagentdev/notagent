@@ -6,7 +6,7 @@ use crate::components::stack::{
     Stack, StackEntryOptions, StackOptions, allocate_stack_sizes, visible_stack_entries,
 };
 use crate::layout_node::{LayoutNode, LayoutViewport, StackAlign, StackKind};
-use crate::tui::{Component, ComponentRef, Container, composite_tui_line};
+use crate::tui::{Component, ComponentRef, Container, Line, composite_tui_line, shared_lines};
 use crate::utils::visible_width;
 
 /// Horizontal stack; composes children side by side.
@@ -44,7 +44,7 @@ impl HStack {
 }
 
 impl Component for HStack {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let safe_width = width.max(1);
         let viewport = LayoutViewport {
             width: safe_width,
@@ -78,7 +78,7 @@ impl Component for HStack {
             })
             .collect();
         let widths = allocate_stack_sizes(&entries, &intrinsic_widths, Some(safe_width), gap);
-        let rendered: Vec<Vec<String>> = entries
+        let rendered: Vec<Vec<Line>> = entries
             .iter()
             .enumerate()
             .map(|(index, entry)| {
@@ -110,7 +110,7 @@ impl Component for HStack {
             }
             x += child_width + gap;
         }
-        result
+        shared_lines(result)
     }
 
     fn invalidate(&mut self) {

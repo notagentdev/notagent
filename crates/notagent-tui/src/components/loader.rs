@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::components::text::Text;
-use crate::tui::Component;
+use crate::tui::{Component, Line};
 
 const DEFAULT_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const DEFAULT_INTERVAL_MS: u64 = 80;
@@ -155,8 +155,8 @@ impl Loader {
 }
 
 impl Component for Loader {
-    fn render(&mut self, width: usize) -> Vec<String> {
-        let mut lines = vec![String::new()];
+    fn render(&mut self, width: usize) -> Vec<Line> {
+        let mut lines = vec![Line::from("")];
         lines.extend(self.text.render(width));
         lines
     }

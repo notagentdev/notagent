@@ -32,7 +32,7 @@ use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::fuzzy::fuzzy_filter;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, Line, component_ref};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
@@ -563,7 +563,7 @@ impl HuggingFaceSearch {
 }
 
 impl Component for HuggingFaceSearch {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 
@@ -953,13 +953,13 @@ impl LlamaView {
 }
 
 impl Component for LlamaView {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.content
             .render(width)
             .into_iter()
             .map(|line| {
                 if visible_width(&line) > width {
-                    truncate_to_width_opts(&line, width, "", false)
+                    Line::from(truncate_to_width_opts(&line, width, "", false))
                 } else {
                     line
                 }

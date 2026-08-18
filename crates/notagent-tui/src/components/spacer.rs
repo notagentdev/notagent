@@ -2,7 +2,7 @@
 //!
 //! 1:1 port of `packages/tui/src/components/spacer.ts` (28 LOC).
 
-use crate::tui::Component;
+use crate::tui::{Component, Line};
 
 /// Renders `lines` empty lines.
 pub struct Spacer {
@@ -22,8 +22,8 @@ impl Spacer {
 }
 
 impl Component for Spacer {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        vec![String::new(); self.lines]
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        vec![Line::from(""); self.lines]
     }
 
     fn invalidate(&mut self) {

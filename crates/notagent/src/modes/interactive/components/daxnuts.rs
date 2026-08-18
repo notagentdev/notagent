@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line, shared_lines};
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
@@ -148,7 +148,7 @@ pub struct DaxnutsComponent {
     next_frame: Option<Instant>,
     tick: usize,
     max_ticks: usize,
-    cached_lines: Vec<String>,
+    cached_lines: Vec<Line>,
     cached_width: usize,
     cached_tick: isize,
 }
@@ -244,7 +244,7 @@ impl Component for DaxnutsComponent {
         self.cached_width = 0;
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if width == self.cached_width && self.cached_tick == self.tick as isize {
             return self.cached_lines.clone();
         }
@@ -309,9 +309,9 @@ impl Component for DaxnutsComponent {
         }
         lines.push(String::new());
 
-        self.cached_lines = lines.clone();
+        self.cached_lines = shared_lines(lines);
         self.cached_width = width;
         self.cached_tick = self.tick as isize;
-        lines
+        self.cached_lines.clone()
     }
 }

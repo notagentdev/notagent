@@ -7,7 +7,7 @@ use std::rc::Rc;
 use crate::layout_node::{
     LayoutNode, LayoutViewport, StackAlign, StackBasis, StackKind, StackLayoutEntry,
 };
-use crate::tui::{Component, ComponentRef, Container};
+use crate::tui::{Component, ComponentRef, Container, Line};
 
 /// Per-entry options of a stack child.
 #[derive(Clone, Default)]
@@ -105,7 +105,7 @@ impl Stack {
 }
 
 impl Component for Stack {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

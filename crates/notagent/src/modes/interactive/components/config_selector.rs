@@ -31,7 +31,9 @@ use notagent_tui::components::input::Input;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::keybindings::keybindings_match;
 use notagent_tui::keys::matches_key;
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, component_ref};
+use notagent_tui::tui::{
+    Component, ComponentRef, Container, Focusable, Line, component_ref, shared_lines,
+};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
 use crate::config::CONFIG_DIR_NAME;
@@ -409,7 +411,7 @@ impl ConfigSelectorHeader {
 impl Component for ConfigSelectorHeader {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme = theme();
         let title = theme.bold(if self.write_scope == ConfigWriteScope::Project {
             "Project Local Resources"
@@ -448,13 +450,13 @@ impl Component for ConfigSelectorHeader {
         };
 
         vec![
-            truncate_to_width_opts(
+            Line::from(truncate_to_width_opts(
                 &format!("{title}{}{hint}", " ".repeat(spacing)),
                 width,
                 "",
                 false,
-            ),
-            truncate_to_width_opts(&scope_hint, width, "", false),
+            )),
+            Line::from(truncate_to_width_opts(&scope_hint, width, "", false)),
         ]
     }
 }
@@ -1362,17 +1364,23 @@ fn set_filter_paths(
 impl Component for ResourceList {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme = theme();
         let mut lines: Vec<String> = Vec::new();
 
-        // Search input
-        lines.extend(self.search_input.render(width));
+        // Search input (one fresh line per frame; the copy back into the
+        // owned builder is a single line).
+        lines.extend(
+            self.search_input
+                .render(width)
+                .iter()
+                .map(|line| line.to_string()),
+        );
         lines.push(String::new());
 
         if self.filtered_items.is_empty() {
             lines.push(theme.fg(ThemeColor::Muted, "  No resources found"));
-            return lines;
+            return shared_lines(lines);
         }
 
         // Calculate visible range
@@ -1482,7 +1490,7 @@ impl Component for ResourceList {
             ));
         }
 
-        lines
+        shared_lines(lines)
     }
 
     fn handle_input(&mut self, data: &str) {
@@ -1657,7 +1665,7 @@ impl Component for ConfigSelectorComponent {
         self.container.invalidate();
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

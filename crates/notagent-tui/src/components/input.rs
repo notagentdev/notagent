@@ -7,7 +7,7 @@
 use crate::keybindings::keybindings_match;
 use crate::keys::decode_kitty_printable;
 use crate::kill_ring::{KillRing, KillRingPushOptions};
-use crate::tui::{CURSOR_MARKER, Component, Focusable};
+use crate::tui::{CURSOR_MARKER, Component, Focusable, Line};
 use crate::undo_stack::UndoStack;
 use crate::utils::{graphemes, is_whitespace_char, slice_by_column, visible_width};
 use crate::word_navigation::{WordNavigationOptions, find_word_backward, find_word_forward};
@@ -420,10 +420,10 @@ impl Component for Input {
         }
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let prompt = "> ";
         let Some(available_width) = width.checked_sub(prompt.len()).filter(|w| *w > 0) else {
-            return vec![prompt.to_string()];
+            return vec![Line::from(prompt)];
         };
 
         let visible_text;
@@ -485,7 +485,7 @@ impl Component for Input {
         let visual_length = visible_width(&text_with_cursor);
         let padding = " ".repeat(available_width.saturating_sub(visual_length));
 
-        vec![format!("{prompt}{text_with_cursor}{padding}")]
+        vec![Line::from(format!("{prompt}{text_with_cursor}{padding}"))]
     }
 
     fn invalidate(&mut self) {

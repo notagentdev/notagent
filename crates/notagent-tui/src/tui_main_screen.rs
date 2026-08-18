@@ -1,15 +1,19 @@
 //! Differential renderer for the terminal's main screen and scrollback.
 //!
 //! 1:1 port of `packages/tui/src/tui-main-screen.ts` (586 LOC). Lines are
-//! plain strings with embedded ANSI sequences and are compared by string
-//! equality — there is no cell buffer and no hashing. Scrolling happens only
-//! through CRLF at the bottom edge; no scroll regions are used.
+//! shared strings ([`Line`]) with embedded ANSI sequences — there is no cell
+//! buffer and no hashing. The frame diff settles an unchanged shared line by
+//! pointer identity and falls back to string equality, which is the whole
+//! comparison in TS (deviation class 1: TS strings are immutable and shared
+//! by the runtime, so the identity shortcut exists there implicitly).
+//! Scrolling happens only through CRLF at the bottom edge; no scroll regions
+//! are used.
 
 use std::collections::BTreeSet;
 use std::io::Write;
 
 use crate::terminal_image::{delete_kitty_image, is_image_line};
-use crate::tui::{TuiCore, TuiMode, TuiStopOptions};
+use crate::tui::{Line, TuiCore, TuiMode, TuiStopOptions};
 use crate::utils::visible_width;
 
 const KITTY_SEQUENCE_PREFIX: &str = "\x1b_G";
@@ -62,7 +66,7 @@ fn is_termux_session() -> bool {
 #[derive(Debug, Clone, Default)]
 pub struct TuiMainScreenRenderState {
     /// Fully rendered lines of the previous frame.
-    pub previous_lines: Vec<String>,
+    pub previous_lines: Vec<Line>,
     /// Terminal width of the previous frame.
     pub previous_width: i64,
     /// Terminal height of the previous frame.
@@ -80,7 +84,7 @@ pub struct TuiMainScreenRenderState {
 /// TUI implementation that renders into the terminal's main screen and scrollback.
 pub struct TuiMainScreen {
     core: TuiCore,
-    previous_lines: Vec<String>,
+    previous_lines: Vec<Line>,
     previous_kitty_image_ids: BTreeSet<u32>,
     previous_width: i64,
     previous_height: i64,
@@ -153,7 +157,7 @@ impl TuiMainScreen {
             .iter()
             .map(|line| {
                 if is_image_line(line) {
-                    String::new()
+                    Line::from("")
                 } else {
                     line.clone()
                 }
@@ -251,7 +255,7 @@ impl TuiMainScreen {
         }
     }
 
-    fn collect_kitty_image_ids(lines: &[String]) -> BTreeSet<u32> {
+    fn collect_kitty_image_ids(lines: &[Line]) -> BTreeSet<u32> {
         let mut ids = BTreeSet::new();
         for line in lines {
             ids.extend(extract_kitty_image_ids(line));
@@ -263,8 +267,8 @@ impl TuiMainScreen {
         ids.into_iter().map(delete_kitty_image).collect()
     }
 
-    fn kitty_image_reserved_rows(lines: &[String], index: usize, max_index: usize) -> usize {
-        let rows = extract_kitty_image_rows(lines.get(index).map_or("", String::as_str));
+    fn kitty_image_reserved_rows(lines: &[Line], index: usize, max_index: usize) -> usize {
+        let rows = extract_kitty_image_rows(lines.get(index).map_or("", |line| line.as_ref()));
         if rows <= 1 {
             return 1;
         }
@@ -273,7 +277,9 @@ impl TuiMainScreen {
             .min(lines.len() - index);
         let mut reserved_rows = 1;
         while reserved_rows < max_rows {
-            let line = lines.get(index + reserved_rows).map_or("", String::as_str);
+            let line = lines
+                .get(index + reserved_rows)
+                .map_or("", |line| line.as_ref());
             if is_image_line(line) || visible_width(line) > 0 {
                 break;
             }
@@ -286,7 +292,7 @@ impl TuiMainScreen {
         &self,
         first_changed: usize,
         last_changed: usize,
-        new_lines: &[String],
+        new_lines: &[Line],
     ) -> (usize, usize) {
         let mut expanded_first = first_changed;
         let mut expanded_last = last_changed;
@@ -342,7 +348,7 @@ impl TuiMainScreen {
     fn full_render(
         &mut self,
         clear: bool,
-        new_lines: Vec<String>,
+        new_lines: Vec<Line>,
         cursor_pos: Option<(usize, usize)>,
         width: usize,
         height: usize,
@@ -492,14 +498,24 @@ impl TuiMainScreen {
             return;
         }
 
-        // Find the first and last changed line.
+        // Find the first and last changed line. Pointer identity settles a
+        // shared, unchanged line without reading its bytes; the content
+        // comparison stays as the fallback, so a line that lost its identity
+        // is slower, never wrong. A missing line still compares as "".
         let mut first_changed: Option<usize> = None;
         let mut last_changed: usize = 0;
         let max_lines = new_lines.len().max(self.previous_lines.len());
         for index in 0..max_lines {
-            let old_line = self.previous_lines.get(index).map_or("", String::as_str);
-            let new_line = new_lines.get(index).map_or("", String::as_str);
-            if old_line != new_line {
+            let old_line = self.previous_lines.get(index);
+            let new_line = new_lines.get(index);
+            let unchanged = match (old_line, new_line) {
+                (Some(old), Some(new)) => Line::ptr_eq(old, new) || old == new,
+                _ => {
+                    old_line.map_or("", |line| line.as_ref())
+                        == new_line.map_or("", |line| line.as_ref())
+                }
+            };
+            if !unchanged {
                 if first_changed.is_none() {
                     first_changed = Some(index);
                 }
@@ -763,7 +779,7 @@ impl TuiMainScreen {
         &mut self,
         index: usize,
         line: &str,
-        new_lines: &[String],
+        new_lines: &[Line],
         width: usize,
     ) -> ! {
         let crash_log_path = self.core.log_directory().join("notagent-crash.log");
@@ -807,7 +823,7 @@ impl TuiMainScreen {
         render_end: usize,
         final_cursor_row: usize,
         cursor_pos: Option<(usize, usize)>,
-        new_lines: &[String],
+        new_lines: &[Line],
         buffer: &str,
     ) {
         if std::env::var("NOTAGENT_TUI_DEBUG").as_deref() != Ok("1") {

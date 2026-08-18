@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::tui::Component;
+use crate::tui::{Component, Line};
 use crate::utils::truncate_to_width_opts;
 
 const DEFAULT_DURATION_MS: u64 = 1000;
@@ -67,13 +67,13 @@ impl AltScreenFlashContainer {
 }
 
 impl Component for AltScreenFlashContainer {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.entries
             .iter()
             .map(|entry| {
                 let message =
                     truncate_to_width_opts(&format!(" {} ", entry.message), width, "", false);
-                format!("\x1b[7m{message}\x1b[27m")
+                Line::from(format!("\x1b[7m{message}\x1b[27m"))
             })
             .collect()
     }

@@ -490,8 +490,15 @@ fn parse_osc8_url_for_lookup(code: &str) -> Option<Option<String>> {
 /// Thai-/Lao-AM-Vokale werden kompatibilitätszerlegt (gleiche Zellbreite, aber
 /// keine Stale-Cell-Artefakte); sichtbare Tabs werden auf die feste Layoutbreite
 /// expandiert, Tabs innerhalb von Terminalsequenzen bleiben unberührt.
-pub fn normalize_terminal_output(text: &str) -> String {
-    let mut normalized = if text.contains('\u{0e33}') || text.contains('\u{0eb3}') {
+///
+/// In the common case — no tab, no Thai/Lao AM vowel — the input slice is
+/// returned as-is. The TS original returns the same string object on that path
+/// (`utils.ts:386`); the owned return the port used to have was a porting
+/// artifact, not template behaviour.
+pub fn normalize_terminal_output(text: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+
+    let normalized: Cow<'_, str> = if text.contains('\u{0e33}') || text.contains('\u{0eb3}') {
         let mut out = String::with_capacity(text.len());
         for c in text.chars() {
             match c {
@@ -500,9 +507,9 @@ pub fn normalize_terminal_output(text: &str) -> String {
                 _ => out.push(c),
             }
         }
-        out
+        Cow::Owned(out)
     } else {
-        text.to_string()
+        Cow::Borrowed(text)
     };
 
     if !normalized.contains('\t') {
@@ -525,8 +532,7 @@ pub fn normalize_terminal_output(text: &str) -> String {
         }
         i += ch.len_utf8();
     }
-    normalized = result;
-    normalized
+    Cow::Owned(result)
 }
 
 /// Ergebnis von [`extract_ansi_code`].

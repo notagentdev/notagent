@@ -622,11 +622,11 @@ fn keeps_truncated_scroll_indicators_within_width_and_preserves_their_color() {
     assert!(strip_vt(&top_border).starts_with("─── ↑"));
     assert!(strip_vt(&bottom_border).starts_with("─── ↓"));
     assert_eq!(
-        top_border,
+        top_border.as_ref(),
         format!("\x1b[35m{}\x1b[39m", strip_vt(&top_border))
     );
     assert_eq!(
-        bottom_border,
+        bottom_border.as_ref(),
         format!("\x1b[35m{}\x1b[39m", strip_vt(&bottom_border))
     );
     for line in &lines {

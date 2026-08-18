@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::layout_node::{LayoutNode, ScrollLayoutState};
-use crate::tui::{Component, ComponentRef, Container};
+use crate::tui::{Component, ComponentRef, Container, Line};
 
 /// Scrollbar visibility policy.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -397,7 +397,7 @@ impl ScrollView {
 }
 
 impl Component for ScrollView {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let content_width = {
             let state = self.state.borrow();
             ScrollLayoutState::get_content_width(&*state, width)
@@ -406,7 +406,10 @@ impl Component for ScrollView {
         if content_width == width {
             lines
         } else {
-            lines.into_iter().map(|line| format!("{line} ")).collect()
+            lines
+                .into_iter()
+                .map(|line| Line::from(format!("{line} ")))
+                .collect()
         }
     }
 

@@ -38,7 +38,7 @@ use notagent_tui::components::settings_list::{
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::terminal_image::get_capabilities;
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 
 use crate::core::http_dispatcher::{HTTP_IDLE_TIMEOUT_CHOICES, format_http_idle_timeout_ms};
 use crate::core::settings_manager::{
@@ -367,7 +367,7 @@ impl WarningSettingsSubmenu {
 }
 
 impl Component for WarningSettingsSubmenu {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.settings_list.render(width)
     }
 
@@ -466,7 +466,7 @@ impl SelectSubmenu {
 }
 
 impl Component for SelectSubmenu {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 
@@ -889,7 +889,7 @@ impl ThemeSubmenu {
 }
 
 impl Component for ThemeSubmenu {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         match self.content.as_ref() {
             Some(content) => content.borrow_mut().render(width),
             None => Vec::new(),
@@ -1576,7 +1576,7 @@ fn parse_int(value: &str) -> u64 {
 }
 
 impl Component for SettingsSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

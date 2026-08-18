@@ -5,7 +5,7 @@
 //! (environment variables), which must not race with the other cases.
 
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{TuiStopOptions, component_ref};
+use notagent_tui::tui::{Line, TuiStopOptions, component_ref};
 use notagent_tui::tui_alt_screen::{TuiAltScreen, TuiAltScreenOptions};
 
 const ENVIRONMENT_KEYS: [&str; 4] = ["TMUX", "ZELLIJ", "STY", "TERM"];
@@ -127,8 +127,8 @@ fn invalidates_overlays_with_an_explicit_layout_root() {
     }
 
     impl Component for Probe {
-        fn render(&mut self, _width: usize) -> Vec<String> {
-            vec!["overlay".to_string()]
+        fn render(&mut self, _width: usize) -> Vec<Line> {
+            vec![Line::from("overlay")]
         }
 
         fn invalidate(&mut self) {

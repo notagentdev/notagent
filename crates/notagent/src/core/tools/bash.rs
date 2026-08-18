@@ -21,7 +21,7 @@ use notagent_agent::types::{
 };
 use notagent_ai::types::{ConstrainedSampling, TextContent, TextOrImageContent};
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 use notagent_tui::utils::truncate_to_width;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
@@ -1138,12 +1138,12 @@ pub struct BashRenderState {
 struct BashPreviewComponent {
     styled_output: String,
     cached_width: Option<usize>,
-    cached_lines: Option<Vec<String>>,
+    cached_lines: Option<Vec<Line>>,
     cached_skipped: Option<usize>,
 }
 
 impl Component for BashPreviewComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if self.cached_lines.is_none() || self.cached_width != Some(width) {
             // `paddingX` defaults to 0: the preview sits inside the tool shell's box.
             let preview =
@@ -1164,16 +1164,16 @@ impl Component for BashPreviewComponent {
                 + &key_hint("app.tools.expand", "to expand")
                 + &theme.fg(ThemeColor::Muted, ")");
             let mut rendered = if lead {
-                vec![String::new()]
+                vec![Line::from("")]
             } else {
                 Vec::new()
             };
-            rendered.push(truncate_to_width(&hint, width));
+            rendered.push(Line::from(truncate_to_width(&hint, width)));
             rendered.extend(lines);
             return rendered;
         }
         let mut rendered = if lead {
-            vec![String::new()]
+            vec![Line::from("")]
         } else {
             Vec::new()
         };

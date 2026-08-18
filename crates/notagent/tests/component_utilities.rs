@@ -18,7 +18,7 @@ use notagent::modes::interactive::components::visual_truncate::truncate_to_visua
 use notagent::modes::interactive::theme::theme::{
     ThemeColor, get_theme_by_name, init_theme, theme,
 };
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 
 fn theme_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -43,9 +43,9 @@ fn keeps_every_line_below_the_limit() {
     assert_eq!(
         result.visual_lines,
         vec![
-            "a".to_string() + &" ".repeat(19),
-            "b".to_string() + &" ".repeat(19),
-            "c".to_string() + &" ".repeat(19)
+            Line::from("a".to_string() + &" ".repeat(19)),
+            Line::from("b".to_string() + &" ".repeat(19)),
+            Line::from("c".to_string() + &" ".repeat(19))
         ]
     );
     assert_eq!(result.skipped_count, 0);
@@ -57,8 +57,8 @@ fn keeps_the_last_lines_and_counts_the_skipped_ones() {
     assert_eq!(
         result.visual_lines,
         vec![
-            "c".to_string() + &" ".repeat(19),
-            "d".to_string() + &" ".repeat(19)
+            Line::from("c".to_string() + &" ".repeat(19)),
+            Line::from("d".to_string() + &" ".repeat(19))
         ]
     );
     assert_eq!(result.skipped_count, 2);
@@ -69,16 +69,19 @@ fn counts_wrapped_lines_as_visual_lines() {
     // One source line wraps into three visual lines at width 10; the limit of
     // two keeps the last two.
     let result = truncate_to_visual_lines("aaaa bbbb cccc dddd eeee", 2, 10, 0);
-    assert_eq!(result.visual_lines, vec!["cccc dddd ", "eeee      "]);
+    assert_eq!(
+        result.visual_lines,
+        vec![Line::from("cccc dddd "), Line::from("eeee      ")]
+    );
     assert_eq!(result.skipped_count, 1);
 }
 
 #[test]
 fn applies_the_horizontal_padding() {
     let padded = truncate_to_visual_lines("ab", 5, 10, 1);
-    assert_eq!(padded.visual_lines, vec![" ab       "]);
+    assert_eq!(padded.visual_lines, vec![Line::from(" ab       ")]);
     let unpadded = truncate_to_visual_lines("ab", 5, 10, 0);
-    assert_eq!(unpadded.visual_lines, vec!["ab        "]);
+    assert_eq!(unpadded.visual_lines, vec![Line::from("ab        ")]);
 }
 
 #[test]
@@ -88,8 +91,8 @@ fn keeps_every_line_for_a_zero_limit() {
     assert_eq!(
         result.visual_lines,
         vec![
-            "a".to_string() + &" ".repeat(19),
-            "b".to_string() + &" ".repeat(19)
+            Line::from("a".to_string() + &" ".repeat(19)),
+            Line::from("b".to_string() + &" ".repeat(19))
         ]
     );
     assert_eq!(result.skipped_count, 2);
@@ -100,9 +103,9 @@ fn keeps_every_line_for_a_zero_limit() {
 #[test]
 fn draws_a_rule_across_the_width() {
     let mut border = DynamicBorder::new(Some(Rc::new(|text: &str| format!("<{text}>"))));
-    assert_eq!(border.render(4), vec!["<────>"]);
+    assert_eq!(border.render(4), vec![Line::from("<────>")]);
     // Never narrower than one cell.
-    assert_eq!(border.render(0), vec!["<─>"]);
+    assert_eq!(border.render(0), vec![Line::from("<─>")]);
 }
 
 #[test]
@@ -115,7 +118,7 @@ fn uses_the_muted_border_color_by_default() {
     let mut border = DynamicBorder::new(None);
     assert_eq!(
         border.render(3),
-        vec![theme().fg(ThemeColor::BorderMuted, "───")]
+        vec![Line::from(theme().fg(ThemeColor::BorderMuted, "───"))]
     );
 }
 
@@ -254,12 +257,12 @@ fn frames_the_loader_and_shows_the_cancel_hint() {
     // border, loader (blank + spinner line), spacer, hint, spacer, border
     assert_eq!(lines.len(), 7);
     assert!(lines[0].contains("────"), "{:?}", lines[0]);
-    assert_eq!(lines[1], "");
+    assert_eq!(lines[1].as_ref(), "");
     assert!(lines[2].contains("Working"), "{:?}", lines[2]);
-    assert_eq!(lines[3], "");
+    assert_eq!(lines[3].as_ref(), "");
     assert!(lines[4].contains("escape/ctrl+c"), "{:?}", lines[4]);
     assert!(lines[4].contains("cancel"), "{:?}", lines[4]);
-    assert_eq!(lines[5], "");
+    assert_eq!(lines[5].as_ref(), "");
     assert!(lines[6].contains("────"), "{:?}", lines[6]);
 
     assert!(!loader.signal().is_cancelled());

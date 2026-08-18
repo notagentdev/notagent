@@ -8,7 +8,7 @@ use std::rc::Rc;
 use crate::components::input::Input;
 use crate::fuzzy::fuzzy_filter;
 use crate::keybindings::keybindings_match;
-use crate::tui::{Component, ComponentRef};
+use crate::tui::{Component, ComponentRef, Line, shared_lines};
 use crate::utils::{truncate_to_width, truncate_to_width_opts, visible_width, wrap_text_with_ansi};
 
 /// The `done(selectedValue?)` continuation TS hands to a submenu
@@ -168,7 +168,14 @@ impl SettingsList {
         let mut lines: Vec<String> = Vec::new();
 
         if let Some(search_input) = self.search_input.as_mut() {
-            lines.extend(search_input.render(width));
+            // The input renders one fresh line per frame; the copy back into the
+            // owned builder is a single line.
+            lines.extend(
+                search_input
+                    .render(width)
+                    .iter()
+                    .map(|line| line.to_string()),
+            );
             lines.push(String::new());
         }
 
@@ -304,11 +311,11 @@ impl SettingsList {
 }
 
 impl Component for SettingsList {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if let Some(submenu) = self.submenu_component.clone() {
             return submenu.borrow_mut().render(width);
         }
-        self.render_main_list(width)
+        shared_lines(self.render_main_list(width))
     }
 
     fn handle_input(&mut self, data: &str) {

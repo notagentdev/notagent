@@ -7,7 +7,7 @@ use std::rc::Rc;
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref, shared_lines};
 use notagent_tui::utils::truncate_to_width;
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
@@ -63,13 +63,13 @@ impl Component for UserMessageList {
         // No cached state to invalidate currently
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let mut lines: Vec<String> = Vec::new();
         let theme_instance = theme();
 
         if self.messages.is_empty() {
             lines.push(theme_instance.fg(ThemeColor::Muted, "  No user messages found"));
-            return lines;
+            return shared_lines(lines);
         }
 
         // Calculate visible range with scrolling
@@ -117,7 +117,7 @@ impl Component for UserMessageList {
             ));
         }
 
-        lines
+        shared_lines(lines)
     }
 
     fn handle_input(&mut self, key_data: &str) {
@@ -226,7 +226,7 @@ impl UserMessageSelectorComponent {
 }
 
 impl Component for UserMessageSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

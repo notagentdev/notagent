@@ -11,7 +11,7 @@ use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, TuiStopOptions, component_ref};
+use notagent_tui::tui::{Component, Line, TuiStopOptions, component_ref, shared_lines};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 fn guard() -> MutexGuard<'static, ()> {
@@ -42,11 +42,11 @@ struct TestComponent {
 }
 
 impl Component for TestComponent {
-    fn render(&mut self, _width: usize) -> Vec<String> {
+    fn render(&mut self, _width: usize) -> Vec<Line> {
         self.handle
             .render_count
             .set(self.handle.render_count.get() + 1);
-        self.handle.lines.borrow().clone()
+        shared_lines(self.handle.lines.borrow().clone())
     }
 
     fn handle_input(&mut self, data: &str) {
@@ -744,7 +744,11 @@ async fn clears_reserved_kitty_image_rows_before_drawing_appended_placements() {
 fn with_kitty_image_lines(max_width_cells: usize, size_px: u32) -> Vec<String> {
     let mut lines = Vec::new();
     with_kitty_terminal(|| {
-        lines = test_image(max_width_cells, size_px).render(40);
+        lines = test_image(max_width_cells, size_px)
+            .render(40)
+            .iter()
+            .map(|line| line.to_string())
+            .collect();
     });
     // The renderer itself only needs is_image_line and the registered metadata,
     // both of which survive leaving the capability scope.
@@ -1003,4 +1007,58 @@ async fn does_not_use_cursor_up_placement_for_images_taller_than_the_viewport() 
     );
 
     tui.stop(TuiStopOptions::default());
+}
+
+// describe("differential rendering settles unchanged lines") — step 7 of the
+// line-sharing plan: pointer identity first, content comparison as fallback.
+
+#[tokio::test]
+async fn an_unchanged_repaint_rewrites_no_line() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+
+    // A caching component: the second frame returns the same shared lines,
+    // so the pointer shortcut settles them.
+    let text = component_ref(notagent_tui::Text::new("cached line", 0, 0));
+    // A cacheless component: fresh allocations every frame with identical
+    // content — only the content fallback can settle these.
+    let (handle, component) = test_component();
+    handle.set_lines(["fresh line"]);
+    tui.core().add_child(text);
+    tui.core().add_child(component);
+    tui.start();
+    tui.render_now(false);
+
+    terminal.clear_writes();
+    tui.render_now(false);
+    assert!(
+        !terminal.get_writes().contains("\x1b[2K"),
+        "an unchanged frame must not rewrite lines: {:?}",
+        terminal.get_writes()
+    );
+}
+
+#[tokio::test]
+async fn a_content_change_is_still_found_among_identity_less_lines() {
+    let _guard = guard();
+    let terminal = VirtualTerminal::new(40, 10);
+    let mut tui = TuiMainScreen::new(Box::new(terminal.clone()));
+    let (handle, component) = test_component();
+    handle.set_lines(["line 0", "line 1", "line 2"]);
+    tui.core().add_child(component);
+    tui.start();
+    tui.render_now(false);
+
+    // Every line comes back with a new identity; only the middle one differs.
+    handle.set_lines(["line 0", "changed", "line 2"]);
+    terminal.clear_writes();
+    tui.render_now(false);
+    let writes = terminal.get_writes();
+    assert!(writes.contains("changed"), "{writes:?}");
+    assert_eq!(
+        writes.matches("\x1b[2K").count(),
+        1,
+        "exactly the one changed line is rewritten: {writes:?}"
+    );
 }

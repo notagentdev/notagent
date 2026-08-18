@@ -18,7 +18,7 @@
 
 use std::time::{Duration, Instant};
 
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 use notagent_tui::utils::truncate_to_width_opts;
 
 use crate::core::todos::{Todo, TodoStatus};
@@ -213,7 +213,7 @@ impl Default for TodoListComponent {
 impl Component for TodoListComponent {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if self.todos.is_empty() {
             return Vec::new();
         }
@@ -230,7 +230,7 @@ impl Component for TodoListComponent {
         }
         lines
             .iter()
-            .map(|line| truncate_to_width_opts(line, width, "…", false))
+            .map(|line| Line::from(truncate_to_width_opts(line, width, "…", false)))
             .collect()
     }
 }

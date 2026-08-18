@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::components::loader::{ColorFn, Loader, LoaderIndicatorOptions};
 use crate::keybindings::keybindings_match;
-use crate::tui::Component;
+use crate::tui::{Component, Line};
 
 /// Loader with a cancellation token that trips on Escape.
 pub struct CancellableLoader {
@@ -54,7 +54,7 @@ impl CancellableLoader {
 }
 
 impl Component for CancellableLoader {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.loader.render(width)
     }
 

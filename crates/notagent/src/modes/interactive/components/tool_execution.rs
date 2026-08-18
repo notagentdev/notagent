@@ -27,7 +27,7 @@ use notagent_tui::components::image::{Image, ImageOptions, ImageTheme};
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::terminal_image::{ImageProtocol, get_capabilities};
-use notagent_tui::tui::{Component, ComponentRef, Container, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 use serde_json::Value;
 
 use crate::core::tools::render_utils::get_text_output;
@@ -61,7 +61,7 @@ struct BadgeCallHeader {
 }
 
 impl Component for BadgeCallHeader {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         use notagent_tui::utils::visible_width;
         let theme_instance = theme();
         // One space after the badge, plus the two parentheses when they are
@@ -90,13 +90,13 @@ impl Component for BadgeCallHeader {
                 } else {
                     format!("{} {}", self.badge, first.trim_end())
                 };
-                let mut out = vec![head];
+                let mut out = vec![Line::from(head)];
                 out.append(&mut lines);
                 return out;
             }
         }
         let lines = self.call.borrow_mut().render(width);
-        let mut out = vec![self.badge.clone()];
+        let mut out = vec![Line::from(self.badge.as_str())];
         if lines.iter().any(|line| visible_width(line) > 0) {
             out.extend(lines);
         }
@@ -746,7 +746,7 @@ fn image_blocks(
 }
 
 impl Component for ToolExecutionComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         // A live style switch restyles rows already on screen (reference
         // pattern: rebuild when the built style no longer matches).
         if self.dirty.get() || self.built_style != block_style() {
@@ -765,9 +765,9 @@ impl Component for ToolExecutionComponent {
                 return Vec::new();
             }
 
-            let mut lines: Vec<String> = Vec::new();
+            let mut lines: Vec<Line> = Vec::new();
             if !content_lines.is_empty() {
-                lines.push(String::new());
+                lines.push(Line::from(""));
                 lines.extend(content_lines);
             }
             for (index, image) in self.image_components.iter().enumerate() {

@@ -12,7 +12,7 @@
 //! how long it has been at it, and what it has spent. The parent sits above them
 //! as the thing they were split off from.
 
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
 use crate::core::tasks::types::{SubagentTaskInfo, TaskInfo, is_terminal_task_status};
@@ -118,7 +118,7 @@ impl SubagentPanel {
 impl Component for SubagentPanel {
     fn invalidate(&mut self) {}
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let theme_instance = theme();
         let rows = build_subagent_rows(&self.tasks, now_ms());
         if rows.is_empty() {
@@ -186,6 +186,6 @@ impl Component for SubagentPanel {
             let pad = width.saturating_sub(visible_width(&more));
             lines.push(" ".repeat(pad) + &theme_instance.fg(ThemeColor::Muted, &more));
         }
-        lines
+        shared_lines(lines)
     }
 }

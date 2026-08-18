@@ -113,7 +113,40 @@ TS-Bugs werden repliziert und als `bug-compat` in der Abweichungsspalte markiert
 - Vor jedem Merge nach `main`: `scripts/check.sh` grün, dann Rebase auf `main`,
   dann `git merge --ff-only`.
 
-## 9. Formatierung und Lints
+## 9. TUI-Zeilentyp (bewusste Abweichung von der TS-Vorlage)
+
+Gerenderte TUI-Zeilen sind geteilt, nicht besessen: `Component::render` liefert
+`Vec<Line>` mit `Line = Arc<str>` (`crates/notagent-tui/src/tui.rs`). In TS sind
+Strings unveränderlich und von der Runtime geteilt — die Rückgabe eines Caches
+kostet dort nichts; ein besitzendes `Vec<String>` hätte daraus eine Tiefkopie
+pro Zeile pro Frame gemacht (Klasse 1, keine Verhaltensänderung am Terminal).
+Daraus folgt:
+
+- Cache-Treffer sind Refcount-Erhöhungen; die Frame-Diffs beider Screens
+  prüfen zuerst Zeigeridentität und fallen auf den Inhaltsvergleich zurück
+  (verlorene Identität macht einen Frame langsamer, nie falsch).
+- Die Markdown-Komponente legt Zeilen „fertig" in den Cache (normalisiert und
+  Segment-Reset am Ende, exakt `finish_line`); der Reset-Durchlauf überspringt
+  sie an allen drei Aufrufstellen. Einzige Stelle, an der eine Komponenten-
+  Ausgabe von den TS-Bytes abweicht — das Markdown-Byte-Oracle streift das
+  Suffix vor dem Vergleich ab.
+
+**Der Rust-Referenz `../notagent-main-rust` ist an zwei Stellen bewusst NICHT
+zu folgen** (wer erneut aus ihr übernimmt, fällt sonst wieder darauf herein):
+
+1. Sie hat `normalize_terminal_output` (Thai-/Lao-Zerlegung, Tab-Expansion)
+   aus dem Malpfad entfernt und nirgends ersetzt — das Verhalten der Vorlage
+   (`packages/tui/src/tui.ts:1158`) ist dort verloren, nicht verschoben. Bei
+   uns bleibt die Behandlung in `apply_line_resets`/`finish_line`.
+2. Sie prüft Bildzeilen über die Kitty-Einleitungssequenz direkt; Vorlage und
+   Port nutzen `is_image_line` (`terminal_image.rs`), das eine andere Menge
+   ausspart.
+3. Ihr Hintergrund-Wash (`block_paint.rs`) wäscht über den in Markdown-Zeilen
+   eingebackenen Voll-Reset hinweg — der Reset schneidet den Wash vor der
+   rechten Randspalte ab. Bei uns streift `BoxComponent` den Zeilenabschluss
+   der Kinder vor dem Wash ab (`tests/box_wash.rs` pinnt das).
+
+## 10. Formatierung und Lints
 
 - `cargo fmt` mit Default-Einstellungen (keine `rustfmt.toml`).
 - `cargo clippy --workspace --all-targets -- -D warnings` muss grün sein.

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use rand::RngExt as _;
 
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line, shared_lines};
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
@@ -139,7 +139,7 @@ pub struct ArminComponent {
     final_grid: Vec<Vec<char>>,
     current_grid: Vec<Vec<char>>,
     effect_state: EffectState,
-    cached_lines: Vec<String>,
+    cached_lines: Vec<Line>,
     cached_width: usize,
     grid_version: u64,
     cached_version: i64,
@@ -481,7 +481,7 @@ impl Component for ArminComponent {
         self.cached_width = 0;
     }
 
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         if width == self.cached_width && self.cached_version == self.grid_version as i64 {
             return self.cached_lines.clone();
         }
@@ -490,7 +490,7 @@ impl Component for ArminComponent {
         let padding = 1usize;
         let available_width = width.saturating_sub(padding);
 
-        self.cached_lines = self
+        let mut built: Vec<String> = self
             .current_grid
             .iter()
             .map(|row| {
@@ -512,11 +512,12 @@ impl Component for ArminComponent {
         let msg_pad_right = width
             .saturating_sub(padding)
             .saturating_sub(message.chars().count());
-        self.cached_lines.push(format!(
+        built.push(format!(
             " {}{}",
             theme_instance.fg(ThemeColor::Accent, message),
             " ".repeat(msg_pad_right)
         ));
+        self.cached_lines = shared_lines(built);
 
         self.cached_width = width;
         self.cached_version = self.grid_version as i64;

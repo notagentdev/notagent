@@ -6,7 +6,7 @@ use std::rc::Rc;
 use notagent_tui::components::box_component::BoxComponent;
 use notagent_tui::components::markdown::{DefaultTextStyle, Markdown, MarkdownTheme};
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, component_ref};
+use notagent_tui::tui::{Component, Line, component_ref};
 
 use crate::core::agent_session::ParsedSkillBlock;
 use crate::modes::interactive::theme::theme::{
@@ -103,7 +103,7 @@ impl SkillInvocationMessageComponent {
 }
 
 impl Component for SkillInvocationMessageComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.content_box.render(width)
     }
 

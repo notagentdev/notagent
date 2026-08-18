@@ -7,7 +7,7 @@ use notagent_tui::terminal_colors::{
     RgbColor, TerminalColorScheme, parse_osc11_background_color, parse_terminal_color_scheme_report,
 };
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, TuiInputListenerResult, TuiStopOptions, component_ref};
+use notagent_tui::tui::{Component, Line, TuiInputListenerResult, TuiStopOptions, component_ref};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 #[test]
@@ -75,7 +75,7 @@ struct InputRecorder {
 }
 
 impl Component for InputRecorder {
-    fn render(&mut self, _width: usize) -> Vec<String> {
+    fn render(&mut self, _width: usize) -> Vec<Line> {
         Vec::new()
     }
 

@@ -18,7 +18,7 @@ use notagent_tui::layout_node::StackBasis;
 use notagent_tui::terminal_image::hyperlink;
 use notagent_tui::test_terminal::TerminalEvent;
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, ComponentRef, Focusable, TuiStopOptions, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Focusable, Line, TuiStopOptions, component_ref};
 use notagent_tui::tui_alt_screen::{TuiAltScreen, TuiAltScreenOptions};
 
 fn numbered_text(count: usize) -> String {
@@ -74,8 +74,8 @@ struct Editor {
 }
 
 impl Component for Editor {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        vec!["editor".to_string()]
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        vec![Line::from("editor")]
     }
 
     fn handle_input(&mut self, data: &str) {
@@ -227,9 +227,9 @@ use notagent_tui::alt_screen_search::{
 #[test]
 fn finds_matches_with_row_and_column_mapping() {
     let lines = vec![
-        "hello world".to_string(),
-        "second line".to_string(),
-        "  spaced  text  ".to_string(),
+        Line::from("hello world"),
+        Line::from("second line"),
+        Line::from("  spaced  text  "),
     ];
 
     let matches = find_alt_screen_search_matches(&lines, "world");
@@ -242,7 +242,7 @@ fn finds_matches_with_row_and_column_mapping() {
 
 #[test]
 fn matches_are_case_insensitive_and_span_rows() {
-    let lines = vec!["hello".to_string(), "world".to_string()];
+    let lines = vec![Line::from("hello"), Line::from("world")];
     // Rows are joined with a separating space in the corpus.
     let matches = find_alt_screen_search_matches(&lines, "HELLO WORLD");
     assert_eq!(matches.len(), 1);
@@ -253,27 +253,27 @@ fn matches_are_case_insensitive_and_span_rows() {
 
 #[test]
 fn whitespace_runs_in_the_query_are_normalized() {
-    let lines = vec!["spaced    text".to_string()];
+    let lines = vec![Line::from("spaced    text")];
     let matches = find_alt_screen_search_matches(&lines, "  spaced   text  ");
     assert_eq!(matches.len(), 1);
 }
 
 #[test]
 fn an_empty_query_matches_nothing() {
-    let lines = vec!["content".to_string()];
+    let lines = vec![Line::from("content")];
     assert!(find_alt_screen_search_matches(&lines, "   ").is_empty());
 }
 
 #[test]
 fn match_keys_identify_position_and_extent() {
-    let lines = vec!["alpha beta".to_string()];
+    let lines = vec![Line::from("alpha beta")];
     let matches = find_alt_screen_search_matches(&lines, "beta");
     assert_eq!(get_alt_screen_search_match_key(&matches[0]), "0:6:0:10");
 }
 
 #[test]
 fn ansi_sequences_do_not_shift_match_columns() {
-    let lines = vec!["\x1b[31mred\x1b[0m target".to_string()];
+    let lines = vec![Line::from("\x1b[31mred\x1b[0m target")];
     let matches = find_alt_screen_search_matches(&lines, "target");
     assert_eq!(matches[0].segments[0].start_col, 4);
     assert_eq!(matches[0].segments[0].end_col, 10);

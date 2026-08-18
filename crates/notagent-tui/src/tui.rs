@@ -99,14 +99,58 @@ where
     }
 }
 
+/// A rendered line, shared instead of copied.
+///
+/// Deliberate deviation from the TS original, where strings are immutable and
+/// shared by the runtime, so returning a cached line costs nothing. Shared
+/// rather than borrowed because a container flattens its children's lines into
+/// one list (`Container::render`) and cannot hold a borrow into every child it
+/// visited. Atomic (`Arc`, not `Rc`) to stay comparable with the reference
+/// (`../notagent-main-rust/crates/notagent_tui/src/component.rs:23`); a check
+/// of `components/loader.rs` and `components/cancellable_loader.rs` found no
+/// rendered line crossing a thread here today — they animate via the render
+/// loop, not on their own threads — and the atomic refcount costs nanoseconds.
+/// The second win sits in the screen diff: an unchanged cached line can settle
+/// by pointer identity before any byte comparison runs.
+pub type Line = std::sync::Arc<str>;
+
+/// Convert freshly built owned lines into shared ones at the return edge.
+///
+/// For components that assemble their lines as owned strings and do not cache;
+/// components with a cache store `Line`s directly so a hit is a refcount bump.
+pub fn shared_lines(lines: Vec<String>) -> Vec<Line> {
+    lines.into_iter().map(Line::from).collect()
+}
+
+/// Normalize `line` and terminate it with the segment reset — exactly the
+/// transformation `apply_line_resets` applies to a non-image line.
+///
+/// Factored out so a caching component can store finished lines
+/// (`components/markdown.rs`): the paint pass then skips them, which keeps
+/// their pointer identity across frames for the screen diff.
+pub(crate) fn finish_line(line: &str) -> String {
+    match normalize_terminal_output(line) {
+        std::borrow::Cow::Borrowed(text) => {
+            let mut owned = String::with_capacity(text.len() + SEGMENT_RESET.len());
+            owned.push_str(text);
+            owned.push_str(SEGMENT_RESET);
+            owned
+        }
+        std::borrow::Cow::Owned(mut owned) => {
+            owned.push_str(SEGMENT_RESET);
+            owned
+        }
+    }
+}
+
 /// Component interface — every component implements it.
 ///
 /// Corresponds to `interface Component` (`packages/tui/src/tui.ts:23-46`).
 pub trait Component {
     /// Render the component for the given viewport width.
     ///
-    /// Returns one string per line (with embedded ANSI sequences).
-    fn render(&mut self, width: usize) -> Vec<String>;
+    /// Returns one shared string per line (with embedded ANSI sequences).
+    fn render(&mut self, width: usize) -> Vec<Line>;
 
     /// Optional handler for keyboard input while the component has focus.
     ///
@@ -165,7 +209,9 @@ pub trait Focusable {
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
 
 /// SGR reset plus OSC 8 link close, appended to every non-image line.
-const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
+/// Crate-visible so components that embed finished child lines into their own
+/// styling (`components/box_component.rs`) can strip it first.
+pub(crate) const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
 
 /// Minimum interval between two frames.
 const MIN_RENDER_INTERVAL_MS: u64 = 16;
@@ -225,7 +271,7 @@ impl Container {
 }
 
 impl Component for Container {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let mut lines = Vec::new();
         for child in &self.children {
             lines.extend(child.borrow_mut().render(width));
@@ -1549,10 +1595,10 @@ impl TuiCore {
     /// higher = on top).
     pub fn composite_overlays(
         &self,
-        lines: Vec<String>,
+        lines: Vec<Line>,
         term_width: usize,
         term_height: usize,
-    ) -> Vec<String> {
+    ) -> Vec<Line> {
         if self.0.borrow().overlay_stack.is_empty() {
             return lines;
         }
@@ -1560,7 +1606,7 @@ impl TuiCore {
 
         // Pre-render all visible overlays and calculate positions.
         struct Rendered {
-            overlay_lines: Vec<String>,
+            overlay_lines: Vec<Line>,
             row: usize,
             col: usize,
             width: usize,
@@ -1609,7 +1655,7 @@ impl TuiCore {
         // into scrollback when the terminal was widened.
         let working_height = result.len().max(term_height).max(min_lines_needed);
         while result.len() < working_height {
-            result.push(String::new());
+            result.push(Line::from(""));
         }
         let viewport_start = working_height.saturating_sub(term_height);
 
@@ -1618,18 +1664,18 @@ impl TuiCore {
                 let idx = viewport_start + item.row + index;
                 if idx < result.len() {
                     // Defensive: truncate the overlay line to its declared width.
-                    let truncated = if visible_width(overlay_line) > item.width {
-                        slice_by_column(overlay_line, 0, item.width, true)
+                    let truncated: Line = if visible_width(overlay_line) > item.width {
+                        Line::from(slice_by_column(overlay_line, 0, item.width, true))
                     } else {
                         overlay_line.clone()
                     };
-                    result[idx] = composite_tui_line(
+                    result[idx] = Line::from(composite_tui_line(
                         &result[idx],
                         &truncated,
                         item.col,
                         item.width,
                         term_width,
-                    );
+                    ));
                 }
             }
         }
@@ -1637,12 +1683,18 @@ impl TuiCore {
         result
     }
 
-    /// Append the segment reset to every non-image line.
-    pub fn apply_line_resets(&self, lines: &mut [String]) {
+    /// Normalize every non-image line and append the segment reset.
+    ///
+    /// Idempotent: a line that already ends in the reset is left untouched, so
+    /// a component may finish its lines while filling its cache
+    /// ([`finish_line`]) and this pass stays a no-op for them. Image lines are
+    /// exempt via `is_image_line`, same as the TS original (`tui.ts:1157`).
+    pub fn apply_line_resets(&self, lines: &mut [Line]) {
         for line in lines.iter_mut() {
-            if !is_image_line(line) {
-                *line = normalize_terminal_output(line) + SEGMENT_RESET;
+            if line.ends_with(SEGMENT_RESET) || is_image_line(line) {
+                continue;
             }
+            *line = Line::from(finish_line(line));
         }
     }
 
@@ -1651,18 +1703,18 @@ impl TuiCore {
     /// Only the bottom `height` lines (the visible viewport) are scanned.
     pub fn extract_cursor_position(
         &self,
-        lines: &mut [String],
+        lines: &mut [Line],
         height: usize,
     ) -> Option<(usize, usize)> {
         let viewport_top = lines.len().saturating_sub(height);
         for row in (viewport_top..lines.len()).rev() {
             if let Some(marker_index) = lines[row].find(CURSOR_MARKER) {
                 let col = visible_width(&lines[row][..marker_index]);
-                lines[row] = format!(
+                lines[row] = Line::from(format!(
                     "{}{}",
                     &lines[row][..marker_index],
                     &lines[row][marker_index + CURSOR_MARKER.len()..]
-                );
+                ));
                 return Some((row, col));
             }
         }
@@ -2050,7 +2102,7 @@ impl OverlayHandle {
 
 impl TuiCore {
     /// Render all mounted root components (`Container.render`).
-    pub fn render_children(&self, width: usize) -> Vec<String> {
+    pub fn render_children(&self, width: usize) -> Vec<Line> {
         let children = self.0.borrow().children.clone();
         let mut lines = Vec::new();
         for child in children {

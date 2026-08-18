@@ -8,7 +8,7 @@ use notagent::modes::interactive::components::status_indicator::{
     CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
 };
 use notagent::modes::interactive::theme::theme::init_theme;
-use notagent_tui::tui::Component;
+use notagent_tui::tui::{Component, Line};
 
 /// The global theme is a process global.
 fn theme_lock() -> MutexGuard<'static, ()> {
@@ -24,7 +24,7 @@ fn keeps_idle_status_at_the_same_height_as_status_indicators() {
 
     let lines = idle_status.render(20);
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines, vec![" ".repeat(20), " ".repeat(20)]);
+    assert_eq!(lines, vec![Line::from(" ".repeat(20)); 2]);
 }
 
 #[test]

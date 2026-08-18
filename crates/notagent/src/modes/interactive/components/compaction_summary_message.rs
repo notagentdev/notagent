@@ -8,7 +8,7 @@ use notagent_tui::components::box_component::BoxComponent;
 use notagent_tui::components::markdown::{DefaultTextStyle, Markdown, MarkdownTheme};
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, component_ref};
+use notagent_tui::tui::{Component, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
     BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
@@ -123,7 +123,7 @@ impl CompactionSummaryMessageComponent {
 }
 
 impl Component for CompactionSummaryMessageComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.content_box.render(width)
     }
 

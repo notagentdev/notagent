@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use notagent_tui::components::image::{Image, ImageOptions, ImageTheme};
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, Container, component_ref};
+use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::config::get_bundled_interactive_asset_path;
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
@@ -110,7 +110,7 @@ impl EarendilAnnouncementComponent {
 }
 
 impl Component for EarendilAnnouncementComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

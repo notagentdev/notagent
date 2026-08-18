@@ -13,14 +13,14 @@ use std::rc::Rc;
 
 use notagent_tui::terminal::{ProcessTerminal, PumpResult, Terminal, TerminalPump};
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, TuiCore, component_ref, run_until};
+use notagent_tui::tui::{Component, Line, TuiCore, component_ref, run_until, shared_lines};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 struct TextComponent(Rc<RefCell<Vec<String>>>);
 
 impl Component for TextComponent {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.0.borrow().clone()
+    fn render(&mut self, _width: usize) -> Vec<Line> {
+        shared_lines(self.0.borrow().clone())
     }
 
     fn invalidate(&mut self) {}

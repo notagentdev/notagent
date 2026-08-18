@@ -15,9 +15,9 @@ use notagent_tui::components::v_stack::VStack;
 use notagent_tui::layout::render_layout_frame;
 use notagent_tui::layout_node::StackBasis;
 use notagent_tui::strip_terminal_sequences;
-use notagent_tui::tui::{Component, ComponentRef, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Line, component_ref, shared_lines};
 
-fn visible_lines(lines: &[String]) -> Vec<String> {
+fn visible_lines(lines: &[Line]) -> Vec<String> {
     lines
         .iter()
         .map(|line| strip_terminal_sequences(line).trim_end().to_string())
@@ -48,9 +48,9 @@ struct Lines {
 }
 
 impl Component for Lines {
-    fn render(&mut self, _width: usize) -> Vec<String> {
+    fn render(&mut self, _width: usize) -> Vec<Line> {
         *self.render_count.borrow_mut() += 1;
-        self.lines.clone()
+        shared_lines(self.lines.clone())
     }
     fn invalidate(&mut self) {}
 }
@@ -422,7 +422,7 @@ fn renders_a_transient_proportional_scrollbar_without_replacing_cell_content() {
     let state = scroll_view.state();
     let root = component_ref(scroll_view);
 
-    let thumb_rows = |lines: &[String]| -> Vec<bool> {
+    let thumb_rows = |lines: &[Line]| -> Vec<bool> {
         lines
             .iter()
             .map(|line| line.contains(scrollbar_background))

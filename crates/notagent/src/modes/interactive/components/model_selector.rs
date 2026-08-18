@@ -15,7 +15,7 @@ use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
 use notagent_tui::fuzzy::fuzzy_filter;
 use notagent_tui::keybindings::keybindings_match;
-use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, component_ref};
+use notagent_tui::tui::{Component, ComponentRef, Container, Focusable, Line, component_ref};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::model_resolver::ScopedModel;
@@ -556,7 +556,7 @@ fn scope_hint_line() -> String {
 }
 
 impl Component for ModelSelectorComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         self.container.render(width)
     }
 

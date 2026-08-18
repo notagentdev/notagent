@@ -9,7 +9,7 @@ use notagent_tui::components::markdown::{
 };
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
-use notagent_tui::tui::{Component, Container, component_ref};
+use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
     BlockStyle, ThemeColor, block_style, color_badge, format_elapsed_live, format_elapsed_precise,
@@ -455,15 +455,18 @@ fn is_visible_content(content: &AssistantContent) -> bool {
 }
 
 impl Component for AssistantMessageComponent {
-    fn render(&mut self, width: usize) -> Vec<String> {
+    fn render(&mut self, width: usize) -> Vec<Line> {
         let mut lines = self.content_container.render(width);
         if self.has_tool_calls || lines.is_empty() {
             return lines;
         }
 
-        lines[0] = format!("{OSC133_ZONE_START}{}", lines[0]);
+        lines[0] = Line::from(format!("{OSC133_ZONE_START}{}", lines[0]));
         let last = lines.len() - 1;
-        lines[last] = format!("{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}", lines[last]);
+        lines[last] = Line::from(format!(
+            "{OSC133_ZONE_END}{OSC133_ZONE_FINAL}{}",
+            lines[last]
+        ));
         lines
     }
 
