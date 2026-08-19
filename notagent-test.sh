@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run notagent from sources, from any directory (Rust port of the original
-# notagent-test.sh). Rebuilds via cargo when sources changed; the caller's
-# working directory is preserved (notagent operates on the cwd).
+# Run the prebuilt release notagent binary, from any directory (the caller's
+# working directory is preserved — notagent operates on the cwd).
+# Build it first with: cargo build --release -p notagent
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,4 +57,10 @@ if [[ "$NO_ENV" == "true" ]]; then
   echo "Running without API keys..."
 fi
 
-exec cargo run --quiet --release --manifest-path "$SCRIPT_DIR/Cargo.toml" -p notagent -- ${ARGS[@]+"${ARGS[@]}"}
+BIN="$SCRIPT_DIR/target/release/notagent"
+if [[ ! -x "$BIN" ]]; then
+  echo "error: $BIN not found — build it with: cargo build --release -p notagent" >&2
+  exit 1
+fi
+
+exec "$BIN" ${ARGS[@]+"${ARGS[@]}"}
