@@ -8430,11 +8430,16 @@ impl InteractiveMode {
         }
     }
 
-    /// Ends the run on an aborted or failed turn, settling the block red.
+    /// Ends the run on an aborted or failed turn, the reference way
+    /// (`pending_explore_tools.drain()` → `complete_call(true)`, then
+    /// `close_active_explore()`): every call that never reported back is
+    /// failed, calls that already completed keep their result — a block whose
+    /// calls all succeeded settles green even on an aborted turn.
     fn abort_explore_block(&mut self) {
-        if let Some(block) = self.explore_block.take() {
-            block.borrow_mut().close_aborted();
+        for block in &self.chat_explore_blocks {
+            block.borrow_mut().fail_running_calls();
         }
+        self.close_explore_block();
     }
 
     /// The open search block, or a fresh one appended to the chat.

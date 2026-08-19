@@ -173,13 +173,6 @@ pub struct ExploreBlockComponent {
     /// Total runtime, frozen when the block closes. Replayed blocks carry no
     /// meaningful runtime and stay `None`.
     finished: Option<std::time::Duration>,
-    /// Whether the turn was aborted or failed while this block was open.
-    ///
-    /// Deviation from the reference (user decision 2026-08-17, v0.1.18),
-    /// which has no such state: there an interrupted block keeps the pending
-    /// grey when a call never returned, and stays green when the abort landed
-    /// between calls — so a cancelled run reads as one that went fine.
-    aborted: bool,
 }
 
 impl ExploreBlockComponent {
@@ -194,19 +187,13 @@ impl ExploreBlockComponent {
             replayed: false,
             started: std::time::Instant::now(),
             finished: None,
-            aborted: false,
         }
     }
 
     /// Whether calls are still running, i.e. the badge runtime still counts.
-    ///
-    /// An aborted block is finished whatever its calls were doing: nothing is
-    /// going to complete them.
     #[must_use]
     pub fn is_running(&self) -> bool {
-        !self.replayed
-            && !self.aborted
-            && (self.open || self.entries.iter().any(|entry| !entry.complete))
+        !self.replayed && (self.open || self.entries.iter().any(|entry| !entry.complete))
     }
 
     /// Marks the block as replayed history.
@@ -254,14 +241,22 @@ impl ExploreBlockComponent {
         }
     }
 
-    /// Closes the block on an aborted or failed turn, which settles it red.
+    /// Fails every call that never reported back.
     ///
-    /// The exploration did not finish — a call may have been cut off, and the
-    /// answer it was gathered for never came — so it must not read as one
-    /// that went fine.
-    pub fn close_aborted(&mut self) {
-        self.aborted = true;
-        self.close();
+    /// The port's shape of the reference's abort path
+    /// (`../notagent-main-rust/crates/notagent_main/src/interactive_mode.rs`,
+    /// `pending_explore_tools.drain()` → `complete_call(&call_id, true)`):
+    /// there the mode holds a call-id registry and completes each pending call
+    /// as failed; here the block knows its incomplete entries directly. Calls
+    /// that already completed keep their result, so a block whose calls all
+    /// succeeded settles green even on an aborted turn.
+    pub fn fail_running_calls(&mut self) {
+        for entry in &mut self.entries {
+            if !entry.complete {
+                entry.complete = true;
+                entry.failed = true;
+            }
+        }
     }
 
     /// Returns whether this block is still accepting consecutive search calls.
@@ -318,18 +313,11 @@ impl ExploreBlockComponent {
     }
 
     fn background(&self) -> ThemeBg {
-        if self.aborted || self.failed_count() > 0 {
-            // A failure colours the block the moment it lands (user decision
-            // 2026-08-19): the reader must not wait for the close to learn
-            // that a call went wrong. An abort outranks the pending state a
-            // cut-off call would otherwise leave behind.
-            ThemeBg::ToolErrorBg
-        } else if self.entries.is_empty() || self.entries.iter().any(|entry| !entry.complete) {
+        if self.open || self.entries.iter().any(|entry| !entry.complete) {
             ThemeBg::ToolPendingBg
+        } else if self.failed_count() > 0 {
+            ThemeBg::ToolErrorBg
         } else {
-            // Every call so far succeeded: green immediately, even while the
-            // block stays open for further consecutive calls — a new call
-            // flips it back to pending via its incomplete entry.
             ThemeBg::ToolSuccessBg
         }
     }
@@ -369,9 +357,9 @@ impl Component for ExploreBlockComponent {
         // beside it (the reference's `BlockStyle::Bar` rendering).
         let badge_style = block_style() == BlockStyle::Badge;
         let mut lines = if badge_style {
-            // An aborted block is over, whatever its calls were doing, so it
-            // must not sit there saying it is still exploring.
-            let label = if self.is_running() {
+            // The label carries the phase: EXPLORING while calls still run,
+            // EXPLORED once the block is closed and every call settled.
+            let label = if self.open || self.entries.iter().any(|entry| !entry.complete) {
                 "Exploring"
             } else {
                 "Explored"
@@ -745,31 +733,11 @@ mod tests {
             "failed".to_string(),
             &serde_json::json!({"query": "workspace lock"}),
         );
-        // Running: pending until the call reports back.
-        assert_eq!(block.background(), ThemeBg::ToolPendingBg);
-        // A failure colours the block immediately, before the close.
+        // Open (pending), even though the call completed.
         block.complete_call("failed", true);
-        assert_eq!(block.background(), ThemeBg::ToolErrorBg);
+        assert_eq!(block.background(), ThemeBg::ToolPendingBg);
         block.close();
         assert_eq!(block.background(), ThemeBg::ToolErrorBg);
-    }
-
-    #[test]
-    fn an_open_block_turns_green_once_all_calls_succeeded() {
-        let _guard = theme_lock();
-        let mut block = ExploreBlockComponent::new();
-        block.push_call("grep", "ok-1".to_string(), &serde_json::json!({"pattern": "x"}));
-        block.push_call("read", "ok-2".to_string(), &serde_json::json!({"path": "y"}));
-        block.complete_call("ok-1", false);
-        // One call still running: pending.
-        assert_eq!(block.background(), ThemeBg::ToolPendingBg);
-        block.complete_call("ok-2", false);
-        // All calls succeeded: green immediately, while the block stays open.
-        assert!(block.is_open());
-        assert_eq!(block.background(), ThemeBg::ToolSuccessBg);
-        // A further consecutive call flips it back to pending.
-        block.push_call("grep", "ok-3".to_string(), &serde_json::json!({"pattern": "z"}));
-        assert_eq!(block.background(), ThemeBg::ToolPendingBg);
     }
 
     #[test]
@@ -838,10 +806,11 @@ mod tests {
         );
     }
 
-    /// An aborted turn settles the block red and stops it claiming to still
-    /// explore, however far its calls had got (user decision 2026-08-17).
+    /// An aborted turn fails the calls that never reported back (the
+    /// reference's `pending_explore_tools.drain()`), so a cut-off call
+    /// settles the closed block red and stops it claiming to still explore.
     #[test]
-    fn an_aborted_block_settles_red_and_stops_running() {
+    fn an_aborted_block_with_a_cut_off_call_settles_red() {
         let _guard = theme_lock();
         set_block_style(BlockStyle::Badge);
         let mut block = ExploreBlockComponent::new();
@@ -852,20 +821,21 @@ mod tests {
         );
         // The call never returned — the turn was cut off under it.
         assert!(block.is_running());
-        block.close_aborted();
+        block.fail_running_calls();
+        block.close();
 
         assert!(!block.is_running(), "nothing will complete it now");
         assert_eq!(block.background(), ThemeBg::ToolErrorBg);
         let actual = rendered(&mut block).join("\n");
         assert!(actual.contains("EXPLORED"), "{actual}");
         assert!(!actual.contains("EXPLORING"), "{actual}");
+        assert!(actual.contains("1 failed"), "{actual}");
     }
 
-    /// An abort outranks a clean set of calls: every call may have returned
-    /// before the turn was cut off, and the block still did not deliver what it
-    /// was gathered for.
+    /// An abort between calls leaves completed results untouched: a block
+    /// whose calls all succeeded settles green, exactly like the reference.
     #[test]
-    fn an_abort_outranks_completed_calls() {
+    fn an_abort_after_completed_calls_settles_green() {
         let _guard = theme_lock();
         let mut block = ExploreBlockComponent::new();
         block.push_call(
@@ -874,9 +844,10 @@ mod tests {
             &serde_json::json!({ "file_path": "a.rs" }),
         );
         block.complete_call("call-1", false);
-        block.close_aborted();
+        block.fail_running_calls();
+        block.close();
 
-        assert_eq!(block.background(), ThemeBg::ToolErrorBg);
+        assert_eq!(block.background(), ThemeBg::ToolSuccessBg);
     }
 
     #[test]
