@@ -16,8 +16,8 @@ use notagent_ai::api::openai_codex_responses::{
     retry_after_delay_ms, service_tier_cost_multiplier, stream, validate_retry_delay_ms,
 };
 use notagent_ai::types::{
-    AssistantMessageEvent, CacheRetention, Context, Model, ProviderHeaders, ProviderRequestOptions,
-    ThinkingLevel, Transport,
+    AssistantMessageEvent, CacheRetention, Context, Message, Model, ProviderHeaders,
+    ProviderRequestOptions, ThinkingLevel, Transport, UserContent, UserMessage,
 };
 use notagent_ai::utils::fetch::{FetchBody, FetchError, FetchFn, FetchRequest, FetchResponse};
 use serde_json::Value;
@@ -974,4 +974,156 @@ async fn a_codex_error_event_over_the_websocket_is_not_retried_over_sse() {
     assert_eq!(error.error_message.as_deref(), Some("Codex error: nope"));
     // A CodexApiError is not a transport failure, so SSE is never tried.
     assert!(seen.lock().expect("poisoned").is_none());
+}
+
+/// A WebSocket server that answers every `response.create` frame on every connection
+/// with a scripted text response; frames are recorded as (connection index, frame).
+async fn spawn_codex_websocket_reuse_server() -> (String, Arc<Mutex<Vec<(usize, String)>>>) {
+    use futures::{SinkExt, StreamExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let frames = Arc::new(Mutex::new(Vec::new()));
+    let recorded_frames = frames.clone();
+
+    tokio::spawn(async move {
+        let mut connection_index = 0usize;
+        loop {
+            let Ok((connection, _)) = listener.accept().await else {
+                return;
+            };
+            let index = connection_index;
+            connection_index += 1;
+            let recorded_frames = recorded_frames.clone();
+            tokio::spawn(async move {
+                let Ok(mut socket) = tokio_tungstenite::accept_async(connection).await else {
+                    return;
+                };
+                let mut response_index = 0usize;
+                while let Some(Ok(message)) = socket.next().await {
+                    let Ok(text) = message.to_text() else {
+                        continue;
+                    };
+                    if text.is_empty() {
+                        continue;
+                    }
+                    recorded_frames
+                        .lock()
+                        .expect("poisoned")
+                        .push((index, text.to_string()));
+                    response_index += 1;
+                    let response_id = format!("resp_c{index}_{response_index}");
+                    let events = vec![
+                        serde_json::json!({
+                            "type": "response.output_item.added", "output_index": 0,
+                            "item": { "type": "message", "id": "msg_1", "role": "assistant", "content": [], "status": "in_progress" }
+                        }),
+                        serde_json::json!({ "type": "response.output_text.delta", "output_index": 0, "delta": "hello" }),
+                        serde_json::json!({
+                            "type": "response.output_item.done", "output_index": 0,
+                            "item": { "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+                                      "content": [{ "type": "output_text", "text": "hello", "annotations": [] }] }
+                        }),
+                        serde_json::json!({
+                            "type": "response.done",
+                            "response": { "id": response_id, "status": "completed" }
+                        }),
+                    ];
+                    for event in events {
+                        if socket
+                            .send(tokio_tungstenite::tungstenite::Message::Text(
+                                event.to_string().into(),
+                            ))
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    (format!("http://127.0.0.1:{port}"), frames)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_follow_up_request_reuses_the_websocket_and_continues_via_previous_response_id() {
+    let (base_url, frames) = spawn_codex_websocket_reuse_server().await;
+    let session = "ws-reuse-session";
+    let request = || ProviderRequestOptions {
+        api_key: Some(token()),
+        ..ProviderRequestOptions::default()
+    };
+    let options = || OpenAICodexResponsesOptions {
+        transport: Some(Transport::Auto),
+        session_id: Some(session.to_string()),
+        ..OpenAICodexResponsesOptions::default()
+    };
+
+    let context = case_named("minimal").context;
+    let events = stream(codex_model(&base_url), context.clone(), request(), options());
+    let mut assistant = None;
+    while let Some(event) = events.next().await {
+        if let AssistantMessageEvent::Done { message, .. } = event {
+            assistant = Some(message);
+        }
+    }
+    let assistant = assistant.expect("first response");
+    assert_eq!(assistant.response_id.as_deref(), Some("resp_c0_1"));
+
+    // The follow-up extends the transcript with the reply and a new user message.
+    let mut follow_up = context.clone();
+    follow_up.messages.push(Message::Assistant(assistant));
+    follow_up.messages.push(Message::User(UserMessage {
+        content: UserContent::Text("again".to_string()),
+        timestamp: 2,
+    }));
+    let events = stream(codex_model(&base_url), follow_up, request(), options());
+    let mut second = None;
+    while let Some(event) = events.next().await {
+        if let AssistantMessageEvent::Done { message, .. } = event {
+            second = Some(message);
+        }
+    }
+    let second = second.expect("second response");
+    // `resp_c0_2`: connection 0 answered both requests — the socket was reused.
+    // Codex keeps `previous_response_id` state per connection, so a delta over a
+    // fresh connection would be rejected with "Invalid `previous_response_id`".
+    assert_eq!(second.response_id.as_deref(), Some("resp_c0_2"));
+
+    let frames = frames.lock().expect("poisoned");
+    assert_eq!(
+        frames.iter().map(|(index, _)| *index).collect::<Vec<_>>(),
+        vec![0, 0],
+        "both requests must ride the same connection"
+    );
+    let first_frame: Value = serde_json::from_str(&frames[0].1).expect("json");
+    assert_eq!(first_frame.get("previous_response_id"), None);
+    let second_frame: Value = serde_json::from_str(&frames[1].1).expect("json");
+    assert_eq!(second_frame["previous_response_id"], "resp_c0_1");
+    // The delta carries only the new user message, not the replayed transcript.
+    assert_eq!(second_frame["input"].as_array().expect("input").len(), 1);
+    assert_eq!(
+        second_frame["input"][0]["content"][0]["text"],
+        "again",
+        "{second_frame}"
+    );
+
+    let stats =
+        notagent_ai::api::openai_codex_responses::openai_codex_websocket_debug_stats(session)
+            .expect("stats");
+    assert_eq!(stats.connections_created, 1);
+    assert_eq!(stats.connections_reused, 1);
+    assert_eq!(stats.full_context_requests, 1);
+    assert_eq!(stats.delta_requests, 1);
+    assert_eq!(stats.last_previous_response_id.as_deref(), Some("resp_c0_1"));
+
+    notagent_ai::api::openai_codex_responses::close_openai_codex_websocket_sessions(Some(session));
+    notagent_ai::api::openai_codex_responses::reset_openai_codex_websocket_debug_stats(Some(
+        session,
+    ));
 }

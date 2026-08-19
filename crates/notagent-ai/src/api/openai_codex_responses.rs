@@ -960,26 +960,40 @@ pub struct OpenAICodexWebSocketDebugStats {
     pub last_websocket_error: Option<String>,
 }
 
-/// `CachedWebSocketContinuationState` plus the two timestamps the cache entry carries.
+/// `CachedWebSocketContinuationState`
 #[derive(Debug, Clone)]
 struct ContinuationState {
     last_request_body: Value,
     last_response_id: String,
     last_response_items: Vec<Value>,
+}
+
+type WebSocketStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// `CachedWebSocketConnection` — the socket itself is cached alongside the continuation.
+/// Codex forces `store: false`, so `previous_response_id` state only exists on the
+/// server for the lifetime of the WebSocket connection; a continuation replayed over a
+/// fresh connection is rejected with "Invalid `previous_response_id`".
+struct CachedWebSocketConnection {
+    /// `None` while a request has the socket checked out (TS `busy: true`).
+    socket: Option<WebSocketStream>,
+    continuation: Option<ContinuationState>,
     /// `entry.createdAt` — the age limit closes a connection after 55 minutes.
     created_at: i64,
-    /// When the entry was last released; the idle timer fires 5 minutes later.
+    /// When the entry was last released; TS arms an idle timer here, the Rust port
+    /// checks the timestamps lazily on the next acquire (substitution class 3: an
+    /// idle-expired socket lingers as an open TCP connection until then).
     last_used_at: i64,
+    /// Guards release against an entry that was cleaned up and recreated meanwhile.
+    generation: u64,
 }
 
 #[derive(Default)]
 struct CodexWebSocketState {
-    /// sessionId → accountId → continuation state. The socket itself is not cached in
-    /// Rust: `tokio-tungstenite` streams are not `Clone` and a pooled connection would
-    /// have to be moved between tasks, so only the continuation survives a request.
-    /// Substitution class 3; the observable effect — a follow-up request continues from
-    /// `previous_response_id` — is the same, one TCP connection more.
-    continuations: BTreeMap<String, BTreeMap<String, ContinuationState>>,
+    /// sessionId → accountId → cached connection (TS `websocketSessionCache`).
+    connections: BTreeMap<String, BTreeMap<String, CachedWebSocketConnection>>,
+    next_generation: u64,
     debug_stats: BTreeMap<String, OpenAICodexWebSocketDebugStats>,
     sse_fallback_sessions: BTreeSet<String>,
 }
@@ -1025,14 +1039,15 @@ pub fn reset_openai_codex_websocket_debug_stats(session_id: Option<&str>) {
     }
 }
 
-/// `closeOpenAICodexWebSocketSessions(sessionId?)`
+/// `closeOpenAICodexWebSocketSessions(sessionId?)` — dropping an entry closes its TCP
+/// connection; the close frame TS sends ("debug_close") is skipped in the sync path.
 pub fn close_openai_codex_websocket_sessions(session_id: Option<&str>) {
     let mut state = websocket_state().lock().expect("poisoned");
     match session_id {
         Some(session_id) => {
-            state.continuations.remove(session_id);
+            state.connections.remove(session_id);
         }
-        None => state.continuations.clear(),
+        None => state.connections.clear(),
     }
 }
 
@@ -1189,53 +1204,219 @@ fn build_cached_websocket_request_body(
     (cached, true)
 }
 
-fn take_continuation(
+/// The result of `acquireWebSocket`: the socket, whether it came from the cache, the
+/// continuation taken from the reused entry, and the cache slot the release settles.
+struct AcquiredWebSocket {
+    socket: WebSocketStream,
+    reused: bool,
+    continuation: Option<ContinuationState>,
+    /// `Some((session, account, generation))` when the socket belongs to a cache entry.
+    cache_key: Option<(String, String, u64)>,
+}
+
+/// `isWebSocketReusable(socket)` — TS reads `readyState`; the Rust port polls the
+/// stream once without blocking: a pending close frame, error, or EOF means the server
+/// already gave up on the connection.
+fn websocket_is_reusable(socket: &mut WebSocketStream) -> bool {
+    use futures::{FutureExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message as WsMessage;
+    loop {
+        match socket.next().now_or_never() {
+            None => return true,
+            Some(Some(Ok(WsMessage::Ping(_) | WsMessage::Pong(_)))) => continue,
+            _ => return false,
+        }
+    }
+}
+
+fn remove_cached_connection(session_id: &str, account_id: &str, generation: Option<u64>) {
+    let mut state = websocket_state().lock().expect("poisoned");
+    if let Some(accounts) = state.connections.get_mut(session_id) {
+        let matches = accounts
+            .get(account_id)
+            .is_some_and(|entry| generation.is_none_or(|generation| entry.generation == generation));
+        if matches {
+            accounts.remove(account_id);
+        }
+        if accounts.is_empty() {
+            state.connections.remove(session_id);
+        }
+    }
+}
+
+/// `acquireWebSocket(url, headers, sessionId, accountId, ...)`
+async fn acquire_websocket(
+    url: &str,
+    headers: &CodexHeaders,
+    request: &ProviderRequestOptions,
+    connect_timeout_ms: Option<u64>,
     session_id: Option<&str>,
     account_id: &str,
     now_ms: i64,
-) -> Option<ContinuationState> {
-    let session_id = session_id?;
-    let mut state = websocket_state().lock().expect("poisoned");
-    let accounts = state.continuations.get_mut(session_id)?;
-    let continuation = accounts.get(account_id)?.clone();
-    // `isWebSocketSessionExpired(entry)` plus the idle timer TS schedules on release.
-    let expired = now_ms - continuation.created_at >= SESSION_WEBSOCKET_MAX_AGE_MS as i64
-        || now_ms - continuation.last_used_at >= SESSION_WEBSOCKET_CACHE_TTL_MS as i64;
-    if expired {
-        accounts.remove(account_id);
-        if accounts.is_empty() {
-            state.continuations.remove(session_id);
-        }
-        return None;
-    }
-    Some(continuation)
-}
-
-fn store_continuation(
-    session_id: Option<&str>,
-    account_id: &str,
-    continuation: Option<ContinuationState>,
-) {
+) -> Result<AcquiredWebSocket, CodexError> {
     let Some(session_id) = session_id else {
-        return;
+        let socket = connect_websocket(url, headers, request, connect_timeout_ms).await?;
+        return Ok(AcquiredWebSocket {
+            socket,
+            reused: false,
+            continuation: None,
+            cache_key: None,
+        });
     };
-    let mut state = websocket_state().lock().expect("poisoned");
-    match continuation {
-        Some(continuation) => {
-            state
-                .continuations
-                .entry(session_id.to_string())
-                .or_default()
-                .insert(account_id.to_string(), continuation);
-        }
-        None => {
-            if let Some(accounts) = state.continuations.get_mut(session_id) {
-                accounts.remove(account_id);
-                if accounts.is_empty() {
-                    state.continuations.remove(session_id);
+
+    enum CacheLookup {
+        /// The entry's socket, checked out; the busy placeholder stays in the map.
+        Checked {
+            socket: Box<WebSocketStream>,
+            continuation: Option<ContinuationState>,
+            generation: u64,
+        },
+        /// Another request has the socket checked out — connect uncached (TS `busy`).
+        Busy,
+        Vacant,
+    }
+
+    let lookup = {
+        let mut state = websocket_state().lock().expect("poisoned");
+        let mut expired_entry = false;
+        let lookup = match state
+            .connections
+            .get_mut(session_id)
+            .and_then(|accounts| accounts.get_mut(account_id))
+        {
+            None => CacheLookup::Vacant,
+            Some(entry) if entry.socket.is_none() => CacheLookup::Busy,
+            Some(entry) => {
+                // `isWebSocketSessionExpired(entry)` plus the idle timer TS schedules
+                // on release, both checked lazily here.
+                let expired = now_ms - entry.created_at >= SESSION_WEBSOCKET_MAX_AGE_MS as i64
+                    || now_ms - entry.last_used_at >= SESSION_WEBSOCKET_CACHE_TTL_MS as i64;
+                if expired {
+                    expired_entry = true;
+                    CacheLookup::Vacant
+                } else {
+                    match entry.socket.take() {
+                        Some(socket) => CacheLookup::Checked {
+                            socket: Box::new(socket),
+                            continuation: entry.continuation.take(),
+                            generation: entry.generation,
+                        },
+                        None => CacheLookup::Busy,
+                    }
                 }
             }
+        };
+        if expired_entry
+            && let Some(accounts) = state.connections.get_mut(session_id)
+        {
+            accounts.remove(account_id);
+            if accounts.is_empty() {
+                state.connections.remove(session_id);
+            }
         }
+        lookup
+    };
+
+    match lookup {
+        CacheLookup::Checked {
+            mut socket,
+            continuation,
+            generation,
+        } => {
+            if websocket_is_reusable(&mut socket) {
+                return Ok(AcquiredWebSocket {
+                    socket: *socket,
+                    reused: true,
+                    continuation,
+                    cache_key: Some((session_id.to_string(), account_id.to_string(), generation)),
+                });
+            }
+            let _ = socket.close(None).await;
+            remove_cached_connection(session_id, account_id, Some(generation));
+            // Fall through to a fresh cached connection, like the TS fallthrough.
+        }
+        CacheLookup::Busy => {
+            let socket = connect_websocket(url, headers, request, connect_timeout_ms).await?;
+            return Ok(AcquiredWebSocket {
+                socket,
+                reused: false,
+                continuation: None,
+                cache_key: None,
+            });
+        }
+        CacheLookup::Vacant => {}
+    }
+
+    // TS registers the entry after the connect resolves; the Rust port inserts a busy
+    // placeholder first so a concurrent request goes uncached instead of racing the slot.
+    let generation = {
+        let mut state = websocket_state().lock().expect("poisoned");
+        state.next_generation += 1;
+        let generation = state.next_generation;
+        state.connections.entry(session_id.to_string()).or_default().insert(
+            account_id.to_string(),
+            CachedWebSocketConnection {
+                socket: None,
+                continuation: None,
+                created_at: now_ms,
+                last_used_at: now_ms,
+                generation,
+            },
+        );
+        generation
+    };
+    match connect_websocket(url, headers, request, connect_timeout_ms).await {
+        Ok(socket) => Ok(AcquiredWebSocket {
+            socket,
+            reused: false,
+            continuation: None,
+            cache_key: Some((session_id.to_string(), account_id.to_string(), generation)),
+        }),
+        Err(error) => {
+            remove_cached_connection(session_id, account_id, Some(generation));
+            Err(error)
+        }
+    }
+}
+
+/// The `release({ keep })` closure from TS `acquireWebSocket`, plus settling the
+/// entry's continuation while the slot is written back.
+async fn release_websocket(
+    cache_key: Option<(String, String, u64)>,
+    mut socket: WebSocketStream,
+    keep: bool,
+    continuation: Option<ContinuationState>,
+    now_ms: i64,
+) {
+    let Some((session_id, account_id, generation)) = cache_key else {
+        let _ = socket.close(None).await;
+        return;
+    };
+    if !keep {
+        let _ = socket.close(None).await;
+        remove_cached_connection(&session_id, &account_id, Some(generation));
+        return;
+    }
+    let stored = {
+        let mut state = websocket_state().lock().expect("poisoned");
+        match state
+            .connections
+            .get_mut(&session_id)
+            .and_then(|accounts| accounts.get_mut(&account_id))
+            .filter(|entry| entry.generation == generation)
+        {
+            Some(entry) => {
+                entry.socket = Some(socket);
+                entry.continuation = continuation;
+                entry.last_used_at = now_ms;
+                None
+            }
+            // The entry was cleaned up while checked out — close instead of caching.
+            None => Some(socket),
+        }
+    };
+    if let Some(mut socket) = stored {
+        let _ = socket.close(None).await;
     }
 }
 
@@ -1982,8 +2163,22 @@ async fn run_websocket_stream(
     start_emitted: &mut bool,
 ) -> Result<(), (CodexError, bool)> {
     let now_ms = crate::auth::resolve::now_ms();
-    let continuation = take_continuation(cache_session_id, account_id, now_ms);
-    let reused = continuation.is_some();
+    let AcquiredWebSocket {
+        mut socket,
+        reused,
+        continuation,
+        cache_key,
+    } = acquire_websocket(
+        url,
+        headers,
+        request,
+        connect_timeout_ms,
+        cache_session_id,
+        account_id,
+        now_ms,
+    )
+    .await
+    .map_err(|error| (error, false))?;
     let use_cached_context = matches!(
         options.transport.unwrap_or(Transport::Auto),
         Transport::WebsocketCached | Transport::Auto
@@ -1993,14 +2188,7 @@ async fn run_websocket_stream(
     } else {
         (body.clone(), true)
     };
-    if !keep_continuation {
-        store_continuation(cache_session_id, account_id, None);
-    }
     record_websocket_request(cache_session_id, reused, use_cached_context, &request_body);
-
-    let socket = connect_websocket(url, headers, request, connect_timeout_ms)
-        .await
-        .map_err(|error| (error, false))?;
 
     let mut frame = request_body.clone();
     if let Some(object) = frame.as_object_mut() {
@@ -2019,7 +2207,7 @@ async fn run_websocket_stream(
     );
     let mut websocket_started = false;
     let mut result = drive_websocket(
-        socket,
+        &mut socket,
         &frame,
         &mut pump,
         request,
@@ -2038,7 +2226,7 @@ async fn run_websocket_stream(
 
     match result {
         Err(error) => {
-            store_continuation(cache_session_id, account_id, None);
+            release_websocket(cache_key, socket, false, None, now_ms).await;
             Err((error, websocket_started))
         }
         Ok(()) => {
@@ -2046,41 +2234,46 @@ async fn run_websocket_stream(
                 .signal
                 .as_ref()
                 .is_some_and(|signal| signal.is_cancelled());
-            if !aborted
-                && use_cached_context
-                && let Some(response_id) = output
+            let new_continuation = if !aborted && use_cached_context {
+                output
                     .response_id
                     .clone()
                     .filter(|response_id| !response_id.is_empty())
-            {
-                let response_items = continuation_response_items(
-                    model,
-                    output,
-                    grammar_tool_input_properties,
-                    timestamp,
-                );
-                store_continuation(
-                    cache_session_id,
-                    account_id,
-                    Some(ContinuationState {
+                    .map(|response_id| ContinuationState {
                         last_request_body: body.clone(),
                         last_response_id: response_id,
-                        last_response_items: response_items,
-                        created_at: continuation
-                            .as_ref()
-                            .map(|continuation| continuation.created_at)
-                            .unwrap_or(now_ms),
-                        last_used_at: crate::auth::resolve::now_ms(),
-                    }),
-                );
-            }
+                        last_response_items: continuation_response_items(
+                            model,
+                            output,
+                            grammar_tool_input_properties,
+                            timestamp,
+                        ),
+                    })
+            } else {
+                None
+            };
+            // Settle what the cache entry keeps: a fresh continuation from this
+            // response; otherwise the one taken at acquire, unless the delta check
+            // discarded it (TS clears `entry.continuation` in place there).
+            let settled = if new_continuation.is_some() {
+                new_continuation
+            } else if !use_cached_context || keep_continuation {
+                continuation
+            } else {
+                None
+            };
+            release_websocket(
+                cache_key,
+                socket,
+                !aborted,
+                settled,
+                crate::auth::resolve::now_ms(),
+            )
+            .await;
             Ok(())
         }
     }
 }
-
-type WebSocketStream =
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 /// `connectWebSocket(url, headers, signal, connectTimeoutMs, env)`
 async fn connect_websocket(
@@ -2139,7 +2332,7 @@ async fn connect_websocket(
 /// `parseWebSocket(socket, signal, idleTimeoutMs)` plus the event pump.
 #[allow(clippy::too_many_arguments)]
 async fn drive_websocket(
-    mut socket: WebSocketStream,
+    socket: &mut WebSocketStream,
     frame: &Value,
     pump: &mut CodexEventPump<'_>,
     request: &ProviderRequestOptions,
@@ -2243,7 +2436,8 @@ async fn drive_websocket(
             "WebSocket stream closed before response.completed",
         ));
     }
-    let _ = socket.close(None).await;
+    // The socket stays open: the caller returns it to the session cache so the next
+    // request can continue via connection-scoped `previous_response_id` state.
     Ok(())
 }
 
