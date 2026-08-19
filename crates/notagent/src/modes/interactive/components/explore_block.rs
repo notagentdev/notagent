@@ -318,17 +318,18 @@ impl ExploreBlockComponent {
     }
 
     fn background(&self) -> ThemeBg {
-        if self.aborted {
-            // An abort has already ended the block, so it outranks the pending
-            // state a cut-off call would otherwise leave behind.
+        if self.aborted || self.failed_count() > 0 {
+            // A failure colours the block the moment it lands (user decision
+            // 2026-08-19): the reader must not wait for the close to learn
+            // that a call went wrong. An abort outranks the pending state a
+            // cut-off call would otherwise leave behind.
             ThemeBg::ToolErrorBg
-        } else if self.open || self.entries.iter().any(|entry| !entry.complete) {
-            // While the run is going the block is at work; a single failed call
-            // shows up in the summary and settles the colour only at the close.
+        } else if self.entries.is_empty() || self.entries.iter().any(|entry| !entry.complete) {
             ThemeBg::ToolPendingBg
-        } else if self.failed_count() > 0 {
-            ThemeBg::ToolErrorBg
         } else {
+            // Every call so far succeeded: green immediately, even while the
+            // block stays open for further consecutive calls — a new call
+            // flips it back to pending via its incomplete entry.
             ThemeBg::ToolSuccessBg
         }
     }
@@ -744,11 +745,31 @@ mod tests {
             "failed".to_string(),
             &serde_json::json!({"query": "workspace lock"}),
         );
-        // Open (pending), even though the call completed.
-        block.complete_call("failed", true);
+        // Running: pending until the call reports back.
         assert_eq!(block.background(), ThemeBg::ToolPendingBg);
+        // A failure colours the block immediately, before the close.
+        block.complete_call("failed", true);
+        assert_eq!(block.background(), ThemeBg::ToolErrorBg);
         block.close();
         assert_eq!(block.background(), ThemeBg::ToolErrorBg);
+    }
+
+    #[test]
+    fn an_open_block_turns_green_once_all_calls_succeeded() {
+        let _guard = theme_lock();
+        let mut block = ExploreBlockComponent::new();
+        block.push_call("grep", "ok-1".to_string(), &serde_json::json!({"pattern": "x"}));
+        block.push_call("read", "ok-2".to_string(), &serde_json::json!({"path": "y"}));
+        block.complete_call("ok-1", false);
+        // One call still running: pending.
+        assert_eq!(block.background(), ThemeBg::ToolPendingBg);
+        block.complete_call("ok-2", false);
+        // All calls succeeded: green immediately, while the block stays open.
+        assert!(block.is_open());
+        assert_eq!(block.background(), ThemeBg::ToolSuccessBg);
+        // A further consecutive call flips it back to pending.
+        block.push_call("grep", "ok-3".to_string(), &serde_json::json!({"pattern": "z"}));
+        assert_eq!(block.background(), ThemeBg::ToolPendingBg);
     }
 
     #[test]
