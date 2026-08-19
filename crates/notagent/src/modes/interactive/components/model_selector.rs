@@ -148,7 +148,7 @@ impl ModelSelectorComponent {
             let hint_text =
                 "Only showing models from configured providers. Use /login to add providers.";
             container.add_child(component_ref(Text::new(
-                theme_instance.fg(ThemeColor::Warning, hint_text),
+                theme_instance.fg(ThemeColor::Text, hint_text),
                 0,
                 0,
             )));

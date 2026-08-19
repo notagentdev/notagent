@@ -237,10 +237,10 @@ fn falls_back_to_dark_when_the_configured_theme_is_invalid() {
 
     init_theme(Some("broken"), true);
     assert!(is_theme_initialized());
-    // The dark theme's accent is `#8abeb7`.
+    // The dark theme's accent is `#ab82ff`.
     assert_eq!(
         theme().get_fg_ansi(ThemeColor::Accent),
-        "\x1b[38;2;138;190;183m"
+        "\x1b[38;2;171;130;255m"
     );
 
     let result = set_theme("broken", true);
@@ -253,7 +253,7 @@ fn falls_back_to_dark_when_the_configured_theme_is_invalid() {
     );
     assert_eq!(
         theme().get_fg_ansi(ThemeColor::Accent),
-        "\x1b[38;2;138;190;183m"
+        "\x1b[38;2;171;130;255m"
     );
 }
 
@@ -443,7 +443,7 @@ fn does_not_watch_the_built_in_themes() {
     notify_theme_directory_event(Some("dark.json"));
     assert_eq!(
         theme().get_fg_ansi(ThemeColor::Accent),
-        "\x1b[38;2;138;190;183m"
+        "\x1b[38;2;171;130;255m"
     );
 }
 

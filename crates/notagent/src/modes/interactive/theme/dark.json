@@ -11,7 +11,7 @@
 		"gray": "#808080",
 		"dimGray": "#666666",
 		"darkGray": "#505050",
-		"accent": "#8abeb7",
+		"accent": "#ab82ff",
 		"selectedBg": "#3a3a4a",
 		"userMsgBg": "#343541",
 		"toolPendingBg": "#282832",
@@ -55,7 +55,7 @@
 		"toolTitle": "text",
 		"toolOutput": "gray",
 
-		"mdHeading": "#f0c674",
+		"mdHeading": "text",
 		"mdLink": "#81a2be",
 		"mdLinkUrl": "dimGray",
 		"mdCode": "accent",
@@ -91,7 +91,7 @@
 		"bashMode": "green",
 		"modePlan": "#98c379",
 		"modeAcceptEdits": "#c678dd",
-		"modeAuto": "#e5c07b",
+		"modeAuto": "#ffb90f",
 		"modeYolo": "#e06c75"
 	},
 	"export": {
