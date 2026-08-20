@@ -275,7 +275,6 @@ impl FooterData for FooterDataProvider {
 
 /// Footer component that shows pwd, token stats, and context usage.
 pub struct FooterComponent {
-    auto_compact_enabled: bool,
     session: Arc<dyn FooterSession>,
     footer_data: Arc<dyn FooterData>,
 }
@@ -283,7 +282,6 @@ pub struct FooterComponent {
 impl FooterComponent {
     pub fn new(session: Arc<dyn FooterSession>, footer_data: Arc<dyn FooterData>) -> Self {
         Self {
-            auto_compact_enabled: true,
             session,
             footer_data,
         }
@@ -291,10 +289,6 @@ impl FooterComponent {
 
     pub fn set_session(&mut self, session: Arc<dyn FooterSession>) {
         self.session = session;
-    }
-
-    pub fn set_auto_compact_enabled(&mut self, enabled: bool) {
-        self.auto_compact_enabled = enabled;
     }
 
     /// Clean up resources. Git watcher cleanup is handled by the provider.
@@ -445,7 +439,10 @@ impl Component for FooterComponent {
         if (usage_totals.cache_read > 0 || usage_totals.cache_write > 0)
             && let Some(rate) = latest_cache_hit_rate
         {
-            stats_parts.push(format!("CH{rate:.1}%"));
+            // Label deviates from the reference ("CH"): CHR reads as cache hit
+            // rate, while CH next to the R/W token counts was ambiguous
+            // (user decision 2026-08-20).
+            stats_parts.push(format!("CHR{rate:.1}%"));
         }
 
         // Which providers count as subscription-backed is the session's answer
@@ -456,8 +453,9 @@ impl Component for FooterComponent {
             .is_some_and(|model| self.session.is_using_subscription(&model.provider));
         // A subscription is paid for by the month, so the per-token figure is
         // not money anyone owes — showing it invites reading a bill into it.
-        // The marker stays: it says the tokens are covered (user decision
-        // 2026-08-17, v0.1.15; the reference prints the amount beside it).
+        // Nothing is shown at all in that case (user decision 2026-08-20,
+        // superseding the earlier "sub" marker; the reference prints the
+        // amount).
         let mcp = self.session.mcp_summary();
         if mcp.connected > 0 || mcp.needs_attention > 0 {
             let mut label = format!("mcp {}", mcp.connected);
@@ -470,25 +468,17 @@ impl Component for FooterComponent {
                 label
             });
         }
-        if using_subscription {
-            stats_parts.push("sub".to_string());
-        } else if usage_totals.cost != 0.0 {
+        if !using_subscription && usage_totals.cost != 0.0 {
             stats_parts.push(format!("${:.3}", usage_totals.cost));
         }
 
-        // Colorize context percentage based on usage
-        let auto_indicator = if self.auto_compact_enabled {
-            " (auto)"
-        } else {
-            ""
-        };
+        // Colorize context percentage based on usage. The reference appends
+        // an " (auto)" marker when auto-compaction is on; dropped (user
+        // decision 2026-08-20) — it carried no actionable information.
         let context_percent_display = if context_percent == "?" {
-            format!("?/{}{auto_indicator}", format_tokens(context_window))
+            format!("?/{}", format_tokens(context_window))
         } else {
-            format!(
-                "{context_percent}%/{}{auto_indicator}",
-                format_tokens(context_window)
-            )
+            format!("{context_percent}%/{}", format_tokens(context_window))
         };
         let context_percent_str = if context_percent_value > 90.0 {
             theme().fg(ThemeColor::Error, &context_percent_display)

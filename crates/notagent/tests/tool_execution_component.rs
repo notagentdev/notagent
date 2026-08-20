@@ -215,7 +215,7 @@ fn uses_built_in_rendering_for_built_in_overrides_without_custom_renderers() {
     let mut component = ToolExecutionComponent::new(
         "edit",
         "tool-2",
-        json!({ "path": "README.md", "oldText": "before", "newText": "after" }),
+        json!({ "path": "README.md", "old_string": "before", "new_string": "after" }),
         ToolExecutionOptions::default(),
         Some(tool),
         no_render(),

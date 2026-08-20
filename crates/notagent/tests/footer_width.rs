@@ -281,12 +281,13 @@ fn shows_the_latest_cache_hit_rate_when_cache_usage_is_present() {
     let mut footer = themed_footer(session, 1);
 
     let stats_line = strip_ansi(&footer.render(120)[0]);
-    assert!(stats_line.contains("CH25.0%"), "stats: {stats_line}");
+    assert!(stats_line.contains("CHR25.0%"), "stats: {stats_line}");
 }
 
 /// A subscription is paid by the month, so the per-token amount is not money
-/// anyone owes; the footer says the tokens are covered and names no figure
-/// (user decision 2026-08-17, v0.1.15).
+/// anyone owes; the footer shows nothing at all for a subscription — no
+/// amount and no marker (user decision 2026-08-20, superseding the earlier
+/// "sub" marker of 2026-08-17, v0.1.15).
 #[test]
 fn a_subscription_reports_no_price() {
     let _guard = guard();
@@ -299,7 +300,7 @@ fn a_subscription_reports_no_price() {
     let mut footer = themed_footer(session, 1);
 
     let stats = strip_ansi(&footer.render(120)[0]);
-    assert!(stats.contains("sub"), "stats: {stats}");
+    assert!(!stats.contains("sub"), "no marker either: {stats}");
     assert!(!stats.contains('$'), "no amount at all: {stats}");
     assert!(!stats.contains("1.234"), "stats: {stats}");
 }
@@ -316,7 +317,7 @@ fn an_explicitly_identified_subscription_reports_no_price() {
     let mut footer = themed_footer(session, 1);
 
     let stats = strip_ansi(&footer.render(120)[0]);
-    assert!(stats.contains("sub"), "stats: {stats}");
+    assert!(!stats.contains("sub"), "no marker either: {stats}");
     assert!(!stats.contains('$'), "no amount at all: {stats}");
 }
 
@@ -351,7 +352,7 @@ fn cline_pass_reports_no_price() {
     let mut footer = themed_footer(session, 1);
 
     let stats = strip_ansi(&footer.render(120)[0]);
-    assert!(stats.contains("sub"), "stats: {stats}");
+    assert!(!stats.contains("sub"), "no marker either: {stats}");
     assert!(!stats.contains('$'), "no amount at all: {stats}");
 }
 

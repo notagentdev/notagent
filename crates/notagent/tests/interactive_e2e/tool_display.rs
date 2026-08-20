@@ -92,7 +92,7 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
                 "call-1",
                 json!({
                     "path": e2e.path("does-not-exist.txt"),
-                    "edits": [{ "oldText": "before", "newText": "after" }]
+                    "edits": [{ "old_string": "before", "new_string": "after" }]
                 }),
             ),
             reply("The file is missing."),

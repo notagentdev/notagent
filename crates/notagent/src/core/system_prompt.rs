@@ -51,7 +51,7 @@ const DEFAULT_TOOLS: [&str; 7] = [
     "read",
     "read_minified",
     "bash",
-    "edit",
+    "patch",
     "patch_minified",
     "multi_patch_minified",
     "write",

@@ -47,7 +47,7 @@ pub fn extract_file_ops_from_message(message: &AgentMessage, file_ops: &mut File
             "write" => {
                 file_ops.written.insert(path.to_string());
             }
-            "edit" | "patch_minified" | "multi_patch_minified" => {
+            "patch" | "patch_minified" | "multi_patch_minified" => {
                 file_ops.edited.insert(path.to_string());
             }
             _ => {}

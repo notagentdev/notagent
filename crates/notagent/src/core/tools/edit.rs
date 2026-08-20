@@ -39,14 +39,14 @@ pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
         snippet: "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
         guidelines: &[
-            "Use edit for precise changes (edits[].oldText must match exactly)",
-            "When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
-            "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-            "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+            "Use patch for precise changes (edits[].old_string must match exactly)",
+            "When changing multiple separate locations in one file, use one patch call with multiple entries in edits[] instead of multiple patch calls",
+            "Each edits[].old_string is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
+            "Keep edits[].old_string as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
         ],
     };
 
-const DESCRIPTION: &str = "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.";
+const DESCRIPTION: &str = "Edit a single file using exact text replacement. Every edits[].old_string must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.";
 
 fn edit_schema() -> Value {
     json!({
@@ -59,10 +59,10 @@ fn edit_schema() -> Value {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "oldText": { "type": "string", "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call." },
-                        "newText": { "type": "string", "description": "Replacement text for this targeted edit." },
+                        "old_string": { "type": "string", "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].old_string in the same call." },
+                        "new_string": { "type": "string", "description": "Replacement text for this targeted edit." },
                     },
-                    "required": ["oldText", "newText"],
+                    "required": ["old_string", "new_string"],
                 },
             },
         },
@@ -179,15 +179,16 @@ pub fn prepare_edit_arguments(input: Value) -> Value {
         args.insert("edits".to_owned(), parsed);
     }
 
-    let legacy_old = args
-        .get("oldText")
+    // A flat single replacement is folded into edits[].
+    let flat_old = args
+        .get("old_string")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let legacy_new = args
-        .get("newText")
+    let flat_new = args
+        .get("new_string")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let (Some(old_text), Some(new_text)) = (legacy_old, legacy_new) else {
+    let (Some(old_text), Some(new_text)) = (flat_old, flat_new) else {
         return Value::Object(args);
     };
 
@@ -195,9 +196,9 @@ pub fn prepare_edit_arguments(input: Value) -> Value {
         Some(Value::Array(edits)) => edits.clone(),
         _ => Vec::new(),
     };
-    edits.push(json!({ "oldText": old_text, "newText": new_text }));
-    args.remove("oldText");
-    args.remove("newText");
+    edits.push(json!({ "old_string": old_text, "new_string": new_text }));
+    args.remove("old_string");
+    args.remove("new_string");
     args.insert("edits".to_owned(), Value::Array(edits));
     Value::Object(args)
 }
@@ -221,12 +222,12 @@ fn validate_edit_input(input: &Value) -> Result<(String, Vec<Edit>), ToolExecuti
         .iter()
         .map(|edit| Edit {
             old_text: edit
-                .get("oldText")
+                .get("old_string")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_owned(),
             new_text: edit
-                .get("newText")
+                .get("new_string")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_owned(),
@@ -313,8 +314,8 @@ fn get_renderable_preview_input(args: &Value) -> Option<RenderablePreviewInput> 
     if let Some(entries) = args.get("edits").and_then(Value::as_array)
         && !entries.is_empty()
         && entries.iter().all(|edit| {
-            edit.get("oldText").and_then(Value::as_str).is_some()
-                && edit.get("newText").and_then(Value::as_str).is_some()
+            edit.get("old_string").and_then(Value::as_str).is_some()
+                && edit.get("new_string").and_then(Value::as_str).is_some()
         })
     {
         return Some(RenderablePreviewInput {
@@ -322,15 +323,15 @@ fn get_renderable_preview_input(args: &Value) -> Option<RenderablePreviewInput> 
             edits: entries
                 .iter()
                 .map(|edit| Edit {
-                    old_text: edit["oldText"].as_str().unwrap_or_default().to_string(),
-                    new_text: edit["newText"].as_str().unwrap_or_default().to_string(),
+                    old_text: edit["old_string"].as_str().unwrap_or_default().to_string(),
+                    new_text: edit["new_string"].as_str().unwrap_or_default().to_string(),
                 })
                 .collect(),
         });
     }
 
-    let old_text = args.get("oldText").and_then(Value::as_str)?;
-    let new_text = args.get("newText").and_then(Value::as_str)?;
+    let old_text = args.get("old_string").and_then(Value::as_str)?;
+    let new_text = args.get("new_string").and_then(Value::as_str)?;
     Some(RenderablePreviewInput {
         path,
         edits: vec![Edit {
@@ -345,8 +346,8 @@ fn preview_args_key(input: &RenderablePreviewInput) -> String {
     json!({
         "path": input.path,
         "edits": input.edits.iter().map(|edit| json!({
-            "oldText": edit.old_text,
-            "newText": edit.new_text,
+            "old_string": edit.old_text,
+            "new_string": edit.new_text,
         })).collect::<Vec<_>>(),
     })
     .to_string()
@@ -365,7 +366,7 @@ fn format_edit_call(args: &Value, theme: &Theme, cwd: &str) -> String {
     let path_display = render_tool_path(edit_path_arg(args).as_deref(), theme, cwd, None);
     format!(
         "{}{path_display}",
-        crate::core::tools::render_utils::call_title(theme, "edit")
+        crate::core::tools::render_utils::call_title(theme, "patch")
     )
 }
 
@@ -506,11 +507,11 @@ fn format_edit_result(
 
 impl ToolDefinition for EditToolDefinition {
     fn name(&self) -> &str {
-        "edit"
+        "patch"
     }
 
     fn label(&self) -> &str {
-        "edit"
+        "patch"
     }
 
     fn description(&self) -> &str {
@@ -775,7 +776,7 @@ impl ToolDefinition for EditToolDefinition {
                     })?;
                     throw_if_aborted()?;
 
-                    // The model never includes an invisible BOM in oldText.
+                    // The model never includes an invisible BOM in old_string.
                     let (bom, content) = strip_bom(&raw_content);
                     let original_ending = detect_line_ending(content);
                     let normalized_content = normalize_to_lf(content);
@@ -913,7 +914,7 @@ mod tests {
                 "call-1",
                 json!({
                     "path": "edit-test.txt",
-                    "edits": [{ "oldText": "world", "newText": "testing" }],
+                    "edits": [{ "old_string": "world", "new_string": "testing" }],
                 }),
                 None,
                 None,
@@ -950,7 +951,7 @@ mod tests {
                 "call-1",
                 json!({
                     "path": "latin1.txt",
-                    "edits": [{ "oldText": "caf", "newText": "bar" }],
+                    "edits": [{ "old_string": "caf", "new_string": "bar" }],
                 }),
                 None,
                 None,
@@ -977,8 +978,8 @@ mod tests {
                 json!({
                     "path": "multi.txt",
                     "edits": [
-                        { "oldText": "alpha", "newText": "ALPHA" },
-                        { "oldText": "gamma", "newText": "GAMMA" },
+                        { "old_string": "alpha", "new_string": "ALPHA" },
+                        { "old_string": "gamma", "new_string": "GAMMA" },
                     ],
                 }),
                 None,
@@ -1007,7 +1008,7 @@ mod tests {
         let tool = create_edit_tool_definition(&directory.cwd(), None);
         tool.execute(
             "call-1",
-            json!({ "path": "crlf.txt", "edits": [{ "oldText": "two", "newText": "TWO" }] }),
+            json!({ "path": "crlf.txt", "edits": [{ "old_string": "two", "new_string": "TWO" }] }),
             None,
             None,
             None,
@@ -1032,7 +1033,7 @@ mod tests {
             "call-1",
             json!({
                 "path": "fuzzy.txt",
-                "edits": [{ "oldText": "change 'that'", "newText": "changed" }],
+                "edits": [{ "old_string": "change 'that'", "new_string": "changed" }],
             }),
             None,
             None,
@@ -1054,7 +1055,7 @@ mod tests {
         let error = tool
             .execute(
                 "call-1",
-                json!({ "path": "missing.txt", "edits": [{ "oldText": "a", "newText": "b" }] }),
+                json!({ "path": "missing.txt", "edits": [{ "old_string": "a", "new_string": "b" }] }),
                 None,
                 None,
                 None,
@@ -1090,7 +1091,7 @@ mod tests {
         let error = tool
             .execute(
                 "call-1",
-                json!({ "path": "file.txt", "edits": [{ "oldText": "zzz", "newText": "b" }] }),
+                json!({ "path": "file.txt", "edits": [{ "old_string": "zzz", "new_string": "b" }] }),
                 None,
                 None,
                 None,
@@ -1108,29 +1109,30 @@ mod tests {
     #[test]
     fn prepares_legacy_and_stringified_arguments() {
         // A single old/new pair becomes an entry in `edits`.
-        let prepared =
-            prepare_edit_arguments(json!({ "path": "a.txt", "oldText": "one", "newText": "two" }));
+        let prepared = prepare_edit_arguments(
+            json!({ "path": "a.txt", "old_string": "one", "new_string": "two" }),
+        );
         assert_eq!(
             prepared,
-            json!({ "path": "a.txt", "edits": [{ "oldText": "one", "newText": "two" }] })
+            json!({ "path": "a.txt", "edits": [{ "old_string": "one", "new_string": "two" }] })
         );
 
         // A JSON string of edits is parsed.
         let prepared = prepare_edit_arguments(json!({
             "path": "a.txt",
-            "edits": "[{\"oldText\":\"one\",\"newText\":\"two\"}]",
+            "edits": "[{\"old_string\":\"one\",\"new_string\":\"two\"}]",
         }));
-        assert_eq!(prepared["edits"][0]["oldText"], json!("one"));
+        assert_eq!(prepared["edits"][0]["old_string"], json!("one"));
 
-        // Both forms combine, with the legacy pair appended.
+        // Both forms combine, with the flat pair appended.
         let prepared = prepare_edit_arguments(json!({
             "path": "a.txt",
-            "edits": [{ "oldText": "one", "newText": "two" }],
-            "oldText": "three",
-            "newText": "four",
+            "edits": [{ "old_string": "one", "new_string": "two" }],
+            "old_string": "three",
+            "new_string": "four",
         }));
         assert_eq!(prepared["edits"].as_array().expect("edits").len(), 2);
-        assert_eq!(prepared["edits"][1]["newText"], json!("four"));
+        assert_eq!(prepared["edits"][1]["new_string"], json!("four"));
 
         // Anything else is passed through unchanged.
         assert_eq!(prepare_edit_arguments(json!("nonsense")), json!("nonsense"));
@@ -1146,7 +1148,7 @@ mod tests {
         let error = tool
             .execute(
                 "call-1",
-                json!({ "path": "file.txt", "edits": [{ "oldText": "content", "newText": "x" }] }),
+                json!({ "path": "file.txt", "edits": [{ "old_string": "content", "new_string": "x" }] }),
                 Some(signal),
                 None,
                 None,
@@ -1171,7 +1173,7 @@ mod tests {
     fn one_edit() -> Value {
         json!({
             "path": "file.txt",
-            "edits": [{ "oldText": "content", "newText": "changed" }],
+            "edits": [{ "old_string": "content", "new_string": "changed" }],
         })
     }
 
@@ -1263,7 +1265,7 @@ mod tests {
             "call-1",
             json!({
                 "path": "file.txt",
-                "edits": [{ "oldText": "not in the file", "newText": "x" }],
+                "edits": [{ "old_string": "not in the file", "new_string": "x" }],
             }),
             None,
             None,
@@ -1286,7 +1288,7 @@ mod tests {
     #[test]
     fn advertises_its_schema_and_prompt_contribution() {
         let tool = create_edit_tool_definition("/tmp", None);
-        assert_eq!(tool.name(), "edit");
+        assert_eq!(tool.name(), "patch");
         assert!(
             tool.description()
                 .starts_with("Edit a single file using exact text replacement.")
@@ -1299,7 +1301,7 @@ mod tests {
         assert_eq!(tool.parameters()["required"], json!(["path", "edits"]));
         assert_eq!(
             tool.parameters()["properties"]["edits"]["items"]["required"],
-            json!(["oldText", "newText"])
+            json!(["old_string", "new_string"])
         );
     }
 }

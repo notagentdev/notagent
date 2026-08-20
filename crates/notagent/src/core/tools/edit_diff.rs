@@ -296,7 +296,7 @@ fn not_found_error(path: &str, edit_index: usize, total_edits: usize) -> String 
         )
     } else {
         format!(
-            "Could not find edits[{edit_index}] in {path}. The oldText must match exactly including all whitespace and newlines."
+            "Could not find edits[{edit_index}] in {path}. The old_string must match exactly including all whitespace and newlines."
         )
     }
 }
@@ -313,16 +313,16 @@ fn duplicate_error(
         )
     } else {
         format!(
-            "Found {occurrences} occurrences of edits[{edit_index}] in {path}. Each oldText must be unique. Please provide more context to make it unique."
+            "Found {occurrences} occurrences of edits[{edit_index}] in {path}. Each old_string must be unique. Please provide more context to make it unique."
         )
     }
 }
 
 fn empty_old_text_error(path: &str, edit_index: usize, total_edits: usize) -> String {
     if total_edits == 1 {
-        format!("oldText must not be empty in {path}.")
+        format!("old_string must not be empty in {path}.")
     } else {
-        format!("edits[{edit_index}].oldText must not be empty in {path}.")
+        format!("edits[{edit_index}].old_string must not be empty in {path}.")
     }
 }
 
@@ -655,7 +655,7 @@ pub async fn compute_edits_diff(
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
         .map_err(|error| error.to_string())?;
 
-    // The model never includes an invisible BOM in oldText.
+    // The model never includes an invisible BOM in old_string.
     let (_bom, content) = strip_bom(&raw_content);
     let normalized_content = normalize_to_lf(content);
     let applied = apply_edits_to_normalized_content(&normalized_content, edits, path)?;
@@ -757,12 +757,12 @@ mod tests {
     fn rejects_empty_missing_duplicate_and_overlapping_edits() {
         let error = apply_edits_to_normalized_content("a\n", &[edit("", "x")], "file.txt")
             .expect_err("empty");
-        assert_eq!(error, "oldText must not be empty in file.txt.");
+        assert_eq!(error, "old_string must not be empty in file.txt.");
 
         let error =
             apply_edits_to_normalized_content("a\n", &[edit("", "x"), edit("a", "b")], "file.txt")
                 .expect_err("empty");
-        assert_eq!(error, "edits[0].oldText must not be empty in file.txt.");
+        assert_eq!(error, "edits[0].old_string must not be empty in file.txt.");
 
         let error = apply_edits_to_normalized_content("a\n", &[edit("zzz", "x")], "file.txt")
             .expect_err("missing");
@@ -806,7 +806,7 @@ mod tests {
         .expect_err("duplicate");
         assert_eq!(
             error,
-            "Found 2 occurrences of edits[1] in file.txt. Each oldText must be unique. Please provide more context to make it unique."
+            "Found 2 occurrences of edits[1] in file.txt. Each old_string must be unique. Please provide more context to make it unique."
         );
 
         let error = apply_edits_to_normalized_content(
@@ -817,7 +817,7 @@ mod tests {
         .expect_err("missing");
         assert_eq!(
             error,
-            "Could not find edits[1] in file.txt. The oldText must match exactly including all whitespace and newlines."
+            "Could not find edits[1] in file.txt. The old_string must match exactly including all whitespace and newlines."
         );
     }
 

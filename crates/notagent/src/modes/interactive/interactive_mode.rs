@@ -1260,9 +1260,6 @@ impl InteractiveMode {
             Arc::clone(&footer_data)
                 as Arc<dyn crate::modes::interactive::components::footer::FooterData>,
         )));
-        footer
-            .borrow_mut()
-            .set_auto_compact_enabled(session.auto_compaction_enabled());
         let footer_container = Rc::new(RefCell::new(Container::new()));
         footer_container
             .borrow_mut()
@@ -4712,8 +4709,10 @@ impl InteractiveMode {
     /// The half of a settings change that needs the mode.
     async fn apply_settings_effect(&mut self, effect: SettingsEffect) {
         match effect {
-            SettingsEffect::AutoCompact(enabled) => {
-                self.footer.borrow_mut().set_auto_compact_enabled(enabled);
+            SettingsEffect::AutoCompact(_) => {
+                // The footer no longer shows an "(auto)" marker (user
+                // decision 2026-08-20); the setting itself lives on the
+                // session and needs no mode-side effect anymore.
             }
             SettingsEffect::ShowImages(enabled) => {
                 self.for_each_tool_row(|row| row.set_show_images(enabled));
@@ -7663,7 +7662,6 @@ impl InteractiveMode {
             let mut footer = self.footer.borrow_mut();
             footer.set_session(Arc::clone(&self.session())
                 as Arc<dyn crate::modes::interactive::components::footer::FooterSession>);
-            footer.set_auto_compact_enabled(self.session().auto_compaction_enabled());
         }
         self.footer_data.set_cwd(&self.cwd());
         self.hide_thinking_block = settings.get_hide_thinking_block();

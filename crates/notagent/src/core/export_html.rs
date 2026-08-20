@@ -318,7 +318,7 @@ fn generate_html(
 
 /// Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline).
 static TEMPLATE_RENDERED_TOOLS: LazyLock<HashSet<&'static str>> =
-    LazyLock::new(|| HashSet::from(["bash", "read", "write", "edit", "ls"]));
+    LazyLock::new(|| HashSet::from(["bash", "read", "write", "patch", "ls"]));
 
 /// Pre-render custom tools to HTML using their TUI renderers.
 fn pre_render_custom_tools(

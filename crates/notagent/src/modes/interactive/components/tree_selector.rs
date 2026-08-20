@@ -1628,7 +1628,7 @@ fn format_tool_call(name: &str, arguments: &Map<String, Value>) -> String {
             )
         }
         "write" => format!("[write: {}]", argument_path(arguments)),
-        "edit" => format!("[edit: {}]", argument_path(arguments)),
+        "patch" => format!("[patch: {}]", argument_path(arguments)),
         "patch_minified" => format!("[patch minified: {}]", argument_path(arguments)),
         "multi_patch_minified" => {
             let path = argument_path(arguments);

@@ -180,7 +180,7 @@ fn edits_json(edits: &[Edit]) -> serde_json::Value {
     serde_json::Value::Array(
         edits
             .iter()
-            .map(|edit| json!({ "oldText": edit.old_text, "newText": edit.new_text }))
+            .map(|edit| json!({ "old_string": edit.old_text, "new_string": edit.new_text }))
             .collect(),
     )
 }

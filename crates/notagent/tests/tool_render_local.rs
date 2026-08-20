@@ -62,7 +62,7 @@ fn the_edit_preview_reports_a_file_it_cannot_read() {
     let definition = create_tool_definition(ToolName::Edit, "/oracle-cwd", None);
     let args = json!({
         "path": "/oracle-cwd/missing-file.ts",
-        "edits": [{ "oldText": "a", "newText": "b" }],
+        "edits": [{ "old_string": "a", "new_string": "b" }],
     });
     let mut context = ToolRenderContext::new("call-1", args.clone(), "/oracle-cwd");
     context.args_complete = true;

@@ -96,7 +96,10 @@ impl ToolName {
             ToolName::Read => "read",
             ToolName::ReadMinified => "read_minified",
             ToolName::Bash => "bash",
-            ToolName::Edit => "edit",
+            // Renamed from `edit` (user decision 2026-08-20): the name was
+            // ambiguous next to `patch_minified`, and the schema now shares
+            // its `old_string`/`new_string` argument names.
+            ToolName::Edit => "patch",
             ToolName::PatchMinified => "patch_minified",
             ToolName::MultiPatchMinified => "multi_patch_minified",
             ToolName::Skill => "skill",

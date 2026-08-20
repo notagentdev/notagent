@@ -62,7 +62,7 @@ fn description() -> String {
         String::new(),
         "Usage:".to_owned(),
         "- Supported languages: Rust, Python, JavaScript/JSX, TypeScript/TSX, Go, Java, C, C++, Ruby, Bash, CSS, HTML, JSON. Files in other languages (and files that cannot be parsed) are returned unmodified.".to_owned(),
-        "- The compact view is NOT byte-identical to the file on disk: indentation and comments may differ. Never copy text from this view into the old_string of an `edit` call — read the exact region with `read` first.".to_owned(),
+        "- The compact view is NOT byte-identical to the file on disk: indentation and comments may differ. Never copy text from this view into the old_string of a `patch` call — read the exact region with `read` first.".to_owned(),
         "- Output has no line numbers and line positions do not map back to the original file; use `read` or `grep` when you need precise line references.".to_owned(),
         "- Set keep_comments=true to retain comments while still compacting whitespace — useful when doc comments carry information you need.".to_owned(),
         format!(

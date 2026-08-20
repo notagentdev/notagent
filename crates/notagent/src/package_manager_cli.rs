@@ -25,8 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::cli::config_selector::ConfigSelectorOptions;
 use crate::config::{
     APP_NAME, CONFIG_DIR_NAME, InstallEnv, InstallMethod, PACKAGE_NAME, SelfUpdateCommand,
-    USER_CONFIG_DIR_NAME,
-    SelfUpdatePackageTarget, VERSION, detect_install_method, get_agent_dir,
+    SelfUpdatePackageTarget, USER_CONFIG_DIR_NAME, VERSION, detect_install_method, get_agent_dir,
     get_self_update_command, get_self_update_unavailable_instruction,
 };
 use crate::core::model_runtime::{CreateModelRuntimeOptions, ModelRuntime};
