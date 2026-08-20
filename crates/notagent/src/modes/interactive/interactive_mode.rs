@@ -152,6 +152,7 @@ use crate::modes::interactive::components::status_indicator::{
     CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
 };
 use crate::modes::interactive::components::subagent_panel::SubagentPanel;
+use crate::modes::interactive::components::task_lifecycle::TaskAnnouncer;
 use crate::modes::interactive::components::tasks_browser::{
     TasksBrowserComponent, TasksBrowserProps, TasksFilter,
 };
@@ -185,7 +186,7 @@ use crate::modes::interactive::llama_command::{
 };
 use crate::modes::interactive::model_search::{ModelSearchItem, get_model_search_text};
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_available_themes, get_editor_theme,
+    BlockStyle, ThemeBg, ThemeColor, block_style, get_available_themes, get_editor_theme,
     get_markdown_theme, on_theme_change, set_registered_themes, theme,
 };
 use crate::modes::interactive::theme::theme_controller::InteractiveThemeController;
@@ -1107,8 +1108,8 @@ pub struct InteractiveMode {
     /// Subagent lifecycle entries already written to the transcript, keyed by
     /// task id (user decision 2026-08-17, v0.1.8: one "started" and one
     /// "done"/"failed" line per subagent).
-    announced_subagent_starts: std::collections::HashSet<String>,
-    announced_subagent_ends: std::collections::HashSet<String>,
+    /// What the transcript has already said about background work.
+    task_announcer: TaskAnnouncer,
     /// Every expandable child of the transcript (`app.tools.expand`).
     chat_expandables: Vec<Rc<RefCell<dyn Expandable>>>,
     last_escape_time: Option<Instant>,
@@ -1364,8 +1365,7 @@ impl InteractiveMode {
             chat_tool_rows: Vec::new(),
             explore_block: None,
             chat_explore_blocks: Vec::new(),
-            announced_subagent_starts: std::collections::HashSet::new(),
-            announced_subagent_ends: std::collections::HashSet::new(),
+            task_announcer: TaskAnnouncer::new(),
             chat_expandables: Vec::new(),
             last_escape_time: None,
             bash_component: None,
@@ -3191,12 +3191,17 @@ impl InteractiveMode {
     /// `setInterval`.
     fn refresh_tasks_panel(&mut self) {
         let manager = self.session().task_manager();
+        // Settled work is included, which is what lets the lifecycle lines
+        // report an outcome at all: `list(true, …)` drops a task the moment it
+        // ends, so the announcement never saw one finish. The panels filter it
+        // back out themselves — they show what is running, the transcript
+        // reports what happened.
         let all_tasks = manager
             .as_ref()
-            .map(|manager| manager.list(true, None))
+            .map(|manager| manager.list(false, None))
             .unwrap_or_default();
         self.refresh_subagent_panel(&all_tasks);
-        self.announce_subagent_transitions(&all_tasks);
+        self.announce_task_transitions(&all_tasks);
 
         self.has_foreground_tasks.set(
             all_tasks
@@ -3230,97 +3235,20 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// Transcript entries for the subagent lifecycle (user decision
-    /// 2026-08-17, v0.1.8): one line when a subagent starts, one when it
-    /// ends. Marker colours follow the tasks panel — grey while running,
-    /// green on clean completion, red for everything that ended badly.
-    /// Driven by the same one-second tick that feeds the panel, so a
-    /// subagent of any origin (foreground, background, resumed) shows up.
-    fn announce_subagent_transitions(&mut self, tasks: &[TaskInfo]) {
-        use crate::core::tasks::types::is_terminal_task_status;
-        use crate::modes::interactive::components::subagent_panel::format_elapsed;
-        use crate::modes::interactive::components::tasks_panel::single_line;
-
-        // The badge style writes the lifecycle as badge lines (the
-        // reference's `DelegationLine`): the mode on the state fill, the
-        // detail dimmed beside it. Entries are written once and keep the
-        // style they were written in.
+    /// Appends the transcript lines the current snapshot is due (user decision
+    /// 2026-08-17, v0.1.8). Which lines those are lives in
+    /// `components/task_lifecycle.rs`; this only puts them on screen.
+    fn announce_task_transitions(&mut self, tasks: &[TaskInfo]) {
         let badge_style = block_style() == BlockStyle::Badge;
-        for task in tasks {
-            let TaskInfo::Subagent(info) = task else {
-                continue;
-            };
-            let base = &info.base;
-            let theme_instance = theme();
-            if self.announced_subagent_starts.insert(base.task_id.clone()) {
-                let line = if badge_style {
-                    format!(
-                        " {}  {} {}",
-                        badge(
-                            &theme_instance,
-                            ThemeBg::ToolPendingBg,
-                            &format!("subagent {}", info.alias)
-                        ),
-                        theme_instance.fg(ThemeColor::Text, "started"),
-                        theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
-                    )
-                } else {
-                    format!(
-                        " {} {} {}  {}",
-                        theme_instance.fg(ThemeColor::Dim, "○"),
-                        theme_instance.fg(ThemeColor::Text, "subagent started"),
-                        theme_instance.fg(ThemeColor::Text, &info.alias),
-                        theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
-                    )
-                };
-                self.append_subagent_entry(line);
-            }
-            if is_terminal_task_status(base.status)
-                && self.announced_subagent_ends.insert(base.task_id.clone())
-            {
-                let clean = base.status == crate::core::tasks::types::TaskStatus::Completed;
-                let ended_at = base
-                    .ended_at
-                    .unwrap_or_else(crate::modes::interactive::components::tasks_panel::now_ms);
-                let line = if badge_style {
-                    format!(
-                        " {}  {} {}",
-                        badge(
-                            &theme_instance,
-                            if clean {
-                                ThemeBg::ToolSuccessBg
-                            } else {
-                                ThemeBg::ToolErrorBg
-                            },
-                            &format!("subagent {}", info.alias)
-                        ),
-                        theme_instance.fg(ThemeColor::Text, if clean { "done" } else { "failed" }),
-                        theme_instance
-                            .fg(ThemeColor::Dim, &format_elapsed(base.started_at, ended_at)),
-                    )
-                } else {
-                    let (marker_colour, label) = if clean {
-                        (ThemeColor::Success, "subagent done")
-                    } else {
-                        (ThemeColor::Error, "subagent failed")
-                    };
-                    format!(
-                        " {} {} {}  {}",
-                        theme_instance.fg(marker_colour, "○"),
-                        theme_instance.fg(ThemeColor::Text, label),
-                        theme_instance.fg(ThemeColor::Text, &info.alias),
-                        theme_instance
-                            .fg(ThemeColor::Dim, &format_elapsed(base.started_at, ended_at)),
-                    )
-                };
-                self.append_subagent_entry(line);
-            }
+        let lines = self.task_announcer.observe(tasks, &theme(), badge_style);
+        for line in lines {
+            self.append_task_entry(line);
         }
     }
 
     /// Appends one lifecycle line to the transcript. It is a non-search
     /// addition, so it also ends an open search block.
-    fn append_subagent_entry(&mut self, line: String) {
+    fn append_task_entry(&mut self, line: String) {
         self.close_explore_block();
         let mut chat = self.chat_container.borrow_mut();
         if !chat.children.is_empty() {

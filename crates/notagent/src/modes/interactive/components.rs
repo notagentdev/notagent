@@ -39,6 +39,7 @@ pub mod show_images_selector;
 pub mod skill_invocation_message;
 pub mod status_indicator;
 pub mod subagent_panel;
+pub mod task_lifecycle;
 pub mod tasks_browser;
 pub mod tasks_panel;
 pub mod text_input_dialog;
