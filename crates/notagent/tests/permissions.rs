@@ -387,6 +387,7 @@ fn omits_slots_that_have_no_policy_rather_than_shifting_the_rest() {
             "user-configured-allow",
             "sensitive-file-access-ask",
             "git-control-path-access-ask",
+            "undo-approve",
             "auto-mode-approve",
             "default-tool-approve",
             "git-cwd-write-approve",
@@ -1636,4 +1637,53 @@ async fn a_childs_call_is_judged_by_the_live_session_level_and_names_the_child()
         1,
         "the child was still asked after the session moved to auto"
     );
+}
+
+// ---------------------------------------------------------------------------
+// taking a change back
+// ---------------------------------------------------------------------------
+
+/// Undo produces a state the workspace already had, on a path this agent
+/// already changed. A prompt here would ask about the remedy rather than the
+/// damage — and the damage was confirmed when it was done.
+#[test]
+fn approves_undo_without_asking_even_under_manual() {
+    let context = ctx(
+        "undo",
+        ApprovalLevel::Manual,
+        json!({ "path": "/repo/src/main.rs" }),
+        "/repo",
+    );
+    let evaluation = evaluate_policies(&build_policy_chain(&[]), &context).expect("decided");
+    assert_eq!(evaluation.policy_name, "undo-approve");
+    assert_eq!(evaluation.decision, PermissionDecision::Approve);
+}
+
+/// The two guards that sit ahead of it still see the call. A snapshot of a
+/// secret is still a secret.
+#[test]
+fn still_asks_before_restoring_a_credentials_file() {
+    let context = ctx(
+        "undo",
+        ApprovalLevel::Manual,
+        json!({ "path": "/repo/.env" }),
+        "/repo",
+    );
+    let evaluation = evaluate_policies(&build_policy_chain(&[]), &context).expect("decided");
+    assert_eq!(evaluation.policy_name, "sensitive-file-access-ask");
+}
+
+/// Undoing is not a licence for everything else the tool set can do.
+#[test]
+fn approves_nothing_else_through_that_slot() {
+    for tool in ["write", "patch", "bash"] {
+        let context = ctx(
+            tool,
+            ApprovalLevel::Manual,
+            json!({ "path": "/elsewhere/notes.txt" }),
+            "/repo",
+        );
+        let evaluation = evaluate_policies(&build_policy_chain(&[]), &context).expect("decided");
+        assert_ne!(evaluation.policy_name, "undo-approve", "{tool}");
+    }
 }

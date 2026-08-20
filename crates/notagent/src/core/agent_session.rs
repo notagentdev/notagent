@@ -78,6 +78,7 @@ use crate::core::session_manager::{
 };
 use crate::core::settings_manager::SettingsManager;
 use crate::core::skills::Skill;
+use crate::core::snapshots::snapshot_store;
 use crate::core::source_info::{
     SourceInfo, SyntheticSourceInfoOptions, create_synthetic_source_info,
 };
@@ -1755,20 +1756,26 @@ impl AgentSession {
                             ..BashToolOptions::default()
                         }),
                         find_codebase: Some(find_codebase.clone()),
+                        // A child's changes are snapshotted like the parent's,
+                        // so the parent can take back what a subagent did.
                         write: Some(WriteToolOptions {
                             leases: Some(Arc::clone(&leases)),
+                            snapshots: Some(snapshot_store()),
                             ..WriteToolOptions::default()
                         }),
                         edit: Some(EditToolOptions {
                             leases: Some(Arc::clone(&leases)),
+                            snapshots: Some(snapshot_store()),
                             ..EditToolOptions::default()
                         }),
                         patch_minified: Some(PatchMinifiedToolOptions {
                             leases: Some(Arc::clone(&leases)),
+                            snapshots: Some(snapshot_store()),
                             ..PatchMinifiedToolOptions::default()
                         }),
                         multi_patch_minified: Some(PatchMinifiedToolOptions {
                             leases: Some(Arc::clone(&leases)),
+                            snapshots: Some(snapshot_store()),
                             ..PatchMinifiedToolOptions::default()
                         }),
                         ..ToolsOptions::default()
@@ -1822,19 +1829,27 @@ impl AgentSession {
             find_codebase: Some(self.find_codebase_options()),
             write: Some(WriteToolOptions {
                 leases: Some(self.lease_gate()),
+                snapshots: Some(snapshot_store()),
                 ..WriteToolOptions::default()
             }),
             edit: Some(EditToolOptions {
                 leases: Some(self.lease_gate()),
+                snapshots: Some(snapshot_store()),
                 ..EditToolOptions::default()
             }),
             patch_minified: Some(PatchMinifiedToolOptions {
                 leases: Some(self.lease_gate()),
+                snapshots: Some(snapshot_store()),
                 ..PatchMinifiedToolOptions::default()
             }),
             multi_patch_minified: Some(PatchMinifiedToolOptions {
                 leases: Some(self.lease_gate()),
+                snapshots: Some(snapshot_store()),
                 ..PatchMinifiedToolOptions::default()
+            }),
+            undo: Some(crate::core::tools::undo::UndoToolOptions {
+                leases: Some(self.lease_gate()),
+                snapshots: Some(snapshot_store()),
             }),
             ..ToolsOptions::default()
         }

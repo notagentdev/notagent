@@ -1,6 +1,7 @@
 //! Port of `packages/coding-agent/src/core/tools/edit.ts` (tool half).
 
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
@@ -17,6 +18,7 @@ use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
+use crate::core::snapshots::{SnapshotStore, capture_before_mutation};
 use crate::core::tools::edit_diff::{
     DiffString, Edit, apply_edits_to_normalized_content, compute_edits_diff, detect_line_ending,
     generate_diff_string, generate_unified_patch, normalize_to_lf, restore_line_endings, strip_bom,
@@ -137,10 +139,14 @@ pub struct EditToolOptions {
     pub operations: Option<Arc<dyn EditOperations>>,
     /// Whether atomic file leases are enabled; absent means disabled.
     pub leases: Option<LeaseGate>,
+    /// Where a copy of the file goes before it is patched, so `undo` can put it
+    /// back. Absent means no snapshot is taken.
+    pub snapshots: Option<SnapshotStore>,
 }
 
 pub struct EditToolDefinition {
     cwd: String,
+    snapshots: Option<SnapshotStore>,
     operations: Arc<dyn EditOperations>,
     leases: LeaseCoordinator,
     parameters: Value,
@@ -161,6 +167,7 @@ pub fn create_edit_tool_definition(
             .operations
             .unwrap_or_else(|| Arc::new(LocalEditOperations)),
         leases: LeaseCoordinator::new(cwd, options.leases),
+        snapshots: options.snapshots,
         parameters: edit_schema(),
         constrained_sampling: get_experimental_tool_sampling(),
     }
@@ -789,6 +796,13 @@ impl ToolDefinition for EditToolDefinition {
                         "{bom}{}",
                         restore_line_endings(&applied.new_content, original_ending)
                     );
+
+                    // Always: this tool only ever patches a file that is
+                    // already there, so there is always an earlier state.
+                    capture_before_mutation(self.snapshots.as_ref(), Path::new(&absolute_path))
+                        .await
+                        .map_err(ToolExecutionError::new)?;
+                    throw_if_aborted()?;
 
                     // The pre-commit check runs immediately before the write: the
                     // lease must still be ours and the file must still hold the

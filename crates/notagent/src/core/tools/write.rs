@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
+use crate::core::snapshots::{SnapshotStore, capture_before_mutation};
 use crate::core::tools::file_lease::{LeaseCoordinator, LeaseGate};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
@@ -89,12 +90,16 @@ pub struct WriteToolOptions {
     pub operations: Option<Arc<dyn WriteOperations>>,
     /// Whether atomic file leases are enabled; absent means disabled.
     pub leases: Option<LeaseGate>,
+    /// Where a copy of the file goes before it is overwritten, so `undo` can
+    /// put it back. Absent means no snapshot is taken.
+    pub snapshots: Option<SnapshotStore>,
 }
 
 pub struct WriteToolDefinition {
     cwd: String,
     operations: Arc<dyn WriteOperations>,
     leases: LeaseCoordinator,
+    snapshots: Option<SnapshotStore>,
     parameters: Value,
     constrained_sampling: Option<ConstrainedSampling>,
 }
@@ -113,6 +118,7 @@ pub fn create_write_tool_definition(
             .operations
             .unwrap_or_else(|| Arc::new(LocalWriteOperations)),
         leases: LeaseCoordinator::new(cwd, options.leases),
+        snapshots: options.snapshots,
         parameters: write_schema(),
         constrained_sampling: get_experimental_tool_sampling(),
     }
@@ -542,6 +548,15 @@ impl ToolDefinition for WriteToolDefinition {
                     throw_if_aborted()?;
                     self.operations
                         .mkdir(&directory)
+                        .await
+                        .map_err(ToolExecutionError::new)?;
+                    throw_if_aborted()?;
+
+                    // Only an existing file leaves a snapshot. Creating one has
+                    // no earlier state to return to, and a snapshot of nothing
+                    // would make `undo` truncate the file instead of removing
+                    // it — the reference draws the same line (`fs_write.rs:138`).
+                    capture_before_mutation(self.snapshots.as_ref(), Path::new(&absolute_path))
                         .await
                         .map_err(ToolExecutionError::new)?;
                     throw_if_aborted()?;

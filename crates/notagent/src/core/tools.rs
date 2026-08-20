@@ -26,6 +26,7 @@ pub mod task_tools;
 pub mod todo_write;
 pub mod tool_definition;
 pub mod truncate;
+pub mod undo;
 pub mod write;
 
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,9 @@ pub enum ToolName {
     /// Port addition (v0.1.24): writes a plan into `plans/`. Read-only shells
     /// get it too — see `core/tools/plan_create.rs` for why that is not a hole.
     PlanCreate,
+    /// Takes back the last change to one file, from the snapshot every mutating
+    /// tool leaves behind. See `core/tools/undo.rs`.
+    Undo,
     Grep,
     // Renamed from `find` and joined by `find_codebase` (user decision
     // 2026-08-16, v0.1.7): the shared `find_` prefix keeps the two search
@@ -67,7 +71,7 @@ pub enum ToolName {
 }
 
 /// Every tool name, in the order `allToolNames` inserts them.
-pub const ALL_TOOL_NAMES: [ToolName; 20] = [
+pub const ALL_TOOL_NAMES: [ToolName; 21] = [
     ToolName::Read,
     ToolName::ReadMinified,
     ToolName::Bash,
@@ -84,6 +88,7 @@ pub const ALL_TOOL_NAMES: [ToolName; 20] = [
     ToolName::UpdateGoal,
     ToolName::Write,
     ToolName::PlanCreate,
+    ToolName::Undo,
     ToolName::Grep,
     ToolName::FindFilesystem,
     ToolName::FindCodebase,
@@ -112,6 +117,7 @@ impl ToolName {
             ToolName::UpdateGoal => "update_goal",
             ToolName::Write => "write",
             ToolName::PlanCreate => "plan_create",
+            ToolName::Undo => "undo",
             ToolName::Grep => "grep",
             ToolName::FindFilesystem => "find_filesystem",
             ToolName::FindCodebase => "find_codebase",
@@ -180,6 +186,7 @@ use crate::core::tools::todo_write::{
     TodoWriteToolSources, create_todo_write_tool, create_todo_write_tool_definition,
 };
 use crate::core::tools::tool_definition::ToolDefinition;
+use crate::core::tools::undo::{UndoToolOptions, create_undo_tool, create_undo_tool_definition};
 use crate::core::tools::write::{
     WriteToolOptions, create_write_tool, create_write_tool_definition,
 };
@@ -210,6 +217,7 @@ pub struct ToolsOptions {
     pub bash: Option<BashToolOptions>,
     pub write: Option<WriteToolOptions>,
     pub plan_create: Option<PlanCreateToolOptions>,
+    pub undo: Option<UndoToolOptions>,
     pub edit: Option<EditToolOptions>,
     pub grep: Option<GrepToolOptions>,
     pub find: Option<FindToolOptions>,
@@ -279,6 +287,10 @@ pub fn create_tool_definition(
             cwd,
             options.and_then(|options| options.plan_create.clone()),
         )),
+        ToolName::Undo => Arc::new(create_undo_tool_definition(
+            cwd,
+            options.and_then(|options| options.undo.clone()),
+        )),
         ToolName::Grep => Arc::new(create_grep_tool_definition(
             cwd,
             options.and_then(|options| options.grep.clone()),
@@ -339,6 +351,7 @@ pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions
         ToolName::PlanCreate => {
             create_plan_create_tool(cwd, options.and_then(|options| options.plan_create.clone()))
         }
+        ToolName::Undo => create_undo_tool(cwd, options.and_then(|options| options.undo.clone())),
         ToolName::Grep => create_grep_tool(cwd, options.and_then(|options| options.grep.clone())),
         ToolName::FindFilesystem => {
             create_find_tool(cwd, options.and_then(|options| options.find.clone()))

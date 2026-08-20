@@ -48,6 +48,7 @@ pub mod settings_manager;
 pub mod share;
 pub mod skills;
 pub mod slash_commands;
+pub mod snapshots;
 pub mod source_info;
 pub mod system_prompt;
 pub mod tasks;

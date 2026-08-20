@@ -10,6 +10,7 @@
 //! is written until all edits succeed.
 
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::mini_read::apply_minified_edit;
+use crate::core::snapshots::{SnapshotStore, capture_before_mutation};
 use crate::core::tools::edit_diff::{generate_diff_string, generate_unified_patch, strip_bom};
 use crate::core::tools::file_lease::{LeaseCoordinator, LeaseGate};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
@@ -176,6 +178,9 @@ pub struct PatchMinifiedToolOptions {
     pub operations: Option<Arc<dyn PatchMinifiedOperations>>,
     /// Whether atomic file leases are enabled; absent means disabled.
     pub leases: Option<LeaseGate>,
+    /// Where a copy of the file goes before it is patched, so `undo` can put it
+    /// back. Absent means no snapshot is taken.
+    pub snapshots: Option<SnapshotStore>,
 }
 
 /// How long a minified patch expects to hold its lease (the reference's
@@ -262,6 +267,7 @@ async fn run_edits(
     let cwd = tool.cwd.as_str();
     let operations = tool.operations.as_ref();
     let leases = &tool.leases;
+    let snapshots = tool.snapshots.clone();
     let tool_name = tool.name();
 
     if edits.is_empty() {
@@ -331,6 +337,13 @@ async fn run_edits(
                 warnings.extend(edit_warnings);
                 throw_if_aborted()?;
             }
+
+            // Always: a patch only ever applies to a file that is already
+            // there, so there is always an earlier state to return to.
+            capture_before_mutation(snapshots.as_ref(), Path::new(&absolute_path))
+                .await
+                .map_err(ToolExecutionError::new)?;
+            throw_if_aborted()?;
 
             // The pre-commit check runs immediately before the write: the lease
             // must still be ours and the file must still hold the content the edits
@@ -421,6 +434,7 @@ pub struct PatchMinifiedToolDefinition {
     cwd: String,
     operations: Arc<dyn PatchMinifiedOperations>,
     leases: LeaseCoordinator,
+    snapshots: Option<SnapshotStore>,
     multi: bool,
     description: String,
     parameters: Value,
@@ -438,6 +452,7 @@ pub fn create_patch_minified_tool_definition(
             .operations
             .unwrap_or_else(|| Arc::new(LocalPatchMinifiedOperations)),
         leases: LeaseCoordinator::new(cwd, options.leases),
+        snapshots: options.snapshots,
         multi: false,
         description: description(&[
             "Performs exact string replacements in the minified view of a file — the precise editing counterpart of `read_minified`.",
@@ -462,6 +477,7 @@ pub fn create_multi_patch_minified_tool_definition(
             .operations
             .unwrap_or_else(|| Arc::new(LocalPatchMinifiedOperations)),
         leases: LeaseCoordinator::new(cwd, options.leases),
+        snapshots: options.snapshots,
         multi: true,
         description: description(&[
             "Performs multiple sequential precise edits on a single file in the minified view — the multi-edit counterpart of `patch_minified`. Prefer this over several `patch_minified` calls on the same file.",

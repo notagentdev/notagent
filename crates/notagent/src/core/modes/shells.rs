@@ -133,6 +133,9 @@ const READ_ONLY_TOOLS: &[ToolName] = &[
 /// Tools a worker shell adds on top of the read-only set.
 const WORKER_ADDITIONAL_TOOLS: &[ToolName] = &[
     ToolName::Bash,
+    // Takes back what the four tools below it did. It writes, so it belongs
+    // here and in `MUTATING_TOOLS` — a read-only session has nothing to undo.
+    ToolName::Undo,
     ToolName::Edit,
     ToolName::Write,
     ToolName::PatchMinified,

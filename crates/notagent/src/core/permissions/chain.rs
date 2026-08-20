@@ -37,7 +37,7 @@ use super::user_rules::user_rule_policies;
 use crate::core::modes::shells::ApprovalLevel;
 
 /// Every slot in the chain, in evaluation order.
-pub const POLICY_ORDER: [&str; 13] = [
+pub const POLICY_ORDER: [&str; 14] = [
     "auto-mode-ask-user-deny",
     "user-configured-deny",
     "destructive-command-ask",
@@ -47,6 +47,10 @@ pub const POLICY_ORDER: [&str; 13] = [
     "user-configured-allow",
     "sensitive-file-access-ask",
     "git-control-path-access-ask",
+    // After the two guards above and before the mode slots: taking a change
+    // back needs no permission, but a secret is still a secret, and the guards
+    // that stop at one have to see the call first.
+    "undo-approve",
     "auto-mode-approve",
     "default-tool-approve",
     "git-cwd-write-approve",

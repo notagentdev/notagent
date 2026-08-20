@@ -143,6 +143,25 @@ pub fn git_control_path_access_ask() -> Arc<dyn PermissionPolicy> {
     ))
 }
 
+/// Taking a change back never needs confirmation.
+///
+/// The only state undo can produce is one the workspace already had, on a path
+/// this agent already changed — so a prompt here asks about the remedy rather
+/// than about the damage, and the damage was already confirmed when it was
+/// done. The reference draws the same line, listing undo among the tools that
+/// skip permission checks entirely (`catalog.rs:1500`).
+///
+/// It sits *after* the sensitive-file and git-directory guards in the chain, so
+/// the two cases where even a restore deserves a question still reach one.
+pub fn undo_approve() -> Arc<dyn PermissionPolicy> {
+    Arc::new(FnPolicy::new(
+        "undo-approve",
+        |context: &PermissionContext| {
+            (context.tool_name == "undo").then_some(PermissionDecision::Approve)
+        },
+    ))
+}
+
 /// Reading never needs confirmation.
 pub fn default_tool_approve() -> Arc<dyn PermissionPolicy> {
     Arc::new(FnPolicy::new(
@@ -266,6 +285,7 @@ pub fn self_contained_policies() -> Vec<(&'static str, Arc<dyn PermissionPolicy>
         ("destructive-command-ask", destructive_command_ask()),
         ("sensitive-file-access-ask", sensitive_file_access_ask()),
         ("git-control-path-access-ask", git_control_path_access_ask()),
+        ("undo-approve", undo_approve()),
         ("default-tool-approve", default_tool_approve()),
         ("git-cwd-write-approve", git_cwd_write_approve()),
         ("fallback-ask", fallback_ask()),
