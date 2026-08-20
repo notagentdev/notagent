@@ -29,6 +29,8 @@ use notagent::core::permissions::request::{
     build_approval_request, describe_target, format_request_explanation, format_request_summary,
 };
 use notagent::core::permissions::user_rules::create_session_approval_history;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use serde_json::{Map, Value, json};
 use tokio::sync::oneshot;
 
@@ -41,6 +43,7 @@ fn ctx(tool_name: &str, approval: ApprovalLevel, arguments: Value, cwd: &str) ->
         tool_name: tool_name.to_string(),
         input: input(arguments),
         mode_id: Some("manual".to_string()),
+        requester: None,
         shell: Some(ShellId::Worker),
         approval,
         cwd: cwd.to_string(),
@@ -68,6 +71,7 @@ fn request(target: &str) -> ApprovalRequest {
         policy_name: "fallback-ask".to_string(),
         reason: None,
         mode_id: Some("manual".to_string()),
+        requester: None,
     }
 }
 
@@ -677,6 +681,7 @@ async fn asks_again_even_after_the_user_allowed_it_for_the_session() {
                 policy_name: "p".to_string(),
                 reason: None,
                 mode_id: Some("auto".to_string()),
+                requester: None,
             },
             "bash:rm -rf build",
             None,
@@ -700,6 +705,7 @@ async fn still_remembers_an_ordinary_command() {
                 policy_name: "p".to_string(),
                 reason: None,
                 mode_id: Some("auto".to_string()),
+                requester: None,
             },
             "bash:npm test",
             None,
@@ -1441,4 +1447,193 @@ fn remembers_only_the_session_wide_answer() {
     assert!(answer_persists(ApprovalAnswer::ApproveAlways));
     assert!(!answer_persists(ApprovalAnswer::ApproveOnce));
     assert!(!answer_persists(ApprovalAnswer::Deny));
+}
+
+// ---------------------------------------------------------------------------
+// several children asking at once
+// ---------------------------------------------------------------------------
+
+fn child_request(alias: &str, tool: &str, target: &str) -> ApprovalRequest {
+    ApprovalRequest {
+        tool_name: tool.to_string(),
+        target: Some(target.to_string()),
+        policy_name: "p".to_string(),
+        reason: None,
+        mode_id: Some("manual".to_string()),
+        requester: Some(notagent::core::permissions::requester::Requester {
+            alias: alias.to_string(),
+            agent: "worker".to_string(),
+        }),
+    }
+}
+
+/// The prompt has to say which child raised it. Without this the user answering
+/// one of three identical dialogs is guessing.
+#[tokio::test]
+async fn carries_the_asking_child_through_to_the_presenter() {
+    let seen: Arc<std::sync::Mutex<Vec<Option<String>>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = Arc::clone(&seen);
+    let presenter: ApprovalPresenter = Arc::new(move |request: ApprovalRequest| {
+        sink.lock()
+            .expect("seen")
+            .push(request.requester.map(|requester| requester.alias));
+        Box::pin(async { ApprovalAnswer::ApproveOnce }) as BoxFuture<'static, ApprovalAnswer>
+    });
+    let coordinator = ApprovalCoordinator::new(presenter);
+
+    coordinator
+        .request(child_request("Vega", "write", "a.ts"), "write:a.ts", None)
+        .await;
+    coordinator
+        .request(
+            child_request("Wolf 359", "write", "b.ts"),
+            "write:b.ts",
+            None,
+        )
+        .await;
+
+    assert_eq!(
+        seen.lock().expect("seen").as_slice(),
+        [Some("Vega".to_string()), Some("Wolf 359".to_string())]
+    );
+}
+
+/// A session-wide answer is keyed on the call, not on who made it, so it covers
+/// the siblings too. That is deliberate: the user answered a question about a
+/// command, and asking the same question once per child would make delegating a
+/// worse experience than doing the work directly.
+#[tokio::test]
+async fn a_session_answer_from_one_child_covers_its_siblings() {
+    let asked = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&asked);
+    let presenter: ApprovalPresenter = Arc::new(move |_request| {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { ApprovalAnswer::ApproveAlways }) as BoxFuture<'static, ApprovalAnswer>
+    });
+    let coordinator = ApprovalCoordinator::new(presenter);
+
+    let first = coordinator
+        .request(
+            child_request("Vega", "bash", "cargo test"),
+            "bash:cargo test",
+            None,
+        )
+        .await;
+    let second = coordinator
+        .request(
+            child_request("Rigel", "bash", "cargo test"),
+            "bash:cargo test",
+            None,
+        )
+        .await;
+
+    assert!(answer_allows(first) && answer_allows(second));
+    assert_eq!(
+        asked.load(Ordering::SeqCst),
+        1,
+        "the sibling was asked again"
+    );
+}
+
+/// A detached child outlives the turn that started it, and so must its prompt.
+/// The coordinator settles a request when *its own* signal is cancelled, so a
+/// child holding its own controller keeps waiting after the parent's turn ends.
+#[tokio::test]
+async fn a_background_childs_request_survives_the_parents_turn() {
+    let presenter: ApprovalPresenter = Arc::new(move |_request| {
+        Box::pin(async { ApprovalAnswer::ApproveOnce }) as BoxFuture<'static, ApprovalAnswer>
+    });
+    let coordinator = ApprovalCoordinator::new(presenter);
+
+    let parent_turn = tokio_util::sync::CancellationToken::new();
+    let child_controller = tokio_util::sync::CancellationToken::new();
+    parent_turn.cancel();
+
+    let answer = coordinator
+        .request(
+            child_request("Wolf 359", "write", "a.ts"),
+            "write:a.ts",
+            Some(&child_controller),
+        )
+        .await;
+    assert!(
+        answer_allows(answer),
+        "the child was denied because its parent's turn had ended"
+    );
+
+    // Its own controller still settles it, which is what `task_stop` reaches.
+    child_controller.cancel();
+    let after_stop = coordinator
+        .request(
+            child_request("Wolf 359", "write", "b.ts"),
+            "write:b.ts",
+            Some(&child_controller),
+        )
+        .await;
+    assert!(!answer_allows(after_stop));
+}
+
+/// The whole point of routing a child's calls through the parent's chain: the
+/// approval level is the session's, read at the moment of the call. A child
+/// declares none and cannot escalate, and a `manual` parent that flips to `auto`
+/// mid-run changes what its running children are asked about too.
+#[tokio::test]
+async fn a_childs_call_is_judged_by_the_live_session_level_and_names_the_child() {
+    use notagent::core::permissions::gate::{PermissionGate, PermissionGateOptions};
+    use notagent::core::permissions::hook::PermissionSessionState;
+    use notagent::core::permissions::requester::{Requester, with_requester};
+
+    let level = Arc::new(std::sync::Mutex::new(ApprovalLevel::Manual));
+    let state_level = Arc::clone(&level);
+    let asked: Arc<std::sync::Mutex<Vec<Option<String>>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = Arc::clone(&asked);
+
+    let gate = PermissionGate::new(PermissionGateOptions {
+        state: Arc::new(move || PermissionSessionState {
+            mode_id: Some("manual".to_string()),
+            shell: Some(ShellId::Worker),
+            approval: *state_level.lock().expect("level"),
+            cwd: "/repo".to_string(),
+        }),
+        present: Arc::new(move |request: ApprovalRequest| {
+            sink.lock()
+                .expect("asked")
+                .push(request.requester.map(|requester| requester.alias));
+            Box::pin(async { ApprovalAnswer::ApproveOnce }) as BoxFuture<'static, ApprovalAnswer>
+        }),
+        policies: Vec::new(),
+        decide: None,
+    });
+
+    // Outside the working directory, so the chain reaches its trailing ask
+    // instead of approving the write as an ordinary one.
+    let call = input(json!({ "file_path": "/elsewhere/notes.txt" }));
+    let requester = Requester {
+        alias: "Wolf 359".to_string(),
+        agent: "worker".to_string(),
+    };
+
+    // Manual: the child is asked, and the prompt knows which child it is.
+    with_requester(requester.clone(), async {
+        gate.before_tool_call("write", &call, None).await
+    })
+    .await;
+    assert_eq!(
+        asked.lock().expect("asked").as_slice(),
+        [Some("Wolf 359".to_string())]
+    );
+
+    // The user switches the session to auto while the child is still running.
+    *level.lock().expect("level") = ApprovalLevel::Auto;
+    with_requester(requester, async {
+        gate.before_tool_call("write", &call, None).await
+    })
+    .await;
+    assert_eq!(
+        asked.lock().expect("asked").len(),
+        1,
+        "the child was still asked after the session moved to auto"
+    );
 }

@@ -484,6 +484,7 @@ fn approval_request() -> ApprovalRequest {
         policy_name: "fallback-ask".to_string(),
         reason: Some("No rule covers this call.".to_string()),
         mode_id: Some("manual".to_string()),
+        requester: None,
     }
 }
 

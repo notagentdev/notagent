@@ -213,7 +213,7 @@ fn uses_built_in_rendering_for_built_in_overrides_without_custom_renderers() {
 
     let tool: ToolDef = std::sync::Arc::new(StubTool::new("edit"));
     let mut component = ToolExecutionComponent::new(
-        "edit",
+        "patch",
         "tool-2",
         json!({ "path": "README.md", "old_string": "before", "new_string": "after" }),
         ToolExecutionOptions::default(),
@@ -231,7 +231,7 @@ fn uses_built_in_rendering_for_built_in_overrides_without_custom_renderers() {
     );
 
     let rendered = strip_ansi(&component.render(120).join("\n"));
-    assert!(rendered.contains("edit"), "{rendered}");
+    assert!(rendered.contains("patch"), "{rendered}");
     assert!(rendered.contains("README.md"), "{rendered}");
     assert!(!rendered.contains(":1"), "{rendered}");
 }

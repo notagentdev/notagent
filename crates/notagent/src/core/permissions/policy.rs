@@ -41,6 +41,11 @@ pub struct PermissionContext {
     pub approval: ApprovalLevel,
     /// Absolute working directory of the session.
     pub cwd: String,
+    /// The delegated child behind this call, when there is one. Reporting only — a child is governed by exactly the rules its
+    /// parent is, so no policy decides on this. It exists so the prompt can say
+    /// who is asking, which with several children running is the first thing
+    /// the user needs to know.
+    pub requester: Option<crate::core::permissions::requester::Requester>,
     /// What the user's PreToolUse hooks decided about this call, run once before
     /// the chain. Precomputed rather than run from inside a policy because a
     /// policy decides synchronously and a hook is a child process — and because

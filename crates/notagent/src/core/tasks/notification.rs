@@ -99,8 +99,8 @@ fn continuation_hint(info: &TaskInfo) -> Option<String> {
     Some(
         [
             format!(
-                "To continue this subagent instead of starting over, delegate again with session_id \"{}\" and mode \"{}\".",
-                subagent.session_id, subagent.mode_id
+                "To continue this subagent instead of starting over, delegate again with session_id \"{}\" and agent \"{}\".",
+                subagent.session_id, subagent.agent
             ),
             format!(
                 "That is the subagent's own id, not the task id \"{}\" — only the former is accepted.",
@@ -366,7 +366,10 @@ pub fn active_task_reminder(active: &[TaskInfo]) -> Option<String> {
         let detail = match info {
             TaskInfo::Shell(shell) => shell.command.clone(),
             TaskInfo::Subagent(subagent) => {
-                format!("mode {}, session {}", subagent.mode_id, subagent.session_id)
+                format!(
+                    "{} ({}), session {}",
+                    subagent.alias, subagent.agent, subagent.session_id
+                )
             }
         };
         lines.push(format!(

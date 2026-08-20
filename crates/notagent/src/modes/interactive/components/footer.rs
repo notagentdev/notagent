@@ -185,6 +185,9 @@ pub trait FooterSession: Send + Sync {
     /// How many MCP servers are connected, and how many want attention
     /// (port addition, v0.1.22).
     fn mcp_summary(&self) -> McpSummary;
+    /// Star names of the subagents running right now, oldest first. Empty when
+    /// nothing is delegated.
+    fn running_subagents(&self) -> Vec<String>;
 }
 
 /// The MCP servers reduced to what the footer shows.
@@ -249,6 +252,24 @@ impl FooterSession for AgentSession {
             }
         }
         summary
+    }
+
+    fn running_subagents(&self) -> Vec<String> {
+        let Some(manager) = AgentSession::task_manager(self) else {
+            return Vec::new();
+        };
+        let mut running: Vec<&crate::core::tasks::types::SubagentTaskInfo> = Vec::new();
+        let tasks = manager.list(true, None);
+        for task in &tasks {
+            if let crate::core::tasks::types::TaskInfo::Subagent(subagent) = task
+                && subagent.base.status == crate::core::tasks::types::TaskStatus::Running
+            {
+                running.push(subagent);
+            }
+        }
+        // Oldest first, so a name keeps its position while others come and go.
+        running.sort_by_key(|info| info.base.started_at);
+        running.into_iter().map(|info| info.alias.clone()).collect()
     }
 
     fn is_using_subscription(&self, provider: &str) -> bool {
@@ -467,6 +488,22 @@ impl Component for FooterComponent {
             } else {
                 label
             });
+        }
+        // Running children: names while they fit, otherwise the count. With
+        // several delegated at once the user needs to
+        // know which ones are out there, and the footer is the only surface
+        // that is always visible. A quarter of the row is the budget — the
+        // context figure and the model name to its right must not be squeezed
+        // by however many subagents happen to be running.
+        let subagents = self.session.running_subagents();
+        if !subagents.is_empty() {
+            let names = subagents.join(", ");
+            let label = if visible_width(&names) <= width / 4 {
+                format!("agents {names}")
+            } else {
+                format!("agents {}", subagents.len())
+            };
+            stats_parts.push(theme().fg(ThemeColor::Success, &label));
         }
         if !using_subscription && usage_totals.cost != 0.0 {
             stats_parts.push(format!("${:.3}", usage_totals.cost));

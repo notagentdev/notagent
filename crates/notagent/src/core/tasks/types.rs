@@ -178,8 +178,12 @@ pub struct SubagentTaskInfo {
     /// The subagent's own identifier, which is what continues it. Deliberately
     /// distinct from `taskId`: the two look alike and only this one is accepted.
     pub session_id: String,
-    /// The mode the subagent runs in — our agent type.
-    pub mode_id: String,
+    /// The type the subagent runs as: `read-only` or `worker`.
+    pub agent: String,
+    /// The star name every surface shows it under — the approval dialog, the
+    /// tasks panel, the `/tasks` browser and the footer. A uuid identifies a
+    /// child; only this tells the user *which* child.
+    pub alias: String,
 }
 
 /// Deviation (class 1): serde writes the `kind` discriminant as the first key of

@@ -95,7 +95,8 @@ fn subagent(task_id: &str, status: TaskStatus) -> TaskInfo {
         },
         tokens: 17_900,
         session_id: "session-1".to_string(),
-        mode_id: "plan".to_string(),
+        agent: "read-only".to_string(),
+        alias: "Vega".to_string(),
     })
 }
 
@@ -414,7 +415,7 @@ fn shows_a_shell_tasks_command_and_exit_code() {
 }
 
 #[test]
-fn shows_a_subagents_session_and_mode_which_is_what_continues_it() {
+fn shows_a_subagents_name_type_and_session_which_is_what_continues_it() {
     let _guard = theme_lock();
     let mut browser = TasksBrowserComponent::new(
         props(
@@ -425,7 +426,9 @@ fn shows_a_subagents_session_and_mode_which_is_what_continues_it() {
     );
     let text = strip_ansi(&browser.render(100).join("\n"));
     assert!(text.contains("session-1"), "{text}");
-    assert!(text.contains("plan"), "{text}");
+    assert!(text.contains("read-only"), "{text}");
+    // The star name, which is how the user recognises the row.
+    assert!(text.contains("Vega"), "{text}");
 }
 
 #[test]

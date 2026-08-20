@@ -1,0 +1,85 @@
+Wolf 359
+Rigel
+Altair
+Deneb
+Vega
+Antares
+Regulus
+Aldebaran
+Arcturus
+Canopus
+Capella
+Procyon
+Sirius
+Spica
+Achernar
+Bellatrix
+Betelgeuse
+Fomalhaut
+Denebola
+Algol
+Pollux
+Castor
+Mizar
+Alcor
+Izar
+Alnitak
+Alnilam
+Mintaka
+Saiph
+Rana
+Sol
+Barnard
+Lalande
+Ross 128
+Kruger 60
+Luyten
+Groombridge
+61 Cygni
+Tau Ceti
+Epsilon Eridani
+40 Eridani
+Omicron Ceti
+Sigma Draconis
+Alpha Centauri
+Proxima
+Beta Lyrae
+Gamma Hydrae
+Delta Vega
+Epsilon Indi
+Beta Aurigae
+Gamma Trianguli
+Alpha Ceti
+Omega Ceti
+Zeta Reticuli
+Eta Cassiopeiae
+Iota Persei
+Kappa Ceti
+Lambda Serpentis
+Mu Arae
+Nu Phoenicis
+Xi Bootis
+Pi Mensae
+Rho Coronae
+Upsilon Andromedae
+Phi Persei
+Chi Draconis
+Psi Serpentis
+Omega Leonis
+Zeta Herculis
+Eta Bootis
+Theta Persei
+Iota Horologii
+Kappa Fornacis
+Lambda Aurigae
+Mu Cassiopeiae
+Nu Indi
+Xi Ursae
+Pi Canis
+Rho Eridani
+Sigma Bootis
+Tau Bootis
+Upsilon Persei
+Phi Draconis
+Chi Herculis
+Psi Capricorni

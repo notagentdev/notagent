@@ -55,6 +55,10 @@ pub struct ApprovalRequest {
     pub reason: Option<String>,
     /// Active mode, so the prompt is legible in context.
     pub mode_id: Option<String>,
+    /// The delegated child that made the call, when it was not the main agent.
+    /// Without it a prompt raised by one of three running subagents is
+    /// indistinguishable from the other two.
+    pub requester: Option<super::requester::Requester>,
 }
 
 const PATH_ARGUMENTS: [&str; 2] = ["path", "file_path"];
@@ -110,6 +114,7 @@ pub fn build_approval_request(
         policy_name: evaluation.policy_name.clone(),
         reason: reason.clone(),
         mode_id: context.mode_id.clone(),
+        requester: context.requester.clone(),
     })
 }
 

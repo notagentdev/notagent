@@ -2,20 +2,27 @@
 //!
 //! The `task` tool: delegates work to subagents.
 //!
-//! A subagent here is the same unified agent in a different mode. There is no
-//! separate roster of agent types to define and keep in step — the modes the
-//! user already writes are the agent types, so a mode folder authored for the
-//! main agent is a delegation target on the day it is written.
+//! A subagent here is the same unified agent under one of two types —
+//! `read-only` or `worker` — specialised by the skills it is told to load. It
+//! used to target a *mode* instead, and that was the wrong axis: `auto`, `manual` and `yolo` are worker shells that differ
+//! only in how often the *user* is asked, which is nothing a child can act on.
+//! Offering them as three roles gave the model a choice with no content.
 //!
 //! A delegated run is a background task like any other. That is not a detail of
 //! the implementation: it is what lets a subagent be moved out of the turn that
 //! started it, appear in the same list as a running command, be stopped the same
 //! way, and announce its own result.
 //!
-//! Three things are enforced rather than asked for. A child's tools come from
-//! its mode's shell, so guidance it ignores still cannot make it write. A child
-//! may not exceed its parent's shell. And a child has neither the delegation
-//! tool nor the tools that observe background work.
+//! Four things are enforced rather than asked for. A child's tools come from its
+//! type's shell, so guidance it ignores still cannot make it write. A read-only
+//! parent may only reach a read-only child. A child has neither the delegation
+//! tool nor the tools that observe background work. And a child's approval level
+//! is the parent's, read live at every call rather than declared — so delegating
+//! can never move work out from under the rules the user set.
+//!
+//! Every child also carries a star name (`core/delegation/aliases.rs`). A uuid
+//! is the right handle for continuing a child and the wrong one for showing it:
+//! with three running, the user needs to know which of them is asking.
 //!
 //! `renderCall`/`renderResult` need the theme and are wired in task 13.
 
@@ -33,10 +40,10 @@ use serde_json::{Value, json};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
+use crate::core::delegation::agent_type::{SUBAGENT_TYPES, SubagentType, may_delegate_to};
+use crate::core::delegation::aliases::AliasRegistry;
 use crate::core::delegation::limits::{MAX_DELEGATIONS_PER_CALL, check_delegation_request};
-use crate::core::delegation::run::{
-    DelegationOptions, DelegationRun, child_tool_names, run_delegation,
-};
+use crate::core::delegation::run::{ChildSkill, DelegationOptions, DelegationRun, run_delegation};
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::modes::Mode;
 use crate::core::modes::shells::ShellId;
@@ -51,11 +58,30 @@ use crate::core::tools::tool_definition::{
 };
 use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
+/// A skill this session can hand to a child, as the tool reads it.
+///
+/// Carries the description because that is what the delegating model now
+/// chooses on: with two types and a skill catalogue, the skill is the part that
+/// says what the child will be good at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DelegatableSkill {
+    pub name: String,
+    pub description: String,
+    pub file_path: String,
+}
+
 /// What the tool needs from the session it runs in.
 #[derive(Clone)]
 pub struct TaskToolSources {
     pub modes: Arc<dyn Fn() -> Vec<Mode> + Send + Sync>,
-    /// The mode the parent is in; a child may not exceed its shell.
+    /// Skills a child may be told to load.
+    pub skills: Option<Arc<dyn Fn() -> Vec<DelegatableSkill> + Send + Sync>>,
+    /// Hands out and takes back the star names children are shown under. Shared
+    /// with the session rather than owned here: a mode switch rebuilds the tool,
+    /// and a child that outlived the rebuild must keep its name.
+    pub aliases: Option<AliasRegistry>,
+    /// The shell the parent is in; a read-only parent may only delegate
+    /// read-only work.
     pub parent_shell: Arc<dyn Fn() -> Option<ShellId> + Send + Sync>,
     /// The parent's own mode, which may narrow what it can delegate to.
     pub parent_mode: Option<Arc<dyn Fn() -> Option<Mode> + Send + Sync>>,
@@ -89,6 +115,8 @@ impl Default for TaskToolSources {
     fn default() -> Self {
         TaskToolSources {
             modes: Arc::new(Vec::new),
+            skills: None,
+            aliases: None,
             parent_shell: Arc::new(|| None),
             parent_mode: None,
             parent: Arc::new(|| None),
@@ -115,58 +143,79 @@ pub struct TaskTranscriptStore {
 
 #[derive(Clone)]
 struct KeptTranscript {
-    mode_id: String,
+    agent: SubagentType,
+    /// The name the user already saw. A continued child keeps it, or a name
+    /// that meant one conversation an hour ago would mean another one now.
+    alias: String,
     messages: Vec<AgentMessage>,
 }
 
-/// A read-only parent may only delegate read-only work.
-fn exceeds_parent(parent: Option<ShellId>, child: ShellId) -> bool {
-    parent == Some(ShellId::ReadOnly) && child != ShellId::ReadOnly
-}
-
-/// The modes this session may delegate to: its own allowlist, or all of them.
-fn delegatable_modes(modes: Vec<Mode>, parent: Option<&Mode>) -> Vec<Mode> {
-    let Some(allowed) = parent.and_then(|mode| mode.subagents.clone()) else {
-        return modes;
-    };
-    modes
+/// The types this session may delegate to.
+///
+/// Two filters, and they answer different questions. The shell is the hard one:
+/// a read-only session must not reach a worker, or delegation would be a way out
+/// of the gate. The parent mode's `subagents` list is the soft one — every
+/// candidate is permitted and the author wanted only some of them offered.
+///
+/// The `subagents` frontmatter field names agent types. A list naming none of
+/// them leaves nothing to delegate to, which is reported as such rather than
+/// silently ignored.
+fn delegatable_types(
+    parent_shell: Option<ShellId>,
+    parent_mode: Option<&Mode>,
+) -> Vec<SubagentType> {
+    let allowed = parent_mode.and_then(|mode| mode.subagents.clone());
+    SUBAGENT_TYPES
         .into_iter()
-        .filter(|mode| allowed.contains(&mode.id))
+        .filter(|agent| may_delegate_to(parent_shell, *agent))
+        .filter(|agent| match &allowed {
+            Some(allowed) => allowed.iter().any(|name| name == agent.as_str()),
+            None => true,
+        })
         .collect()
 }
 
-fn describe_modes(modes: &[Mode]) -> String {
-    if modes.is_empty() {
-        return "No modes are available to delegate to.".to_owned();
+fn describe_agent_types(types: &[SubagentType]) -> String {
+    if types.is_empty() {
+        return "No subagent types are available to delegate to.".to_owned();
     }
-    modes
+    types
         .iter()
-        .map(|mode| {
-            let tools = child_tool_names(mode)
-                .iter()
-                .map(|name| name.as_str())
-                .collect::<Vec<&str>>()
-                .join(", ");
-            format!(
-                "- {} ({}): {}",
-                mode.id,
-                mode.shell,
-                if tools.is_empty() {
-                    "no tools".to_owned()
-                } else {
-                    tools
-                }
-            )
-        })
+        .map(|agent| format!("- {}: {}", agent, agent.purpose()))
         .collect::<Vec<String>>()
         .join("\n")
 }
 
-fn render_background_result(task_id: &str, session_id: &str, mode_id: &str, task: &str) -> String {
+/// The skill catalogue, as the delegating model reads it.
+///
+/// Only names and descriptions. A path would invite the model to reason about
+/// where the skill lives, which is the child's business and not the caller's.
+fn describe_skills(skills: &[DelegatableSkill]) -> String {
+    if skills.is_empty() {
+        return String::new();
+    }
+    skills
+        .iter()
+        .map(|skill| format!("- {}: {}", skill.name, skill.description))
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
+fn render_background_result(
+    task_id: &str,
+    session_id: &str,
+    alias: &str,
+    agent: SubagentType,
+    task: &str,
+) -> String {
     [
         format!("task_id: {task_id}"),
         format!("session_id: {session_id}"),
-        format!("mode: {mode_id}"),
+        // The name the user sees. Reported so the model can refer to the child
+        // the way the user's screen does — "Vega is still going" rather than a
+        // uuid the user has no way to match up.
+        format!("name: {alias}"),
+        format!("agent: {agent}"),
         "status: running".to_owned(),
         format!("task: {task}"),
         "next_step: its answer arrives on its own in a later turn — do not wait for it or poll task_output; carry on with other work.".to_owned(),
@@ -186,6 +235,8 @@ pub struct TaskToolDefinition {
     schema_with_background: Value,
     schema_without_background: Value,
     constrained_sampling: Option<ConstrainedSampling>,
+    /// Used when the session supplied no registry, so a child always has a name.
+    fallback_aliases: AliasRegistry,
 }
 
 fn base_properties() -> serde_json::Map<String, Value> {
@@ -201,10 +252,19 @@ fn base_properties() -> serde_json::Map<String, Value> {
         }),
     );
     properties.insert(
-        "mode".to_owned(),
+        "agent".to_owned(),
         json!({
             "type": "string",
-            "description": "Mode the subagents run in. Its shell decides what they may do.",
+            "enum": SUBAGENT_TYPES.map(SubagentType::as_str),
+            "description": "What the subagents may do. Pick read-only unless the task has to change something.",
+        }),
+    );
+    properties.insert(
+        "skills".to_owned(),
+        json!({
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Skills every subagent in this call loads before it starts, named exactly as the list below spells them. Leave it out when no skill matches — an unrelated skill is worse than none.",
         }),
     );
     properties.insert(
@@ -231,7 +291,7 @@ fn task_schema(with_background: bool) -> Value {
     json!({
         "type": "object",
         "properties": Value::Object(properties),
-        "required": ["tasks", "mode"],
+        "required": ["tasks", "agent"],
     })
 }
 
@@ -242,6 +302,7 @@ pub fn create_task_tool_definition(sources: Option<TaskToolSources>) -> TaskTool
         schema_with_background: task_schema(true),
         schema_without_background: task_schema(false),
         constrained_sampling: get_experimental_tool_sampling(),
+        fallback_aliases: AliasRegistry::new(),
     }
 }
 
@@ -265,13 +326,32 @@ impl TaskToolDefinition {
             && self.manager().is_some()
     }
 
-    fn modes(&self) -> Vec<Mode> {
+    fn agent_types(&self) -> Vec<SubagentType> {
         let parent_mode = self
             .sources
             .parent_mode
             .as_ref()
             .and_then(|parent_mode| parent_mode());
-        delegatable_modes((self.sources.modes)(), parent_mode.as_ref())
+        delegatable_types((self.sources.parent_shell)(), parent_mode.as_ref())
+    }
+
+    fn skills(&self) -> Vec<DelegatableSkill> {
+        self.sources
+            .skills
+            .as_ref()
+            .map(|skills| skills())
+            .unwrap_or_default()
+    }
+
+    /// The registry children draw their names from. A session that supplied
+    /// none gets a private one rather than no names at all — an unnamed child
+    /// would leave every surface showing a blank where the user expects an
+    /// identity.
+    fn aliases(&self) -> AliasRegistry {
+        match &self.sources.aliases {
+            Some(aliases) => aliases.clone(),
+            None => self.fallback_aliases.clone(),
+        }
     }
 
     fn cwd(&self) -> String {
@@ -283,6 +363,62 @@ impl TaskToolDefinition {
         }
     }
 
+    /// Reads the skills a call asked for, off this session's catalogue.
+    ///
+    /// An unknown name is refused rather than skipped. A child that silently
+    /// started without the skill it was supposed to follow would produce work
+    /// that looks right and was done under the wrong guidance — the one failure
+    /// mode where a loud error is cheaper than a quiet one.
+    ///
+    /// A skill whose file cannot be read is the same case, so it is reported
+    /// with the path rather than handed over as an empty body.
+    fn resolve_skills(&self, params: &Value) -> Result<Vec<ChildSkill>, ToolExecutionError> {
+        let Some(requested) = params.get("skills").and_then(Value::as_array) else {
+            return Ok(Vec::new());
+        };
+        let catalogue = self.skills();
+        let mut resolved = Vec::new();
+        for entry in requested {
+            let Some(name) = entry
+                .as_str()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+            else {
+                continue;
+            };
+            let Some(skill) = catalogue
+                .iter()
+                .find(|skill| skill.name.eq_ignore_ascii_case(name))
+            else {
+                let known = catalogue
+                    .iter()
+                    .map(|skill| skill.name.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", ");
+                return Err(ToolExecutionError::new(format!(
+                    "Unknown skill \"{name}\". Available: {}",
+                    if known.is_empty() {
+                        "(none loaded)".to_owned()
+                    } else {
+                        known
+                    }
+                )));
+            };
+            let body = std::fs::read_to_string(&skill.file_path).map_err(|error| {
+                ToolExecutionError::new(format!(
+                    "Cannot read skill \"{}\" at {}: {error}",
+                    skill.name, skill.file_path
+                ))
+            })?;
+            resolved.push(ChildSkill {
+                name: skill.name.clone(),
+                path: skill.file_path.clone(),
+                body,
+            });
+        }
+        Ok(resolved)
+    }
+
     fn build_description(&self) -> String {
         let mut lines = vec![
             "Delegates independent work to subagents and returns what each one found.".to_owned(),
@@ -291,13 +427,31 @@ impl TaskToolDefinition {
             String::new(),
             "Use this for work that is genuinely separable and would otherwise crowd this conversation: sweeping many files for one answer, or several independent investigations at once. Do not use it to read a known file, to search for a known symbol, or for anything you can finish in a step or two — going direct is faster and cheaper.".to_owned(),
             String::new(),
-            "Available modes, with the tools a subagent gets in each:".to_owned(),
-            describe_modes(&self.modes()),
+            "Subagent types:".to_owned(),
+            describe_agent_types(&self.agent_types()),
+        ];
+
+        // The skill is what makes a child good at something, so a model that
+        // cannot see the catalogue has only half the choice. An empty catalogue
+        // says nothing rather than saying "none": there is no decision to
+        // report when there was never an option.
+        let skills = self.skills();
+        if !skills.is_empty() {
+            lines.push(String::new());
+            lines.push("Skills a subagent can be told to load, named in `skills`:".to_owned());
+            lines.push(describe_skills(&skills));
+        }
+
+        lines.extend([
+            String::new(),
+            "Every subagent is shown to the user under a star name. Its answer reports the name, so refer to it that way when you tell the user what is running.".to_owned(),
+            String::new(),
+            "A subagent's tool calls are approved exactly as yours are: delegating does not skip a confirmation the user would otherwise be asked for, and does not add one they would not.".to_owned(),
             String::new(),
             "Tasks in one call run in parallel. Asking for the same task twice in one call is refused.".to_owned(),
             String::new(),
             "A subagent cannot delegate further, and cannot start background work of its own.".to_owned(),
-        ];
+        ]);
         if self.background_allowed() {
             lines.push(String::new());
             lines.push("With `run_in_background` the subagent is detached from this turn and its answer arrives on its own later. Default to leaving it off — a foreground subagent hands the answer straight back, which is what you want whenever your next step depends on it. Never detach one and then immediately wait for it.".to_owned());
@@ -310,6 +464,8 @@ impl TaskToolDefinition {
 struct Launched {
     task: String,
     session_id: String,
+    /// The star name it is shown under.
+    alias: String,
     task_id: Option<String>,
     run: oneshot::Receiver<DelegationRun>,
 }
@@ -454,38 +610,37 @@ impl ToolDefinition for TaskToolDefinition {
         _context: Option<ToolContext>,
     ) -> BoxFuture<'a, Result<AgentToolResult, ToolExecutionError>> {
         Box::pin(async move {
-            let modes = self.modes();
-            let requested_mode = params
-                .get("mode")
+            let available = self.agent_types();
+            let requested_agent = params
+                .get("agent")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_owned();
-            let Some(mode) = modes.iter().find(|mode| mode.id == requested_mode).cloned() else {
-                let known = modes
+            let Some(agent) =
+                SubagentType::parse(&requested_agent).filter(|agent| available.contains(agent))
+            else {
+                let known = available
                     .iter()
-                    .map(|mode| mode.id.clone())
-                    .collect::<Vec<String>>()
+                    .map(|agent| agent.as_str())
+                    .collect::<Vec<&str>>()
                     .join(", ");
-                // A mode excluded by the parent's allowlist reads as unknown
-                // here on purpose: from the model's side it is not a target, and
-                // naming the exclusion would invite an argument about it.
+                // A type this session cannot reach reads as unknown here on
+                // purpose: from the model's side it is not a target, and naming
+                // the exclusion would invite an argument about it.
                 return Err(ToolExecutionError::new(format!(
-                    "Unknown mode \"{requested_mode}\". Available: {}",
+                    "Unknown subagent type \"{requested_agent}\". Available: {}",
                     if known.is_empty() {
-                        "(none loaded)".to_owned()
+                        "(none)".to_owned()
                     } else {
                         known
                     }
                 )));
             };
 
-            let parent_shell = (self.sources.parent_shell)();
-            if exceeds_parent(parent_shell, mode.shell) {
-                return Err(ToolExecutionError::new(format!(
-                    "Mode \"{}\" uses the {} shell, which exceeds the read-only shell this session runs in. A read-only session cannot delegate work that changes the workspace.",
-                    mode.id, mode.shell
-                )));
-            }
+            let skills = match self.resolve_skills(&params) {
+                Ok(skills) => skills,
+                Err(error) => return Err(error),
+            };
 
             let Some(parent) = (self.sources.parent)() else {
                 return Err(ToolExecutionError::new(
@@ -544,10 +699,10 @@ impl ToolDefinition for TaskToolDefinition {
                         "Unknown subagent session \"{session_id}\". Start a new subagent instead."
                     )));
                 };
-                if kept.mode_id != mode.id {
+                if kept.agent != agent {
                     return Err(ToolExecutionError::new(format!(
-                        "Subagent \"{session_id}\" runs in mode \"{}\"; continue it in that mode or start a new one.",
-                        kept.mode_id
+                        "Subagent \"{session_id}\" runs as a {} agent; continue it as that type or start a new one.",
+                        kept.agent
                     )));
                 }
                 resumed = Some(kept);
@@ -555,10 +710,11 @@ impl ToolDefinition for TaskToolDefinition {
 
             // A refusal is something the model must read and adapt to, so it
             // arrives as a tool error carrying the reason.
-            check_delegation_request(&mode.id, &tasks)
+            check_delegation_request(agent.as_str(), &tasks)
                 .map_err(|error| ToolExecutionError::new(error.message()))?;
 
             let manager = self.manager();
+            let aliases = self.aliases();
             let cwd = self.cwd();
             let tool_options = self
                 .sources
@@ -568,6 +724,9 @@ impl ToolDefinition for TaskToolDefinition {
             let mut launched: Vec<Launched> = Vec::new();
             for task in &tasks {
                 let session_id = requested_session_id.clone().unwrap_or_else(uuidv7);
+                // A continued child keeps the name the user already saw. A new
+                // one draws a free star.
+                let alias = aliases.reserve(resumed.as_ref().map(|resumed| resumed.alias.as_str()));
                 // The child answers to its own controller, so the manager can
                 // stop it without the turn's signal reaching in — which is what
                 // makes a detached subagent outlive the turn that asked for it.
@@ -578,7 +737,9 @@ impl ToolDefinition for TaskToolDefinition {
                 let (task_sender, task_receiver) = oneshot::channel::<SubagentRunResult>();
                 let delegation = DelegationOptions {
                     parent: Arc::clone(&parent),
-                    mode: mode.clone(),
+                    agent,
+                    skills: skills.clone(),
+                    alias: alias.clone(),
                     cwd: cwd.clone(),
                     task: task.clone(),
                     history: resumed.as_ref().map(|resumed| resumed.messages.clone()),
@@ -598,8 +759,14 @@ impl ToolDefinition for TaskToolDefinition {
                 };
                 // Real parallelism: every child is its own tokio task, and the
                 // tool only holds the two ends of its result.
+                let releasing = aliases.clone();
+                let released = alias.clone();
                 tokio::spawn(async move {
                     let result = run_delegation(delegation).await;
+                    // Returned however the run ended, including a failure: a
+                    // name held by a child that is gone would shrink the pool
+                    // every time something went wrong.
+                    releasing.release(&released);
                     let _ = task_sender.send(SubagentRunResult {
                         text: result.text.clone(),
                         failed: result.failed,
@@ -618,7 +785,8 @@ impl ToolDefinition for TaskToolDefinition {
                                     tokens.load(std::sync::atomic::Ordering::SeqCst)
                                 })),
                                 session_id: session_id.clone(),
-                                mode_id: mode.id.clone(),
+                                agent: agent.as_str().to_owned(),
+                                alias: alias.clone(),
                                 run: task_receiver,
                                 cancel: Arc::new(move || cancel_controller.cancel()),
                             }));
@@ -638,6 +806,7 @@ impl ToolDefinition for TaskToolDefinition {
                 launched.push(Launched {
                     task: task.clone(),
                     session_id,
+                    alias,
                     task_id,
                     run: run_receiver,
                 });
@@ -649,17 +818,19 @@ impl ToolDefinition for TaskToolDefinition {
                 for entry in launched {
                     // The transcript is still recorded, so a later call can
                     // continue a backgrounded subagent by its session id.
-                    self.keep_later(entry.run, mode.id.clone());
+                    self.keep_later(entry.run, agent, entry.alias.clone());
                     text_blocks.push(render_background_result(
                         entry.task_id.as_deref().unwrap_or(""),
                         &entry.session_id,
-                        &mode.id,
+                        &entry.alias,
+                        agent,
                         &entry.task,
                     ));
                     results.push(json!({
                         "sessionId": entry.session_id,
                         "failed": false,
                         "taskId": entry.task_id,
+                        "name": entry.alias,
                         "background": true,
                     }));
                 }
@@ -667,7 +838,7 @@ impl ToolDefinition for TaskToolDefinition {
                     content: vec![TextOrImageContent::Text(TextContent::new(
                         text_blocks.join("\n\n"),
                     ))],
-                    details: Some(json!({ "mode": mode.id, "results": results })),
+                    details: Some(json!({ "agent": agent.as_str(), "results": results })),
                     usage: None,
                     added_tool_names: None,
                     terminate: None,
@@ -678,7 +849,6 @@ impl ToolDefinition for TaskToolDefinition {
             // the background from under us, which the user can do at any moment.
             let settled = futures::future::join_all(launched.into_iter().map(|entry| {
                 let manager = manager.clone();
-                let mode_id = mode.id.clone();
                 async move {
                     if let (Some(manager), Some(task_id)) = (&manager, &entry.task_id) {
                         let release = manager.wait_for_foreground_release(task_id).await;
@@ -689,9 +859,10 @@ impl ToolDefinition for TaskToolDefinition {
                             return SettledEntry {
                                 detached_as: entry.task_id.clone(),
                                 session_id: entry.session_id,
+                                alias: entry.alias.clone(),
                                 task: entry.task,
                                 run: None,
-                                pending: Some((entry.run, mode_id)),
+                                pending: Some((entry.run, entry.alias)),
                             };
                         }
                     }
@@ -699,6 +870,7 @@ impl ToolDefinition for TaskToolDefinition {
                     SettledEntry {
                         detached_as: None,
                         session_id: entry.session_id,
+                        alias: entry.alias,
                         task: entry.task,
                         run,
                         pending: None,
@@ -711,24 +883,25 @@ impl ToolDefinition for TaskToolDefinition {
             let mut text_blocks = Vec::new();
             let count = settled.len();
             for (index, entry) in settled.into_iter().enumerate() {
-                if let Some((run, mode_id)) = entry.pending {
-                    self.keep_later(run, mode_id);
+                if let Some((run, alias)) = entry.pending {
+                    self.keep_later(run, agent, alias);
                 }
                 match &entry.run {
                     Some(run) => {
-                        self.keep(&run.session_id, &mode.id, run.transcript.clone());
+                        self.keep(&run.session_id, agent, &entry.alias, run.transcript.clone());
                         let label = if count > 1 {
                             format!("Task {}", index + 1)
                         } else {
                             "Result".to_owned()
                         };
                         text_blocks.push(format!(
-                            "<subagent mode=\"{}\" session=\"{}\" task=\"{label}\">\n{}\n</subagent>",
-                            mode.id, run.session_id, run.text
+                            "<subagent name=\"{}\" agent=\"{}\" session=\"{}\" task=\"{label}\">\n{}\n</subagent>",
+                            entry.alias, agent, run.session_id, run.text
                         ));
                         results.push(json!({
                             "sessionId": entry.session_id,
                             "failed": run.failed,
+                            "name": entry.alias,
                             "background": false,
                         }));
                     }
@@ -736,7 +909,8 @@ impl ToolDefinition for TaskToolDefinition {
                         text_blocks.push(render_background_result(
                             entry.detached_as.as_deref().unwrap_or(""),
                             &entry.session_id,
-                            &mode.id,
+                            &entry.alias,
+                            agent,
                             &entry.task,
                         ));
                         results.push(json!({
@@ -753,7 +927,7 @@ impl ToolDefinition for TaskToolDefinition {
                 content: vec![TextOrImageContent::Text(TextContent::new(
                     text_blocks.join("\n\n"),
                 ))],
-                details: Some(json!({ "mode": mode.id, "results": results })),
+                details: Some(json!({ "agent": agent.as_str(), "results": results })),
                 usage: None,
                 added_tool_names: None,
                 terminate: None,
@@ -765,6 +939,7 @@ impl ToolDefinition for TaskToolDefinition {
 struct SettledEntry {
     detached_as: Option<String>,
     session_id: String,
+    alias: String,
     task: String,
     run: Option<DelegationRun>,
     /// A child that outlived the call still records its transcript when it ends.
@@ -772,16 +947,23 @@ struct SettledEntry {
 }
 
 impl TaskToolDefinition {
-    fn keep(&self, session_id: &str, mode_id: &str, messages: Vec<AgentMessage>) {
+    fn keep(
+        &self,
+        session_id: &str,
+        agent: SubagentType,
+        alias: &str,
+        messages: Vec<AgentMessage>,
+    ) {
         self.sources
             .transcripts
             .shared
             .lock()
-            .expect("poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(
                 session_id.to_owned(),
                 KeptTranscript {
-                    mode_id: mode_id.to_owned(),
+                    agent,
+                    alias: alias.to_owned(),
                     messages,
                 },
             );
@@ -789,17 +971,25 @@ impl TaskToolDefinition {
 
     /// `void run.then((result) => kept.set(…))` — the record is written when the
     /// detached child finally answers.
-    fn keep_later(&self, run: oneshot::Receiver<DelegationRun>, mode_id: String) {
+    fn keep_later(
+        &self,
+        run: oneshot::Receiver<DelegationRun>,
+        agent: SubagentType,
+        alias: String,
+    ) {
         let kept = self.sources.transcripts.handle();
         tokio::spawn(async move {
             if let Ok(result) = run.await {
-                kept.lock().expect("poisoned").insert(
-                    result.session_id.clone(),
-                    KeptTranscript {
-                        mode_id,
-                        messages: result.transcript,
-                    },
-                );
+                kept.lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(
+                        result.session_id.clone(),
+                        KeptTranscript {
+                            agent,
+                            alias,
+                            messages: result.transcript,
+                        },
+                    );
             }
         });
     }

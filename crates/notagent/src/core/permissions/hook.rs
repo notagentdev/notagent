@@ -99,6 +99,10 @@ impl PermissionHandler {
             shell: session.shell,
             approval: session.approval,
             cwd: session.cwd,
+            // Read here rather than carried in `PermissionSessionState`: the
+            // state source describes the *session*, and the requester is a
+            // property of the individual call.
+            requester: super::requester::current_requester(),
             hook_verdict,
         };
 

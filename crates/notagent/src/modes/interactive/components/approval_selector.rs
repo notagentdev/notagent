@@ -35,13 +35,31 @@ impl ApprovalSelectorComponent {
         let mut container = Container::new();
 
         container.add_child(component_ref(DynamicBorder::new(None)));
-        container.add_child(component_ref(Text::new(
-            format!(
-                "{}  {}",
+        // A prompt from a subagent names the subagent first. With three
+        // children running, "which one is this" is the question the user has
+        // to answer before they can judge the request at all — and the star
+        // name is the same one the tasks panel and the footer are showing.
+        let heading = match &request.requester {
+            Some(requester) => format!(
+                "{} {}",
                 theme_instance.fg(
                     ThemeColor::Warning,
                     &theme_instance.bold("Permission required")
                 ),
+                theme_instance.fg(
+                    ThemeColor::Muted,
+                    &format!("· {} ({})", requester.alias, requester.agent)
+                ),
+            ),
+            None => theme_instance.fg(
+                ThemeColor::Warning,
+                &theme_instance.bold("Permission required"),
+            ),
+        };
+        container.add_child(component_ref(Text::new(
+            format!(
+                "{}  {}",
+                heading,
                 theme_instance.fg(ThemeColor::Accent, &format_request_summary(request))
             ),
             1,

@@ -53,6 +53,7 @@ use crate::core::compaction::{
     estimate_context_tokens, estimate_tokens, generate_branch_summary, prepare_compaction,
     should_compact,
 };
+use crate::core::delegation::aliases::AliasRegistry;
 use crate::core::goal::{
     GOAL_REMINDER_CONTINUATION, GOAL_REMINDER_KIND, GOAL_REMINDER_TYPE, GOAL_REMINDER_WRAP_UP,
     GoalNudge, GoalState, ThreadGoal,
@@ -504,6 +505,10 @@ pub struct AgentSession {
     modes: Mutex<ModeState>,
     tools: Mutex<ToolState>,
     tasks: Mutex<TaskState>,
+    /// Star names for delegated children. Held by the session rather than by
+    /// the task tool: a mode switch rebuilds the tool,
+    /// and a child that outlived the rebuild must keep its name.
+    subagent_aliases: AliasRegistry,
     todo_store: Arc<Mutex<TodoStore>>,
     /// The session's goal and the guard that judges its completion claims
     /// (port addition, v0.1.21). In memory only, like the todos.
@@ -568,6 +573,7 @@ impl AgentSession {
             modes: Mutex::new(ModeState::default()),
             tools: Mutex::new(ToolState::default()),
             tasks: Mutex::new(TaskState::default()),
+            subagent_aliases: AliasRegistry::new(),
             todo_store: Arc::new(Mutex::new(TodoStore::new())),
             goal_state: Arc::new(Mutex::new(GoalState::default())),
             mcp: Mutex::new(Arc::new(McpManager::empty())),
@@ -1582,7 +1588,7 @@ impl AgentSession {
         use crate::core::tools::patch_minified::PatchMinifiedToolOptions;
         use crate::core::tools::read::ReadToolOptions;
         use crate::core::tools::skill::{SkillToolSkill, SkillToolSources};
-        use crate::core::tools::task::{TaskToolSources, TaskTranscriptStore};
+        use crate::core::tools::task::{DelegatableSkill, TaskToolSources, TaskTranscriptStore};
         use crate::core::tools::task_tools::TaskToolsSources;
         use crate::core::tools::todo_write::TodoWriteToolSources;
         use crate::core::tools::write::WriteToolOptions;
@@ -1653,6 +1659,35 @@ impl AgentSession {
                         .unwrap_or_default()
                 })
             },
+            // Skills are what specialises a child now that delegation offers
+            // two types instead of a roster. Read through the same loader the
+            // main agent's own skill list comes from, so the two can never list
+            // different things.
+            skills: Some({
+                let weak = Arc::downgrade(self);
+                Arc::new(move || {
+                    weak.upgrade()
+                        .map(|session| {
+                            session
+                                .resource_loader
+                                .get_skills()
+                                .0
+                                .into_iter()
+                                // A skill the model may not invoke on its own is
+                                // not a delegation target either: it exists to
+                                // be reached explicitly by the user.
+                                .filter(|skill| !skill.disable_model_invocation)
+                                .map(|skill| DelegatableSkill {
+                                    name: skill.name,
+                                    description: skill.description,
+                                    file_path: skill.file_path,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                })
+            }),
+            aliases: Some(self.subagent_aliases.clone()),
             parent_shell: {
                 let weak = Arc::downgrade(self);
                 Arc::new(move || {

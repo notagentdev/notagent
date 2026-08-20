@@ -144,7 +144,8 @@ async fn eight_delegated_subagents_run_at_once() {
             description: format!("investigation {index}"),
             tokens: None,
             session_id: format!("session-{index}"),
-            mode_id: "plan".to_owned(),
+            agent: "read-only".to_owned(),
+            alias: format!("Star {index}"),
             run: receiver,
             cancel: Arc::new(|| {}),
         }));
@@ -332,6 +333,8 @@ async fn one_task_call_runs_its_eight_subagents_at_once() {
                 source_dir: "/modes/plan".into(),
             }]
         }),
+        skills: None,
+        aliases: None,
         parent_shell: Arc::new(|| Some(ShellId::ReadOnly)),
         parent_mode: None,
         parent: Arc::new(move || Some(Arc::clone(&parent))),
@@ -351,7 +354,7 @@ async fn one_task_call_runs_its_eight_subagents_at_once() {
     let result = tool
         .execute(
             "call-1",
-            json!({ "tasks": tasks, "mode": "plan" }),
+            json!({ "tasks": tasks, "agent": "read-only" }),
             None,
             None,
             None,

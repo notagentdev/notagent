@@ -602,13 +602,15 @@ impl TasksBrowserComponent {
         }
         let label = {
             let description = single_line(&base.description);
-            if description.is_empty() {
-                match task {
-                    TaskInfo::Shell(shell) => single_line(&shell.command),
-                    TaskInfo::Subagent(_) => String::new(),
+            match task {
+                // A subagent leads with its star name: scanning the column for
+                // "which one is Vega" is the reason the name exists at all.
+                TaskInfo::Subagent(subagent) if !description.is_empty() => {
+                    format!("{} · {description}", subagent.alias)
                 }
-            } else {
-                description
+                TaskInfo::Subagent(subagent) => subagent.alias.clone(),
+                TaskInfo::Shell(shell) if description.is_empty() => single_line(&shell.command),
+                TaskInfo::Shell(_) => description,
             }
         };
         let label = if label.is_empty() {
@@ -720,7 +722,8 @@ impl TasksBrowserComponent {
                     label("Session:"),
                     value(&subagent.session_id)
                 ));
-                lines.push(format!("{}{}", label("Mode:"), value(&subagent.mode_id)));
+                lines.push(format!("{}{}", label("Name:"), value(&subagent.alias)));
+                lines.push(format!("{}{}", label("Agent:"), value(&subagent.agent)));
                 if subagent.tokens > 0 {
                     lines.push(format!(
                         "{}{}",

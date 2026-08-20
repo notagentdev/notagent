@@ -53,7 +53,7 @@ fn lists_every_default_tool_that_has_a_snippet() {
         tool_snippets: snippets(&[
             ("read", "Read file contents"),
             ("bash", "Execute bash commands"),
-            ("edit", "Make surgical edits"),
+            ("patch", "Make surgical edits"),
             ("write", "Create or overwrite files"),
         ]),
         ..options()
@@ -61,7 +61,7 @@ fn lists_every_default_tool_that_has_a_snippet() {
 
     assert!(prompt.contains("- read:"));
     assert!(prompt.contains("- bash:"));
-    assert!(prompt.contains("- edit:"));
+    assert!(prompt.contains("- patch:"));
     assert!(prompt.contains("- write:"));
 }
 

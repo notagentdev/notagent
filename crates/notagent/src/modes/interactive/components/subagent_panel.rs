@@ -71,8 +71,9 @@ pub fn format_tokens(tokens: u64) -> String {
 /// `SubagentRow`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubagentRow {
-    /// The mode the child runs in.
-    pub mode_id: String,
+    /// The star name the child is shown under. A name distinguishes two
+    /// children of the same type, which is the case this panel exists for.
+    pub alias: String,
     /// What it was asked to do.
     pub label: String,
     /// How long it has been running.
@@ -89,7 +90,7 @@ pub fn build_subagent_rows(tasks: &[TaskInfo], now: i64) -> Vec<SubagentRow> {
     running
         .into_iter()
         .map(|info| SubagentRow {
-            mode_id: info.mode_id.clone(),
+            alias: info.alias.clone(),
             label: single_line(&info.base.description),
             elapsed: format_elapsed(info.base.started_at, now),
             tokens: format_tokens(info.tokens),
@@ -126,12 +127,12 @@ impl Component for SubagentPanel {
         }
 
         let shown = &rows[..rows.len().min(MAX_ROWS)];
-        // `Math.max(...shown.map((row) => row.modeId.length))` — JavaScript
+        // `Math.max(...shown.map((row) => row.alias.length))` — JavaScript
         // counts UTF-16 units; the port counts characters, which agrees for
-        // every mode id and keeps the column aligned for the rest.
-        let mode_width = shown
+        // every star name and keeps the column aligned for the rest.
+        let alias_width = shown
             .iter()
-            .map(|row| row.mode_id.chars().count())
+            .map(|row| row.alias.chars().count())
             .max()
             .unwrap_or(0);
         let mut lines: Vec<String> = vec![format!(
@@ -149,8 +150,8 @@ impl Component for SubagentPanel {
                     ThemeColor::Accent,
                     &format!(
                         "{}{}",
-                        row.mode_id,
-                        " ".repeat(mode_width.saturating_sub(row.mode_id.chars().count()))
+                        row.alias,
+                        " ".repeat(alias_width.saturating_sub(row.alias.chars().count()))
                     )
                 )
             );

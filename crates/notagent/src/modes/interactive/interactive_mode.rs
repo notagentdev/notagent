@@ -3259,7 +3259,7 @@ impl InteractiveMode {
                         badge(
                             &theme_instance,
                             ThemeBg::ToolPendingBg,
-                            &format!("subagent {}", info.mode_id)
+                            &format!("subagent {}", info.alias)
                         ),
                         theme_instance.fg(ThemeColor::Text, "started"),
                         theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
@@ -3269,7 +3269,7 @@ impl InteractiveMode {
                         " {} {} {}  {}",
                         theme_instance.fg(ThemeColor::Dim, "○"),
                         theme_instance.fg(ThemeColor::Text, "subagent started"),
-                        theme_instance.fg(ThemeColor::Text, &info.mode_id),
+                        theme_instance.fg(ThemeColor::Text, &info.alias),
                         theme_instance.fg(ThemeColor::Dim, &single_line(&base.description)),
                     )
                 };
@@ -3292,7 +3292,7 @@ impl InteractiveMode {
                             } else {
                                 ThemeBg::ToolErrorBg
                             },
-                            &format!("subagent {}", info.mode_id)
+                            &format!("subagent {}", info.alias)
                         ),
                         theme_instance.fg(ThemeColor::Text, if clean { "done" } else { "failed" }),
                         theme_instance
@@ -3308,7 +3308,7 @@ impl InteractiveMode {
                         " {} {} {}  {}",
                         theme_instance.fg(marker_colour, "○"),
                         theme_instance.fg(ThemeColor::Text, label),
-                        theme_instance.fg(ThemeColor::Text, &info.mode_id),
+                        theme_instance.fg(ThemeColor::Text, &info.alias),
                         theme_instance
                             .fg(ThemeColor::Dim, &format_elapsed(base.started_at, ended_at)),
                     )

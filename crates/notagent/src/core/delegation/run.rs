@@ -3,14 +3,23 @@
 //! Running a delegated child.
 //!
 //! A child is an ordinary agent with three things taken from elsewhere: the
-//! parent's provider wiring, its own mode's tool allowlist, and its mode's body
-//! prepended to the task. That last part is the whole of task activation — the
-//! same block the main agent receives on a mode switch, delivered the same way,
-//! so a child needs no activation mechanism of its own.
+//! parent's provider wiring, its type's tool allowlist, and the skills it was
+//! asked to load, prepended to the task. That last part is the whole of task
+//! activation — the same envelope the `skill` tool produces, delivered ahead of
+//! the work instead of on request, so a child needs no activation mechanism of
+//! its own.
+//!
+//! Delegation used to target a *mode*. Modes are the user's autonomy ring — `auto`, `manual`, `yolo` differ only in
+//! how often the user is asked, which is not a distinction a child can act on.
+//! What a child needs to know is whether it may change the workspace, and what
+//! it is supposed to be good at; the first is its type, the second is its
+//! skills.
 //!
 //! The parent's tool hooks are inherited deliberately. A subagent that could
 //! write outside the permission chain would be a way around every rule the user
-//! set, so a child's tool calls are governed exactly as the parent's are.
+//! set, so a child's tool calls are governed exactly as the parent's are — and
+//! since the chain reads the approval level from the live session on every
+//! call, a child asks for approval exactly when its parent would.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -21,7 +30,8 @@ use notagent_ai::types::Model;
 use notagent_ai::uuidv7;
 use tokio_util::sync::CancellationToken;
 
-use crate::core::modes::{Mode, render_mode_block};
+use crate::core::delegation::agent_type::SubagentType;
+use crate::core::permissions::requester::{Requester, with_requester};
 use crate::core::tools::{ToolName, ToolsOptions, create_tool};
 
 /// Tools a child never gets, whatever its mode allows.
@@ -116,9 +126,28 @@ pub type ResolveToolFn = Arc<dyn Fn(ToolName) -> Option<Arc<dyn AgentTool>> + Se
 /// Reports the child's running token total as its conversation grows.
 pub type OnTokensFn = Arc<dyn Fn(u64) + Send + Sync>;
 
+/// A skill a child is told to follow, already read from disk.
+///
+/// Resolved by the caller rather than here: the session owns the skill
+/// catalogue, and a child that resolved names itself could reach a skill the
+/// delegating session cannot see.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildSkill {
+    pub name: String,
+    /// Where it came from, so relative references inside the body resolve.
+    pub path: String,
+    pub body: String,
+}
+
 pub struct DelegationOptions {
     pub parent: Arc<Agent>,
-    pub mode: Mode,
+    /// What the child may do. Replaces the mode this used to take.
+    pub agent: SubagentType,
+    /// Skills prepended to the task, in the order the caller named them.
+    pub skills: Vec<ChildSkill>,
+    /// The star name this child is shown under. Travels with the run so an
+    /// approval prompt raised by the child can say who is asking.
+    pub alias: String,
     pub cwd: String,
     pub task: String,
     /// Transcript of a previous run, when continuing one.
@@ -140,21 +169,50 @@ pub struct DelegationOptions {
     pub model_override: Option<Model>,
 }
 
-/// The child's tools: its mode's allowlist, minus what no child may have.
-pub fn child_tool_names(mode: &Mode) -> Vec<ToolName> {
-    mode.tools
-        .iter()
-        .copied()
+/// The child's tools: its type's allowlist, minus what no child may have.
+pub fn child_tool_names(agent: SubagentType) -> Vec<ToolName> {
+    agent
+        .tools()
+        .into_iter()
         .filter(|name| !TOOLS_WITHHELD_FROM_CHILDREN.contains(name))
         .collect()
 }
 
-/// The first message a child sees: its mode, then the task it was given.
-pub fn render_child_prompt(mode: &Mode, task: &str) -> String {
-    match render_mode_block(mode, None) {
-        Some(block) => format!("{block}\n\n{task}"),
-        None => task.to_owned(),
-    }
+/// One skill in the same envelope the `skill` tool produces.
+///
+/// Deliberately identical: a child that was handed a skill up front and one
+/// that loaded the same skill on request should be reading the same thing, or
+/// guidance written for one path would quietly misbehave on the other.
+fn render_skill_block(skill: &ChildSkill) -> String {
+    format!(
+        "<skill name=\"{}\" path=\"{}\">\n{}\n</skill>",
+        skill.name,
+        skill.path,
+        skill.body.trim()
+    )
+}
+
+/// The first message a child sees: what it is, what it should follow, then the
+/// task it was given.
+///
+/// The type block states the limit rather than leaving the child to discover it
+/// from a missing tool. A read-only child that knows it cannot write reports the
+/// change that is needed; one that finds out by having `write` refused tends to
+/// spend turns looking for another way through.
+pub fn render_child_prompt(agent: SubagentType, skills: &[ChildSkill], task: &str) -> String {
+    let mut blocks = vec![format!(
+        "<agent type=\"{}\">\n{}\n</agent>",
+        agent,
+        agent.purpose()
+    )];
+    blocks.extend(
+        skills
+            .iter()
+            .filter(|skill| !skill.body.trim().is_empty())
+            .map(render_skill_block),
+    );
+    blocks.push(task.to_owned());
+    blocks.join("\n\n")
 }
 
 /// `String.prototype.length` — UTF-16 code units, as every cap in TS counts.
@@ -210,6 +268,36 @@ fn last_assistant_text(messages: &[AgentMessage]) -> String {
     String::new()
 }
 
+/// Wraps the parent's permission chain so the calls a child makes are known to
+/// be the child's.
+///
+/// The chain itself is unchanged — that is the point. A child is governed by
+/// exactly the rules its parent is, including the approval level, which the
+/// chain reads from the live session at every call rather than from anything
+/// captured here. So a parent that switches from `auto` to `manual` while a
+/// background child is working starts being asked about that child's next call,
+/// which is what "inherits the main agent's permissions" has to mean if it is
+/// to mean anything.
+///
+/// What the wrapper adds is attribution. The scope covers the returned future,
+/// so it is still in place while the dialog waits for an answer.
+fn attribute_to_child(
+    inherited: Option<notagent_agent::types::BeforeToolCallFn>,
+    alias: &str,
+    agent: SubagentType,
+) -> Option<notagent_agent::types::BeforeToolCallFn> {
+    let inherited = inherited?;
+    let requester = Requester {
+        alias: alias.to_owned(),
+        agent: agent.as_str().to_owned(),
+    };
+    Some(Arc::new(move |context, signal| {
+        let pending = inherited(context, signal);
+        let requester = requester.clone();
+        Box::pin(with_requester(requester, pending))
+    }))
+}
+
 /// Builds the child. Every provider-facing field is taken from the parent so a
 /// child talks to the same model through the same transport, retries and
 /// headers — anything else would make a subagent behave differently from the
@@ -219,7 +307,7 @@ fn last_assistant_text(messages: &[AgentMessage]) -> String {
 fn create_child(options: &DelegationOptions, session_id: &str) -> Arc<Agent> {
     let parent_state = options.parent.state();
     let parent_options = options.parent.options();
-    let tools: Vec<Arc<dyn AgentTool>> = child_tool_names(&options.mode)
+    let tools: Vec<Arc<dyn AgentTool>> = child_tool_names(options.agent)
         .into_iter()
         .map(|name| {
             options
@@ -231,6 +319,11 @@ fn create_child(options: &DelegationOptions, session_id: &str) -> Arc<Agent> {
         .collect();
 
     let child = Agent::new(AgentOptions {
+        before_tool_call: attribute_to_child(
+            parent_options.before_tool_call.clone(),
+            &options.alias,
+            options.agent,
+        ),
         system_prompt: Some(parent_state.system_prompt.clone()),
         model: Some(
             options
@@ -249,7 +342,6 @@ fn create_child(options: &DelegationOptions, session_id: &str) -> Arc<Agent> {
         get_api_key: parent_options.get_api_key.clone(),
         on_payload: parent_options.on_payload.clone(),
         on_response: parent_options.on_response.clone(),
-        before_tool_call: parent_options.before_tool_call.clone(),
         after_tool_call: parent_options.after_tool_call.clone(),
         thinking_budgets: parent_options.thinking_budgets,
         transport: parent_options.transport,
@@ -362,7 +454,7 @@ async fn run_child(
     // time would grow the transcript with guidance it is already following.
     let prompt = match &options.history {
         Some(history) if !history.is_empty() => options.task.clone(),
-        _ => render_child_prompt(&options.mode, &options.task),
+        _ => render_child_prompt(options.agent, &options.skills, &options.task),
     };
     if let Err(error) = child
         .prompt_text(prompt, None, chrono::Utc::now().timestamp_millis())
@@ -421,8 +513,8 @@ async fn run_child(
                     describe_duration(timeout_ms)
                 ),
                 format!(
-                    "Continue it with session_id \"{session_id}\" and mode \"{}\" — it keeps everything it had learned.",
-                    options.mode.id
+                    "Continue it with session_id \"{session_id}\" and agent \"{}\" — it keeps everything it had learned.",
+                    options.agent
                 ),
                 "Do not start the same work over from scratch.".to_owned(),
             ]
@@ -463,4 +555,82 @@ fn describe_duration(ms: u64) -> String {
     }
     let seconds = (ms as f64 / 1000.0 + 0.5).floor() as u64;
     format!("{seconds} second{}", if seconds == 1 { "" } else { "s" })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::permissions::requester::current_requester;
+
+    fn tool_context() -> notagent_agent::types::BeforeToolCallContext {
+        notagent_agent::types::BeforeToolCallContext {
+            assistant_message: notagent_ai::types::AssistantMessage {
+                content: Vec::new(),
+                api: "anthropic-messages".to_owned(),
+                provider: "anthropic".to_owned(),
+                model: "mock".to_owned(),
+                response_model: None,
+                response_id: None,
+                diagnostics: None,
+                usage: notagent_ai::types::Usage::default(),
+                stop_reason: notagent_ai::types::StopReason::Stop,
+                deferred: None,
+                error_message: None,
+                raw_stop_reason: None,
+                end_turn: None,
+                timestamp: 0,
+            },
+            tool_call: notagent_ai::types::ToolCall {
+                id: "call-1".to_owned(),
+                name: "read".to_owned(),
+                ..Default::default()
+            },
+            args: serde_json::Value::Null,
+            context: notagent_agent::types::AgentContext::default(),
+        }
+    }
+
+    /// The attribution has to be readable from inside the awaited future, not
+    /// just at the moment the hook is entered: the real chain reads it after
+    /// the policy evaluation, and keeps holding it while a dialog waits for an
+    /// answer.
+    #[tokio::test]
+    async fn names_the_child_behind_a_call_for_the_whole_evaluation() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        let inherited: notagent_agent::types::BeforeToolCallFn =
+            Arc::new(move |_context, _signal| {
+                let sink = Arc::clone(&sink);
+                Box::pin(async move {
+                    tokio::task::yield_now().await;
+                    sink.lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push(current_requester());
+                    None
+                })
+            });
+
+        let wrapped = attribute_to_child(Some(inherited), "Wolf 359", SubagentType::ReadOnly)
+            .expect("a chain to wrap");
+        wrapped(tool_context(), None).await;
+
+        let seen = seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(
+            seen,
+            vec![Some(Requester {
+                alias: "Wolf 359".to_owned(),
+                agent: "read-only".to_owned(),
+            })]
+        );
+    }
+
+    /// A session with no chain gets no wrapper. Manufacturing one would put a
+    /// hook in front of a session that deliberately has none.
+    #[test]
+    fn adds_no_chain_where_the_parent_had_none() {
+        assert!(attribute_to_child(None, "Vega", SubagentType::Worker).is_none());
+    }
 }

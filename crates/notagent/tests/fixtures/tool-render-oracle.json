@@ -5353,7 +5353,7 @@
 		]
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -5377,14 +5377,14 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc/index.ts\u001b[39m                                                                                  \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc/index.ts\u001b[39m                                                                                 \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -5406,14 +5406,14 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;128;128;128m...\u001b[39m                                                                                           \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;128;128;128m...\u001b[39m                                                                                          \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -5438,14 +5438,14 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc/index.ts\u001b[39m                                                                                  \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183msrc/index.ts\u001b[39m                                                                                 \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -5469,14 +5469,14 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m                                                                                 \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;204;102;102m[invalid arg]\u001b[39m                                                                                \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": {
 			"path": "/tmp/notagent-oracle/sample.ts",
@@ -5509,12 +5509,12 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/sample.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/sample.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/sample.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/sample.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;128;128;128m 1 const a = 1;\u001b[39m                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-2 const b = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
@@ -5525,7 +5525,7 @@
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": {
 			"path": "/tmp/notagent-oracle/legacy.ts",
@@ -5554,12 +5554,12 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/legacy.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/legacy.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/legacy.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/legacy.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 let value = \u001b[7m1\u001b[27m;\u001b[39m                                                                                  \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 let value = \u001b[7m2\u001b[27m;\u001b[39m                                                                                  \u001b[49m",
@@ -5569,7 +5569,7 @@
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": {
 			"path": "/tmp/notagent-oracle/nomatch.ts",
@@ -5602,12 +5602,12 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/nomatch.ts\u001b[39m                                                               \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/nomatch.ts\u001b[39m                                                              \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;60;40;40m                                                                                                    \u001b[49m",
-				"\u001b[48;2;60;40;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/nomatch.ts\u001b[39m                                                               \u001b[49m",
+				"\u001b[48;2;60;40;40m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/nomatch.ts\u001b[39m                                                              \u001b[49m",
 				"\u001b[48;2;60;40;40m                                                                                                    \u001b[49m",
 				"\u001b[48;2;60;40;40m \u001b[38;2;204;102;102mCould not find the exact text in /tmp/notagent-oracle/nomatch.ts. The old text must match exactly  \u001b[49m",
 				"\u001b[48;2;60;40;40m \u001b[38;2;204;102;102mincluding all whitespace and newlines.\u001b[39m                                                             \u001b[49m",
@@ -5617,7 +5617,7 @@
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": {
 			"path": "/tmp/notagent-oracle/streaming.ts",
@@ -5661,24 +5661,24 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                             \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                            \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                             \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                            \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                             \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/streaming.ts\u001b[39m                                                            \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			]
 		],
 		"resultLines": null
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": {
 			"path": "/tmp/notagent-oracle/result.ts",
@@ -5723,12 +5723,12 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/result.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/result.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/result.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/result.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 const a = \u001b[7m1\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 const a = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
@@ -5738,7 +5738,7 @@
 		"resultLines": []
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": {
 			"path": "/tmp/notagent-oracle/other.ts",
@@ -5782,12 +5782,12 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/other.ts\u001b[39m                                                                 \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/other.ts\u001b[39m                                                                \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/other.ts\u001b[39m                                                                 \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/other.ts\u001b[39m                                                                \u001b[49m",
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 const a = \u001b[7m1\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 const a = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
@@ -5797,7 +5797,7 @@
 		"resultLines": []
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": {
 			"path": "/tmp/notagent-oracle/failed.ts",
@@ -5837,12 +5837,12 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/failed.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/failed.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			],
 			[
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/failed.ts\u001b[39m                                                                \u001b[49m",
+				"\u001b[48;2;40;50;40m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/failed.ts\u001b[39m                                                               \u001b[49m",
 				"\u001b[48;2;40;50;40m                                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;204;102;102m-1 const a = \u001b[7m1\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
 				"\u001b[48;2;40;50;40m \u001b[38;2;181;189;104m+1 const a = \u001b[7m2\u001b[27m;\u001b[39m                                                                                    \u001b[49m",
@@ -5855,7 +5855,7 @@
 		]
 	},
 	{
-		"tool": "edit",
+		"tool": "patch",
 		"compare": "bytes",
 		"file": null,
 		"stateElapsed": null,
@@ -5887,7 +5887,7 @@
 		"callLineSteps": [
 			[
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m",
-				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1medit\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/plain.ts\u001b[39m                                                                 \u001b[49m",
+				"\u001b[48;2;40;40;50m \u001b[38;2;212;212;212m\u001b[1mpatch\u001b[22m\u001b[39m \u001b[38;2;138;190;183m/tmp/notagent-oracle/plain.ts\u001b[39m                                                                \u001b[49m",
 				"\u001b[48;2;40;40;50m                                                                                                    \u001b[49m"
 			]
 		],

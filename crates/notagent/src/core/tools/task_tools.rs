@@ -86,7 +86,10 @@ fn render_task(info: &TaskInfo) -> String {
         }
         TaskInfo::Subagent(subagent) => {
             lines.push(format!("session_id: {}", subagent.session_id));
-            lines.push(format!("mode: {}", subagent.mode_id));
+            // The name the user sees on their screen, so the model can name the
+            // child the same way they do.
+            lines.push(format!("name: {}", subagent.alias));
+            lines.push(format!("agent: {}", subagent.agent));
         }
     }
     if let Some(stop_reason) = info.stop_reason() {

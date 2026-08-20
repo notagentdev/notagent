@@ -88,7 +88,7 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
         let e2e = InteractiveE2e::new().await;
         e2e.faux().set_responses(vec![
             tool_call_reply(
-                "edit",
+                "patch",
                 "call-1",
                 json!({
                     "path": e2e.path("does-not-exist.txt"),
@@ -108,7 +108,7 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
         // default) names the tool uppercase in its state badge. A read-only
         // tool would be grouped into the explore block instead, so this uses
         // one that keeps its own row.
-        driver.wait_for("EDIT").await;
+        driver.wait_for("PATCH").await;
         driver.wait_for_across_wraps("does-not-exist.txt").await;
         driver.assert_shows("Could not edit file");
         driver.wait_for("The file is missing.").await;

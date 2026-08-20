@@ -34,7 +34,7 @@ struct SubagentOverrides {
     status: TaskStatus,
     started_at: i64,
     ended_at: Option<i64>,
-    mode_id: String,
+    alias: String,
     tokens: u64,
 }
 
@@ -44,7 +44,7 @@ impl Default for SubagentOverrides {
             status: TaskStatus::Running,
             started_at: 0,
             ended_at: None,
-            mode_id: "worker".to_string(),
+            alias: "Vega".to_string(),
             tokens: 0,
         }
     }
@@ -65,7 +65,8 @@ fn subagent(task_id: &str, description: &str, overrides: SubagentOverrides) -> T
         },
         tokens: overrides.tokens,
         session_id: format!("session-{task_id}"),
-        mode_id: overrides.mode_id,
+        agent: "worker".to_string(),
+        alias: overrides.alias,
     })
 }
 
@@ -260,21 +261,21 @@ fn puts_the_parent_above_its_children() {
 }
 
 #[test]
-fn shows_the_mode_the_elapsed_time_and_the_spend_on_each_row() {
+fn shows_the_name_the_elapsed_time_and_the_spend_on_each_row() {
     let _guard = theme_lock();
     let mut panel = SubagentPanel::new();
     panel.set_tasks(vec![subagent(
         "agent-1",
         "Inspect the parser",
         SubagentOverrides {
-            mode_id: "plan".to_string(),
+            alias: "Rigel".to_string(),
             tokens: 17_900,
             started_at: now_ms(),
             ..Default::default()
         },
     )]);
     let row = panel.render(100).get(1).cloned().unwrap_or_default();
-    assert!(row.contains("plan"), "{row}");
+    assert!(row.contains("Rigel"), "{row}");
     assert!(row.contains("17.9k tokens"), "{row}");
 }
 

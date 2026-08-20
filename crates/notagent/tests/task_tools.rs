@@ -415,7 +415,8 @@ fn subagent_note(status: TaskStatus) -> TaskInfo {
         },
         tokens: 0,
         session_id: "session-abc".to_owned(),
-        mode_id: "plan".to_owned(),
+        agent: "read-only".to_owned(),
+        alias: "Vega".to_owned(),
     })
 }
 

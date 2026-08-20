@@ -2,10 +2,11 @@
 //!
 //! The delegation tool.
 //!
-//! The gates are what is asserted: a mode that does not exist, a shell a
+//! The gates are what is asserted: a type that does not exist, a type a
 //! read-only session may not reach, a repeat refused inside one call, a
-//! continuation that must stay with the child it belongs to, and the background
-//! flag that is absent from the schema unless the session can observe a task.
+//! continuation that must stay with the child it belongs to, the star name every
+//! child is shown under, and the background flag that is absent from the schema
+//! unless the session can observe a task.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -100,6 +101,18 @@ impl Harness {
 }
 
 fn harness(parent_shell: ShellId, background: bool) -> Harness {
+    harness_with_aliases(
+        parent_shell,
+        background,
+        notagent::core::delegation::aliases::AliasRegistry::new(),
+    )
+}
+
+fn harness_with_aliases(
+    parent_shell: ShellId,
+    background: bool,
+    aliases: notagent::core::delegation::aliases::AliasRegistry,
+) -> Harness {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&calls);
     let parent = Agent::new(AgentOptions {
@@ -138,6 +151,8 @@ fn harness(parent_shell: ShellId, background: bool) -> Harness {
     let source_manager = manager.clone();
     let tool = create_task_tool_definition(Some(TaskToolSources {
         modes: Arc::new(modes),
+        skills: None,
+        aliases: Some(aliases),
         parent_shell: Arc::new(move || Some(parent_shell)),
         parent_mode: None,
         parent: Arc::new(move || Some(Arc::clone(&parent))),
@@ -190,26 +205,32 @@ fn matches_task_id(text: &str, prefix: &str) -> bool {
     })
 }
 
-// ── choosing a mode ───────────────────────────────────────────────────
+// ── choosing a type ───────────────────────────────────────────────────
 
 #[tokio::test]
-async fn lists_the_available_modes_and_their_tools_in_the_description() {
+async fn describes_both_types_by_what_they_are_for() {
     let harness = harness(ShellId::Worker, false);
     let description = harness.tool.description().to_owned();
-    assert!(description.contains("plan (read-only)"), "{description}");
-    assert!(description.contains("worker (worker)"), "{description}");
-    assert!(!description.contains("task,"), "{description}");
+    assert!(description.contains("- read-only:"), "{description}");
+    assert!(description.contains("- worker:"), "{description}");
+    // The old listing printed each target's tool names, which is what made two
+    // worker entries indistinguishable. What a type is *for* is the choice.
+    assert!(
+        description.contains("Cannot edit, write or run"),
+        "{description}"
+    );
+    assert!(!description.contains("find_codebase"), "{description}");
 }
 
 #[tokio::test]
-async fn refuses_a_mode_that_does_not_exist_naming_the_ones_that_do() {
+async fn refuses_a_type_that_does_not_exist_naming_the_ones_that_do() {
     let harness = harness(ShellId::Worker, false);
     let error = harness
-        .run(json!({ "tasks": ["t"], "mode": "scout" }))
+        .run(json!({ "tasks": ["t"], "agent": "scout" }))
         .await
         .expect_err("refused");
     assert!(
-        error.message.contains("Available: plan, worker"),
+        error.message.contains("Available: read-only, worker"),
         "{}",
         error.message
     );
@@ -221,11 +242,11 @@ async fn refuses_a_mode_that_does_not_exist_naming_the_ones_that_do() {
 async fn cannot_delegate_work_that_changes_the_workspace() {
     let harness = harness(ShellId::ReadOnly, false);
     let error = harness
-        .run(json!({ "tasks": ["t"], "mode": "worker" }))
+        .run(json!({ "tasks": ["t"], "agent": "worker" }))
         .await
         .expect_err("refused");
     assert!(
-        error.message.contains("exceeds the read-only shell"),
+        error.message.contains("Unknown subagent type"),
         "{}",
         error.message
     );
@@ -236,7 +257,7 @@ async fn can_still_delegate_read_only_work() {
     let harness = harness(ShellId::ReadOnly, false);
     assert!(
         harness
-            .run(json!({ "tasks": ["t"], "mode": "plan" }))
+            .run(json!({ "tasks": ["t"], "agent": "read-only" }))
             .await
             .is_ok()
     );
@@ -248,7 +269,7 @@ async fn can_still_delegate_read_only_work() {
 async fn runs_one_subagent_per_task_and_returns_each_answer() {
     let harness = harness(ShellId::Worker, false);
     let result = harness
-        .run(json!({ "tasks": ["first task", "second task"], "mode": "worker" }))
+        .run(json!({ "tasks": ["first task", "second task"], "agent": "worker" }))
         .await
         .expect("ran");
     assert_eq!(harness.calls.load(Ordering::SeqCst), 2);
@@ -258,24 +279,23 @@ async fn runs_one_subagent_per_task_and_returns_each_answer() {
 }
 
 #[tokio::test]
-async fn labels_each_answer_with_the_mode_and_the_child_it_came_from() {
+async fn labels_each_answer_with_the_name_type_and_child_it_came_from() {
     let harness = harness(ShellId::Worker, false);
     let result = harness
-        .run(json!({ "tasks": ["only task"], "mode": "plan" }))
+        .run(json!({ "tasks": ["only task"], "agent": "read-only" }))
         .await
         .expect("ran");
     let text = text_of(&result);
-    assert!(
-        text.contains("<subagent mode=\"plan\" session=\""),
-        "{text}"
-    );
+    assert!(text.contains("agent=\"read-only\" session=\""), "{text}");
+    // The name leads, because that is what the user's screen is showing.
+    assert!(text.contains("<subagent name=\""), "{text}");
 }
 
 #[tokio::test]
 async fn reports_one_result_entry_per_task() {
     let harness = harness(ShellId::Worker, false);
     let result = harness
-        .run(json!({ "tasks": ["a task", "b task"], "mode": "worker" }))
+        .run(json!({ "tasks": ["a task", "b task"], "agent": "worker" }))
         .await
         .expect("ran");
     assert_eq!(results_of(&result).len(), 2);
@@ -287,7 +307,7 @@ async fn reports_one_result_entry_per_task() {
 async fn refuses_the_same_task_twice_in_one_call() {
     let harness = harness(ShellId::Worker, false);
     let error = harness
-        .run(json!({ "tasks": ["inspect the parser", "Inspect the parser."], "mode": "worker" }))
+        .run(json!({ "tasks": ["inspect the parser", "Inspect the parser."], "agent": "worker" }))
         .await
         .expect_err("refused");
     assert!(error.message.contains("Duplicate"), "{}", error.message);
@@ -297,12 +317,12 @@ async fn refuses_the_same_task_twice_in_one_call() {
 async fn allows_the_same_task_in_a_later_call() {
     let harness = harness(ShellId::Worker, false);
     harness
-        .run(json!({ "tasks": ["inspect the parser"], "mode": "worker" }))
+        .run(json!({ "tasks": ["inspect the parser"], "agent": "worker" }))
         .await
         .expect("ran");
     assert!(
         harness
-            .run(json!({ "tasks": ["inspect the parser"], "mode": "worker" }))
+            .run(json!({ "tasks": ["inspect the parser"], "agent": "worker" }))
             .await
             .is_ok()
     );
@@ -313,7 +333,7 @@ async fn refuses_more_tasks_than_one_call_may_carry() {
     let harness = harness(ShellId::Worker, false);
     let tasks: Vec<String> = (0..9).map(|index| format!("task {index}")).collect();
     let error = harness
-        .run(json!({ "tasks": tasks, "mode": "worker" }))
+        .run(json!({ "tasks": tasks, "agent": "worker" }))
         .await
         .expect_err("refused");
     assert!(error.message.contains("maximum is 8"), "{}", error.message);
@@ -323,7 +343,7 @@ async fn refuses_more_tasks_than_one_call_may_carry() {
 async fn refuses_an_empty_request() {
     let harness = harness(ShellId::Worker, false);
     let error = harness
-        .run(json!({ "tasks": [], "mode": "worker" }))
+        .run(json!({ "tasks": [], "agent": "worker" }))
         .await
         .expect_err("refused");
     assert!(
@@ -360,7 +380,7 @@ async fn offers_the_flag_once_the_session_can() {
 async fn refuses_the_flag_when_it_is_not_available() {
     let harness = harness(ShellId::Worker, false);
     let error = harness
-        .run(json!({ "tasks": ["t"], "mode": "worker", "run_in_background": true }))
+        .run(json!({ "tasks": ["t"], "agent": "worker", "run_in_background": true }))
         .await
         .expect_err("refused");
     assert!(
@@ -375,7 +395,7 @@ async fn returns_a_task_id_immediately_instead_of_the_answer() {
     let harness = harness(ShellId::Worker, true);
     let result = harness
         .run(
-            json!({ "tasks": ["long investigation"], "mode": "worker", "run_in_background": true }),
+            json!({ "tasks": ["long investigation"], "agent": "worker", "run_in_background": true }),
         )
         .await
         .expect("ran");
@@ -390,7 +410,7 @@ async fn returns_a_task_id_immediately_instead_of_the_answer() {
 async fn refuses_to_detach_and_continue_an_existing_subagent_at_the_same_time() {
     let harness = harness(ShellId::Worker, true);
     let first = harness
-        .run(json!({ "tasks": ["start"], "mode": "worker" }))
+        .run(json!({ "tasks": ["start"], "agent": "worker" }))
         .await
         .expect("ran");
     let session_id = results_of(&first)[0]["sessionId"]
@@ -400,7 +420,7 @@ async fn refuses_to_detach_and_continue_an_existing_subagent_at_the_same_time() 
     let error = harness
         .run(json!({
             "tasks": ["carry on"],
-            "mode": "worker",
+            "agent": "worker",
             "session_id": session_id,
             "run_in_background": true,
         }))
@@ -418,7 +438,7 @@ async fn names_the_session_id_rather_than_the_task_id_as_the_way_to_continue_it(
     let harness = harness(ShellId::Worker, true);
     let result = harness
         .run(
-            json!({ "tasks": ["long investigation"], "mode": "worker", "run_in_background": true }),
+            json!({ "tasks": ["long investigation"], "agent": "worker", "run_in_background": true }),
         )
         .await
         .expect("ran");
@@ -431,7 +451,7 @@ async fn names_the_session_id_rather_than_the_task_id_as_the_way_to_continue_it(
 async fn continues_the_child_the_id_names() {
     let harness = harness(ShellId::Worker, false);
     let first = harness
-        .run(json!({ "tasks": ["start something"], "mode": "worker" }))
+        .run(json!({ "tasks": ["start something"], "agent": "worker" }))
         .await
         .expect("ran");
     let session_id = results_of(&first)[0]["sessionId"]
@@ -441,7 +461,7 @@ async fn continues_the_child_the_id_names() {
     assert!(!session_id.is_empty());
 
     let second = harness
-        .run(json!({ "tasks": ["carry on"], "mode": "worker", "session_id": session_id }))
+        .run(json!({ "tasks": ["carry on"], "agent": "worker", "session_id": session_id }))
         .await
         .expect("ran");
     assert_eq!(harness.calls.load(Ordering::SeqCst), 2);
@@ -456,7 +476,7 @@ async fn continues_the_child_the_id_names() {
 async fn refuses_an_id_it_never_handed_out() {
     let harness = harness(ShellId::Worker, false);
     let error = harness
-        .run(json!({ "tasks": ["t"], "mode": "worker", "session_id": "made-up" }))
+        .run(json!({ "tasks": ["t"], "agent": "worker", "session_id": "made-up" }))
         .await
         .expect_err("refused");
     assert!(
@@ -467,10 +487,10 @@ async fn refuses_an_id_it_never_handed_out() {
 }
 
 #[tokio::test]
-async fn refuses_to_continue_a_child_in_a_different_mode_than_it_ran_in() {
+async fn refuses_to_continue_a_child_as_a_different_type_than_it_ran_as() {
     let harness = harness(ShellId::Worker, false);
     let first = harness
-        .run(json!({ "tasks": ["start something"], "mode": "worker" }))
+        .run(json!({ "tasks": ["start something"], "agent": "worker" }))
         .await
         .expect("ran");
     let session_id = results_of(&first)[0]["sessionId"]
@@ -478,11 +498,11 @@ async fn refuses_to_continue_a_child_in_a_different_mode_than_it_ran_in() {
         .expect("session")
         .to_owned();
     let error = harness
-        .run(json!({ "tasks": ["carry on"], "mode": "plan", "session_id": session_id }))
+        .run(json!({ "tasks": ["carry on"], "agent": "read-only", "session_id": session_id }))
         .await
         .expect_err("refused");
     assert!(
-        error.message.contains("runs in mode \"worker\""),
+        error.message.contains("runs as a worker agent"),
         "{}",
         error.message
     );
@@ -492,7 +512,7 @@ async fn refuses_to_continue_a_child_in_a_different_mode_than_it_ran_in() {
 async fn refuses_to_continue_with_several_tasks_at_once() {
     let harness = harness(ShellId::Worker, false);
     let error = harness
-        .run(json!({ "tasks": ["a", "b"], "mode": "worker", "session_id": "anything" }))
+        .run(json!({ "tasks": ["a", "b"], "agent": "worker", "session_id": "anything" }))
         .await
         .expect_err("refused");
     assert!(
@@ -510,7 +530,7 @@ async fn says_delegation_is_unavailable_rather_than_failing_obscurely() {
     let error = tool
         .execute(
             "call-1",
-            json!({ "tasks": ["t"], "mode": "plan" }),
+            json!({ "tasks": ["t"], "agent": "read-only" }),
             None,
             None,
             None,
@@ -518,7 +538,89 @@ async fn says_delegation_is_unavailable_rather_than_failing_obscurely() {
         .await
         .expect_err("refused");
     assert!(
-        error.message.contains("Unknown mode") || error.message.contains("not available"),
+        error.message.contains("Unknown subagent type") || error.message.contains("not available"),
+        "{}",
+        error.message
+    );
+}
+
+// ── the name a child is shown under ───────────────────────────────────
+
+#[tokio::test]
+async fn gives_every_child_a_star_name_and_reports_it() {
+    let harness = harness(ShellId::Worker, false);
+    let result = harness
+        .run(json!({ "tasks": ["a task", "b task"], "agent": "worker" }))
+        .await
+        .expect("ran");
+    let names: Vec<String> = results_of(&result)
+        .iter()
+        .map(|entry| entry["name"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(names.len(), 2);
+    for name in &names {
+        assert!(
+            notagent::core::delegation::aliases::star_names()
+                .iter()
+                .any(|star| star == name),
+            "\"{name}\" is not a star"
+        );
+    }
+    assert_ne!(names[0], names[1], "two live children share a name");
+}
+
+#[tokio::test]
+async fn a_continued_child_keeps_the_name_the_user_already_saw() {
+    let harness = harness(ShellId::Worker, false);
+    let first = harness
+        .run(json!({ "tasks": ["start something"], "agent": "worker" }))
+        .await
+        .expect("ran");
+    let first = &results_of(&first)[0];
+    let session_id = first["sessionId"].as_str().expect("session").to_owned();
+    let name = first["name"].as_str().expect("name").to_owned();
+
+    let second = harness
+        .run(json!({
+            "tasks": ["carry on"],
+            "agent": "worker",
+            "session_id": session_id,
+        }))
+        .await
+        .expect("ran");
+    assert_eq!(results_of(&second)[0]["name"].as_str(), Some(name.as_str()));
+}
+
+/// A finished child gives its name back, or a long session would run the pool
+/// down to nothing while only ever having one child alive at a time.
+#[tokio::test]
+async fn releases_a_name_when_the_child_ends() {
+    let aliases = notagent::core::delegation::aliases::AliasRegistry::new();
+    let harness = harness_with_aliases(ShellId::Worker, false, aliases.clone());
+    let result = harness
+        .run(json!({ "tasks": ["a task"], "agent": "worker" }))
+        .await
+        .expect("ran");
+    let name = results_of(&result)[0]["name"]
+        .as_str()
+        .expect("name")
+        .to_owned();
+    // The release happens in the spawned run, which has settled by the time the
+    // foreground call returns its answer.
+    assert!(!aliases.is_reserved(&name), "{name} is still held");
+}
+
+// ── skills, which is what specialises a child ─────────────────────────
+
+#[tokio::test]
+async fn refuses_a_skill_it_cannot_resolve_rather_than_starting_without_it() {
+    let harness = harness(ShellId::Worker, false);
+    let error = harness
+        .run(json!({ "tasks": ["t"], "agent": "worker", "skills": ["nonexistent"] }))
+        .await
+        .expect_err("refused");
+    assert!(
+        error.message.contains("Unknown skill \"nonexistent\""),
         "{}",
         error.message
     );

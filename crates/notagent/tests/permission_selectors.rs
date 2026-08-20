@@ -46,6 +46,7 @@ fn request() -> ApprovalRequest {
         policy_name: "sensitive-file-access-ask".to_string(),
         reason: Some("looks like a credentials file".to_string()),
         mode_id: Some("manual".to_string()),
+        requester: None,
     }
 }
 

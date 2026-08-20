@@ -38,8 +38,10 @@ pub struct SubagentTaskOptions {
     pub tokens: Option<SubagentTokensFn>,
     /// The subagent's own id — what continues it later.
     pub session_id: String,
-    /// The mode it runs in, which is our agent type.
-    pub mode_id: String,
+    /// The type it runs as: `read-only` or `worker`.
+    pub agent: String,
+    /// The star name the user sees it under (`core/delegation/aliases.rs`).
+    pub alias: String,
     /// The run, already started, which the task observes rather than owns.
     ///
     /// Deviation (class 1): a JS promise several places await becomes a
@@ -51,7 +53,8 @@ pub struct SubagentTaskOptions {
 pub struct SubagentTask {
     description: String,
     session_id: String,
-    mode_id: String,
+    agent: String,
+    alias: String,
     run: Mutex<Option<oneshot::Receiver<SubagentRunResult>>>,
     cancel: SubagentCancelFn,
     tokens: SubagentTokensFn,
@@ -62,7 +65,8 @@ impl SubagentTask {
         SubagentTask {
             description: options.description,
             session_id: options.session_id,
-            mode_id: options.mode_id,
+            agent: options.agent,
+            alias: options.alias,
             run: Mutex::new(Some(options.run)),
             cancel: options.cancel,
             tokens: options.tokens.unwrap_or_else(|| Arc::new(|| 0)),
@@ -73,8 +77,12 @@ impl SubagentTask {
         &self.session_id
     }
 
-    pub fn mode_id(&self) -> &str {
-        &self.mode_id
+    pub fn agent(&self) -> &str {
+        &self.agent
+    }
+
+    pub fn alias(&self) -> &str {
+        &self.alias
     }
 }
 
@@ -119,14 +127,19 @@ impl BackgroundTask for SubagentTask {
             base,
             tokens: (self.tokens)(),
             session_id: self.session_id.clone(),
-            mode_id: self.mode_id.clone(),
+            agent: self.agent.clone(),
+            alias: self.alias.clone(),
         })
     }
 }
 
 impl SubagentTask {
     async fn await_run(&self, sink: &TaskSink) -> Result<(), String> {
-        let receiver = self.run.lock().expect("poisoned").take();
+        let receiver = self
+            .run
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         // A task is started once; a second call has no run left to observe,
         // which is the same nothing a dropped sender leaves behind.
         let result = match receiver {
