@@ -25,7 +25,8 @@ fn a_color_only_change_is_repainted() {
         Line::from("\x1b[41m BASH \x1b[0m ls -la"),
         Line::from("output line"),
     ]));
-    tui.core().add_child(component_ref(SharedLines(Rc::clone(&lines))));
+    tui.core()
+        .add_child(component_ref(SharedLines(Rc::clone(&lines))));
     tui.start();
     tui.render_pending_frame();
     terminal.flush();

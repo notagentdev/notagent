@@ -85,8 +85,53 @@ pub struct Segment {
     pub segment: String,
 }
 
+/// Byte spans of every occurrence of an atomic marker, in order.
+///
+/// Unlike a paste marker these are matched literally: the caller registered the
+/// exact string, so there is nothing to parse and nothing that could be half
+/// valid. Used for markers that stand for something the editor does not hold —
+/// a pasted image, whose bytes live with the caller.
+fn atomic_marker_spans(text: &str, markers: &[String]) -> Vec<(usize, usize)> {
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    for marker in markers {
+        if marker.is_empty() {
+            continue;
+        }
+        let mut search_from = 0;
+        while let Some(relative) = text[search_from..].find(marker.as_str()) {
+            let start = search_from + relative;
+            let end = start + marker.len();
+            spans.push((start, end));
+            search_from = end;
+        }
+    }
+    spans.sort_unstable();
+    // Two registered markers can nest — `[Image #1]` inside `[Image #12]` never
+    // happens, but a caller is free to register anything. Keeping only
+    // non-overlapping spans means the segmenter never sees a contradiction.
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (start, end) in spans {
+        if merged.last().is_some_and(|(_, last_end)| start < *last_end) {
+            continue;
+        }
+        merged.push((start, end));
+    }
+    merged
+}
+
 /// Segment `text`, merging valid paste markers into single atomic segments.
 fn segment_with_markers(text: &str, word_granularity: bool, valid_ids: &[u64]) -> Vec<Segment> {
+    segment_with_atomics(text, word_granularity, valid_ids, &[])
+}
+
+/// Segment `text`, treating both paste markers and registered atomic markers as
+/// single units.
+fn segment_with_atomics(
+    text: &str,
+    word_granularity: bool,
+    valid_ids: &[u64],
+    atomic_markers: &[String],
+) -> Vec<Segment> {
     let base = |text: &str| -> Vec<Segment> {
         if word_granularity {
             word_segments(text)
@@ -113,10 +158,15 @@ fn segment_with_markers(text: &str, word_granularity: bool, valid_ids: &[u64]) -
         }
     };
 
-    if valid_ids.is_empty() || !text.contains("[paste #") {
-        return base(text);
+    let mut markers = if valid_ids.is_empty() || !text.contains("[paste #") {
+        Vec::new()
+    } else {
+        paste_marker_spans(text, valid_ids)
+    };
+    if !atomic_markers.is_empty() {
+        markers.extend(atomic_marker_spans(text, atomic_markers));
+        markers.sort_unstable();
     }
-    let markers = paste_marker_spans(text, valid_ids);
     if markers.is_empty() {
         return base(text);
     }
@@ -386,6 +436,9 @@ pub struct Editor {
     pending_autocomplete: Option<PendingAutocomplete>,
     pastes: Vec<(u64, String)>,
     paste_counter: u64,
+    /// Strings that move and delete as one unit. Registered by the caller for
+    /// markers standing in for content the editor does not hold.
+    atomic_markers: Vec<String>,
     paste_buffer: String,
     is_in_paste: bool,
     history: Vec<String>,
@@ -449,6 +502,7 @@ impl Editor {
             pending_autocomplete: None,
             pastes: Vec::new(),
             paste_counter: 0,
+            atomic_markers: Vec::new(),
             paste_buffer: String::new(),
             is_in_paste: false,
             history: Vec::new(),
@@ -473,7 +527,28 @@ impl Editor {
 
     /// Segment `text` with paste-marker awareness.
     fn segment(&self, text: &str, word_granularity: bool) -> Vec<Segment> {
-        segment_with_markers(text, word_granularity, &self.valid_paste_ids())
+        segment_with_atomics(
+            text,
+            word_granularity,
+            &self.valid_paste_ids(),
+            &self.atomic_markers,
+        )
+    }
+
+    /// Registers strings the editor should treat as single units for cursor
+    /// movement and deletion.
+    ///
+    /// For markers that stand for content the editor does not hold — a pasted
+    /// image lives with the caller, and only the caller can turn the marker
+    /// back into it. A marker the user can take apart a character at a time is
+    /// a marker that stops resolving, so the whole thing moves and deletes as
+    /// one.
+    pub fn set_atomic_markers(&mut self, markers: Vec<String>) {
+        if self.atomic_markers == markers {
+            return;
+        }
+        self.atomic_markers = markers;
+        self.core.request_render();
     }
 
     /// Horizontal padding.

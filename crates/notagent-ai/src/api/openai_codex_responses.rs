@@ -1232,9 +1232,9 @@ fn websocket_is_reusable(socket: &mut WebSocketStream) -> bool {
 fn remove_cached_connection(session_id: &str, account_id: &str, generation: Option<u64>) {
     let mut state = websocket_state().lock().expect("poisoned");
     if let Some(accounts) = state.connections.get_mut(session_id) {
-        let matches = accounts
-            .get(account_id)
-            .is_some_and(|entry| generation.is_none_or(|generation| entry.generation == generation));
+        let matches = accounts.get(account_id).is_some_and(|entry| {
+            generation.is_none_or(|generation| entry.generation == generation)
+        });
         if matches {
             accounts.remove(account_id);
         }
@@ -1306,9 +1306,7 @@ async fn acquire_websocket(
                 }
             }
         };
-        if expired_entry
-            && let Some(accounts) = state.connections.get_mut(session_id)
-        {
+        if expired_entry && let Some(accounts) = state.connections.get_mut(session_id) {
             accounts.remove(account_id);
             if accounts.is_empty() {
                 state.connections.remove(session_id);
@@ -1353,16 +1351,20 @@ async fn acquire_websocket(
         let mut state = websocket_state().lock().expect("poisoned");
         state.next_generation += 1;
         let generation = state.next_generation;
-        state.connections.entry(session_id.to_string()).or_default().insert(
-            account_id.to_string(),
-            CachedWebSocketConnection {
-                socket: None,
-                continuation: None,
-                created_at: now_ms,
-                last_used_at: now_ms,
-                generation,
-            },
-        );
+        state
+            .connections
+            .entry(session_id.to_string())
+            .or_default()
+            .insert(
+                account_id.to_string(),
+                CachedWebSocketConnection {
+                    socket: None,
+                    continuation: None,
+                    created_at: now_ms,
+                    last_used_at: now_ms,
+                    generation,
+                },
+            );
         generation
     };
     match connect_websocket(url, headers, request, connect_timeout_ms).await {

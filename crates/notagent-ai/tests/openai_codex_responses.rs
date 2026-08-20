@@ -1065,7 +1065,12 @@ async fn a_follow_up_request_reuses_the_websocket_and_continues_via_previous_res
     };
 
     let context = case_named("minimal").context;
-    let events = stream(codex_model(&base_url), context.clone(), request(), options());
+    let events = stream(
+        codex_model(&base_url),
+        context.clone(),
+        request(),
+        options(),
+    );
     let mut assistant = None;
     while let Some(event) = events.next().await {
         if let AssistantMessageEvent::Done { message, .. } = event {
@@ -1108,8 +1113,7 @@ async fn a_follow_up_request_reuses_the_websocket_and_continues_via_previous_res
     // The delta carries only the new user message, not the replayed transcript.
     assert_eq!(second_frame["input"].as_array().expect("input").len(), 1);
     assert_eq!(
-        second_frame["input"][0]["content"][0]["text"],
-        "again",
+        second_frame["input"][0]["content"][0]["text"], "again",
         "{second_frame}"
     );
 
@@ -1120,7 +1124,10 @@ async fn a_follow_up_request_reuses_the_websocket_and_continues_via_previous_res
     assert_eq!(stats.connections_reused, 1);
     assert_eq!(stats.full_context_requests, 1);
     assert_eq!(stats.delta_requests, 1);
-    assert_eq!(stats.last_previous_response_id.as_deref(), Some("resp_c0_1"));
+    assert_eq!(
+        stats.last_previous_response_id.as_deref(),
+        Some("resp_c0_1")
+    );
 
     notagent_ai::api::openai_codex_responses::close_openai_codex_websocket_sessions(Some(session));
     notagent_ai::api::openai_codex_responses::reset_openai_codex_websocket_debug_stats(Some(

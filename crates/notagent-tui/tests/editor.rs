@@ -3544,3 +3544,49 @@ fn skips_marker_continuation_lines_when_the_preferred_column_is_in_the_tail() {
     editor.handle_input("\x1b[A");
     assert_eq!(editor.get_cursor(), (0, 3));
 }
+
+// === Atomic markers ===
+
+/// A marker stands for content the editor does not hold — a pasted image lives
+/// with the caller, which resolves it by matching the exact string. Half a
+/// marker matches nothing, so the whole thing has to delete at once.
+#[test]
+fn deletes_a_registered_marker_in_one_backspace() {
+    let (_tui, mut editor) = editor();
+    editor.set_atomic_markers(vec!["[Image #1]".to_string()]);
+    editor.set_text("look at [Image #1]");
+    editor.handle_input("\x7f");
+    assert_eq!(editor.get_text(), "look at ");
+}
+
+/// Without the registration it is ordinary text, and a backspace takes one
+/// character. This is what the paste path looked like before.
+#[test]
+fn treats_an_unregistered_marker_as_plain_text() {
+    let (_tui, mut editor) = editor();
+    editor.set_text("look at [Image #1]");
+    editor.handle_input("\x7f");
+    assert_eq!(editor.get_text(), "look at [Image #1");
+}
+
+#[test]
+fn steps_over_a_registered_marker_with_the_arrow_keys() {
+    let (_tui, mut editor) = editor();
+    editor.set_atomic_markers(vec!["[Image #1]".to_string()]);
+    editor.set_text("[Image #1]!");
+    editor.handle_input("\x01");
+    editor.handle_input("\x1b[C");
+    editor.handle_input("\x7f");
+    assert_eq!(editor.get_text(), "!", "one step crossed the whole marker");
+}
+
+#[test]
+fn keeps_each_of_several_markers_whole() {
+    let (_tui, mut editor) = editor();
+    editor.set_atomic_markers(vec!["[Image #1]".to_string(), "[Image #2]".to_string()]);
+    editor.set_text("[Image #1] and [Image #2]");
+    editor.handle_input("\x7f");
+    assert_eq!(editor.get_text(), "[Image #1] and ");
+    editor.handle_input("\x7f");
+    assert_eq!(editor.get_text(), "[Image #1] and");
+}

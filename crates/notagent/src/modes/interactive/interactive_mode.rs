@@ -36,7 +36,7 @@
 //! resolves with the exit code and `main_app` returns it (deviation class 1).
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -1158,6 +1158,12 @@ pub struct InteractiveMode {
     /// The `fd` binary the file completion uses, once `ensureTool` found it.
     fd_path: Option<String>,
     /// Prompts waiting for the main loop (`pendingUserInputs`/`getUserInput`).
+    /// Images pasted into the editor, keyed by the number in their
+    /// `[Image #n]` marker. The editor shows the marker; the bytes ride along
+    /// on submit. Cleared once they have been sent — a marker the user cannot
+    /// see any more has nothing left to resolve against.
+    pasted_images: HashMap<u32, ImageContent>,
+    next_image_paste_id: u32,
     pending_user_inputs: VecDeque<String>,
 
     is_shutting_down: bool,
@@ -1391,6 +1397,8 @@ impl InteractiveMode {
             is_bash_mode: false,
             skill_commands: Vec::new(),
             fd_path: None,
+            pasted_images: HashMap::new(),
+            next_image_paste_id: 1,
             pending_user_inputs: VecDeque::new(),
             is_shutting_down: false,
             exit_code: None,
@@ -1906,7 +1914,11 @@ impl InteractiveMode {
                 && let Some(text) = self.pending_user_inputs.pop_front()
             {
                 let session = self.session();
-                let images = std::mem::take(&mut self.options.initial_images);
+                // Startup images ride the first message; pasted ones ride the
+                // message that mentions their marker.
+                let mut images = std::mem::take(&mut self.options.initial_images);
+                images.extend(self.images_for_text(&text));
+                self.clear_pasted_images();
                 prompt = Some(Box::pin(async move {
                     session
                         .prompt(
@@ -2463,11 +2475,14 @@ impl InteractiveMode {
         if self.session().is_streaming() {
             self.editor.borrow_mut().editor_mut().add_to_history(&text);
             self.editor.borrow_mut().editor_mut().set_text("");
+            let images = self.images_for_text(&text);
+            self.clear_pasted_images();
             let session = self.session();
             if let Err(message) = session
                 .prompt(
                     &text,
                     PromptOptions {
+                        images,
                         streaming_behavior: Some(QueueBehavior::Steer),
                         ..PromptOptions::default()
                     },
@@ -7784,24 +7799,23 @@ impl InteractiveMode {
 
     /// `handleClipboardPaste()` (`interactive-mode.ts:3088-3111`).
     ///
-    /// An image lands as a temporary file whose path is inserted at the cursor,
-    /// which is what the `@`-attachment path reads back; anything else pastes
-    /// as plain text.
+    /// An image is inserted as an `[Image #n]` marker and its bytes are held
+    /// until submit, when they ride along as an image part. The path used to go
+    /// into the editor instead — sixty characters of temporary directory the
+    /// user had to type around and could read nothing from.
+    ///
+    /// No temporary file is written any more. It only ever existed to give the
+    /// editor a path to show, and nothing read it back — the bytes now travel
+    /// with the message instead.
     fn handle_clipboard_paste(&mut self) {
         if let Some(image) = crate::utils::clipboard_image::read_clipboard_image() {
-            let extension =
-                crate::utils::clipboard_image::extension_for_image_mime_type(&image.mime_type)
-                    .unwrap_or("png");
-            let file_name = format!("notagent-clipboard-{}.{extension}", uuid::Uuid::new_v4());
-            let file_path = std::env::temp_dir().join(file_name);
-            if std::fs::write(&file_path, &image.bytes).is_ok() {
-                self.editor
-                    .borrow_mut()
-                    .editor_mut()
-                    .insert_text_at_cursor(&file_path.to_string_lossy());
-                self.ui.request_render();
-                return;
-            }
+            let marker = self.register_pasted_image(image);
+            self.editor
+                .borrow_mut()
+                .editor_mut()
+                .insert_text_at_cursor(&marker);
+            self.ui.request_render();
+            return;
         }
         if let Some(text) = crate::utils::clipboard::read_clipboard_text() {
             self.editor
@@ -7810,6 +7824,72 @@ impl InteractiveMode {
                 .insert_text_at_cursor(&text);
             self.ui.request_render();
         }
+    }
+
+    /// Records a pasted image and returns the marker to insert for it.
+    fn register_pasted_image(
+        &mut self,
+        image: crate::utils::clipboard_image::ClipboardImage,
+    ) -> String {
+        let id = self.next_image_paste_id;
+        self.next_image_paste_id = id.saturating_add(1);
+        self.pasted_images.insert(
+            id,
+            ImageContent {
+                data: base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    &image.bytes,
+                ),
+                mime_type: image.mime_type,
+            },
+        );
+        self.sync_image_markers();
+        format_image_marker(id)
+    }
+
+    /// Tells the editor which markers to treat as single units, so the cursor
+    /// steps over one and a backspace removes the whole thing. Half a marker
+    /// resolves to nothing, and a marker the user can only delete by taking it
+    /// apart is a marker they will leave broken in the text.
+    fn sync_image_markers(&self) {
+        let markers = self
+            .pasted_images
+            .keys()
+            .map(|id| format_image_marker(*id))
+            .collect();
+        self.editor
+            .borrow_mut()
+            .editor_mut()
+            .set_atomic_markers(markers);
+    }
+
+    /// The images a submitted line refers to, in order and without repeats.
+    ///
+    /// The marker stays in the text. It is what the model reads as "the image
+    /// you were given here", which is the only thing that tells two attachments
+    /// apart when a message carries several.
+    fn images_for_text(&self, text: &str) -> Vec<ImageContent> {
+        let mut seen = std::collections::HashSet::new();
+        let mut images = Vec::new();
+        for id in parse_image_markers(text) {
+            if !seen.insert(id) {
+                continue;
+            }
+            if let Some(image) = self.pasted_images.get(&id) {
+                images.push(image.clone());
+            }
+        }
+        images
+    }
+
+    /// Drops the pasted images once their prompt is on its way.
+    fn clear_pasted_images(&mut self) {
+        if self.pasted_images.is_empty() {
+            return;
+        }
+        self.pasted_images.clear();
+        self.next_image_paste_id = 1;
+        self.sync_image_markers();
     }
 
     /// `handleCtrlC` (`interactive-mode.ts:4010-4018`).
@@ -9171,4 +9251,24 @@ fn split_scope(argument: &str) -> (crate::core::mcp::McpConfigScope, &str) {
         }
         _ => (McpConfigScope::Project, argument.trim()),
     }
+}
+
+/// The marker shown in the editor for pasted image `id`.
+pub fn format_image_marker(id: u32) -> String {
+    format!("[Image #{id}]")
+}
+
+/// The ids of the `[Image #n]` markers in `text`, in the order they appear.
+///
+/// `#0` is not a marker this ever writes, so a text containing one is the
+/// user's own and resolves to nothing.
+pub fn parse_image_markers(text: &str) -> Vec<u32> {
+    static MARKER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"\[Image #(\d+)\]").expect("a literal pattern")
+    });
+    MARKER
+        .captures_iter(text)
+        .filter_map(|capture| capture.get(1)?.as_str().parse::<u32>().ok())
+        .filter(|id| *id > 0)
+        .collect()
 }
