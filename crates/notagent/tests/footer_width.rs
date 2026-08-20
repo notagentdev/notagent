@@ -42,8 +42,6 @@ struct SessionOptions {
     compaction_usage: Option<Usage>,
     tool_usage: Option<Usage>,
     using_subscription: bool,
-    /// Star names of the children the footer should report as running.
-    subagents: Vec<String>,
 }
 
 fn usage_json((input, output, cache_read, cache_write, cost): Usage) -> Value {
@@ -70,7 +68,6 @@ struct StubSession {
     thinking_level: ThinkingLevel,
     session_name: String,
     using_subscription: bool,
-    subagents: Vec<String>,
 }
 
 impl FooterSession for StubSession {
@@ -115,10 +112,6 @@ impl FooterSession for StubSession {
 
     fn mcp_summary(&self) -> notagent::modes::interactive::components::footer::McpSummary {
         Default::default()
-    }
-
-    fn running_subagents(&self) -> Vec<String> {
-        self.subagents.clone()
     }
 
     fn is_using_subscription(&self, provider: &str) -> bool {
@@ -174,7 +167,6 @@ fn create_session(options: SessionOptions) -> Arc<dyn FooterSession> {
         thinking_level: options.thinking_level.unwrap_or(ThinkingLevel::Off),
         session_name: options.session_name,
         using_subscription: options.using_subscription,
-        subagents: options.subagents,
     })
 }
 

@@ -8,13 +8,15 @@
 //! spending money the whole time. The transcript shows that a delegation was
 //! started and then nothing until it returns.
 //!
-//! So each running child gets a row: which mode it runs in, what it was asked,
-//! how long it has been at it, and what it has spent. The parent sits above them
-//! as the thing they were split off from.
+//! So each running child gets a row: its name, what it may do, what it was
+//! asked, how long it has been at it, and what it has spent. The parent sits
+//! above them as the thing they were split off from.
 
 use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
+use crate::core::modes::indicator::indicator_color_key;
+use crate::core::modes::shells::ShellId;
 use crate::core::tasks::types::{SubagentTaskInfo, TaskInfo, is_terminal_task_status};
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
@@ -74,6 +76,9 @@ pub struct SubagentRow {
     /// The star name the child is shown under. A name distinguishes two
     /// children of the same type, which is the case this panel exists for.
     pub alias: String,
+    /// What it may do. Carried as the shell rather than as text so the row can
+    /// spend a colour on it instead of a column.
+    pub shell: Option<ShellId>,
     /// What it was asked to do.
     pub label: String,
     /// How long it has been running.
@@ -91,11 +96,39 @@ pub fn build_subagent_rows(tasks: &[TaskInfo], now: i64) -> Vec<SubagentRow> {
         .into_iter()
         .map(|info| SubagentRow {
             alias: info.alias.clone(),
+            shell: ShellId::parse(&info.agent),
             label: single_line(&info.base.description),
             elapsed: format_elapsed(info.base.started_at, now),
             tokens: format_tokens(info.tokens),
         })
         .collect()
+}
+
+/// The name as the row shows it: the star, and the restriction when there is
+/// one.
+///
+/// A read-only child says so; a worker shows only its name. Same rule the footer
+/// applies to modes (`format_mode_label`) and for the same reason — the
+/// restriction is the part worth a column, and "worker" is what a subagent is
+/// unless told otherwise.
+fn row_name(row: &SubagentRow) -> String {
+    match row.shell {
+        Some(ShellId::ReadOnly) => format!("{} (read-only)", row.alias),
+        _ => row.alias.clone(),
+    }
+}
+
+/// Colour of the row's marker, carrying the shell without spending a column.
+///
+/// The same green/yellow split `indicator_color_key` gives the footer, so a
+/// reader who has learned it once has learned it everywhere. A row whose shell
+/// could not be read keeps the neutral colour rather than claiming either.
+fn marker_colour(shell: Option<ShellId>) -> ThemeColor {
+    match shell.map(indicator_color_key) {
+        Some("success") => ThemeColor::Success,
+        Some(_) => ThemeColor::Warning,
+        None => ThemeColor::Muted,
+    }
 }
 
 /// The panel itself.
@@ -127,12 +160,12 @@ impl Component for SubagentPanel {
         }
 
         let shown = &rows[..rows.len().min(MAX_ROWS)];
-        // `Math.max(...shown.map((row) => row.alias.length))` — JavaScript
-        // counts UTF-16 units; the port counts characters, which agrees for
-        // every star name and keeps the column aligned for the rest.
-        let alias_width = shown
+        // `Math.max(...shown.map((row) => row.name.length))` — JavaScript counts
+        // UTF-16 units; the port counts characters, which agrees for every star
+        // name and keeps the column aligned for the rest.
+        let name_width = shown
             .iter()
-            .map(|row| row.alias.chars().count())
+            .map(|row| row_name(row).chars().count())
             .max()
             .unwrap_or(0);
         let mut lines: Vec<String> = vec![format!(
@@ -143,15 +176,15 @@ impl Component for SubagentPanel {
 
         for row in shown {
             let right = format!("{} · ↓ {} tokens", row.elapsed, row.tokens);
+            let name = row_name(row);
             let prefix = format!(
                 "  {} {}  ",
-                theme_instance.fg(ThemeColor::Success, "○"),
+                theme_instance.fg(marker_colour(row.shell), "○"),
                 theme_instance.fg(
                     ThemeColor::Accent,
                     &format!(
-                        "{}{}",
-                        row.alias,
-                        " ".repeat(alias_width.saturating_sub(row.alias.chars().count()))
+                        "{name}{}",
+                        " ".repeat(name_width.saturating_sub(name.chars().count()))
                     )
                 )
             );

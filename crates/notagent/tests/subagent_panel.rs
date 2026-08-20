@@ -15,7 +15,7 @@ use notagent::core::tasks::types::{
 use notagent::modes::interactive::components::subagent_panel::{
     SubagentPanel, build_subagent_rows, format_elapsed, format_tokens,
 };
-use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::modes::interactive::theme::theme::{ThemeColor, init_theme, theme};
 use notagent::utils::ansi::strip_ansi;
 use notagent_tui::tui::Component;
 
@@ -35,6 +35,7 @@ struct SubagentOverrides {
     started_at: i64,
     ended_at: Option<i64>,
     alias: String,
+    agent: String,
     tokens: u64,
 }
 
@@ -45,6 +46,7 @@ impl Default for SubagentOverrides {
             started_at: 0,
             ended_at: None,
             alias: "Vega".to_string(),
+            agent: "worker".to_string(),
             tokens: 0,
         }
     }
@@ -65,7 +67,7 @@ fn subagent(task_id: &str, description: &str, overrides: SubagentOverrides) -> T
         },
         tokens: overrides.tokens,
         session_id: format!("session-{task_id}"),
-        agent: "worker".to_string(),
+        agent: overrides.agent,
         alias: overrides.alias,
     })
 }
@@ -327,4 +329,82 @@ fn never_renders_wider_than_it_was_given() {
             strip_ansi(&line)
         );
     }
+}
+
+#[test]
+fn spells_out_the_restriction_a_read_only_child_runs_under() {
+    let _guard = theme_lock();
+    let mut panel = SubagentPanel::new();
+    panel.set_tasks(vec![subagent(
+        "agent-1",
+        "Sweep the renderers",
+        SubagentOverrides {
+            alias: "Vega".to_string(),
+            agent: "read-only".to_string(),
+            ..Default::default()
+        },
+    )]);
+    let row = strip_ansi(&panel.render(100).get(1).cloned().unwrap_or_default());
+    assert!(row.contains("Vega (read-only)"), "{row}");
+}
+
+/// A worker shows only its name. It is the ordinary case, and spelling it out
+/// would spend a column on the absence of a restriction.
+#[test]
+fn leaves_a_worker_unqualified() {
+    let _guard = theme_lock();
+    let mut panel = SubagentPanel::new();
+    panel.set_tasks(vec![subagent(
+        "agent-1",
+        "Rewrite the parser",
+        SubagentOverrides {
+            alias: "Rigel".to_string(),
+            agent: "worker".to_string(),
+            ..Default::default()
+        },
+    )]);
+    let row = strip_ansi(&panel.render(100).get(1).cloned().unwrap_or_default());
+    assert!(row.contains("Rigel"), "{row}");
+    assert!(!row.contains("read-only"), "{row}");
+    assert!(!row.contains("worker"), "{row}");
+}
+
+/// The marker carries the shell as a colour, the same green/yellow split the
+/// footer uses for modes.
+#[test]
+fn colours_the_marker_by_shell() {
+    let _guard = theme_lock();
+    let read_only = {
+        let mut panel = SubagentPanel::new();
+        panel.set_tasks(vec![subagent(
+            "agent-1",
+            "Look around",
+            SubagentOverrides {
+                agent: "read-only".to_string(),
+                ..Default::default()
+            },
+        )]);
+        panel.render(100).get(1).cloned().unwrap_or_default()
+    };
+    let worker = {
+        let mut panel = SubagentPanel::new();
+        panel.set_tasks(vec![subagent(
+            "agent-1",
+            "Look around",
+            SubagentOverrides {
+                agent: "worker".to_string(),
+                ..Default::default()
+            },
+        )]);
+        panel.render(100).get(1).cloned().unwrap_or_default()
+    };
+    let theme_instance = theme();
+    assert!(
+        read_only.contains(&theme_instance.fg(ThemeColor::Success, "○")),
+        "{read_only}"
+    );
+    assert!(
+        worker.contains(&theme_instance.fg(ThemeColor::Warning, "○")),
+        "{worker}"
+    );
 }
