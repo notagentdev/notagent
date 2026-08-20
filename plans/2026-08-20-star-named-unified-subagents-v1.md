@@ -1,0 +1,92 @@
+# Two Unified Subagent Types With Inherited Permissions And Star Aliases
+
+## Objective
+
+Replace the current "delegate to a mode" model with two unified subagent types — `read-only` and `worker` — that take their specialisation from skills rather than from a roster of agent definitions, inherit their approval level from the agent that spawned them instead of declaring their own, and carry a human-readable star name so the user can tell one running child from another.
+
+Three problems are being solved at once, and they are the same problem seen from three sides.
+
+The first is that our delegation targets are the wrong kind of thing. `task` takes a `mode` (`crates/notagent/src/core/tools/task.rs:205`), and the four shipped modes are `auto`, `manual`, `plan` and `yolo` (`crates/notagent/src/core/modes.rs:39`). Three of those are worker shells that differ only in how much the user is asked — an axis that means nothing to a delegated child, since the child is not the one being asked. `describe_modes` (`task.rs:138`) prints only the id, the shell and the tool list, so `auto`, `manual` and `yolo` render as three identical lines. A model choosing between them has nothing to choose on, which is why `plan` — the only visibly different entry — is picked almost every time. The fix is to stop offering autonomy rings as roles and offer the two things that actually differ: whether the child may change the workspace.
+
+The second is that the child's approval level is currently whatever its mode declares, not what the parent runs under. `exceeds_parent` (`task.rs:123`) bounds only the shell, so a session in `manual` can delegate to `yolo` and the child then runs unattended — an escalation the user never agreed to. The reference implementation gets this right by copying rather than choosing: kimi sets the child's mode from the parent's at spawn time (`../kimi-code-main/packages/agent-core-v2/src/agent/tools/agent/agentTool.ts:336`). We should do the same, which also removes the need for an escalation check: a value that is copied cannot exceed its source.
+
+The third is that a subagent's approval request is anonymous. A child inherits the parent's `before_tool_call` (`crates/notagent/src/core/delegation/run.rs:252`), so its tool calls do reach the permission chain — that part already works. But `PermissionSessionState` is read from the session (`crates/notagent/src/main_app.rs:798`), so the request carries the *parent's* mode id, and `ApprovalRequest` (`crates/notagent/src/core/permissions/request.rs:47`) has no field naming the agent at all. With three children running, the dialog shows three indistinguishable prompts. Codex solves the readability half of this with generated nicknames drawn from a name pool (`../codex-v2/codex-rs/core/src/agent/agent_names.txt`, reserved in `codex-rs/core/src/agent/registry.rs:205`); we take the same idea with star names.
+
+Assumptions made where the request was open:
+
+- The two type names are `read-only` and `worker`, matching the existing `ShellId` spellings (`crates/notagent/src/core/modes/shells.rs:19`), so the codebase gains no second vocabulary for the same distinction. The "plan" half of "read-only + plan" is covered by capability rather than by a third type: `plan_create` is already in the read-only tool set (`shells.rs:130`), so a read-only child can record a plan.
+- Modes remain what they are for the *main* agent — the user-facing autonomy ring reached through the mode cycle. This plan changes only what delegation offers, not how the user switches their own session.
+- The star pool is exhausted before any name repeats, and the second pass appends a Roman numeral (`Vega II`). Codex's ordinal suffix ("Kepler the 2nd") reads as prose; a numeral stays a label.
+- A child keeps its alias for its whole life, including across a `session_id` continuation, so a name the user saw an hour ago still means the same conversation.
+
+## Implementation Plan
+
+- [ ] 1. Add the star name pool as an embedded asset under `crates/notagent/src/core/delegation/`, one name per line, loaded the way Codex loads its list (`../codex-v2/codex-rs/core/src/agent/control/spawn.rs:30`). Restrict it to real astronomical objects that also appear in Star Trek, in their English spellings, so nothing in the file is anyone's intellectual property: Wolf 359, Rigel, Altair, Deneb, Vega, Antares, Regulus, Aldebaran, Arcturus, Canopus, Capella, Procyon, Sirius, Spica, Achernar, Bellatrix, Betelgeuse, Fomalhaut, Denebola, Algol, Pollux, Castor, Mizar, Izar, Alnitak, Alnilam, Mintaka, Tau Ceti, Epsilon Eridani, Omicron Ceti, Sigma Draconis, Alpha Centauri, Proxima, Beta Lyrae, Gamma Hydra, Delta Vega, Epsilon Indi, Beta Aurigae, Gamma Trianguli, Rana, Sol, Barnard, Lalande, Ross, Kruger, Luyten, Groombridge, Cygni, Bootis, Draconis, Ophiuchi, Persei, Orionis, Carinae, Centauri, Lyrae, Aurigae, Eridani, Hydrae, Leonis. Aim for at least sixty entries so a long session does not wrap the pool. Do not include invented Star Trek worlds — Vulcan, Qo'noS, Bajor and their kin are trademarked and buy us nothing a real star name does not already give.
+
+- [ ] 2. Add an alias registry alongside the pool, owned by the session rather than by the task tool, since it has to outlive any single delegation call. It reserves a name that is not currently in use, releases it when the child ends, and on an exhausted pool clears the in-use set and starts a second pass with a Roman-numeral suffix. Draw randomly rather than in order — a sequential pool makes `Wolf 359` the name of every first subagent in every session, which trains the user to stop reading it. Mirror the reservation shape of `../codex-v2/codex-rs/core/src/agent/registry.rs:205`, including the caller-supplied preference that skips the draw, which is what lets a continued child keep its old name.
+
+- [ ] 3. Introduce the subagent type as its own concept in `crates/notagent/src/core/delegation/`, distinct from `Mode`. A type carries the shell, the tool allowlist derived from that shell, and the skills a caller asked to activate. It deliberately carries no approval level — that comes from the parent under task 6. Keep it a small enumeration over the two `ShellId` values rather than a loadable roster: the whole point is that specialisation arrives as skills, so a third type would mean the design failed.
+
+- [ ] 4. Change the `task` tool schema (`crates/notagent/src/core/tools/task.rs:191`) to take `agent` with the two type names in place of `mode`, and add an optional `skills` array naming skills the child should load before it starts. Rewrite the description block (`task.rs:286`) so the two entries say what each type is *for* rather than listing tool names — the tool list is what made the current four entries unreadable. State plainly that a read-only child can research, plan and write a plan file but cannot change anything, and that a worker child can do everything the parent can.
+
+- [ ] 5. Replace `describe_modes` (`task.rs:138`) with a description of the two types plus the skills available to delegate. The skill catalogue is what a model now chooses on, so it has to be visible; read it from the same source the main agent's skill list comes from (`crates/notagent/src/core/skills.rs`) rather than assembling a second listing that can drift. Include each skill's `description`, since the Agent Skills format makes that field mandatory precisely so a chooser has something to read.
+
+- [ ] 6. Make the child's approval level a copy of the parent's. `PermissionStateSource` currently resolves everything from the active session mode (`crates/notagent/src/main_app.rs:798`); extend the permission context so a delegated call reports the child's shell and alias while still taking the approval level from the parent. Then delete `exceeds_parent` (`task.rs:123`) and its call site (`task.rs:483`): with the level copied and the shell chosen from an enumeration the parent is allowed to reach, there is no longer an escalation to check for. Keep the read-only-parent restriction — a read-only session still must not spawn a worker.
+
+- [ ] 7. Extend `ApprovalRequest` (`crates/notagent/src/core/permissions/request.rs:47`) with the requesting agent's identity: the alias, and enough to distinguish a child from the main agent. Leave `mode_id` in place for the main agent's own prompts. This is the field whose absence makes the current dialog anonymous, so it has to reach every construction site — `build_approval_request` (`request.rs:100`) and the lend path (`crates/notagent/src/core/agent_session.rs:4736`).
+
+- [ ] 8. Thread the alias from the spawn site into the permission chain. The child agent is built in `create_child` (`crates/notagent/src/core/delegation/run.rs:219`) and inherits `before_tool_call` from the parent's options (`run.rs:252`); that inheritance is what must be preserved, so the alias has to travel with the call rather than replacing the hook. Carry it on the delegation options and have the child's tool-call path attach it, so a call from `Vega` is labelled `Vega` no matter which tool made it.
+
+- [ ] 9. Show the alias in the approval dialog (`crates/notagent/src/modes/interactive/components/approval_selector.rs:55`), where the mode line is rendered today. A prompt from a child should name the child before it names the tool — with several children queued, the identity is what the user needs first to know which request they are answering. Keep the existing policy explanation line: knowing which rule asked stays as important as knowing who asked.
+
+- [ ] 10. Verify the approval queue behaves correctly with several children asking at once. `ApprovalCoordinator` already serialises requests through a tokio mutex (`crates/notagent/src/core/permissions/coordinator.rs:149`) and re-checks cancellation after the wait (`coordinator.rs:153`), which is the same shape as kimi's queue (`../kimi-code-main/apps/notagent/src/tui/reverse-rpc/base-controller.ts`). Two behaviours need checking rather than assuming: that a background child's request survives the end of the parent's turn, and that an "allow for this session" answer given to one child applies to the others. The second follows from `approval_key` ignoring the requester (`coordinator.rs:49`) — confirm that is what we want, since the alternative is asking the same question once per child.
+
+- [ ] 11. Carry the alias into the task store so every surface reads the same name. `SubagentTask` is constructed with `description`, `session_id` and `mode_id` (`crates/notagent/src/core/tools/task.rs:615`); add the alias next to them and expose it wherever those fields are already exposed. This is the single change that makes tasks 12 through 14 mechanical rather than three separate plumbing jobs.
+
+- [ ] 12. Show the alias in the tasks panel (`crates/notagent/src/modes/interactive/components/tasks_panel.rs:205`), which currently renders the task description as its row label. Put the alias ahead of the description so a glance down the column reads as a list of names rather than a list of truncated sentences.
+
+- [ ] 13. Show the alias in the tasks browser opened by `/tasks` (`crates/notagent/src/modes/interactive/interactive_mode.rs:6909`). The detail pane already prints a `Mode:` row (`tasks_browser.rs:723`); replace it with the agent type and add the alias to the row label (`tasks_browser.rs:604`), since with the mode gone from delegation the old row would name something that no longer exists.
+
+- [ ] 14. Show running children in the footer (`crates/notagent/src/modes/interactive/components/footer.rs`). The footer has no task element today, so this is an addition rather than an edit: a compact count with the aliases while they fit, degrading to a bare count when the width runs out. Use the existing width-budget approach the footer already applies to its other segments rather than inventing a second truncation rule.
+
+- [ ] 15. Update the built-in modes for their reduced role. `plan` (`crates/notagent/src/core/modes/builtin/plan/10-plan.md`) claims write tools are unavailable, which stopped being true when `plan_create` joined the read-only shell — the text should say it can record a plan but change nothing else. Check `auto`, `manual` and `yolo` for text that describes them as delegation targets and remove it.
+
+- [ ] 16. Update the delegation tests. `crates/notagent/tests/delegation_run.rs` asserts a child's tool list by mode and will need the type-based equivalent; add coverage for the inherited approval level (a `manual` parent producing a `manual` child), for alias uniqueness across concurrent spawns, for pool exhaustion producing the numeral suffix, and for a continued child keeping its name. The approval-level test is the one that matters most — it is the security property this plan adds, and the only one whose regression would be silent.
+
+## Verification Criteria
+
+- Delegating with `agent: "read-only"` produces a child whose tool list is exactly the read-only set including `plan_create`, and delegating with `agent: "worker"` produces one with the worker set; neither accepts a mode name any more.
+- A session in `manual` that delegates produces a child that asks for approval on its first mutating call, and a session in `auto` that delegates produces one that does not. The child's own configuration cannot change this in either direction.
+- With three children spawned in one call and all three asking for approval, the dialog shows one prompt at a time, each naming a different star, and answering one does not dismiss the others unless the answer was "allow for this session".
+- A child spawned with `run_in_background` that requests approval after its parent's turn has ended still surfaces its prompt, and answering it lets the child continue.
+- The same alias appears for one child in the approval dialog, the tasks panel, the `/tasks` browser and the footer, and no two live children ever share one.
+- Spawning more children than the pool holds yields names with a `II` suffix rather than a collision or an empty name.
+- Continuing a child by `session_id` shows the alias it had before, not a new one.
+- `cargo clippy -p notagent --lib --tests` is clean, and no new `unwrap()` or `expect()` appears on a path that a malformed pool file or an exhausted registry can reach.
+
+## Potential Risks and Mitigations
+
+1. **The approval level is copied at spawn time, but the parent's level can change mid-run.** A user who switches from `auto` to `manual` while a background child is working would expect the child to start asking, and a snapshot taken at spawn will not.
+   Mitigation: resolve the parent's level at each tool call rather than copying it once, reading through the same source `PermissionStateSource` already uses. This costs nothing — the state source is a closure evaluated per call — and it makes the "inherits from the main agent" promise true continuously rather than only at birth.
+
+2. **Removing `mode` from the `task` schema breaks any saved prompt, skill or test that names a mode.** The tool description is regenerated per call, but text the user wrote is not.
+   Mitigation: accept the old parameter for one release, mapping a mode name onto its shell's type and returning a note in the tool result saying which type it resolved to. Log the mapping so we can see when the last caller stops using it.
+
+3. **Star names are memorable enough to be mistaken for stable identities across sessions.** A user who sees `Vega` twice on two days may assume it is the same worker.
+   Mitigation: scope the registry to the session and say so in the `/tasks` detail pane, where the session id is already shown. Never persist an alias into the transcript as an identifier — the `session_id` remains the thing that identifies a continuable child.
+
+4. **Skills as the only specialisation mechanism puts more weight on skill descriptions than they currently carry.** If descriptions are thin, the model chooses badly and the two-type design looks worse than the four-mode one it replaced.
+   Mitigation: task 5 surfaces descriptions in the tool description, which makes a thin one immediately visible during testing. Review the shipped skills' descriptions as part of that task rather than as follow-up work.
+
+5. **A background child asking for approval can interrupt the user mid-thought**, since nothing ties the prompt to what the user is currently doing.
+   Mitigation: the alias is the mitigation — a prompt that names its origin can be understood without context. Do not add auto-denial for background children; a silently denied child fails in a way that is much harder to diagnose than an unexpected prompt.
+
+## Alternative Approaches
+
+1. **Keep modes as delegation targets and only fix their descriptions.** Adding `description` and `whenToUse` to the loader and printing them in `describe_modes` would fix the "always picks plan" symptom for perhaps a tenth of the work. It does not fix the cause: three of the four targets would still differ only in an axis that is meaningless to a child, and the approval escalation would remain. Worth doing as a stopgap if this plan is deferred, since the frontmatter already carries `name` and `description` (`crates/notagent/src/core/modes/builtin/plan/10-plan.md:2`) and the loader simply ignores them.
+
+2. **A loadable roster of agent definitions, as kimi and Codex both have.** Richer, and it makes agent types shareable as files. It also reintroduces exactly the contradiction the two-type design avoids: an agent definition carries its own system prompt, which can disagree with the skill it loads, and the user then has two places to look when the child misbehaves. Reconsider if users start asking for agent types they can share between projects.
+
+3. **Per-agent permission scopes rather than an inherited level**, as kimi does with its agent-scoped services. More correct in principle, since a child could then be granted narrower permissions than its parent. It is a substantially larger change to the permission chain, which is currently session-scoped throughout, and nobody has asked for a child that is *more* restricted than its parent in a way the read-only shell does not already cover.
+
+4. **Sequential aliases instead of a random draw** — `agent-1`, `agent-2`. Trivial, and unambiguous. Rejected because the numbers are not memorable across a scroll-back: a user reading a transcript cannot tell `agent-3` from `agent-5` without counting, whereas `Rigel` and `Wolf 359` need no counting at all.
