@@ -121,6 +121,13 @@ const READ_ONLY_TOOLS: &[ToolName] = &[
     // Keeping a checklist changes nothing in the workspace, and a read-only
     // session doing multi-step research wants one as much as a worker does.
     ToolName::TodoWrite,
+    // Port addition (v0.1.24). The one tool here that writes to disk, and the
+    // exception is narrow enough to keep the gate meaningful: it only ever
+    // creates a new file under `plans/`, never overwrites, and derives the
+    // name rather than taking it. A read-only session cannot reach anything
+    // that was already there — and a plan mode that cannot record its plan is
+    // the contradiction the shell exists to avoid.
+    ToolName::PlanCreate,
 ];
 
 /// Tools a worker shell adds on top of the read-only set.

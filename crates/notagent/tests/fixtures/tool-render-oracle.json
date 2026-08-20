@@ -6020,5 +6020,36 @@
 			]
 		],
 		"resultLines": null
+	},
+	{
+		"tool": "plan_create",
+		"compare": "bytes",
+		"file": null,
+		"stateElapsed": null,
+		"pumpPreview": false,
+		"steps": [
+			{
+				"args": {
+					"plan_name": "rollout",
+					"version": "v1",
+					"content": "# Plan"
+				},
+				"argsComplete": true
+			}
+		],
+		"cwd": "/oracle-cwd",
+		"width": 100,
+		"expanded": false,
+		"isPartial": false,
+		"isError": false,
+		"showImages": true,
+		"executionStarted": true,
+		"result": null,
+		"callLineSteps": [
+			[
+				"\u001b[38;2;212;212;212m\u001b[1mplan_create\u001b[22m\u001b[39m \u001b[38;2;128;128;128mrollout v1\u001b[39m                                                                              "
+			]
+		],
+		"resultLines": null
 	}
 ]

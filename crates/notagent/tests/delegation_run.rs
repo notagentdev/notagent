@@ -240,6 +240,9 @@ async fn gets_its_modes_tools() {
             "find_filesystem",
             "grep",
             "ls",
+            // A read-only child still records its plan; see
+            // `core/tools/plan_create.rs` for why that keeps the gate intact.
+            "plan_create",
             "read",
             "read_minified",
             "skill",

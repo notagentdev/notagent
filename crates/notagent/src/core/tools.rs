@@ -16,6 +16,7 @@ pub mod mcp_render;
 pub mod output_accumulator;
 pub mod patch_minified;
 pub mod path_utils;
+pub mod plan_create;
 pub mod read;
 pub mod read_minified;
 pub mod render_utils;
@@ -53,6 +54,9 @@ pub enum ToolName {
     CreateGoal,
     UpdateGoal,
     Write,
+    /// Port addition (v0.1.24): writes a plan into `plans/`. Read-only shells
+    /// get it too — see `core/tools/plan_create.rs` for why that is not a hole.
+    PlanCreate,
     Grep,
     // Renamed from `find` and joined by `find_codebase` (user decision
     // 2026-08-16, v0.1.7): the shared `find_` prefix keeps the two search
@@ -63,7 +67,7 @@ pub enum ToolName {
 }
 
 /// Every tool name, in the order `allToolNames` inserts them.
-pub const ALL_TOOL_NAMES: [ToolName; 19] = [
+pub const ALL_TOOL_NAMES: [ToolName; 20] = [
     ToolName::Read,
     ToolName::ReadMinified,
     ToolName::Bash,
@@ -79,6 +83,7 @@ pub const ALL_TOOL_NAMES: [ToolName; 19] = [
     ToolName::CreateGoal,
     ToolName::UpdateGoal,
     ToolName::Write,
+    ToolName::PlanCreate,
     ToolName::Grep,
     ToolName::FindFilesystem,
     ToolName::FindCodebase,
@@ -103,6 +108,7 @@ impl ToolName {
             ToolName::CreateGoal => "create_goal",
             ToolName::UpdateGoal => "update_goal",
             ToolName::Write => "write",
+            ToolName::PlanCreate => "plan_create",
             ToolName::Grep => "grep",
             ToolName::FindFilesystem => "find_filesystem",
             ToolName::FindCodebase => "find_codebase",
@@ -151,6 +157,9 @@ use crate::core::tools::patch_minified::{
     create_multi_patch_minified_tool_definition, create_patch_minified_tool,
     create_patch_minified_tool_definition,
 };
+use crate::core::tools::plan_create::{
+    PlanCreateToolOptions, create_plan_create_tool, create_plan_create_tool_definition,
+};
 use crate::core::tools::read::{ReadToolOptions, create_read_tool, create_read_tool_definition};
 use crate::core::tools::read_minified::{
     ReadMinifiedToolOptions, create_read_minified_tool, create_read_minified_tool_definition,
@@ -197,6 +206,7 @@ pub struct ToolsOptions {
     pub goal: Option<GoalToolSources>,
     pub bash: Option<BashToolOptions>,
     pub write: Option<WriteToolOptions>,
+    pub plan_create: Option<PlanCreateToolOptions>,
     pub edit: Option<EditToolOptions>,
     pub grep: Option<GrepToolOptions>,
     pub find: Option<FindToolOptions>,
@@ -262,6 +272,10 @@ pub fn create_tool_definition(
             cwd,
             options.and_then(|options| options.write.clone()),
         )),
+        ToolName::PlanCreate => Arc::new(create_plan_create_tool_definition(
+            cwd,
+            options.and_then(|options| options.plan_create.clone()),
+        )),
         ToolName::Grep => Arc::new(create_grep_tool_definition(
             cwd,
             options.and_then(|options| options.grep.clone()),
@@ -318,6 +332,9 @@ pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions
         }
         ToolName::Write => {
             create_write_tool(cwd, options.and_then(|options| options.write.clone()))
+        }
+        ToolName::PlanCreate => {
+            create_plan_create_tool(cwd, options.and_then(|options| options.plan_create.clone()))
         }
         ToolName::Grep => create_grep_tool(cwd, options.and_then(|options| options.grep.clone())),
         ToolName::FindFilesystem => {
