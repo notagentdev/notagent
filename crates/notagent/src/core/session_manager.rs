@@ -96,10 +96,25 @@ entry_struct!(ModelChangeEntry {
 entry_struct!(CompactionEntry {
     #[serde(default)]
     pub summary: String,
+    /// The oldest entry the compaction kept.
+    ///
+    /// Read on its own by builds that predate `retained`, which then keep
+    /// everything from it onward — a superset of the retained selection, so an
+    /// older build degrades rather than breaks.
     #[serde(default)]
     pub first_kept_entry_id: String,
+    /// The user messages carried through, and how much of each survived.
+    ///
+    /// Persisted rather than recomputed on load: the selection depends on a
+    /// token estimate, and re-deriving it would let a changed estimator quietly
+    /// rewrite the history of a session that was compacted months ago.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retained: Option<crate::core::compaction::retention::RetainedSelection>,
     #[serde(default)]
     pub tokens_before: i64,
+    /// What the context measured once this compaction had been applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_after: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -723,6 +738,7 @@ pub fn session_entry_to_context_messages(entry: &SessionEntry) -> Vec<AgentMessa
                 create_compaction_summary_message(
                     entry.summary.clone(),
                     entry.tokens_before.max(0) as u64,
+                    entry.tokens_after.map(|tokens| tokens.max(0) as u64),
                     parse_timestamp_ms(&entry.timestamp).unwrap_or(0),
                 ),
             )]
@@ -757,21 +773,44 @@ fn build_context_entries_indexed<'a>(
     let Some(compaction_index) = path.iter().position(|entry| entry.id() == compaction_id) else {
         return path;
     };
-    let first_kept_entry_id = path[compaction_index]
-        .as_compaction()
-        .map(|entry| entry.first_kept_entry_id.clone())
-        .unwrap_or_default();
+    let compaction = path[compaction_index].as_compaction();
 
-    let mut context_entries: Vec<&SessionEntry> = vec![path[compaction_index]];
-    let mut found_first_kept = false;
-    for entry in path.iter().take(compaction_index) {
-        if entry.id() == first_kept_entry_id {
-            found_first_kept = true;
+    // Entries the compaction carried through, in order, followed by the
+    // compaction itself and then everything that has happened since.
+    //
+    // The summary going last is the point of the ordering: it is the newest
+    // thing said about the older history, so it reads as a conclusion rather
+    // than as a preamble the retained messages then appear to contradict. Only
+    // the *context* is ordered this way — the transcript is rendered from the
+    // entry tree and stays chronological.
+    let Some(retained) = compaction.and_then(|entry| entry.retained.as_ref()) else {
+        // Written before the retained selection existed. Keep the suffix from
+        // `first_kept_entry_id` with the summary ahead of it, which is what
+        // that field meant and what the messages behind it were chosen for.
+        let first_kept_entry_id = compaction
+            .map(|entry| entry.first_kept_entry_id.clone())
+            .unwrap_or_default();
+        let mut context_entries: Vec<&SessionEntry> = vec![path[compaction_index]];
+        let mut found_first_kept = false;
+        for entry in path.iter().take(compaction_index) {
+            if entry.id() == first_kept_entry_id {
+                found_first_kept = true;
+            }
+            if found_first_kept {
+                context_entries.push(entry);
+            }
         }
-        if found_first_kept {
-            context_entries.push(entry);
-        }
-    }
+        context_entries.extend_from_slice(&path[compaction_index + 1..]);
+        return context_entries;
+    };
+
+    let mut context_entries: Vec<&SessionEntry> = path
+        .iter()
+        .take(compaction_index)
+        .filter(|entry| retained.find(entry.id()).is_some())
+        .copied()
+        .collect();
+    context_entries.push(path[compaction_index]);
     context_entries.extend_from_slice(&path[compaction_index + 1..]);
     context_entries
 }
@@ -781,10 +820,37 @@ pub fn build_session_context(entries: &[SessionEntry], leaf: LeafSelector<'_>) -
     let index = build_entry_index(entries);
     let path = build_session_path(entries, leaf, &index);
     let (thinking_level, model) = get_session_context_settings(&path);
-    let messages = build_context_entries_indexed(entries, leaf, &index)
-        .into_iter()
-        .flat_map(session_entry_to_context_messages)
-        .collect();
+    let context_entries = build_context_entries_indexed(entries, leaf, &index);
+
+    // A retained message may have been truncated to fit the compaction's
+    // budget. The entry keeps the whole message — the session file is the
+    // record — so the cut is applied here, on the way into the context.
+    let retained = context_entries
+        .iter()
+        .rev()
+        .find_map(|entry| entry.as_compaction())
+        .and_then(|entry| entry.retained.as_ref());
+
+    let mut messages: Vec<AgentMessage> = Vec::new();
+    for entry in context_entries {
+        let entry_messages = session_entry_to_context_messages(entry);
+        match retained.and_then(|retained| retained.find(entry.id())) {
+            Some(record) => messages.extend(entry_messages.iter().map(|message| {
+                crate::core::compaction::retention::apply_retention(message, record)
+            })),
+            None => messages.extend(entry_messages),
+        }
+        if let Some(retained) = retained
+            && retained.elision_after() == Some(entry.id())
+        {
+            let timestamp = parse_timestamp_ms(entry.timestamp()).unwrap_or(0);
+            messages.push(crate::core::compaction::retention::elision_message(
+                retained.omitted_tokens,
+                timestamp,
+            ));
+        }
+    }
+
     SessionContext {
         messages,
         thinking_level,
@@ -1555,11 +1621,17 @@ impl SessionManager {
         self.append_entry(SessionEntry::ModelChange(entry))
     }
 
+    /// `retained` is `None` only for a compaction this crate did not produce —
+    /// a hook's, or an imported session's — which then falls back to the
+    /// suffix meaning of `first_kept_entry_id`.
+    #[allow(clippy::too_many_arguments)]
     pub fn append_compaction(
         &mut self,
         summary: &str,
         first_kept_entry_id: &str,
+        retained: Option<crate::core::compaction::retention::RetainedSelection>,
         tokens_before: i64,
+        tokens_after: Option<i64>,
         details: Option<Value>,
         from_hook: Option<bool>,
         usage: Option<Usage>,
@@ -1570,7 +1642,9 @@ impl SessionManager {
             timestamp: now_iso(),
             summary: summary.to_owned(),
             first_kept_entry_id: first_kept_entry_id.to_owned(),
+            retained,
             tokens_before,
+            tokens_after,
             details,
             usage,
             from_hook,

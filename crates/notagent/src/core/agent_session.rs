@@ -3510,7 +3510,9 @@ impl AgentSession {
                 .append_compaction(
                     &result.summary,
                     &result.first_kept_entry_id,
+                    Some(result.retained.clone()),
                     result.tokens_before as i64,
+                    result.estimated_tokens_after.map(|tokens| tokens as i64),
                     result.details.clone(),
                     None,
                     result.usage,

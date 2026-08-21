@@ -66,7 +66,17 @@ impl CompactionSummaryMessageComponent {
         }
         self.content_box.clear();
 
-        let token_str = to_locale_string(self.message.tokens_before);
+        // Before and after, so the line answers the question it raises. A
+        // compaction that reported only what it started from left the user with
+        // no way to tell a good one from a useless one.
+        let token_str = match self.message.tokens_after {
+            Some(after) => format!(
+                "{} → {}",
+                to_locale_string(self.message.tokens_before),
+                to_locale_string(after)
+            ),
+            None => to_locale_string(self.message.tokens_before),
+        };
         let theme = theme();
         let label = if badge_style {
             badge(&theme, ThemeBg::CustomMessageBg, "compaction")

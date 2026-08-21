@@ -55,7 +55,7 @@ async fn refuses_to_compact_a_session_with_nothing_in_it() {
 #[tokio::test]
 async fn compacts_manually_and_reports_the_boundary() {
     let harness = create_harness(HarnessOptions {
-        settings: Some(json!({ "compaction": { "enabled": true, "keepRecentTokens": 10 } })),
+        settings: Some(json!({ "compaction": { "enabled": true, "retainedUserTokens": 10 } })),
         ..HarnessOptions::default()
     });
     with_history(&harness, 3).await;
@@ -68,12 +68,20 @@ async fn compacts_manually_and_reports_the_boundary() {
     assert!(result.tokens_before > 0);
     assert!(result.estimated_tokens_after.is_some());
 
-    // The transcript now starts with the summary the session kept.
+    // The context ends with the note: it is the newest thing said about the
+    // older history, and everything before it is the user's own words.
     let messages = harness.session.messages();
     assert!(matches!(
-        messages.first(),
+        messages.last(),
         Some(AgentMessage::CompactionSummary(_))
     ));
+    assert!(
+        messages
+            .iter()
+            .take(messages.len() - 1)
+            .all(|message| matches!(message, AgentMessage::User(_))),
+        "something other than the user's messages survived"
+    );
 
     // Start and end were announced, with the manual reason.
     let reasons: Vec<CompactionReason> = harness
@@ -96,7 +104,7 @@ async fn compacts_manually_and_reports_the_boundary() {
 #[tokio::test]
 async fn refuses_a_second_compaction_right_after_one() {
     let harness = create_harness(HarnessOptions {
-        settings: Some(json!({ "compaction": { "enabled": true, "keepRecentTokens": 10 } })),
+        settings: Some(json!({ "compaction": { "enabled": true, "retainedUserTokens": 10 } })),
         ..HarnessOptions::default()
     });
     with_history(&harness, 3).await;
@@ -118,7 +126,7 @@ async fn refuses_a_second_compaction_right_after_one() {
 #[tokio::test]
 async fn a_compaction_is_the_only_thing_running_while_it_runs() {
     let harness = create_harness(HarnessOptions {
-        settings: Some(json!({ "compaction": { "enabled": true, "keepRecentTokens": 10 } })),
+        settings: Some(json!({ "compaction": { "enabled": true, "retainedUserTokens": 10 } })),
         ..HarnessOptions::default()
     });
     with_history(&harness, 3).await;
@@ -148,7 +156,7 @@ async fn reports_the_context_usage_against_the_window() {
 #[tokio::test]
 async fn the_context_count_is_unknown_until_the_first_answer_after_a_compaction() {
     let harness = create_harness(HarnessOptions {
-        settings: Some(json!({ "compaction": { "enabled": true, "keepRecentTokens": 10 } })),
+        settings: Some(json!({ "compaction": { "enabled": true, "retainedUserTokens": 10 } })),
         ..HarnessOptions::default()
     });
     with_history(&harness, 3).await;
@@ -308,7 +316,7 @@ async fn exports_the_current_branch_as_a_straight_line_of_jsonl() {
 #[tokio::test]
 async fn a_prompt_is_refused_while_a_manual_compaction_is_running() {
     let harness = create_harness(HarnessOptions {
-        settings: Some(json!({ "compaction": { "enabled": true, "keepRecentTokens": 10 } })),
+        settings: Some(json!({ "compaction": { "enabled": true, "retainedUserTokens": 10 } })),
         // A slow provider keeps the guard observable.
         tokens_per_second: Some(20.0),
         ..HarnessOptions::default()

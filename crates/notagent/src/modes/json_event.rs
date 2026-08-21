@@ -74,6 +74,12 @@ pub fn compaction_result_to_json(result: &CompactionResult) -> Value {
         "estimatedTokensAfter",
         result.estimated_tokens_after.map(Value::from),
     );
+    if result.dropped_tokens > 0 {
+        map.insert(
+            "droppedTokens".to_owned(),
+            Value::from(result.dropped_tokens),
+        );
+    }
     optional(
         &mut map,
         "usage",

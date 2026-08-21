@@ -135,7 +135,9 @@ fn append_compaction_integrates_into_the_tree() {
         .append_compaction(
             "summary",
             &id1,
+            None,
             1000,
+            None,
             None,
             Some(false),
             Some(serde_json::from_value(usage()).expect("usage")),
@@ -1172,7 +1174,9 @@ fn preserves_tool_and_summary_usage_across_a_file_backed_reload() {
         .append_compaction(
             "summary",
             &root_id,
+            None,
             100,
+            None,
             None,
             Some(false),
             Some(expected_usage),
@@ -1260,6 +1264,34 @@ fn compaction_entry(
         "summary": summary,
         "firstKeptEntryId": first_kept,
         "tokensBefore": 1000,
+    }))
+}
+
+/// A compaction in the current shape: it names the messages it carried through
+/// and how much of each survived.
+fn compaction_entry_retaining(
+    id: &str,
+    parent_id: Option<&str>,
+    summary: &str,
+    head: &[&str],
+    tail: &[&str],
+    omitted_tokens: u64,
+) -> SessionEntry {
+    let first_kept = head.first().or_else(|| tail.first()).copied().unwrap_or("");
+    entry(json!({
+        "type": "compaction",
+        "id": id,
+        "parentId": parent_id,
+        "timestamp": "2025-01-01T00:00:00Z",
+        "summary": summary,
+        "firstKeptEntryId": first_kept,
+        "retained": {
+            "head": head.iter().map(|id| json!({ "id": id })).collect::<Vec<_>>(),
+            "tail": tail.iter().map(|id| json!({ "id": id })).collect::<Vec<_>>(),
+            "omittedTokens": omitted_tokens,
+        },
+        "tokensBefore": 1000,
+        "tokensAfter": 120,
     }))
 }
 
@@ -1395,6 +1427,89 @@ fn build_session_context_tracks_thinking_level_and_model() {
     );
 }
 
+#[test]
+fn build_session_context_keeps_the_retained_messages_and_ends_with_the_summary() {
+    let entries = vec![
+        msg("1", None, "user", "first"),
+        msg("2", Some("1"), "assistant", "response1"),
+        msg("3", Some("2"), "user", "second"),
+        msg("4", Some("3"), "assistant", "response2"),
+        compaction_entry_retaining("5", Some("4"), "Note", &[], &["1", "3"], 0),
+        msg("6", Some("5"), "user", "third"),
+        msg("7", Some("6"), "assistant", "response3"),
+    ];
+    let context = build_session_context(&entries, LeafSelector::Undefined);
+    let messages = message_values(&context.messages);
+
+    // The user's two retained messages, the note, then the turn that followed.
+    assert_eq!(messages.len(), 5);
+    assert_eq!(messages[0]["content"], json!("first"));
+    assert_eq!(messages[1]["content"], json!("second"));
+    assert!(
+        messages[2]["summary"]
+            .as_str()
+            .expect("summary")
+            .contains("Note")
+    );
+    assert_eq!(messages[3]["content"], json!("third"));
+    assert_eq!(messages[4]["content"][0]["text"], json!("response3"));
+}
+
+#[test]
+fn build_session_context_marks_the_gap_between_head_and_tail() {
+    let entries = vec![
+        msg("1", None, "user", "first"),
+        msg("2", Some("1"), "user", "middle"),
+        msg("3", Some("2"), "user", "last"),
+        msg("4", Some("3"), "assistant", "response"),
+        compaction_entry_retaining("5", Some("4"), "Note", &["1"], &["3"], 4200),
+    ];
+    let context = build_session_context(&entries, LeafSelector::Undefined);
+    let messages = message_values(&context.messages);
+
+    assert_eq!(messages.len(), 4);
+    assert_eq!(messages[0]["content"], json!("first"));
+    let elision = messages[1]["content"][0]["text"].as_str().expect("text");
+    assert!(elision.contains("4200"), "{elision}");
+    assert_eq!(messages[2]["content"], json!("last"));
+    assert!(messages[3]["summary"].as_str().is_some());
+}
+
+#[test]
+fn build_session_context_applies_the_recorded_truncation() {
+    let long = "abcdefgh".repeat(8); // 64 characters
+    let entries = vec![
+        entry(json!({
+            "type": "message",
+            "id": "1",
+            "parentId": null,
+            "timestamp": "2025-01-01T00:00:00Z",
+            "message": { "role": "user", "content": long, "timestamp": 0 },
+        })),
+        msg("2", Some("1"), "assistant", "response"),
+        entry(json!({
+            "type": "compaction",
+            "id": "3",
+            "parentId": Some("2"),
+            "timestamp": "2025-01-01T00:00:00Z",
+            "summary": "Note",
+            "firstKeptEntryId": "1",
+            "retained": { "head": [], "tail": [{ "id": "1", "suffixTokens": 4 }], "omittedTokens": 0 },
+            "tokensBefore": 1000,
+        })),
+    ];
+    let context = build_session_context(&entries, LeafSelector::Undefined);
+    let messages = message_values(&context.messages);
+
+    let kept = messages[0]["content"][0]["text"].as_str().expect("text");
+    assert!(kept.ends_with("abcdefghabcdefgh"), "{kept}");
+    assert!(kept.contains("dropped during compaction"), "{kept}");
+    // The entry itself still holds the whole message.
+    assert!(matches!(&entries[0], SessionEntry::Message(_)));
+}
+
+/// Written before the retained selection existed: the suffix rule still
+/// applies, summary first, so an old session keeps opening the way it did.
 #[test]
 fn build_session_context_includes_the_summary_before_kept_messages() {
     let entries = vec![

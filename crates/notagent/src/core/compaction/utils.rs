@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 use notagent_agent::types::AgentMessage;
 use notagent_ai::types::{AssistantContent, Message};
 use notagent_ai::utils::text::content_text_with;
+use serde::{Deserialize, Serialize};
 
 /// The files a stretch of conversation read, wrote and edited.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -99,6 +100,152 @@ pub fn format_file_operations(read_files: &[String], modified_files: &[String]) 
     format!("\n\n{}", sections.join("\n\n"))
 }
 
+// ============================================================================
+// Operation outline
+// ============================================================================
+
+/// What happened to one target, in the words the outline uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Operation {
+    Read,
+    Written,
+    Patched,
+    Ran,
+}
+
+impl Operation {
+    fn label(self) -> &'static str {
+        match self {
+            Operation::Read => "read",
+            Operation::Written => "wrote",
+            Operation::Patched => "patched",
+            Operation::Ran => "ran",
+        }
+    }
+}
+
+/// One line of the outline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationRecord {
+    pub target: String,
+    pub operation: Operation,
+}
+
+/// Longest a recorded command may be before the outline cuts it.
+const COMMAND_MAX_CHARS: usize = 120;
+
+/// Most lines the outline will carry.
+///
+/// Measured on a 377k-token session, keeping only the last operation per target
+/// took 457 operations down to 259; the file operations among them cost about
+/// 5.9k tokens while the shell commands cost 10.4k, which is why commands are
+/// reduced to their first line and the whole thing is capped.
+const OUTLINE_MAX_LINES: usize = 200;
+
+/// What a stretch of conversation did, in order, with each target's last
+/// operation winning.
+///
+/// This is derived from the recorded tool calls rather than written by a model,
+/// so unlike the summary it cannot invent a path.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OperationOutline {
+    records: Vec<OperationRecord>,
+}
+
+impl OperationOutline {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
+    pub fn record(&mut self, target: impl Into<String>, operation: Operation) {
+        let target = target.into();
+        self.records.retain(|record| record.target != target);
+        self.records.push(OperationRecord { target, operation });
+    }
+
+    /// The records, oldest surviving operation first.
+    pub fn records(&self) -> &[OperationRecord] {
+        &self.records
+    }
+
+    pub fn extend_from_records(&mut self, records: impl IntoIterator<Item = OperationRecord>) {
+        for record in records {
+            self.record(record.target, record.operation);
+        }
+    }
+}
+
+/// Records what each tool call in an assistant message did.
+pub fn extract_operations_from_message(message: &AgentMessage, outline: &mut OperationOutline) {
+    let AgentMessage::Assistant(message) = message else {
+        return;
+    };
+
+    for block in &message.content {
+        let AssistantContent::ToolCall(call) = block else {
+            continue;
+        };
+        let path = call.arguments.get("path").and_then(|path| path.as_str());
+        match (call.name.as_str(), path) {
+            ("read" | "read_minified", Some(path)) => outline.record(path, Operation::Read),
+            ("write", Some(path)) => outline.record(path, Operation::Written),
+            ("patch" | "patch_minified" | "multi_patch_minified" | "edit", Some(path)) => {
+                outline.record(path, Operation::Patched)
+            }
+            ("bash", _) => {
+                if let Some(command) = call.arguments.get("command").and_then(|arg| arg.as_str()) {
+                    outline.record(shorten_command(command), Operation::Ran);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A command reduced to something an outline can carry: its first line, capped.
+fn shorten_command(command: &str) -> String {
+    let first_line = command.lines().next().unwrap_or("").trim();
+    let units: Vec<u16> = first_line.encode_utf16().collect();
+    let multiline = command.lines().nth(1).is_some();
+    if units.len() <= COMMAND_MAX_CHARS && !multiline {
+        return first_line.to_string();
+    }
+    let head = if units.len() > COMMAND_MAX_CHARS {
+        String::from_utf16_lossy(&units[..COMMAND_MAX_CHARS])
+    } else {
+        first_line.to_string()
+    };
+    format!("{head} …")
+}
+
+/// Renders the outline as the section appended to a summary.
+///
+/// When the cap bites it says so, because an outline that silently stops is
+/// read as a complete record of a session that did less than it did.
+pub fn format_operation_outline(outline: &OperationOutline) -> String {
+    if outline.is_empty() {
+        return String::new();
+    }
+    let records = outline.records();
+    let omitted = records.len().saturating_sub(OUTLINE_MAX_LINES);
+    let shown = &records[omitted..];
+
+    let mut lines: Vec<String> = Vec::with_capacity(shown.len() + 1);
+    if omitted > 0 {
+        lines.push(format!("[{omitted} earlier operations omitted]"));
+    }
+    for record in shown {
+        lines.push(format!("{} {}", record.operation.label(), record.target));
+    }
+    format!("\n\n<operations>\n{}\n</operations>", lines.join("\n"))
+}
+
 /// Longest a tool result may be in a serialized summary request.
 const TOOL_RESULT_MAX_CHARS: usize = 2000;
 
@@ -121,6 +268,68 @@ fn truncate_for_summary(text: &str, max_chars: usize) -> String {
 ///
 /// Call `convert_to_llm` first so custom message types are already folded in.
 pub fn serialize_conversation(messages: &[Message]) -> String {
+    serialize_parts(messages).join("\n\n")
+}
+
+/// A conversation serialized to fit a request budget.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SerializedConversation {
+    pub text: String,
+    /// How many of the oldest messages had to go, and what they were worth.
+    pub dropped_messages: usize,
+    pub dropped_tokens: u64,
+}
+
+/// Estimated tokens of a serialized fragment, on the same chars/4 basis the
+/// rest of compaction measures in.
+fn fragment_tokens(text: &str) -> u64 {
+    text.encode_utf16().count().div_ceil(4) as u64
+}
+
+/// Serializes a conversation, dropping the oldest messages until it fits.
+///
+/// The alternative is to send the whole thing and let the provider reject it.
+/// Both ways of reacting to that rejection are bad: shrinking by a fixed ratio
+/// throws away far more than necessary, and dropping one message per rejection
+/// needs hundreds of round trips — measured on a 377k-token session, reaching a
+/// 190k target one message at a time took 440 attempts to land within 1,716
+/// tokens of where a single ratio step landed in two. Since the size is
+/// knowable before sending, it is computed here and cut once.
+///
+/// A budget of zero means no limit.
+pub fn serialize_conversation_within(messages: &[Message], budget: u64) -> SerializedConversation {
+    let parts = serialize_parts(messages);
+    let sizes: Vec<u64> = parts.iter().map(|part| fragment_tokens(part)).collect();
+    let total: u64 = sizes.iter().sum();
+
+    if budget == 0 || total <= budget {
+        return SerializedConversation {
+            text: parts.join("\n\n"),
+            dropped_messages: 0,
+            dropped_tokens: 0,
+        };
+    }
+
+    // Drop from the front: the newest exchanges are the ones the summary most
+    // needs, and the oldest are the ones an earlier summary most likely already
+    // covers.
+    let mut dropped_tokens = 0;
+    let mut first_kept = 0;
+    let mut remaining = total;
+    while first_kept < parts.len() && remaining > budget {
+        remaining -= sizes[first_kept];
+        dropped_tokens += sizes[first_kept];
+        first_kept += 1;
+    }
+
+    SerializedConversation {
+        text: parts[first_kept..].join("\n\n"),
+        dropped_messages: first_kept,
+        dropped_tokens,
+    }
+}
+
+fn serialize_parts(messages: &[Message]) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
 
     for message in messages {
@@ -185,7 +394,7 @@ pub fn serialize_conversation(messages: &[Message]) -> String {
         }
     }
 
-    parts.join("\n\n")
+    parts
 }
 
 /// The system prompt every summarization request carries. Its whole job is to

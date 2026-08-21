@@ -8312,6 +8312,7 @@ impl InteractiveMode {
                         &AgentMessage::CompactionSummary(create_compaction_summary_message(
                             &result.summary,
                             result.tokens_before,
+                            result.estimated_tokens_after,
                             now_millis(),
                         )),
                         false,

@@ -38,7 +38,9 @@ mod tests {
     fn converts_the_coding_agent_message_roles_to_llm_messages() {
         let messages = vec![
             AgentMessage::BranchSummary(create_branch_summary_message("branch", "abc", 1)),
-            AgentMessage::CompactionSummary(create_compaction_summary_message("compact", 10, 2)),
+            AgentMessage::CompactionSummary(create_compaction_summary_message(
+                "compact", 10, None, 2,
+            )),
         ];
         let converted: Vec<serde_json::Value> = convert_to_llm(&messages)
             .iter()

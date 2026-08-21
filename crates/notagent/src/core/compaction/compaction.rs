@@ -1,14 +1,17 @@
-//! Port of `packages/coding-agent/src/core/compaction/compaction.ts`.
-//!
 //! Context compaction for long sessions. Pure functions: the session manager
 //! does the I/O and rebuilds its context afterwards.
 //!
-//! Two rules shape the cut. The first is that a tool result is never a cut
-//! point — it has to follow its tool call, and a context that opens with an
-//! orphaned result is one no provider accepts. The second is the split-turn
-//! path: when the cut lands in the middle of a turn, the prefix of that turn is
-//! summarized separately, because the retained suffix would otherwise start
-//! mid-thought with no statement of what was asked.
+//! A compaction keeps the user's own messages verbatim and replaces everything
+//! else with one note the agent writes to itself. That split follows from what
+//! a session is actually made of: measured over a 377k-token session, tool
+//! results were 57% of it and the user's messages were 0.7%. Keeping the cheap
+//! part is nearly free, and it is the part that cannot be reconstructed — a
+//! paraphrase of a request is not a request.
+//!
+//! The note is written fresh each time from what the agent can still see, which
+//! after an earlier compaction is the retained messages plus that earlier note.
+//! Nothing folds an old summary into a new one behind the model's back, so a
+//! mistake in one generation is corrected by the messages rather than inherited.
 
 use std::sync::Arc;
 
@@ -24,76 +27,75 @@ use notagent_ai::utils::uuid::uuidv7;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
+use crate::core::compaction::retention::{
+    RETAINED_HEAD_TOKENS, RETAINED_USER_TOKENS, RetainedSelection, apply_retention,
+    elision_message, is_user_input, select_retained,
+};
 use crate::core::compaction::utils::{
-    FileOperations, SUMMARIZATION_SYSTEM_PROMPT, compute_file_lists, create_file_ops,
-    extract_file_ops_from_message, format_file_operations, serialize_conversation,
+    Operation, OperationOutline, OperationRecord, SUMMARIZATION_SYSTEM_PROMPT,
+    extract_operations_from_message, format_operation_outline, serialize_conversation_within,
 };
 use crate::core::messages::convert_to_llm;
 use crate::core::session_manager::{
-    LeafSelector, SessionEntry, build_session_context, session_entry_to_context_messages,
+    LeafSelector, SessionEntry, build_context_entries, build_session_context,
+    session_entry_to_context_messages,
 };
 
 // ============================================================================
-// File operation tracking
+// Operation tracking
 // ============================================================================
 
-/// What a compaction entry stores about the files its window touched.
+/// What a compaction entry stores about the work its history covered.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionDetails {
-    pub read_files: Vec<String>,
-    pub modified_files: Vec<String>,
+    #[serde(default)]
+    pub operations: Vec<OperationRecord>,
 }
 
-/// Collects file operations from the messages plus the previous compaction's
-/// record, so the list is cumulative across compactions rather than a window.
-fn extract_file_operations(
+/// Builds the outline from the messages plus the previous compaction's record.
+///
+/// The carry-forward is what makes the outline cumulative. It has to be
+/// explicit: after a compaction the assistant turns that performed the earlier
+/// work are gone from the context, so extracting from the messages alone would
+/// silently shorten the record every time.
+fn extract_operations(
     messages: &[AgentMessage],
-    entries: &[SessionEntry],
-    previous_compaction_index: Option<usize>,
-) -> FileOperations {
-    let mut file_ops = create_file_ops();
+    previous: Option<&SessionEntry>,
+) -> OperationOutline {
+    let mut outline = OperationOutline::new();
 
-    if let Some(index) = previous_compaction_index
-        && let Some(SessionEntry::Compaction(previous)) = entries.get(index)
+    if let Some(SessionEntry::Compaction(previous)) = previous
         // `fromHook` is retained for session-file compatibility; an entry an
-        // extension wrote carries details this port cannot interpret.
+        // extension wrote carries details this crate cannot interpret.
         && previous.from_hook != Some(true)
         && let Some(details) = previous.details.as_ref()
     {
-        if let Some(read_files) = details.get("readFiles").and_then(|value| value.as_array()) {
-            for file in read_files.iter().filter_map(|file| file.as_str()) {
-                file_ops.read.insert(file.to_string());
+        if let Some(records) = details.get("operations").and_then(|value| value.as_array()) {
+            for record in records {
+                if let Ok(record) = serde_json::from_value::<OperationRecord>(record.clone()) {
+                    outline.record(record.target, record.operation);
+                }
             }
         }
-        if let Some(modified) = details
-            .get("modifiedFiles")
-            .and_then(|value| value.as_array())
-        {
-            for file in modified.iter().filter_map(|file| file.as_str()) {
-                file_ops.edited.insert(file.to_string());
+        // Entries written before the outline existed carry two flat path lists.
+        for (key, operation) in [
+            ("readFiles", Operation::Read),
+            ("modifiedFiles", Operation::Patched),
+        ] {
+            if let Some(paths) = details.get(key).and_then(|value| value.as_array()) {
+                for path in paths.iter().filter_map(|path| path.as_str()) {
+                    outline.record(path, operation);
+                }
             }
         }
     }
 
     for message in messages {
-        extract_file_ops_from_message(message, &mut file_ops);
+        extract_operations_from_message(message, &mut outline);
     }
 
-    file_ops
-}
-
-// ============================================================================
-// Message extraction
-// ============================================================================
-
-/// The message an entry contributes, or nothing when it contributes none.
-/// Compaction entries are skipped: their summary is the boundary, not content.
-fn message_from_entry_for_compaction(entry: &SessionEntry) -> Option<AgentMessage> {
-    if matches!(entry, SessionEntry::Compaction(_)) {
-        return None;
-    }
-    session_entry_to_context_messages(entry).into_iter().next()
+    outline
 }
 
 /// What `compact` produces. The session manager stamps uuid and parentUuid when
@@ -102,36 +104,16 @@ fn message_from_entry_for_compaction(entry: &SessionEntry) -> Option<AgentMessag
 pub struct CompactionResult {
     pub summary: String,
     pub first_kept_entry_id: String,
+    /// The messages carried through verbatim.
+    pub retained: RetainedSelection,
     pub tokens_before: u64,
     pub estimated_tokens_after: Option<u64>,
-    /// Usage of the LLM call(s) that produced the summary.
+    /// How much history the request budget forced out of the summarization
+    /// call. Zero in the ordinary case.
+    pub dropped_tokens: u64,
+    /// Usage of the LLM call that produced the summary.
     pub usage: Option<Usage>,
     pub details: Option<serde_json::Value>,
-}
-
-fn combine_usage(first: &Usage, second: &Usage) -> Usage {
-    Usage {
-        input: first.input + second.input,
-        output: first.output + second.output,
-        cache_read: first.cache_read + second.cache_read,
-        cache_write: first.cache_write + second.cache_write,
-        cache_write1h: match (first.cache_write1h, second.cache_write1h) {
-            (None, None) => None,
-            (left, right) => Some(left.unwrap_or(0) + right.unwrap_or(0)),
-        },
-        reasoning: match (first.reasoning, second.reasoning) {
-            (None, None) => None,
-            (left, right) => Some(left.unwrap_or(0) + right.unwrap_or(0)),
-        },
-        total_tokens: Some(first.total_tokens.unwrap_or(0) + second.total_tokens.unwrap_or(0)),
-        cost: UsageCost {
-            input: first.cost.input + second.cost.input,
-            output: first.cost.output + second.cost.output,
-            cache_read: first.cost.cache_read + second.cost.cache_read,
-            cache_write: first.cost.cache_write + second.cost.cache_write,
-            total: first.cost.total + second.cost.total,
-        },
-    }
 }
 
 // ============================================================================
@@ -141,14 +123,16 @@ fn combine_usage(first: &Usage, second: &Usage) -> Usage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompactionSettings {
     pub enabled: bool,
+    /// Headroom kept free of context, and the budget the summary is written in.
     pub reserve_tokens: u64,
-    pub keep_recent_tokens: u64,
+    /// Budget for the user messages carried through.
+    pub retained_user_tokens: u64,
 }
 
 pub const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = CompactionSettings {
     enabled: true,
     reserve_tokens: 16384,
-    keep_recent_tokens: 20000,
+    retained_user_tokens: RETAINED_USER_TOKENS,
 };
 
 impl From<crate::core::settings_manager::ResolvedCompactionSettings> for CompactionSettings {
@@ -156,7 +140,7 @@ impl From<crate::core::settings_manager::ResolvedCompactionSettings> for Compact
         Self {
             enabled: settings.enabled,
             reserve_tokens: settings.reserve_tokens,
-            keep_recent_tokens: settings.keep_recent_tokens,
+            retained_user_tokens: settings.retained_user_tokens,
         }
     }
 }
@@ -306,253 +290,35 @@ pub fn estimate_tokens(message: &AgentMessage) -> u64 {
     chars.div_ceil(4) as u64
 }
 
-fn is_cut_point_message(message: &AgentMessage) -> bool {
-    !matches!(message, AgentMessage::ToolResult(_))
-}
-
-fn is_turn_start_message(message: &AgentMessage) -> bool {
-    matches!(
-        message,
-        AgentMessage::User(_)
-            | AgentMessage::BashExecution(_)
-            | AgentMessage::Custom(_)
-            | AgentMessage::BranchSummary(_)
-            | AgentMessage::CompactionSummary(_)
-    )
-}
-
-fn is_turn_start_entry(entry: &SessionEntry) -> bool {
-    if matches!(entry, SessionEntry::Compaction(_)) {
-        return false;
-    }
-    session_entry_to_context_messages(entry)
-        .iter()
-        .any(is_turn_start_message)
-}
-
-/// Indices that may be cut at: context-visible messages that are not tool
-/// results. Cutting at an assistant message with tool calls is fine — its
-/// results follow it and are kept.
-fn find_valid_cut_points(
-    entries: &[SessionEntry],
-    start_index: usize,
-    end_index: usize,
-) -> Vec<usize> {
-    let mut cut_points = Vec::new();
-    for index in start_index..end_index {
-        let Some(entry) = entries.get(index) else {
-            continue;
-        };
-        if matches!(entry, SessionEntry::Compaction(_)) {
-            continue;
-        }
-        if session_entry_to_context_messages(entry)
-            .iter()
-            .any(is_cut_point_message)
-        {
-            cut_points.push(index);
-        }
-    }
-    cut_points
-}
-
-/// The context-visible user-role entry that starts the turn containing
-/// `entry_index`, or `None`.
-pub fn find_turn_start_index(
-    entries: &[SessionEntry],
-    entry_index: usize,
-    start_index: usize,
-) -> Option<usize> {
-    let mut index = entry_index;
-    loop {
-        if index < start_index {
-            return None;
-        }
-        if entries.get(index).is_some_and(is_turn_start_entry) {
-            return Some(index);
-        }
-        if index == 0 {
-            return None;
-        }
-        index -= 1;
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CutPointResult {
-    /// Index of the first entry to keep.
-    pub first_kept_entry_index: usize,
-    /// The user message that starts the turn being split, if one is.
-    pub turn_start_index: Option<usize>,
-    pub is_split_turn: bool,
-}
-
-/// Finds the cut point that keeps roughly `keep_recent_tokens`.
-///
-/// Walks backwards from the newest entry accumulating estimated sizes, and cuts
-/// at the first valid point at or after where the budget was reached.
-pub fn find_cut_point(
-    entries: &[SessionEntry],
-    start_index: usize,
-    end_index: usize,
-    keep_recent_tokens: u64,
-) -> CutPointResult {
-    let cut_points = find_valid_cut_points(entries, start_index, end_index);
-
-    if cut_points.is_empty() {
-        return CutPointResult {
-            first_kept_entry_index: start_index,
-            turn_start_index: None,
-            is_split_turn: false,
-        };
-    }
-
-    let mut accumulated: u64 = 0;
-    // Default: keep everything from the first message (not the header).
-    let mut cut_index = cut_points[0];
-
-    let mut index = end_index;
-    while index > start_index {
-        index -= 1;
-        let Some(entry) = entries.get(index) else {
-            continue;
-        };
-        let message_tokens: u64 = session_entry_to_context_messages(entry)
-            .iter()
-            .map(estimate_tokens)
-            .sum();
-        if message_tokens == 0 {
-            continue;
-        }
-        accumulated += message_tokens;
-
-        if accumulated >= keep_recent_tokens {
-            if let Some(&point) = cut_points.iter().find(|&&point| point >= index) {
-                cut_index = point;
-            }
-            break;
-        }
-    }
-
-    // Pull adjacent metadata entries — model changes, labels — into the kept
-    // range: they do not affect context, and leaving them behind the boundary
-    // would drop information the UI still shows.
-    while cut_index > start_index {
-        let Some(previous) = entries.get(cut_index - 1) else {
-            break;
-        };
-        if matches!(previous, SessionEntry::Compaction(_))
-            || !session_entry_to_context_messages(previous).is_empty()
-        {
-            break;
-        }
-        cut_index -= 1;
-    }
-
-    let starts_turn = entries.get(cut_index).is_some_and(is_turn_start_entry);
-    let turn_start_index = if starts_turn {
-        None
-    } else {
-        find_turn_start_index(entries, cut_index, start_index)
-    };
-
-    CutPointResult {
-        first_kept_entry_index: cut_index,
-        turn_start_index,
-        is_split_turn: !starts_turn && turn_start_index.is_some(),
-    }
-}
-
 // ============================================================================
 // Summarization
 // ============================================================================
 
-const SUMMARIZATION_PROMPT: &str = r#"The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+/// The instruction that turns the conversation into a handoff note.
+///
+/// It asks for a note rather than a form on purpose. A fixed set of headings
+/// gets filled in even when a section has nothing behind it, and what fills it
+/// is invention — that was the single largest source of wrong statements in
+/// summaries written by the mechanism this replaces.
+const HANDOFF_PROMPT: &str = r#"You are about to run out of context. Write a first-person handoff note to yourself so you can continue this task after the earlier conversation is cleared.
 
-Use this EXACT format:
+--- This message is a direct task, not part of the above conversation ---
 
-## Goal
-[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+Write the note as your own continuing train of thought: first person, present tense, the way you would reason through the next move. Do not write a third-party report about someone else's work, and do not impose fixed section headings — let the shape follow the task. Write the note in the same language the conversation has been using; do not switch to English because these instructions are in English.
 
-## Constraints & Preferences
-- [Any constraints, preferences, or requirements mentioned by user]
-- [Or "(none)" if none were mentioned]
+Make the note self-sufficient. The next turn will see the user's own messages and this note, and nothing else: every assistant message, tool call and tool result above will be gone. In your own words, preserve what you genuinely need:
 
-## Progress
-### Done
-- [x] [Completed tasks/changes]
+- What the current request is asking for: your reading of its intent, and any ambiguity you have already resolved. Do not re-transcribe the request itself, since the user's messages are kept verbatim. If several requests are in play, say which one governs the next move.
+- The instructions and constraints in force — user preferences, project rules, tooling limits — condensed to what still matters. Keep decisions you have already settled (what you chose and why) separate from questions still open, so the next turn neither reopens a closed choice nor treats an undecided point as decided.
+- What has actually been done, at high fidelity: the exact commands run, the exact paths touched, whether each succeeded or failed, and the results themselves — the concrete values, the key lines, the error text, the signature a lookup revealed. Re-running to recover them may be slow or impossible. Keep only the final working version of any code and drop intermediate attempts.
+- What you still do not know: files referenced but not read, schemas assumed but unseen, questions the user has not answered. Name these gaps so the next turn checks them instead of assuming.
+- The forward plan. You hold more context on this task now than you ever will again, so invest here. Give the exact next command or tool call, then the remaining sequence, the decisions already made for those steps, the edge cases you can foresee and how you mean to handle them.
 
-### In Progress
-- [ ] [Current work]
+Be honest about uncertainty. If an earlier step claimed something was done but never verified it — tests "passing", a fix "working", a file "created" — say so plainly and treat it as unverified.
 
-### Blocked
-- [Issues preventing progress, if any]
+Keep the note proportional to the task. A long multi-step task warrants detail; a nearly finished one needs a sentence or two. Include the identifiers and references needed to continue, and omit anything that does not change the next move.
 
-## Key Decisions
-- **[Decision]**: [Brief rationale]
-
-## Next Steps
-1. [Ordered list of what should happen next]
-
-## Critical Context
-- [Any data, examples, or references needed to continue]
-- [Or "(none)" if not applicable]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages."#;
-
-const UPDATE_SUMMARIZATION_PROMPT: &str = r#"The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.
-
-Update the existing structured summary with new information. RULES:
-- PRESERVE all existing information from the previous summary
-- ADD new progress, decisions, and context from the new messages
-- UPDATE the Progress section: move items from "In Progress" to "Done" when completed
-- UPDATE "Next Steps" based on what was accomplished
-- PRESERVE exact file paths, function names, and error messages
-- If something is no longer relevant, you may remove it
-
-Use this EXACT format:
-
-## Goal
-[Preserve existing goals, add new ones if the task expanded]
-
-## Constraints & Preferences
-- [Preserve existing, add new ones discovered]
-
-## Progress
-### Done
-- [x] [Include previously done items AND newly completed items]
-
-### In Progress
-- [ ] [Current work - update based on progress]
-
-### Blocked
-- [Current blockers - remove if resolved]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale] (preserve all previous, add new)
-
-## Next Steps
-1. [Update based on current state]
-
-## Critical Context
-- [Preserve important context, add new if needed]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages."#;
-
-const TURN_PREFIX_SUMMARIZATION_PROMPT: &str = r#"This is the PREFIX of a turn that was too large to keep. The SUFFIX (recent work) is retained.
-
-Summarize the prefix to provide context for the retained suffix:
-
-## Original Request
-[What did the user ask for in this turn?]
-
-## Early Progress
-- [Key decisions and work done in the prefix]
-
-## Context for Suffix
-- [Information needed to understand the retained recent work]
-
-Be concise. Focus on what's needed to understand the kept suffix."#;
+Respond with text only. Do not call any tools."#;
 
 /// What a summarization request needs from its caller.
 #[derive(Clone, Default)]
@@ -709,15 +475,28 @@ pub(crate) fn summarization_context_for(prompt_text: String) -> Context {
     }
 }
 
-/// Generates or updates a conversation summary, and reports what it cost.
+/// The note produced by one summarization call, and what it cost.
+#[derive(Debug, Clone, Default)]
+pub struct GeneratedSummary {
+    pub text: String,
+    pub usage: Usage,
+    /// History the request budget forced out, in estimated tokens.
+    pub dropped_tokens: u64,
+}
+
+/// Writes the handoff note for a conversation, and reports what it cost.
+///
+/// `request_budget` caps the serialized conversation; zero means no cap. The
+/// size is worked out here rather than discovered from a provider rejection,
+/// so the call is made once with a request that fits.
 pub async fn generate_summary_with_usage(
     current_messages: &[AgentMessage],
     model: &Model,
     reserve_tokens: u64,
+    request_budget: u64,
     custom_instructions: Option<&str>,
-    previous_summary: Option<&str>,
     request: &SummarizationRequest,
-) -> Result<(String, Usage), String> {
+) -> Result<GeneratedSummary, String> {
     let budget = (0.8 * reserve_tokens as f64).floor() as u64;
     let max_tokens = if model.max_tokens > 0 {
         budget.min(model.max_tokens)
@@ -725,26 +504,28 @@ pub async fn generate_summary_with_usage(
         budget
     };
 
-    let mut base_prompt = if previous_summary.is_some() {
-        UPDATE_SUMMARIZATION_PROMPT.to_string()
-    } else {
-        SUMMARIZATION_PROMPT.to_string()
-    };
+    let mut base_prompt = HANDOFF_PROMPT.to_string();
     if let Some(instructions) = custom_instructions {
-        base_prompt = format!("{base_prompt}\n\nAdditional focus: {instructions}");
+        base_prompt =
+            format!("{base_prompt}\n\nOptional instruction from the user:\n{instructions}");
     }
 
     // Serialized rather than replayed, so the model summarizes instead of
     // continuing. Custom message types are folded in first.
     let llm_messages = convert_to_llm(current_messages);
-    let conversation_text = serialize_conversation(&llm_messages);
+    let conversation = serialize_conversation_within(&llm_messages, request_budget);
 
-    let mut prompt_text = format!("<conversation>\n{conversation_text}\n</conversation>\n\n");
-    if let Some(previous) = previous_summary {
+    let mut prompt_text = String::new();
+    if conversation.dropped_messages > 0 {
         prompt_text.push_str(&format!(
-            "<previous-summary>\n{previous}\n</previous-summary>\n\n"
+            "[The oldest {} messages of this conversation did not fit and are not shown.]\n\n",
+            conversation.dropped_messages
         ));
     }
+    prompt_text.push_str(&format!(
+        "<conversation>\n{}\n</conversation>\n\n",
+        conversation.text
+    ));
     prompt_text.push_str(&base_prompt);
 
     let response = complete_summarization(
@@ -767,28 +548,32 @@ pub async fn generate_summary_with_usage(
         ));
     }
 
-    Ok((content_text(&response.content), response.usage))
+    Ok(GeneratedSummary {
+        text: content_text(&response.content),
+        usage: response.usage,
+        dropped_tokens: conversation.dropped_tokens,
+    })
 }
 
-/// Generates a summary and discards the usage.
+/// Generates a summary and discards everything but the text.
 pub async fn generate_summary(
     current_messages: &[AgentMessage],
     model: &Model,
     reserve_tokens: u64,
+    request_budget: u64,
     custom_instructions: Option<&str>,
-    previous_summary: Option<&str>,
     request: &SummarizationRequest,
 ) -> Result<String, String> {
     generate_summary_with_usage(
         current_messages,
         model,
         reserve_tokens,
+        request_budget,
         custom_instructions,
-        previous_summary,
         request,
     )
     .await
-    .map(|(text, _)| text)
+    .map(|summary| summary.text)
 }
 
 // ============================================================================
@@ -798,16 +583,25 @@ pub async fn generate_summary(
 /// Everything decided before the first token is spent.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompactionPreparation {
+    /// The oldest retained entry, or the oldest context entry when the session
+    /// has no user messages at all.
+    ///
+    /// A build that predates the retained selection reads only this field and
+    /// keeps everything from it onward, which is a superset of what the
+    /// selection keeps — a degraded session rather than a broken one.
     pub first_kept_entry_id: String,
-    /// Messages that will be summarized and dropped.
+    /// The whole context as the agent currently sees it. This is what gets
+    /// summarized; after an earlier compaction it already contains that
+    /// compaction's note, so nothing has to be folded in behind the model.
     pub messages_to_summarize: Vec<AgentMessage>,
-    /// Messages that become the turn-prefix summary, when a turn is split.
-    pub turn_prefix_messages: Vec<AgentMessage>,
-    pub is_split_turn: bool,
+    /// The user messages carried through verbatim.
+    pub retained: RetainedSelection,
+    /// Those same messages, with any truncation already applied, in context
+    /// order. Kept so the size after the compaction can be worked out before
+    /// the entry that produces it exists.
+    pub retained_messages: Vec<AgentMessage>,
     pub tokens_before: u64,
-    /// The previous compaction's summary, for an iterative update.
-    pub previous_summary: Option<String>,
-    pub file_ops: FileOperations,
+    pub outline: OperationOutline,
     pub settings: CompactionSettings,
 }
 
@@ -820,94 +614,72 @@ pub fn prepare_compaction(
         return None;
     }
 
-    let previous_compaction_index = path_entries
-        .iter()
-        .rposition(|entry| matches!(entry, SessionEntry::Compaction(_)));
-
-    let mut previous_summary: Option<String> = None;
-    let mut boundary_start = 0usize;
-    if let Some(index) = previous_compaction_index
-        && let Some(SessionEntry::Compaction(previous)) = path_entries.get(index)
-    {
-        previous_summary = Some(previous.summary.clone());
-        boundary_start = path_entries
-            .iter()
-            .position(|entry| entry.id() == previous.first_kept_entry_id)
-            .unwrap_or(index + 1);
+    let context_entries = build_context_entries(path_entries, LeafSelector::Undefined);
+    let messages_to_summarize =
+        build_session_context(path_entries, LeafSelector::Undefined).messages;
+    if messages_to_summarize.is_empty() {
+        return None;
     }
-    let boundary_end = path_entries.len();
 
-    let owned: Vec<SessionEntry> = path_entries.to_vec();
-    let tokens_before =
-        estimate_context_tokens(&build_session_context(&owned, LeafSelector::Undefined).messages)
-            .tokens;
+    // A session that is nothing but user messages has nothing to summarize:
+    // compacting it would replace the messages with themselves plus a note
+    // about them.
+    if !messages_to_summarize
+        .iter()
+        .any(|message| !is_user_input(message))
+    {
+        return None;
+    }
 
-    let cut_point = find_cut_point(
-        path_entries,
-        boundary_start,
-        boundary_end,
-        settings.keep_recent_tokens,
+    let candidates: Vec<(String, AgentMessage)> = context_entries
+        .iter()
+        .filter_map(|entry| {
+            let mut messages = session_entry_to_context_messages(entry);
+            let message = messages.pop()?;
+            is_user_input(&message).then(|| (entry.id().to_string(), message))
+        })
+        .collect();
+
+    let retained = select_retained(
+        &candidates,
+        settings.retained_user_tokens,
+        RETAINED_HEAD_TOKENS,
     );
 
-    let first_kept_entry = path_entries.get(cut_point.first_kept_entry_index)?;
-    let first_kept_entry_id = first_kept_entry.id().to_string();
+    let mut retained_messages: Vec<AgentMessage> = Vec::new();
+    for record in retained.entries() {
+        if let Some((_, message)) = candidates.iter().find(|(id, _)| *id == record.id) {
+            retained_messages.push(apply_retention(message, record));
+        }
+        if retained.elision_after() == Some(record.id.as_str()) {
+            retained_messages.push(elision_message(retained.omitted_tokens, 0));
+        }
+    }
+
+    let first_kept_entry_id = retained
+        .oldest_id()
+        .map(str::to_string)
+        .or_else(|| context_entries.first().map(|entry| entry.id().to_string()))
+        .unwrap_or_default();
     if first_kept_entry_id.is_empty() {
         // Session needs migration.
         return None;
     }
 
-    let history_end = if cut_point.is_split_turn {
-        cut_point.turn_start_index.unwrap_or(0)
-    } else {
-        cut_point.first_kept_entry_index
-    };
-
-    let mut messages_to_summarize: Vec<AgentMessage> = Vec::new();
-    for index in boundary_start..history_end {
-        if let Some(entry) = path_entries.get(index)
-            && let Some(message) = message_from_entry_for_compaction(entry)
-        {
-            messages_to_summarize.push(message);
-        }
-    }
-
-    let mut turn_prefix_messages: Vec<AgentMessage> = Vec::new();
-    if cut_point.is_split_turn
-        && let Some(turn_start) = cut_point.turn_start_index
-    {
-        for index in turn_start..cut_point.first_kept_entry_index {
-            if let Some(entry) = path_entries.get(index)
-                && let Some(message) = message_from_entry_for_compaction(entry)
-            {
-                turn_prefix_messages.push(message);
-            }
-        }
-    }
-
-    if messages_to_summarize.is_empty() && turn_prefix_messages.is_empty() {
-        return None;
-    }
-
-    let mut file_ops = extract_file_operations(
-        &messages_to_summarize,
-        path_entries,
-        previous_compaction_index,
-    );
-
-    if cut_point.is_split_turn {
-        for message in &turn_prefix_messages {
-            extract_file_ops_from_message(message, &mut file_ops);
-        }
-    }
+    let tokens_before = estimate_context_tokens(&messages_to_summarize).tokens;
+    let previous = path_entries
+        .iter()
+        .rev()
+        .find(|entry| matches!(entry, SessionEntry::Compaction(_)));
+    let outline = extract_operations(&messages_to_summarize, previous);
 
     Some(CompactionPreparation {
         first_kept_entry_id,
         messages_to_summarize,
-        turn_prefix_messages,
-        is_split_turn: cut_point.is_split_turn,
+        retained,
+        retained_messages,
         tokens_before,
-        previous_summary,
-        file_ops,
+        outline,
         settings: *settings,
     })
 }
@@ -916,124 +688,93 @@ pub fn prepare_compaction(
 // Compaction
 // ============================================================================
 
-/// Generates the summaries a prepared compaction calls for.
+/// The share of the model's window a summarization request may occupy.
+///
+/// The rest is headroom for the note itself and for whatever the estimate got
+/// wrong; the estimate rounds up per message and charges a flat rate per image,
+/// so it errs high, and this only has to cover the cases where it does not.
+fn request_budget(model: &Model, settings: &CompactionSettings) -> u64 {
+    model.context_window.saturating_sub(settings.reserve_tokens)
+}
+
+/// Writes the note a prepared compaction calls for.
 pub async fn compact(
     preparation: &CompactionPreparation,
     model: &Model,
     custom_instructions: Option<&str>,
     request: &SummarizationRequest,
 ) -> Result<CompactionResult, String> {
-    let summary;
-    let summary_usage;
-
-    if preparation.is_split_turn && !preparation.turn_prefix_messages.is_empty() {
-        let mut history_text = "No prior history.".to_string();
-        let mut history_usage: Option<Usage> = None;
-        if !preparation.messages_to_summarize.is_empty() {
-            let (text, usage) = generate_summary_with_usage(
-                &preparation.messages_to_summarize,
-                model,
-                preparation.settings.reserve_tokens,
-                custom_instructions,
-                preparation.previous_summary.as_deref(),
-                request,
-            )
-            .await?;
-            history_text = text;
-            history_usage = Some(usage);
-        }
-        let (turn_prefix_text, turn_prefix_usage) = generate_turn_prefix_summary(
-            &preparation.turn_prefix_messages,
-            model,
-            preparation.settings.reserve_tokens,
-            request,
-        )
-        .await?;
-        summary = format!(
-            "{history_text}\n\n---\n\n**Turn Context (split turn):**\n\n{turn_prefix_text}"
-        );
-        summary_usage = match history_usage {
-            Some(history) => combine_usage(&history, &turn_prefix_usage),
-            None => turn_prefix_usage,
-        };
-    } else {
-        let (text, usage) = generate_summary_with_usage(
-            &preparation.messages_to_summarize,
-            model,
-            preparation.settings.reserve_tokens,
-            custom_instructions,
-            preparation.previous_summary.as_deref(),
-            request,
-        )
-        .await?;
-        summary = text;
-        summary_usage = usage;
-    }
-
-    let (read_files, modified_files) = compute_file_lists(&preparation.file_ops);
-    let summary = format!(
-        "{summary}{}",
-        format_file_operations(&read_files, &modified_files)
-    );
-
     if preparation.first_kept_entry_id.is_empty() {
         return Err("First kept entry has no UUID - session may need migration".to_string());
     }
 
+    let budget = request_budget(model, &preparation.settings);
+    let summary = match generate_summary_with_usage(
+        &preparation.messages_to_summarize,
+        model,
+        preparation.settings.reserve_tokens,
+        budget,
+        custom_instructions,
+        request,
+    )
+    .await
+    {
+        Ok(summary) => summary,
+        // The estimate decided the size, and an estimate can be wrong. One
+        // retry at half the budget covers that without turning the rejection
+        // into the mechanism: a compaction that cannot be written at all costs
+        // the session, and a second call costs one round trip.
+        Err(error) if budget > 0 => generate_summary_with_usage(
+            &preparation.messages_to_summarize,
+            model,
+            preparation.settings.reserve_tokens,
+            budget / 2,
+            custom_instructions,
+            request,
+        )
+        .await
+        .map_err(|retry_error| {
+            format!("{error}\nRetrying with a smaller request also failed: {retry_error}")
+        })?,
+        Err(error) => return Err(error),
+    };
+
+    // The outline is appended rather than asked for, because it is derived from
+    // the recorded tool calls and so cannot name a path that was never touched.
+    let text = format!(
+        "{}{}",
+        summary.text,
+        format_operation_outline(&preparation.outline)
+    );
+
+    // What the context will measure once this is applied: the retained
+    // messages, the elision note among them, and the summary itself. Worked out
+    // here because the entry that would let it be measured does not exist yet.
+    let tokens_after = preparation
+        .retained_messages
+        .iter()
+        .map(estimate_tokens)
+        .sum::<u64>()
+        + estimate_tokens(&AgentMessage::CompactionSummary(
+            notagent_agent::create_compaction_summary_message(
+                text.clone(),
+                preparation.tokens_before,
+                None,
+                0,
+            ),
+        ));
+
     Ok(CompactionResult {
-        summary,
+        summary: text,
         first_kept_entry_id: preparation.first_kept_entry_id.clone(),
+        retained: preparation.retained.clone(),
         tokens_before: preparation.tokens_before,
-        estimated_tokens_after: None,
-        usage: Some(summary_usage),
+        estimated_tokens_after: Some(tokens_after),
+        dropped_tokens: summary.dropped_tokens,
+        usage: Some(summary.usage),
         details: serde_json::to_value(CompactionDetails {
-            read_files,
-            modified_files,
+            operations: preparation.outline.records().to_vec(),
         })
         .ok(),
     })
-}
-
-/// The smaller summary that stands in for the dropped prefix of a split turn.
-async fn generate_turn_prefix_summary(
-    messages: &[AgentMessage],
-    model: &Model,
-    reserve_tokens: u64,
-    request: &SummarizationRequest,
-) -> Result<(String, Usage), String> {
-    // A smaller budget than the history summary: it only has to explain one
-    // turn's opening.
-    let budget = (0.5 * reserve_tokens as f64).floor() as u64;
-    let max_tokens = if model.max_tokens > 0 {
-        budget.min(model.max_tokens)
-    } else {
-        budget
-    };
-    let llm_messages = convert_to_llm(messages);
-    let conversation_text = serialize_conversation(&llm_messages);
-    let prompt_text = format!(
-        "<conversation>\n{conversation_text}\n</conversation>\n\n{TURN_PREFIX_SUMMARIZATION_PROMPT}"
-    );
-
-    let response = complete_summarization(
-        model,
-        summarization_context_for(prompt_text),
-        create_summarization_options(model, max_tokens, request),
-        request.stream_fn.clone(),
-        request.retry,
-        request.callbacks.as_ref(),
-    )
-    .await;
-
-    if response.stop_reason == StopReason::Error {
-        return Err(format!(
-            "Turn prefix summarization failed: {}",
-            response
-                .error_message
-                .clone()
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
-
-    Ok((content_text(&response.content), response.usage))
 }

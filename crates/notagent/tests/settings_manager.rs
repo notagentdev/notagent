@@ -241,13 +241,13 @@ fn writes_nested_fields_without_dropping_sibling_keys() {
     .expect("writes");
 
     let manager = manager(&harness);
-    manager.set_global_nested_field("compaction", "keepRecentTokens", json!(20000));
+    manager.set_global_nested_field("compaction", "retainedUserTokens", json!(20000));
     manager.flush();
 
     let saved = read_settings(&settings_path);
     assert_eq!(saved["compaction"]["enabled"], true);
     assert_eq!(saved["compaction"]["reserveTokens"], 16384);
-    assert_eq!(saved["compaction"]["keepRecentTokens"], 20000);
+    assert_eq!(saved["compaction"]["retainedUserTokens"], 20000);
 }
 
 #[test]
@@ -634,7 +634,7 @@ fn resolves_the_remaining_defaults() {
         ResolvedCompactionSettings {
             enabled: true,
             reserve_tokens: 16_384,
-            keep_recent_tokens: 20_000
+            retained_user_tokens: 20_000
         }
     );
     assert_eq!(

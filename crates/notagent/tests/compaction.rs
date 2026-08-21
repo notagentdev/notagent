@@ -15,10 +15,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use notagent::core::compaction::{
-    CompactionPreparation, CompactionSettings, DEFAULT_COMPACTION_SETTINGS, SummarizationRequest,
-    calculate_context_tokens, compact, create_file_ops, estimate_context_tokens, find_cut_point,
-    generate_summary, generate_summary_with_usage, get_last_assistant_usage,
-    serialize_conversation, should_compact,
+    CompactionPreparation, CompactionSettings, DEFAULT_COMPACTION_SETTINGS, OperationOutline,
+    RetainedSelection, SummarizationRequest, calculate_context_tokens, compact,
+    estimate_context_tokens, generate_summary, generate_summary_with_usage,
+    get_last_assistant_usage, prepare_compaction, serialize_conversation,
+    serialize_conversation_within, should_compact,
 };
 use notagent::core::session_manager::{
     FileEntry, SessionEntry, migrate_session_entries, parse_session_entries,
@@ -148,17 +149,27 @@ impl EntryBuilder {
         }))
     }
 
-    fn custom_message(&mut self, content: &str) -> SessionEntry {
+    fn compaction_retaining(
+        &mut self,
+        summary: &str,
+        first_kept_entry_id: &str,
+        retained: &[&str],
+    ) -> SessionEntry {
         let parent = self.last_id.clone();
         let id = self.next_id();
         self.entry(json!({
-            "type": "custom_message",
+            "type": "compaction",
             "id": id,
             "parentId": parent,
             "timestamp": "2026-08-14T00:00:00.000Z",
-            "customType": "test",
-            "content": content,
-            "display": true,
+            "summary": summary,
+            "firstKeptEntryId": first_kept_entry_id,
+            "retained": {
+                "head": [],
+                "tail": retained.iter().map(|id| json!({ "id": id })).collect::<Vec<_>>(),
+                "omittedTokens": 0,
+            },
+            "tokensBefore": 10000,
         }))
     }
 
@@ -343,7 +354,7 @@ fn triggers_once_the_context_eats_into_the_reserve() {
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 10000,
-        keep_recent_tokens: 20000,
+        retained_user_tokens: 20000,
     };
     assert!(should_compact(95000, 100000, &settings));
     assert!(!should_compact(89000, 100000, &settings));
@@ -354,15 +365,17 @@ fn never_triggers_when_disabled() {
     let settings = CompactionSettings {
         enabled: false,
         reserve_tokens: 10000,
-        keep_recent_tokens: 20000,
+        retained_user_tokens: 20000,
     };
     assert!(!should_compact(95000, 100000, &settings));
 }
 
-// -------------------------------------------------------------- findCutPoint
+// ------------------------------------------------------------ what is kept
 
+/// The claim the whole rework rests on: a request survives a compaction word
+/// for word.
 #[test]
-fn cuts_at_a_message_entry() {
+fn keeps_every_user_message_verbatim() {
     let mut builder = EntryBuilder::default();
     let mut entries = Vec::new();
     for index in 0..10u64 {
@@ -373,172 +386,132 @@ fn cuts_at_a_message_entry() {
         ))));
     }
 
-    let result = find_cut_point(&entries, 0, entries.len(), 2500);
+    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
 
-    let entry = &entries[result.first_kept_entry_index];
-    assert_eq!(entry.entry_type(), "message");
-}
-
-#[test]
-fn returns_the_start_index_when_there_is_no_valid_cut_point() {
-    let mut builder = EntryBuilder::default();
-    let entries = vec![builder.message(assistant("a"))];
-    let result = find_cut_point(&entries, 0, entries.len(), 1000);
-    assert_eq!(result.first_kept_entry_index, 0);
-}
-
-#[test]
-fn keeps_everything_that_fits_the_budget() {
-    let mut builder = EntryBuilder::default();
-    let entries = vec![
-        builder.message(user_message("1")),
-        builder.message(AgentMessage::Assistant(assistant_message(
-            "a",
-            mock_usage(0, 50, 500, 0),
-        ))),
-        builder.message(user_message("2")),
-        builder.message(AgentMessage::Assistant(assistant_message(
-            "b",
-            mock_usage(0, 50, 1000, 0),
-        ))),
-    ];
-
-    let result = find_cut_point(&entries, 0, entries.len(), 50000);
-    assert_eq!(result.first_kept_entry_index, 0);
-}
-
-#[test]
-fn reports_a_split_turn_when_it_cuts_at_an_assistant_message() {
-    let mut builder = EntryBuilder::default();
-    let entries = vec![
-        builder.message(user_message("Turn 1")),
-        builder.message(AgentMessage::Assistant(assistant_message(
-            "A1",
-            mock_usage(0, 100, 1000, 0),
-        ))),
-        builder.message(user_message("Turn 2")),
-        builder.message(AgentMessage::Assistant(assistant_message(
-            "A2-1",
-            mock_usage(0, 100, 5000, 0),
-        ))),
-        builder.message(AgentMessage::Assistant(assistant_message(
-            "A2-2",
-            mock_usage(0, 100, 8000, 0),
-        ))),
-        builder.message(AgentMessage::Assistant(assistant_message(
-            "A2-3",
-            mock_usage(0, 100, 10000, 0),
-        ))),
-    ];
-
-    let result = find_cut_point(&entries, 0, entries.len(), 3000);
-
-    let cut = &entries[result.first_kept_entry_index];
-    let role = cut
-        .as_message()
-        .and_then(|entry| entry.message.get("role"))
-        .and_then(|role| role.as_str())
-        .unwrap_or_default();
-    if role == "assistant" {
-        assert!(result.is_split_turn);
-        assert_eq!(result.turn_start_index, Some(2));
+    let kept = extract_text(&preparation.retained_messages);
+    for index in 0..10u64 {
+        assert!(kept.contains(&format!("User {index}")), "{kept}");
     }
+    assert!(!kept.contains("Assistant 0"), "{kept}");
+    assert_eq!(preparation.retained.omitted_tokens, 0);
+    assert!(preparation.retained.head.is_empty());
+    assert_eq!(preparation.retained.tail.len(), 10);
+}
+
+/// Under budget pressure both ends survive and the gap between them is
+/// declared, so the model does not read the two halves as adjacent.
+#[test]
+fn keeps_both_ends_and_marks_the_gap() {
+    let mut builder = EntryBuilder::default();
+    let filler = "x".repeat(400); // 100 tokens each
+    let mut entries = Vec::new();
+    for index in 0..6u64 {
+        entries.push(builder.message(user_message(&format!("{index} {filler}"))));
+        entries.push(builder.message(assistant("work")));
+    }
+
+    let settings = CompactionSettings {
+        retained_user_tokens: 300,
+        ..DEFAULT_COMPACTION_SETTINGS
+    };
+    let preparation = prepare_compaction(&entries, &settings).expect("prepared");
+
+    assert!(!preparation.retained.head.is_empty(), "no head kept");
+    assert!(!preparation.retained.tail.is_empty(), "no tail kept");
+    assert!(preparation.retained.omitted_tokens > 0);
+
+    let kept = extract_text(&preparation.retained_messages);
+    assert!(kept.contains("0 xxx"), "the opening was lost: {kept}");
+    assert!(kept.contains("5 xxx"), "the latest was lost: {kept}");
+    assert_eq!(
+        kept.matches("dropped roughly").count(),
+        1,
+        "expected exactly one elision note: {kept}"
+    );
+}
+
+/// The note is only there when something really was dropped.
+#[test]
+fn carries_no_elision_note_when_nothing_was_dropped() {
+    let mut builder = EntryBuilder::default();
+    let entries = vec![
+        builder.message(user_message("short")),
+        builder.message(assistant("work")),
+    ];
+    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
+    let kept = extract_text(&preparation.retained_messages);
+    assert!(!kept.contains("dropped roughly"), "{kept}");
 }
 
 #[test]
-fn budgets_context_visible_custom_message_entries() {
+fn refuses_a_session_that_is_only_user_messages() {
     let mut builder = EntryBuilder::default();
     let entries = vec![
-        builder.message(user_message("hi")),
-        builder.message(assistant("hello")),
-        builder.custom_message(&"x".repeat(4000)),
-        builder.message(assistant("ok")),
+        builder.message(user_message("one")),
+        builder.message(user_message("two")),
     ];
+    assert!(prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).is_none());
+}
 
-    let tiny_budget = find_cut_point(&entries, 0, entries.len(), 1);
-    assert_eq!(tiny_budget.first_kept_entry_index, 3);
-    assert!(tiny_budget.is_split_turn);
-    assert_eq!(tiny_budget.turn_start_index, Some(2));
+#[test]
+fn refuses_to_compact_twice_in_a_row() {
+    let mut builder = EntryBuilder::default();
+    let first = builder.message(user_message("one"));
+    let first_id = first.id().to_string();
+    let entries = vec![
+        first,
+        builder.message(assistant("work")),
+        builder.compaction("summary", &first_id),
+    ];
+    assert!(prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).is_none());
+}
 
-    let custom_fits = find_cut_point(&entries, 0, entries.len(), 2);
-    assert_eq!(custom_fits.first_kept_entry_index, 2);
-    assert!(!custom_fits.is_split_turn);
-    assert_eq!(custom_fits.turn_start_index, None);
+/// The oldest retained entry is what an older build would keep from, and it
+/// keeps a superset — a degraded session rather than a broken one.
+#[test]
+fn points_the_compatibility_field_at_the_oldest_retained_entry() {
+    let mut builder = EntryBuilder::default();
+    let first = builder.message(user_message("first"));
+    let first_id = first.id().to_string();
+    let entries = vec![
+        first,
+        builder.message(assistant("work")),
+        builder.message(user_message("second")),
+    ];
+    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
+    assert_eq!(preparation.first_kept_entry_id, first_id);
 }
 
 // ------------------------------------------- prepareCompaction, second round
 
+/// A second compaction sees the retained messages and the first note, and
+/// summarizes them together — no separate update path, so nothing compounds
+/// behind the model's back.
 #[test]
-fn does_not_compact_again_while_the_kept_messages_still_fit() {
+fn a_second_compaction_summarizes_the_retained_messages_and_the_first_note() {
     let mut builder = EntryBuilder::default();
-    let u1 = builder.message(user_message("user msg 1 (summarized by compaction1)"));
+    let u1 = builder.message(user_message("user msg 1"));
     let a1 = builder.message(assistant("assistant msg 1"));
-    let u2 = builder.message(user_message("user msg 2 - kept by compaction1"));
-    let a2 = builder.message(assistant("assistant msg 2"));
-    let u3 = builder.message(user_message("user msg 3 - kept by compaction1"));
-    let a3 = builder.message(AgentMessage::Assistant(assistant_message(
-        "assistant msg 3",
-        mock_usage(5000, 1000, 0, 0),
-    )));
+    let u2 = builder.message(user_message("user msg 2"));
+    let u1_id = u1.id().to_string();
     let u2_id = u2.id().to_string();
-    let compaction = builder.compaction("First summary", &u2_id);
-    let u4 = builder.message(user_message("user msg 4 (new after compaction1)"));
-    let a4 = builder.message(AgentMessage::Assistant(assistant_message(
-        "assistant msg 4",
-        mock_usage(8000, 2000, 0, 0),
-    )));
+    let compaction = builder.compaction_retaining("First summary", &u1_id, &[&u1_id, &u2_id]);
+    let u3 = builder.message(user_message("user msg 3"));
+    let a3 = builder.message(assistant("assistant msg 3"));
 
-    let entries = vec![u1, a1, u2, a2, u3, a3, compaction, u4, a4];
-    assert!(
-        notagent::core::compaction::prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS)
-            .is_none()
-    );
-}
-
-#[test]
-fn re_summarizes_previously_kept_messages_once_the_window_moves_past_them() {
-    let mut builder = EntryBuilder::default();
-    let u1 = builder.message(user_message(
-        &"user msg 1 (summarized by compaction1)".repeat(4),
-    ));
-    let a1 = builder.message(assistant(&"assistant msg 1".repeat(4)));
-    let u2 = builder.message(user_message(
-        &"user msg 2 - kept by compaction1 ".repeat(12),
-    ));
-    let a2 = builder.message(assistant(&"assistant msg 2 ".repeat(12)));
-    let u3 = builder.message(user_message(
-        &"user msg 3 - kept by compaction1 ".repeat(12),
-    ));
-    let a3 = builder.message(AgentMessage::Assistant(assistant_message(
-        &"assistant msg 3 ".repeat(12),
-        mock_usage(5000, 1000, 0, 0),
-    )));
-    let u2_id = u2.id().to_string();
-    let compaction = builder.compaction("First summary", &u2_id);
-    let u4 = builder.message(user_message(
-        &"user msg 4 (new after compaction1) ".repeat(12),
-    ));
-    let a4 = builder.message(AgentMessage::Assistant(assistant_message(
-        &"assistant msg 4 ".repeat(12),
-        mock_usage(8000, 2000, 0, 0),
-    )));
-
-    let settings = CompactionSettings {
-        keep_recent_tokens: 100,
-        ..DEFAULT_COMPACTION_SETTINGS
-    };
-    let entries = vec![u1, a1, u2, a2, u3, a3, compaction, u4, a4];
-    let preparation =
-        notagent::core::compaction::prepare_compaction(&entries, &settings).expect("preparation");
+    let entries = vec![u1, a1, u2, compaction, u3, a3];
+    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
 
     let summarized = extract_text(&preparation.messages_to_summarize);
-    assert!(summarized.contains("user msg 2 - kept by compaction1"));
-    assert!(summarized.contains("user msg 3 - kept by compaction1"));
-    assert!(!summarized.contains("First summary"));
-    assert_eq!(
-        preparation.previous_summary.as_deref(),
-        Some("First summary")
-    );
+    assert!(summarized.contains("user msg 1"), "{summarized}");
+    assert!(summarized.contains("First summary"), "{summarized}");
+    assert!(!summarized.contains("assistant msg 1"), "{summarized}");
+
+    // All three user messages survive the second round as well.
+    let kept = extract_text(&preparation.retained_messages);
+    for text in ["user msg 1", "user msg 2", "user msg 3"] {
+        assert!(kept.contains(text), "{kept}");
+    }
 }
 
 // -------------------------------------------------------- large session file
@@ -556,24 +529,86 @@ fn parses_the_large_session_fixture() {
     );
 }
 
+/// The measurement the rework was decided on, pinned: the user's messages are a
+/// rounding error next to the transcript, so keeping all of them costs almost
+/// nothing.
 #[test]
-fn finds_a_cut_point_in_the_large_session() {
+fn keeps_the_whole_of_a_large_sessions_user_input() {
     let entries = large_session_entries();
-    let result = find_cut_point(
-        &entries,
-        0,
-        entries.len(),
-        DEFAULT_COMPACTION_SETTINGS.keep_recent_tokens,
-    );
+    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
 
-    let entry = &entries[result.first_kept_entry_index];
-    assert_eq!(entry.entry_type(), "message");
-    let role = entry
-        .as_message()
-        .and_then(|entry| entry.message.get("role"))
-        .and_then(|role| role.as_str())
-        .unwrap_or_default();
-    assert!(role == "user" || role == "assistant");
+    assert_eq!(preparation.retained.omitted_tokens, 0);
+    let kept: u64 = preparation
+        .retained_messages
+        .iter()
+        .map(notagent::core::compaction::estimate_tokens)
+        .sum();
+    assert!(
+        kept * 4 < preparation.tokens_before,
+        "retained {kept} of {} tokens",
+        preparation.tokens_before
+    );
+}
+
+/// A session compacted by an earlier version still opens, and its compactions
+/// keep the meaning they were written with: a summary followed by the suffix
+/// the field named.
+#[test]
+fn a_session_compacted_before_the_change_still_builds_a_context() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/before-compaction.jsonl");
+    let content = std::fs::read_to_string(path).expect("fixture");
+    let mut entries = parse_session_entries(&content);
+    migrate_session_entries(&mut entries);
+    let entries: Vec<SessionEntry> = entries
+        .into_iter()
+        .filter_map(|entry| match entry {
+            FileEntry::Entry(entry) => Some(entry),
+            FileEntry::Session(_) => None,
+        })
+        .collect();
+
+    let compactions = entries
+        .iter()
+        .filter(|entry| entry.entry_type() == "compaction")
+        .count();
+    assert!(compactions > 0, "fixture has no compaction to check");
+
+    let context = notagent::core::session_manager::build_session_context(
+        &entries,
+        notagent::core::session_manager::LeafSelector::Undefined,
+    );
+    assert!(!context.messages.is_empty());
+    assert!(
+        matches!(
+            context.messages.first(),
+            Some(AgentMessage::CompactionSummary(_))
+        ),
+        "the old shape puts the summary first"
+    );
+}
+
+// ------------------------------------------------------- operation outline
+
+#[test]
+fn the_outline_keeps_the_last_operation_per_target() {
+    let mut outline = OperationOutline::new();
+    outline.record("/a.rs", notagent::core::compaction::Operation::Read);
+    outline.record("/b.rs", notagent::core::compaction::Operation::Read);
+    outline.record("/a.rs", notagent::core::compaction::Operation::Patched);
+
+    let rendered = notagent::core::compaction::format_operation_outline(&outline);
+    assert!(rendered.contains("patched /a.rs"), "{rendered}");
+    assert!(rendered.contains("read /b.rs"), "{rendered}");
+    assert!(!rendered.contains("read /a.rs"), "{rendered}");
+    assert_eq!(outline.records().len(), 2);
+}
+
+#[test]
+fn the_outline_is_empty_when_nothing_happened() {
+    assert!(
+        notagent::core::compaction::format_operation_outline(&OperationOutline::new()).is_empty()
+    );
 }
 
 // ------------------------------------------------------ serializeConversation
@@ -677,19 +712,20 @@ async fn passes_the_thinking_level_through_for_reasoning_models() {
         Some(ThinkingLevel::Medium),
     );
 
-    let (text, usage) = generate_summary_with_usage(
+    let summary = generate_summary_with_usage(
         &summarize_messages(),
         &model_with(true, 8192),
         2000,
-        None,
+        0,
         None,
         &request,
     )
     .await
     .expect("summary");
 
-    assert_eq!(text, "## Goal\nTest summary");
-    assert_eq!(usage, mock_usage(10, 10, 0, 0));
+    assert_eq!(summary.text, "## Goal\nTest summary");
+    assert_eq!(summary.usage, mock_usage(10, 10, 0, 0));
+    assert_eq!(summary.dropped_tokens, 0);
 
     let recorded = recorded.lock().expect("recorded");
     assert_eq!(recorded.options.len(), 1);
@@ -712,7 +748,7 @@ async fn returns_the_summary_text_from_generate_summary() {
         &summarize_messages(),
         &model_with(false, 8192),
         2000,
-        None,
+        0,
         None,
         &request,
     )
@@ -732,7 +768,7 @@ async fn uses_a_fresh_routing_session_and_writes_no_cache_entry() {
             &summarize_messages(),
             &model_with(false, 8192),
             2000,
-            None,
+            0,
             None,
             &request,
         )
@@ -766,7 +802,7 @@ async fn asks_for_no_reasoning_when_thinking_is_off() {
         &summarize_messages(),
         &model_with(true, 8192),
         2000,
-        None,
+        0,
         None,
         &request,
     )
@@ -790,7 +826,7 @@ async fn asks_for_no_reasoning_from_a_model_that_cannot_reason() {
         &summarize_messages(),
         &model_with(false, 8192),
         2000,
-        None,
+        0,
         None,
         &request,
     )
@@ -810,15 +846,14 @@ async fn clamps_the_summary_budget_to_the_models_output_cap() {
     let preparation = CompactionPreparation {
         first_kept_entry_id: "entry-keep".to_owned(),
         messages_to_summarize: summarize_messages(),
-        turn_prefix_messages: summarize_messages(),
-        is_split_turn: true,
+        retained: RetainedSelection::default(),
+        retained_messages: Vec::new(),
         tokens_before: 600000,
-        previous_summary: None,
-        file_ops: create_file_ops(),
+        outline: OperationOutline::new(),
         settings: CompactionSettings {
             enabled: true,
             reserve_tokens: 500000,
-            keep_recent_tokens: 20000,
+            retained_user_tokens: 20000,
         },
     };
 
@@ -826,8 +861,7 @@ async fn clamps_the_summary_budget_to_the_models_output_cap() {
         .await
         .expect("compaction");
 
-    // Both halves of the split turn were summarized, and their usage combined.
-    assert_eq!(result.usage.expect("usage"), mock_usage(20, 20, 0, 0));
+    assert_eq!(result.usage.expect("usage"), mock_usage(10, 10, 0, 0));
     let recorded = recorded.lock().expect("recorded");
     assert_eq!(
         recorded
@@ -835,37 +869,40 @@ async fn clamps_the_summary_budget_to_the_models_output_cap() {
             .iter()
             .map(|options| options.base.max_tokens)
             .collect::<Vec<_>>(),
-        vec![Some(128000), Some(128000)]
+        vec![Some(128000)]
     );
 }
 
-/// The counter proves the two calls really are the history summary and the
-/// turn-prefix summary, not one call retried.
+/// One compaction, one model call. The mechanism this replaced made a second
+/// call for the prefix of a split turn; the counter is what would catch that
+/// coming back.
 #[tokio::test]
-async fn a_split_turn_produces_both_summaries_in_one_result() {
+async fn writes_the_note_in_a_single_call() {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&calls);
     let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
-        let index = counter.fetch_add(1, Ordering::Relaxed);
+        counter.fetch_add(1, Ordering::Relaxed);
         Box::pin(async move {
-            let response = assistant_message(
-                if index == 0 { "HISTORY" } else { "PREFIX" },
-                mock_usage(1, 1, 0, 0),
-            );
+            let response = assistant_message("NOTE", mock_usage(1, 1, 0, 0));
             let stream = create_assistant_message_event_stream();
             stream.end(Some(response));
             stream
         })
     });
 
+    let mut outline = OperationOutline::new();
+    outline.record(
+        "/src/main.rs",
+        notagent::core::compaction::Operation::Patched,
+    );
+
     let preparation = CompactionPreparation {
         first_kept_entry_id: "entry-keep".to_owned(),
         messages_to_summarize: summarize_messages(),
-        turn_prefix_messages: summarize_messages(),
-        is_split_turn: true,
+        retained: RetainedSelection::default(),
+        retained_messages: summarize_messages(),
         tokens_before: 1000,
-        previous_summary: None,
-        file_ops: create_file_ops(),
+        outline,
         settings: DEFAULT_COMPACTION_SETTINGS,
     };
 
@@ -878,9 +915,39 @@ async fn a_split_turn_produces_both_summaries_in_one_result() {
     .await
     .expect("compaction");
 
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    // The note, then the outline the tool calls were read off — not asked for,
+    // so not inventable.
     assert_eq!(
         result.summary,
-        "HISTORY\n\n---\n\n**Turn Context (split turn):**\n\nPREFIX"
+        "NOTE\n\n<operations>\npatched /src/main.rs\n</operations>"
     );
+    assert!(result.estimated_tokens_after.is_some());
+    assert_eq!(result.dropped_tokens, 0);
+}
+
+/// A history too large for the window is cut once, before the call, rather
+/// than discovered by a rejection.
+#[tokio::test]
+async fn cuts_an_oversized_history_once_before_sending() {
+    let long = "x".repeat(4000); // 1000 tokens per message
+    let messages: Vec<Message> = (0..10)
+        .map(|index| {
+            Message::User(UserMessage {
+                content: UserContent::Text(format!("{index} {long}")),
+                timestamp: 0,
+            })
+        })
+        .collect();
+
+    let full = serialize_conversation_within(&messages, 0);
+    assert_eq!(full.dropped_messages, 0);
+    assert!(full.text.contains("0 xxx"));
+
+    let cut = serialize_conversation_within(&messages, 5_000);
+    assert!(cut.dropped_messages >= 5, "{}", cut.dropped_messages);
+    assert!(cut.dropped_tokens > 0);
+    // The oldest went; the newest stayed.
+    assert!(!cut.text.contains("[User]: 0 "), "{}", &cut.text[..80]);
+    assert!(cut.text.contains("9 xxx"));
 }

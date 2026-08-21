@@ -95,7 +95,9 @@ fn groups_tool_and_summary_usage_separately_from_model_attributed_usage() {
         .append_compaction(
             "summary",
             &root_id,
+            None,
             100,
+            None,
             None,
             Some(false),
             Some(create_usage(100, 2.0)),

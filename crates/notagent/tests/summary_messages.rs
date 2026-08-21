@@ -30,6 +30,7 @@ fn collapses_and_expands_the_compaction_summary() {
 
     let mut component = CompactionSummaryMessageComponent::new(
         CompactionSummaryMessage {
+            tokens_after: None,
             summary: "The summary body.".to_string(),
             tokens_before: 123_456,
             timestamp: 0,
@@ -107,6 +108,7 @@ fn badge_style_compaction_shares_the_badge_row_with_the_detail() {
 
     let mut component = CompactionSummaryMessageComponent::new(
         CompactionSummaryMessage {
+            tokens_after: None,
             summary: "The summary body.".to_string(),
             tokens_before: 123_456,
             timestamp: 0,

@@ -40,8 +40,18 @@ pub struct CompactionSettings {
     pub enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reserve_tokens: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub keep_recent_tokens: Option<u64>,
+    /// Budget for the user messages a compaction carries through.
+    ///
+    /// `keepRecentTokens` is the name this had while a compaction kept a window
+    /// of raw transcript instead. It is still accepted so that a settings file
+    /// written before the change keeps working, rather than silently falling
+    /// back to the default.
+    #[serde(
+        default,
+        alias = "keepRecentTokens",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub retained_user_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -860,12 +870,12 @@ pub enum ScrollViewScrollbar {
     Hidden,
 }
 
-/// `{ enabled, reserveTokens, keepRecentTokens }`
+/// `{ enabled, reserveTokens, retainedUserTokens }`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResolvedCompactionSettings {
     pub enabled: bool,
     pub reserve_tokens: u64,
-    pub keep_recent_tokens: u64,
+    pub retained_user_tokens: u64,
 }
 
 /// `{ reserveTokens, skipPrompt }`
@@ -1143,18 +1153,18 @@ impl SettingsManager {
             .unwrap_or(16_384)
     }
 
-    pub fn get_compaction_keep_recent_tokens(&self) -> u64 {
+    pub fn get_compaction_retained_user_tokens(&self) -> u64 {
         self.settings_snapshot()
             .compaction
-            .and_then(|compaction| compaction.keep_recent_tokens)
-            .unwrap_or(20_000)
+            .and_then(|compaction| compaction.retained_user_tokens)
+            .unwrap_or(crate::core::compaction::retention::RETAINED_USER_TOKENS)
     }
 
     pub fn get_compaction_settings(&self) -> ResolvedCompactionSettings {
         ResolvedCompactionSettings {
             enabled: self.get_compaction_enabled(),
             reserve_tokens: self.get_compaction_reserve_tokens(),
-            keep_recent_tokens: self.get_compaction_keep_recent_tokens(),
+            retained_user_tokens: self.get_compaction_retained_user_tokens(),
         }
     }
 

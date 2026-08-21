@@ -63,6 +63,10 @@ pub struct BranchSummaryMessage {
 pub struct CompactionSummaryMessage {
     pub summary: String,
     pub tokens_before: u64,
+    /// What the context measured once the compaction had been applied. Absent
+    /// for a compaction written before the figure was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_after: Option<u64>,
     pub timestamp: i64,
 }
 
@@ -106,11 +110,13 @@ pub fn create_branch_summary_message(
 pub fn create_compaction_summary_message(
     summary: impl Into<String>,
     tokens_before: u64,
+    tokens_after: Option<u64>,
     timestamp: i64,
 ) -> CompactionSummaryMessage {
     CompactionSummaryMessage {
         summary: summary.into(),
         tokens_before,
+        tokens_after,
         timestamp,
     }
 }
