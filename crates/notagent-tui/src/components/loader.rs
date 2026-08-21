@@ -7,6 +7,7 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use crate::components::shimmer::{SHIMMER_FRAME_MS, ShimmerPalette, shimmer};
 use crate::components::text::Text;
 use crate::tui::{Component, Line};
 
@@ -37,6 +38,11 @@ pub struct Loader {
     message_color_fn: ColorFn,
     message: String,
     render_requested: bool,
+    /// When set, the message carries the animation itself and no spinner is
+    /// drawn. `None` inside it means the terminal cannot show the fade, in
+    /// which case the message is simply left still.
+    shimmer: Option<Option<ShimmerPalette>>,
+    started_at: Instant,
 }
 
 impl Loader {
@@ -61,9 +67,35 @@ impl Loader {
             message_color_fn,
             message: message.into(),
             render_requested: false,
+            shimmer: None,
+            started_at: Instant::now(),
         };
         loader.set_indicator(indicator);
         loader
+    }
+
+    /// Animate the message itself instead of drawing a spinner beside it.
+    ///
+    /// `palette` is `None` when the terminal cannot render the fade; the
+    /// spinner still goes, and the message is drawn once and left alone.
+    pub fn set_shimmer(&mut self, palette: Option<ShimmerPalette>) {
+        self.shimmer = Some(palette);
+        self.started_at = Instant::now();
+        self.start();
+    }
+
+    fn is_animating(&self) -> bool {
+        match self.shimmer {
+            Some(palette) => palette.is_some(),
+            None => self.frames.len() > 1,
+        }
+    }
+
+    fn frame_interval_ms(&self) -> u64 {
+        match self.shimmer {
+            Some(_) => SHIMMER_FRAME_MS,
+            None => self.interval_ms,
+        }
     }
 
     /// Start the animation.
@@ -111,12 +143,14 @@ impl Loader {
 
     /// Advance to the next frame once the deadline has passed.
     pub fn tick(&mut self) {
-        if self.frames.len() <= 1 {
+        if !self.is_animating() {
             return;
         }
-        self.current_frame = (self.current_frame + 1) % self.frames.len();
+        if self.shimmer.is_none() {
+            self.current_frame = (self.current_frame + 1) % self.frames.len();
+        }
         self.update_display();
-        self.next_frame_at = Some(Instant::now() + Duration::from_millis(self.interval_ms));
+        self.next_frame_at = Some(Instant::now() + Duration::from_millis(self.frame_interval_ms()));
     }
 
     /// Whether a render was requested since the last check.
@@ -126,13 +160,23 @@ impl Loader {
 
     fn restart_animation(&mut self) {
         self.stop();
-        if self.frames.len() <= 1 {
+        if !self.is_animating() {
             return;
         }
-        self.next_frame_at = Some(Instant::now() + Duration::from_millis(self.interval_ms));
+        self.next_frame_at = Some(Instant::now() + Duration::from_millis(self.frame_interval_ms()));
     }
 
     fn update_display(&mut self) {
+        if let Some(palette) = self.shimmer {
+            let message = match palette {
+                Some(palette) => shimmer(&self.message, palette, self.started_at.elapsed()),
+                None => (self.message_color_fn)(&self.message),
+            };
+            self.text.set_text(message);
+            self.render_requested = true;
+            return;
+        }
+
         let frame = self
             .frames
             .get(self.current_frame)

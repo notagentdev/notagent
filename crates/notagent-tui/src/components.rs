@@ -14,6 +14,7 @@ pub mod markdown;
 pub mod scroll_view;
 pub mod select_list;
 pub mod settings_list;
+pub mod shimmer;
 pub mod spacer;
 pub mod stack;
 pub mod text;

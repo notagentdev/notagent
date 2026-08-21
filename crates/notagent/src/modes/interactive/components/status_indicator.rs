@@ -1,15 +1,18 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/status-indicator.ts` (114 LOC).
+//! What the session shows while it is busy.
 //!
-//! TypeScript models the four indicators as subclasses of a `Loader` subclass.
-//! Rust has no inheritance: the three stateless subclasses become constructors
-//! and the retry variant keeps its countdown as an optional field. The
-//! observable surface (`kind`, message, `dispose`, rendering) is unchanged.
+//! The four activities are constructors rather than subclasses, and the retry
+//! variant keeps its countdown as an optional field.
+//!
+//! None of them draws a spinner. A spinner puts the motion beside the words,
+//! where it competes with them for attention while saying nothing the words do
+//! not; instead the message animates itself, with a band of fading colour
+//! travelling through it.
 
 use std::rc::Rc;
 use std::time::Instant;
 
 use notagent_tui::components::loader::{Loader, LoaderIndicatorOptions};
+use notagent_tui::components::shimmer::ShimmerPalette;
 use notagent_tui::tui::{Component, Line};
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
@@ -41,7 +44,7 @@ pub enum CompactionStatusReason {
     Overflow,
 }
 
-/// Spinner plus status message.
+/// A status message that carries its own animation.
 pub struct StatusIndicator {
     /// Which activity is reported.
     pub kind: StatusIndicatorKind,
@@ -70,12 +73,22 @@ fn accent_spinner() -> Rc<dyn Fn(&str) -> String> {
     Rc::new(|spinner: &str| theme().fg(ThemeColor::Accent, spinner))
 }
 
-fn warning_spinner() -> Rc<dyn Fn(&str) -> String> {
-    Rc::new(|spinner: &str| theme().fg(ThemeColor::Warning, spinner))
+fn message_in(color: ThemeColor) -> Rc<dyn Fn(&str) -> String> {
+    Rc::new(move |text: &str| theme().fg(color, text))
 }
 
-fn muted_message() -> Rc<dyn Fn(&str) -> String> {
-    Rc::new(|text: &str| theme().fg(ThemeColor::Muted, text))
+/// The fade the travelling band pulls the message toward.
+///
+/// Dim rather than a fixed dark value: in the light theme the dim colour is
+/// lighter than the text and in the dark theme it is darker, so the message
+/// loses contrast either way instead of turning the wrong direction in one of
+/// them.
+fn shimmer_palette(base: ThemeColor) -> Option<ShimmerPalette> {
+    let theme = theme();
+    Some(ShimmerPalette {
+        base: theme.get_fg_rgb(base)?,
+        fade: theme.get_fg_rgb(ThemeColor::Dim)?,
+    })
 }
 
 impl StatusIndicator {
@@ -95,12 +108,34 @@ impl StatusIndicator {
         }
     }
 
+    /// The base constructor for an indicator that animates its own message.
+    ///
+    /// A caller that hands in indicator options has asked for a particular
+    /// animation and keeps it; everything else drops the spinner.
+    fn animated(
+        kind: StatusIndicatorKind,
+        base: ThemeColor,
+        message: impl Into<String>,
+        indicator: Option<LoaderIndicatorOptions>,
+    ) -> Self {
+        let mut status = Self::new(
+            kind,
+            accent_spinner(),
+            message_in(base),
+            message,
+            indicator.clone(),
+        );
+        if indicator.is_none() {
+            status.loader.set_shimmer(shimmer_palette(base));
+        }
+        status
+    }
+
     /// `WorkingStatusIndicator`.
     pub fn working(message: impl Into<String>, indicator: Option<LoaderIndicatorOptions>) -> Self {
-        Self::new(
+        Self::animated(
             StatusIndicatorKind::Working,
-            accent_spinner(),
-            muted_message(),
+            ThemeColor::Text,
             message,
             indicator,
         )
@@ -113,10 +148,11 @@ impl StatusIndicator {
             max_attempts,
         };
         let countdown = CountdownTimer::new(delay_ms);
-        let mut indicator = Self::new(
+        // A retry keeps the warning colour: the countdown is the one status
+        // where the message alone does not say that something went wrong.
+        let mut indicator = Self::animated(
             StatusIndicatorKind::Retry,
-            warning_spinner(),
-            muted_message(),
+            ThemeColor::Warning,
             retry_message.text((delay_ms as f64 / 1000.0).ceil() as i64),
             None,
         );
@@ -140,10 +176,9 @@ impl StatusIndicator {
                 }
             )
         };
-        Self::new(
+        Self::animated(
             StatusIndicatorKind::Compaction,
-            accent_spinner(),
-            muted_message(),
+            ThemeColor::Text,
             label,
             None,
         )
@@ -151,10 +186,9 @@ impl StatusIndicator {
 
     /// `BranchSummaryStatusIndicator`.
     pub fn branch_summary() -> Self {
-        Self::new(
+        Self::animated(
             StatusIndicatorKind::BranchSummary,
-            accent_spinner(),
-            muted_message(),
+            ThemeColor::Text,
             format!(
                 "Summarizing branch... ({} to cancel)",
                 key_text("app.interrupt")

@@ -1008,6 +1008,22 @@ impl Theme {
         }
     }
 
+    /// The channel values of a foreground slot, when the theme was resolved in
+    /// 24-bit colour.
+    ///
+    /// A slot only keeps its ready-made escape sequence, so the numbers are
+    /// read back out of it. In the 256-colour mode there are no exact channel
+    /// values to recover, and callers that need to mix colours have to do
+    /// without.
+    pub fn get_fg_rgb(&self, color: ThemeColor) -> Option<(u8, u8, u8)> {
+        let ansi = self.fg_colors.get(&color)?;
+        let channels = ansi.strip_prefix("\x1b[38;2;")?.strip_suffix('m')?;
+        let mut parts = channels.split(';');
+        let mut next = || parts.next()?.parse::<u8>().ok();
+        let (red, green, blue) = (next()?, next()?, next()?);
+        parts.next().is_none().then_some((red, green, blue))
+    }
+
     /// The raw background sequence of a slot.
     pub fn get_bg_ansi(&self, color: ThemeBg) -> &str {
         match self.bg_colors.get(&color) {
