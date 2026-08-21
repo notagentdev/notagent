@@ -864,10 +864,21 @@ impl TuiMainScreen {
 
     /// Position the hardware cursor for the IME candidate window.
     fn position_hardware_cursor(&mut self, cursor_pos: Option<(usize, usize)>, total_lines: usize) {
-        let Some((row, col)) = cursor_pos.filter(|_| total_lines > 0) else {
+        if total_lines == 0 {
             self.core.with_terminal(|terminal| terminal.hide_cursor());
             return;
-        };
+        }
+
+        // Where the cursor goes when no component claims it — a dialog is open,
+        // say, and nothing is emitting the marker.
+        //
+        // Hiding it is not enough on its own. A partial repaint leaves the
+        // physical cursor at the end of whatever it just painted, and a terminal
+        // that draws its cursor regardless of `?25l` then shows it hopping
+        // between the regions that repaint on their own timers. Parking it
+        // somewhere fixed costs one escape sequence and makes the frame look the
+        // same either way.
+        let (row, col) = cursor_pos.unwrap_or((total_lines - 1, 0));
 
         let target_row = row.min(total_lines - 1);
         let target_col = col;
@@ -885,7 +896,8 @@ impl TuiMainScreen {
         self.core.with_terminal(|terminal| terminal.write(&buffer));
 
         self.hardware_cursor_row = target_row;
-        let show = self.core.get_show_hardware_cursor();
+        // Only a component that asked for the cursor gets a visible one.
+        let show = cursor_pos.is_some() && self.core.get_show_hardware_cursor();
         self.core.with_terminal(|terminal| {
             if show {
                 terminal.show_cursor();

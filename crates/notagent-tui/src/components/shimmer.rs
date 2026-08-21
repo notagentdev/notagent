@@ -13,9 +13,13 @@
 use std::fmt::Write as _;
 use std::time::Duration;
 
-/// How often the band moves. Fast enough to read as motion, slow enough that a
-/// terminal over a slow link is not redrawn to death.
-pub const SHIMMER_FRAME_MS: u64 = 50;
+/// How often the band moves.
+///
+/// Fast enough to read as motion, and no faster: every frame rewrites the whole
+/// line, so the status row is one of several regions repainting on their own
+/// timers underneath whatever else is on screen. Four frames a second is enough
+/// for a two-second sweep to look continuous.
+pub const SHIMMER_FRAME_MS: u64 = 200;
 
 /// How long one pass across the text takes.
 const SWEEP_SECONDS: f32 = 2.0;
