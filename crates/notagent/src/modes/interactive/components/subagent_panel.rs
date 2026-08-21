@@ -37,17 +37,12 @@ fn as_running_subagent(info: &TaskInfo) -> Option<&SubagentTaskInfo> {
     }
 }
 
-/// Seconds, then minutes: a child that ran an hour is a different problem.
+/// The running time of a child, between two millisecond stamps.
 pub fn format_elapsed(started_at: i64, now: i64) -> String {
-    let seconds = (((now - started_at) as f64) / 1000.0).round().max(0.0) as i64;
-    if seconds < 60 {
-        return format!("{seconds}s");
-    }
-    let minutes = seconds / 60;
-    if minutes < 60 {
-        return format!("{minutes}m {}s", seconds % 60);
-    }
-    format!("{}h {}m", minutes / 60, minutes % 60)
+    let millis = (now - started_at).max(0) as u64;
+    crate::modes::interactive::theme::theme::format_elapsed(std::time::Duration::from_millis(
+        millis,
+    ))
 }
 
 /// Thousands as `17.9k`.

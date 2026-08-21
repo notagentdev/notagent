@@ -529,7 +529,7 @@ fn fg_ansi_as_badge_fill(ansi: &str) -> String {
 /// Elapsed time for a running badge: invisible below one second — a
 /// counting-up ms display is noise (the reference's `format_elapsed_live`).
 pub fn format_elapsed_live(elapsed: std::time::Duration) -> Option<String> {
-    (elapsed >= std::time::Duration::from_secs(1)).then(|| format_badge_elapsed(elapsed))
+    (elapsed >= std::time::Duration::from_secs(1)).then(|| format_elapsed(elapsed))
 }
 
 /// Final badge runtime: sub-second durations read as milliseconds.
@@ -537,11 +537,19 @@ pub fn format_elapsed_precise(elapsed: std::time::Duration) -> String {
     if elapsed < std::time::Duration::from_secs(1) {
         format!("{}ms", elapsed.as_millis())
     } else {
-        format_badge_elapsed(elapsed)
+        format_elapsed(elapsed)
     }
 }
 
-fn format_badge_elapsed(elapsed: std::time::Duration) -> String {
+/// The one way a duration is written in this interface: `42s`, `3m 12s`,
+/// `1h 4m`.
+///
+/// Everything that shows a running time goes through here — the badges on
+/// blocks, the task roster, the subagent panel, the status line. Three copies
+/// of this used to exist and one of them rounded where the others floored, so
+/// the same second could read as two different numbers in two places on the
+/// same screen.
+pub fn format_elapsed(elapsed: std::time::Duration) -> String {
     let total_secs = elapsed.as_secs();
     let (hours, minutes, seconds) = (total_secs / 3600, (total_secs % 3600) / 60, total_secs % 60);
     if hours > 0 {

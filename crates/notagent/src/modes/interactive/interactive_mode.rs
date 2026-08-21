@@ -2105,6 +2105,10 @@ impl InteractiveMode {
                 deadline =
                     Some(deadline.map_or(candidate, |current: Instant| current.min(candidate)));
             }
+            if let Some(candidate) = indicator.elapsed_deadline() {
+                deadline =
+                    Some(deadline.map_or(candidate, |current: Instant| current.min(candidate)));
+            }
         }
         if let Some(candidate) = self.editor.borrow().editor().autocomplete_deadline() {
             deadline = Some(deadline.map_or(candidate, |current: Instant| current.min(candidate)));
@@ -2188,6 +2192,7 @@ impl InteractiveMode {
             {
                 needs_render |= indicator.tick_countdown();
             }
+            needs_render |= indicator.tick_elapsed();
         }
         // The THINKING badge's live timer advances at most once per second
         // (reference: the badge timer runs on the animation tick).
@@ -8258,7 +8263,7 @@ impl InteractiveMode {
                     self.ui
                         .with_terminal(|terminal| terminal.set_progress(false));
                 }
-                self.clear_status_indicator(Some(StatusIndicatorKind::Working));
+                self.settle_status_indicator(StatusIndicatorKind::Working);
                 if let Some(component) = self.streaming_component.take() {
                     self.chat_container
                         .borrow_mut()
@@ -8902,6 +8907,22 @@ impl InteractiveMode {
         container.add_child(Rc::clone(&indicator) as ComponentRef);
         drop(container);
         self.active_status_indicator = Some(indicator);
+    }
+
+    /// Stop the indicator but leave it on screen, reporting what the work took.
+    ///
+    /// Used where an activity finished on its own. Somewhere the session is
+    /// being torn down or switched, `clear_status_indicator` is still the right
+    /// call: a runtime for work the user is no longer looking at is clutter.
+    fn settle_status_indicator(&mut self, kind: StatusIndicatorKind) {
+        let Some(indicator) = self.active_status_indicator.clone() else {
+            return;
+        };
+        if indicator.borrow().kind != kind {
+            return;
+        }
+        indicator.borrow_mut().settle();
+        self.ui.request_render();
     }
 
     /// `clearStatusIndicator` (`interactive-mode.ts:2069-2080`).

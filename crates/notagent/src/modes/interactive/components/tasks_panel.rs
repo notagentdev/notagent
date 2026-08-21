@@ -80,19 +80,13 @@ pub(crate) fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
-/// Formats an elapsed duration the way the reference roster does: `42s`,
-/// `3m 12s`, `1h 4m`. Whole seconds, floored, like `Duration::as_secs`.
+/// How long a task has run, or ran.
 fn elapsed(info: &TaskInfo, now: i64) -> String {
     let base = info.base();
-    let total_secs = ((base.ended_at.unwrap_or(now) - base.started_at).max(0) / 1000) as u64;
-    let (hours, minutes, seconds) = (total_secs / 3600, (total_secs % 3600) / 60, total_secs % 60);
-    if hours > 0 {
-        format!("{hours}h {minutes}m")
-    } else if minutes > 0 {
-        format!("{minutes}m {seconds}s")
-    } else {
-        format!("{seconds}s")
-    }
+    crate::modes::interactive::components::subagent_panel::format_elapsed(
+        base.started_at,
+        base.ended_at.unwrap_or(now),
+    )
 }
 
 /// The panel itself.

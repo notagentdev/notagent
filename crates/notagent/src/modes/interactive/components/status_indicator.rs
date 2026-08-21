@@ -9,13 +9,15 @@
 //! travelling through it.
 
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use notagent_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use notagent_tui::components::shimmer::ShimmerPalette;
 use notagent_tui::tui::{Component, Line};
 
-use crate::modes::interactive::theme::theme::{ThemeColor, theme};
+use crate::modes::interactive::theme::theme::{
+    ThemeColor, format_elapsed_live, format_elapsed_precise, theme,
+};
 
 use super::countdown_timer::CountdownTimer;
 use super::keybinding_hints::key_text;
@@ -51,6 +53,13 @@ pub struct StatusIndicator {
     loader: Loader,
     countdown: Option<CountdownTimer>,
     retry_message: Option<RetryMessage>,
+    started: Instant,
+    /// The message without its running time, for the indicators that show one.
+    timed_message: Option<String>,
+    /// The last running time written into the message, so the message is only
+    /// rebuilt when the figure actually changes rather than on every frame.
+    shown_elapsed: Option<String>,
+    settled: bool,
 }
 
 struct RetryMessage {
@@ -105,6 +114,10 @@ impl StatusIndicator {
             loader: Loader::new(spinner_color_fn, message_color_fn, message, indicator),
             countdown: None,
             retry_message: None,
+            started: Instant::now(),
+            timed_message: None,
+            shown_elapsed: None,
+            settled: false,
         }
     }
 
@@ -118,17 +131,80 @@ impl StatusIndicator {
         message: impl Into<String>,
         indicator: Option<LoaderIndicatorOptions>,
     ) -> Self {
+        let message = message.into();
         let mut status = Self::new(
             kind,
             accent_spinner(),
             message_in(base),
-            message,
+            message.clone(),
             indicator.clone(),
         );
         if indicator.is_none() {
             status.loader.set_shimmer(shimmer_palette(base));
         }
+        // A retry already counts, downwards; a second figure beside it would be
+        // two clocks disagreeing about what they measure.
+        if kind != StatusIndicatorKind::Retry {
+            status.timed_message = Some(message);
+        }
         status
+    }
+
+    /// Update the running time in the message.
+    ///
+    /// Returns whether the figure changed, which is the only reason to redraw
+    /// on account of the clock — the animation redraws on its own schedule.
+    pub fn tick_elapsed(&mut self) -> bool {
+        if self.settled {
+            return false;
+        }
+        let Some(base) = self.timed_message.clone() else {
+            return false;
+        };
+        let elapsed = format_elapsed_live(self.started.elapsed());
+        if elapsed == self.shown_elapsed {
+            return false;
+        }
+        self.loader.set_message(match elapsed.as_ref() {
+            Some(elapsed) => format!("{base} ({elapsed})"),
+            None => base,
+        });
+        self.shown_elapsed = elapsed;
+        true
+    }
+
+    /// When the running time is next worth redrawing for.
+    pub fn elapsed_deadline(&self) -> Option<Instant> {
+        (!self.settled && self.timed_message.is_some())
+            .then(|| Instant::now() + Duration::from_millis(250))
+    }
+
+    /// Stop, and leave behind what the work took.
+    ///
+    /// The line stays on screen instead of being replaced by blank rows: how
+    /// long a turn ran is the one thing about it a reader cannot reconstruct
+    /// afterwards, and blanking the row throws it away at the exact moment it
+    /// becomes final.
+    pub fn settle(&mut self) {
+        if self.settled {
+            return;
+        }
+        let elapsed = format_elapsed_precise(self.started.elapsed());
+        self.settled = true;
+        if let Some(countdown) = self.countdown.as_mut() {
+            countdown.dispose();
+        }
+        self.countdown = None;
+        self.loader.set_shimmer(None);
+        self.loader
+            .set_message_color(Rc::new(|text: &str| theme().fg(ThemeColor::Dim, text)));
+        self.loader.set_message(format!("Worked for {elapsed}"));
+        self.loader.stop();
+    }
+
+    /// Whether the indicator has stopped and is only reporting its runtime.
+    pub fn is_settled(&self) -> bool {
+        self.settled
     }
 
     /// `WorkingStatusIndicator`.

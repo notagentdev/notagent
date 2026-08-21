@@ -115,6 +115,12 @@ impl Loader {
         self.update_display();
     }
 
+    /// Replace the colouring of the message.
+    pub fn set_message_color(&mut self, message_color_fn: ColorFn) {
+        self.message_color_fn = message_color_fn;
+        self.update_display();
+    }
+
     /// Replace the indicator options.
     pub fn set_indicator(&mut self, indicator: Option<LoaderIndicatorOptions>) {
         self.render_indicator_verbatim = indicator.is_some();
