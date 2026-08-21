@@ -144,23 +144,33 @@ fn panel_icon(status: TodoStatus) -> &'static str {
     }
 }
 
+/// The column every row starts in, so the list lines up with the transcript
+/// around it rather than hanging one character to its left.
+const ROW_INDENT: &str = " ";
+
 /// One rendered row.
+///
+/// The shape carries the status; it takes no colour of its own. A green dot
+/// beside struck-through text and a purple one beside bold text say the same
+/// thing twice, and the second telling is the one that pulls the eye away from
+/// the task the user is actually reading.
 pub fn format_todo_line(todo: &Todo) -> String {
     let theme = theme();
+    let icon = panel_icon(todo.status);
     match todo.status {
         TodoStatus::Completed => format!(
-            "{} {}",
-            theme.fg(ThemeColor::Success, panel_icon(TodoStatus::Completed)),
+            "{ROW_INDENT}{} {}",
+            theme.fg(ThemeColor::Muted, icon),
             theme.fg(ThemeColor::Muted, &theme.strikethrough(&todo.content))
         ),
         TodoStatus::InProgress => format!(
-            "{} {}",
-            theme.fg(ThemeColor::Accent, panel_icon(TodoStatus::InProgress)),
+            "{ROW_INDENT}{} {}",
+            theme.fg(ThemeColor::Text, icon),
             theme.bold(&todo.content)
         ),
         TodoStatus::Pending => format!(
-            "{} {}",
-            theme.fg(ThemeColor::Muted, panel_icon(TodoStatus::Pending)),
+            "{ROW_INDENT}{} {}",
+            theme.fg(ThemeColor::Muted, icon),
             todo.content
         ),
     }
@@ -220,13 +230,16 @@ impl Component for TodoListComponent {
         let display = build_todo_display(&self.todos, self.rows);
         let mut lines: Vec<String> = Vec::new();
         if self.mode == TodoListMode::Standalone {
-            lines.push(theme().fg(ThemeColor::Muted, &format_todo_summary(&self.todos)));
+            lines.push(theme().fg(
+                ThemeColor::Muted,
+                &format!("{ROW_INDENT}{}", format_todo_summary(&self.todos)),
+            ));
         }
         for todo in &display.visible {
             lines.push(format_todo_line(todo));
         }
         if let Some(hidden) = format_hidden_todo_summary(&display) {
-            lines.push(theme().fg(ThemeColor::Muted, &hidden));
+            lines.push(theme().fg(ThemeColor::Muted, &format!("{ROW_INDENT}{hidden}")));
         }
         lines
             .iter()

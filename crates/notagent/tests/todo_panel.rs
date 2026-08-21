@@ -238,3 +238,38 @@ fn does_not_let_a_stale_hide_timer_take_down_a_list_that_changed_meanwhile() {
     assert!(!visibility.tick());
     assert!(visibility.visible());
 }
+
+/// The rows line up with the transcript around them, and the shape carries the
+/// status on its own — a coloured dot beside struck-through or bold text says
+/// the same thing twice.
+#[test]
+fn rows_are_indented_and_their_shapes_uncoloured() {
+    use notagent::modes::interactive::theme::theme::{ThemeColor, theme};
+
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let accent = theme().get_fg_ansi(ThemeColor::Accent).to_owned();
+    let success = theme().get_fg_ansi(ThemeColor::Success).to_owned();
+
+    let mut panel = TodoListComponent::new(TodoListMode::Status, 24);
+    panel.set_todos(vec![
+        item("done", TodoStatus::Completed),
+        item("running", TodoStatus::InProgress),
+        item("waiting", TodoStatus::Pending),
+    ]);
+
+    let lines: Vec<String> = panel
+        .render(80)
+        .iter()
+        .map(|line| line.to_string())
+        .collect();
+    assert_eq!(lines.len(), 3);
+    for line in &lines {
+        assert!(line.starts_with(' '), "row is not indented: {line:?}");
+        assert!(!line.contains(&accent), "row carries the accent: {line:?}");
+        assert!(
+            !line.contains(&success),
+            "row carries the success: {line:?}"
+        );
+    }
+}
