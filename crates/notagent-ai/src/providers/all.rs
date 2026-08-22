@@ -47,6 +47,7 @@ pub fn builtin_providers() -> Vec<Arc<dyn Provider>> {
         crate::providers::mistral::mistral_provider(),
         crate::providers::moonshotai::moonshotai_provider(),
         crate::providers::moonshotai_cn::moonshotai_cn_provider(),
+        crate::providers::mtplx::mtplx_local_provider(),
         crate::providers::nvidia::nvidia_provider(),
         crate::providers::openai::openai_provider(),
         crate::providers::openai_codex::openai_codex_provider(),

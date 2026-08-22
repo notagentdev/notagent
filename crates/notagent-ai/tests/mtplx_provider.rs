@@ -11,8 +11,9 @@ use notagent_ai::auth::types::{
     AuthPromptKind, BoxFuture, ProviderAuthInteraction,
 };
 use notagent_ai::models::Provider;
-use notagent_ai::providers::mtplx::{MtplxModelSpec, MtplxProviderConfig, mtplx_provider};
+use notagent_ai::providers::mtplx::{MtplxProviderConfig, models_from_listing, mtplx_provider};
 use notagent_ai::types::{Context, Message, ProviderEnv, UserContent, UserMessage};
+use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -84,7 +85,6 @@ fn local_config() -> MtplxProviderConfig {
         name: "MTPLX (local)".to_string(),
         base_url: "http://127.0.0.1:8000/v1".to_string(),
         client_hint: "notagent".to_string(),
-        models: vec![MtplxModelSpec::new("mtplx", "MTPLX")],
     }
 }
 
@@ -229,13 +229,27 @@ fn context() -> Context {
     }
 }
 
-fn headers_for(session_id: Option<&str>) -> BTreeMap<String, Option<String>> {
-    let provider = mtplx_provider(local_config());
-    let model = provider
-        .get_models()
+/// One model, as the server would report it.
+fn served_model() -> notagent_ai::types::Model {
+    let body = json!({
+        "object": "list",
+        "data": [{
+            "id": "mtplx-qwen35-4b-optimized-speed",
+            "object": "model",
+            "owned_by": "mtplx",
+            "capability": "chat",
+            "context_length": 262_144u64,
+        }],
+    });
+    models_from_listing(&local_config(), &body)
+        .expect("the listing parses")
         .into_iter()
         .next()
-        .expect("the local instance offers a model");
+        .expect("the listing yields a model")
+}
+
+fn headers_for(session_id: Option<&str>) -> BTreeMap<String, Option<String>> {
+    let model = served_model();
     // `get_compat`, not `detect_compat`: the latter is auto-detection only and
     // never reads `model.compat`, which is where our format lives. The stream
     // path uses `get_compat` too.
@@ -278,12 +292,68 @@ fn every_request_declares_which_client_it_is() {
 
 #[test]
 fn models_speak_chat_completions_not_responses() {
-    let provider = mtplx_provider(local_config());
-    let model = provider
-        .get_models()
-        .into_iter()
-        .next()
-        .expect("the local instance offers a model");
+    let model = served_model();
     assert_eq!(model.api, "openai-completions");
     assert_eq!(model.base_url, "http://127.0.0.1:8000/v1");
+}
+
+// ---------------------------------------------------------------------------
+// The model list comes from the server, not from a static guess
+// ---------------------------------------------------------------------------
+
+#[test]
+fn without_a_reachable_server_the_provider_offers_nothing() {
+    // A static list would claim a model the server may not be serving; the
+    // failure would surface as a 400 on the first request instead of an empty
+    // picker.
+    let provider = mtplx_provider(local_config());
+    assert!(provider.get_models().is_empty());
+}
+
+#[test]
+fn the_served_model_keeps_the_id_the_server_reports() {
+    // Model ids are model-specific, so a 4B server and a 27B server do not
+    // answer to the same name.
+    assert_eq!(served_model().id, "mtplx-qwen35-4b-optimized-speed");
+}
+
+#[test]
+fn the_reported_window_wins_over_the_default() {
+    assert_eq!(served_model().context_window, 262_144);
+    // No output ceiling is reported; inventing a smaller one would truncate
+    // generations the server was willing to produce.
+    assert_eq!(served_model().max_tokens, 262_144);
+}
+
+#[test]
+fn retrieval_models_are_never_offered_as_chat_targets() {
+    let body = json!({
+        "data": [
+            {"id": "an-embedder", "capability": "embedding"},
+            {"id": "a-reranker", "capability": "rerank"},
+            {"id": "mtplx-chat", "capability": "chat"},
+        ],
+    });
+    let models = models_from_listing(&local_config(), &body).expect("parses");
+    let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+    assert_eq!(ids, vec!["mtplx-chat"]);
+}
+
+#[test]
+fn an_entry_without_a_capability_is_taken_as_chat() {
+    // Older servers omit the field; dropping those entries would leave the
+    // picker empty against a perfectly good server.
+    let body = json!({ "data": [{ "id": "mtplx" }] });
+    let models = models_from_listing(&local_config(), &body).expect("parses");
+    assert_eq!(models.len(), 1);
+}
+
+#[test]
+fn a_body_without_a_data_array_is_a_fault_not_an_empty_list() {
+    assert!(models_from_listing(&local_config(), &json!({ "oops": true })).is_err());
+}
+
+#[test]
+fn wire_ids_become_readable_names() {
+    assert_eq!(served_model().name, "Qwen35 4b Optimized Speed");
 }

@@ -20,6 +20,9 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
+
+use serde_json::Value;
 
 use crate::api::streams::OpenAICompletionsApi;
 use crate::auth::types::{
@@ -33,6 +36,15 @@ use crate::types::{
 
 /// The api id MTPLX serves: `/v1/chat/completions`, not `/v1/responses`.
 const MTPLX_API: &str = "openai-completions";
+
+/// A server that is simply not running must not hold up a model refresh. On
+/// loopback a running server answers this in single-digit milliseconds, so a
+/// short deadline separates "not started" from "busy" without guessing.
+const LOOPBACK_LIST_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// A remote instance crosses a network, so the same deadline would report
+/// healthy servers as absent.
+const REMOTE_LIST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Stands in for a key on loopback, where the server ignores it entirely.
 const LOCAL_PLACEHOLDER_KEY: &str = "mtplx-local";
@@ -78,7 +90,6 @@ pub struct MtplxProviderConfig {
     pub base_url: String,
     /// Value for `x-mtplx-client`.
     pub client_hint: String,
-    pub models: Vec<MtplxModelSpec>,
 }
 
 impl MtplxProviderConfig {
@@ -106,22 +117,59 @@ impl MtplxProviderConfig {
     }
 }
 
+/// Provider id of the built-in local instance. Short because it is typed:
+/// `/model mtplx/<model>`.
+pub const LOCAL_PROVIDER_ID: &str = "mtplx";
+
+/// Where `mtplx serve` listens unless told otherwise.
+pub const LOCAL_BASE_URL: &str = "http://127.0.0.1:8000/v1";
+
+/// How we name ourselves to the server.
+///
+/// Deliberately not one of the names the server treats as its own surface:
+/// those hand it ownership of the sampler, and our temperature and top-p would
+/// then be dropped without a trace. Unset is not an option either, because the
+/// server would classify us by user-agent and our sampler ownership would ride
+/// on a version string.
+pub const CLIENT_HINT: &str = "notagent";
+
+/// The built-in local instance.
+///
+/// It offers nothing until someone activates it with `/login mtplx`, and
+/// nothing again after `/logout` — see [`MtplxApiKeyAuth`]. That keeps an
+/// unused local server out of everyone else's model picker.
+pub fn mtplx_local_provider() -> Arc<BuiltProvider> {
+    mtplx_provider(MtplxProviderConfig {
+        id: LOCAL_PROVIDER_ID.to_string(),
+        name: "MTPLX (local)".to_string(),
+        base_url: LOCAL_BASE_URL.to_string(),
+        client_hint: CLIENT_HINT.to_string(),
+    })
+}
+
 /// Builds one MTPLX provider from its config.
 pub fn mtplx_provider(config: MtplxProviderConfig) -> Arc<BuiltProvider> {
     let loopback = config.is_loopback();
-    let models = config
-        .models
-        .iter()
-        .map(|spec| build_model(&config, spec))
-        .collect();
+    let timeout = if loopback {
+        LOOPBACK_LIST_TIMEOUT
+    } else {
+        REMOTE_LIST_TIMEOUT
+    };
+    let config = Arc::new(MtplxRuntimeConfig { config, timeout });
+    let (id, name, base_url, auth_name) = (
+        config.config.id.clone(),
+        config.config.name.clone(),
+        config.config.base_url.clone(),
+        format!("{} API key", config.config.name),
+    );
     create_provider(CreateProviderOptions {
-        id: config.id.clone(),
-        name: Some(config.name.clone()),
-        base_url: Some(config.base_url.clone()),
+        id,
+        name: Some(name),
+        base_url: Some(base_url),
         headers: None,
         auth: ProviderAuth {
             api_key: Some(Arc::new(MtplxApiKeyAuth {
-                name: format!("{} API key", config.name),
+                name: auth_name,
                 env_var: "MTPLX_API_KEY".to_string(),
                 // Only loopback gets a prompt-free login; a remote server
                 // rejects a keyless start, so a placeholder would just move the
@@ -130,8 +178,16 @@ pub fn mtplx_provider(config: MtplxProviderConfig) -> Arc<BuiltProvider> {
             })),
             oauth: None,
         },
-        models,
-        fetch_models: None,
+        // Static entries would claim models the server is not serving: it holds
+        // exactly one chat model, chosen at startup, and reports a
+        // model-specific id for it. The list is asked for instead, so a server
+        // that is not running leaves the provider empty rather than wrong.
+        models: Vec::new(),
+        fetch_models: Some(Arc::new(move |context| {
+            let config = config.clone();
+            let signal = context.signal.clone();
+            Box::pin(async move { fetch_served_models(config, signal).await })
+        })),
         filter_models: None,
         api: ProviderApis::Single(Arc::new(OpenAICompletionsApi)),
     })
@@ -259,5 +315,119 @@ impl ApiKeyAuth for MtplxApiKeyAuth {
             }
             Ok(None)
         })
+    }
+}
+
+/// The config plus what the factory derived from it, shared into the fetch
+/// closure.
+struct MtplxRuntimeConfig {
+    config: MtplxProviderConfig,
+    timeout: Duration,
+}
+
+/// Asks the server which model it is currently serving.
+///
+/// A server holds exactly one chat model and names it with a model-specific
+/// id, so this is the only honest source for the list. Not reachable is the
+/// normal case for a local server, and yields an empty list rather than an
+/// error: an agent that has not started MTPLX should see no MTPLX models, not
+/// a warning. A server that answers but answers badly is a real fault and is
+/// reported as one.
+async fn fetch_served_models(
+    runtime: Arc<MtplxRuntimeConfig>,
+    signal: tokio_util::sync::CancellationToken,
+) -> Result<Vec<Model>, String> {
+    let url = format!("{}/models", runtime.config.base_url.trim_end_matches('/'));
+    let request = reqwest::Client::new()
+        .get(&url)
+        .header("Accept", "application/json")
+        .timeout(runtime.timeout);
+    let response = tokio::select! {
+        response = request.send() => response,
+        _ = signal.cancelled() => return Ok(Vec::new()),
+    };
+    let Ok(response) = response else {
+        // Connection refused, DNS failure, timeout: no server here.
+        return Ok(Vec::new());
+    };
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("MTPLX model list at {url}: {error}"))?;
+    if !status.is_success() {
+        return Err(format!(
+            "MTPLX model list at {url}: HTTP {}",
+            status.as_u16()
+        ));
+    }
+    let parsed: Value = serde_json::from_str(&body)
+        .map_err(|error| format!("MTPLX model list at {url}: {error}"))?;
+    models_from_listing(&runtime.config, &parsed)
+        .map_err(|error| format!("MTPLX model list at {url}: {error}"))
+}
+
+/// Turns one `/v1/models` body into the models this provider offers.
+///
+/// Split from the request so the shape handling is exercised without a server.
+pub fn models_from_listing(
+    config: &MtplxProviderConfig,
+    body: &Value,
+) -> Result<Vec<Model>, String> {
+    let entries = body
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "no \"data\" array".to_string())?;
+    Ok(entries
+        .iter()
+        .filter_map(|entry| model_from_listing(config, entry))
+        .collect())
+}
+
+fn model_from_listing(config: &MtplxProviderConfig, entry: &Value) -> Option<Model> {
+    // Embedders and rerankers are listed only on request, but a future server
+    // could widen the default listing; a retrieval model offered as a chat
+    // target can only end in a 400.
+    let capability = entry.get("capability").and_then(Value::as_str);
+    if capability.is_some_and(|capability| capability != "chat") {
+        return None;
+    }
+    let id = entry
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())?;
+    let window = ["context_length", "max_model_len", "max_context_length"]
+        .iter()
+        .find_map(|key| entry.get(*key).and_then(Value::as_u64))
+        .filter(|window| *window > 0);
+    let mut spec = MtplxModelSpec::new(id, display_name(id));
+    if let Some(window) = window {
+        spec.context_window = window;
+        // No separate output ceiling is reported, and inventing a smaller one
+        // would truncate long generations the server was willing to produce.
+        spec.max_tokens = window;
+    }
+    Some(build_model(config, &spec))
+}
+
+/// `mtplx-qwen35-4b-optimized-speed` reads better as `Qwen35 4b Optimized Speed`
+/// in a model picker than as its wire id.
+fn display_name(id: &str) -> String {
+    let words: Vec<String> = id
+        .trim_start_matches("mtplx-")
+        .split(['-', '_'])
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
+    if words.is_empty() {
+        id.to_string()
+    } else {
+        words.join(" ")
     }
 }

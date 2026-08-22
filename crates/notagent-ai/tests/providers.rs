@@ -161,10 +161,12 @@ async fn builtin_models_registers_every_builtin_provider_with_models() {
 
     assert!(models.get_models(None).len() > 500);
 
-    // Static providers list models immediately; Radius is purely dynamic.
+    // Static providers list models immediately. Radius and MTPLX are purely
+    // dynamic: MTPLX asks the server which single model it is serving, so a
+    // static entry would name a model the server may not have loaded.
     for provider in &providers {
         let list = models.get_models(Some(provider.id()));
-        if provider.id() == "radius" {
+        if provider.id() == "radius" || provider.id() == "mtplx" {
             assert!(list.is_empty());
         } else {
             assert!(!list.is_empty(), "{} has models", provider.id());
@@ -174,8 +176,9 @@ async fn builtin_models_registers_every_builtin_provider_with_models() {
 }
 
 /// Providers this port adds, which the TypeScript fixture cannot contain.
-/// They are checked on their own (see `cline_pass_is_an_openai_compatible_provider`).
-const PORT_ADDED_PROVIDERS: [&str; 1] = ["cline-pass"];
+/// They are checked on their own (see `cline_pass_is_an_openai_compatible_provider`
+/// and `tests/mtplx_provider.rs`).
+const PORT_ADDED_PROVIDERS: [&str; 2] = ["cline-pass", "mtplx"];
 
 #[test]
 fn every_builtin_provider_matches_the_typescript_fixture() {
