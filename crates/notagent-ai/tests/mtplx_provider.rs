@@ -357,3 +357,30 @@ fn a_body_without_a_data_array_is_a_fault_not_an_empty_list() {
 fn wire_ids_become_readable_names() {
     assert_eq!(served_model().name, "Qwen35 4b Optimized Speed");
 }
+
+// ---------------------------------------------------------------------------
+// Against a real server
+// ---------------------------------------------------------------------------
+
+/// Ignored by default: needs `mtplx serve` on port 8000. Run with
+/// `cargo test -p notagent-ai --test mtplx_provider -- --ignored`.
+#[tokio::test]
+#[ignore = "requires a running MTPLX server on 127.0.0.1:8000"]
+async fn a_running_server_populates_the_model_list() {
+    let body: serde_json::Value = reqwest::Client::new()
+        .get("http://127.0.0.1:8000/v1/models")
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("the body is json");
+    let models = models_from_listing(&local_config(), &body).expect("the listing parses");
+    assert_eq!(models.len(), 1, "a server serves exactly one chat model");
+    let model = &models[0];
+    assert_eq!(model.provider, "mtplx");
+    assert_eq!(model.api, "openai-completions");
+    assert!(model.context_window > 0);
+    // The id is whatever this server reports, not something we guessed.
+    println!("served: {} ({})", model.id, model.name);
+}
