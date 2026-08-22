@@ -96,23 +96,34 @@ impl MtplxProviderConfig {
     /// Whether the address stays on this machine. Decides both whether a real
     /// key is required and whether login may skip its prompt.
     pub fn is_loopback(&self) -> bool {
-        let Some(rest) = self
+        let rest = self
             .base_url
             .split_once("://")
-            .map(|(_, rest)| rest)
-            .or(Some(self.base_url.as_str()))
-        else {
-            return false;
+            .map_or(self.base_url.as_str(), |(_, rest)| rest);
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        let authority = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_, host)| host);
+        let host = if let Some(bracketed) = authority.strip_prefix('[') {
+            // Bracketed IPv6: the port sits outside the brackets, so the host
+            // is everything up to the closing bracket — with or without a port.
+            bracketed.split(']').next().unwrap_or_default()
+        } else {
+            // Strip a trailing port only when what follows the last colon is a
+            // plain number and the remainder has no colons of its own — an
+            // unbracketed IPv6 host keeps all of them.
+            match authority.rsplit_once(':') {
+                Some((host, port))
+                    if !port.is_empty()
+                        && port.bytes().all(|byte| byte.is_ascii_digit())
+                        && !host.contains(':') =>
+                {
+                    host
+                }
+                _ => authority,
+            }
         };
-        let host = rest
-            .split(['/', '?', '#'])
-            .next()
-            .unwrap_or_default()
-            .rsplit_once(':')
-            .map(|(host, _)| host)
-            .unwrap_or_else(|| rest.split(['/', '?', '#']).next().unwrap_or_default())
-            .trim_matches(['[', ']'])
-            .to_ascii_lowercase();
+        let host = host.to_ascii_lowercase();
         host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0:0:0:0:0:0:0:1"
     }
 }
@@ -346,9 +357,18 @@ async fn fetch_served_models(
         response = request.send() => response,
         _ = signal.cancelled() => return Ok(Vec::new()),
     };
-    let Ok(response) = response else {
-        // Connection refused, DNS failure, timeout: no server here.
-        return Ok(Vec::new());
+    let response = match response {
+        Ok(response) => response,
+        // A timeout is not absence: a server deep in a long generation can
+        // miss the deadline, and treating that as "not running" would publish
+        // and persist an empty list while the model is visibly working.
+        // Failing instead keeps the restored list on offer.
+        Err(error) if error.is_timeout() => {
+            return Err(format!("MTPLX model list at {url}: timed out"));
+        }
+        // Refused or unresolvable: no server here — the ordinary case for a
+        // local instance, and an empty offer rather than a warning.
+        Err(_) => return Ok(Vec::new()),
     };
     let status = response.status();
     let body = response

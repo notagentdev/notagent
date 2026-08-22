@@ -151,6 +151,10 @@ fn loopback_is_derived_from_the_address_not_a_flag() {
         "http://127.0.0.1:8000/v1",
         "http://localhost:8000/v1",
         "http://[::1]:8000/v1",
+        // Bracketed IPv6 without a port: the closing bracket is not part of
+        // the host, and there is no port to strip.
+        "http://[::1]/v1",
+        "http://0:0:0:0:0:0:0:1/v1",
         "http://127.0.0.1/v1",
     ] {
         let config = MtplxProviderConfig {
@@ -163,6 +167,8 @@ fn loopback_is_derived_from_the_address_not_a_flag() {
         "https://mtplx.example.com/v1",
         "http://192.168.1.4:8000/v1",
         "http://127.0.0.1.example.com/v1",
+        // Credentials in the authority must not hide the real host.
+        "http://127.0.0.1@mtplx.example.com/v1",
     ] {
         let config = MtplxProviderConfig {
             base_url: address.to_string(),
@@ -581,6 +587,51 @@ async fn a_server_that_is_not_running_leaves_the_provider_empty_without_failing(
         ..local_config()
     });
     assert!(refresh(&provider).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_busy_server_that_misses_the_deadline_is_a_fault_not_an_absence() {
+    // Accepts the connection and then never answers — the shape of a server
+    // deep in a long generation. Treating that as absence would publish and
+    // persist an empty list mid-session; a fault keeps the cached list.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap_or_else(|error| panic!("binding a loopback port failed: {error}"));
+    let address = listener
+        .local_addr()
+        .unwrap_or_else(|error| panic!("reading the bound port failed: {error}"));
+    let hold = tokio::spawn(async move {
+        let mut held = Vec::new();
+        loop {
+            let Ok((socket, _)) = listener.accept().await else {
+                return;
+            };
+            held.push(socket);
+        }
+    });
+    let provider = mtplx_provider(MtplxProviderConfig {
+        base_url: format!("http://{address}/v1"),
+        ..local_config()
+    });
+    let context = notagent_ai::models::RefreshModelsContext {
+        credential: None,
+        stored: None,
+        publish: Box::new(|publication: notagent_ai::models::ModelsPublication<'_>| {
+            if let Some(update) = publication.update {
+                update();
+            }
+            Box::pin(async move { true }) as BoxFuture<'_, bool>
+        }),
+        allow_network: true,
+        force: Some(true),
+        signal: tokio_util::sync::CancellationToken::new(),
+    };
+    let outcome = notagent_ai::models::Provider::refresh_models(provider.as_ref(), context)
+        .unwrap_or_else(|| panic!("the provider offers no refresh"))
+        .await;
+    hold.abort();
+    let error = outcome.expect_err("a timeout must surface as a fault");
+    assert!(error.contains("timed out"), "{error}");
 }
 
 // ---------------------------------------------------------------------------
