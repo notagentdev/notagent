@@ -14,7 +14,11 @@ use notagent_ai::auth::types::{
 };
 use notagent_ai::models::Provider;
 use notagent_ai::providers::mtplx::{MtplxProviderConfig, models_from_listing, mtplx_provider};
-use notagent_ai::types::{CacheRetention, Context, Message, ProviderEnv, UserContent, UserMessage};
+use notagent_ai::types::{
+    CacheRetention, Context, Message, ProviderEnv, ProviderRequestOptions, StreamOptions,
+    UserContent, UserMessage,
+};
+use notagent_ai::utils::fetch::{FetchBody, FetchError, FetchFn, FetchRequest, FetchResponse};
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
@@ -576,4 +580,116 @@ async fn a_server_that_is_not_running_leaves_the_provider_empty_without_failing(
         ..local_config()
     });
     assert!(refresh(&provider).await.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// The headers that actually leave the process
+// ---------------------------------------------------------------------------
+//
+// The header-builder tests above call `build_client_headers` directly and so
+// bypass the stream path's own decision: it hands the builder a session id only
+// while `cache_retention` is not `None`. These drive the full provider dispatch
+// with a recording transport, so that coupling is crossed, not restated.
+
+/// Answers every request with one complete SSE turn and records what was asked.
+struct RecordingFetch {
+    requests: Arc<Mutex<Vec<FetchRequest>>>,
+}
+
+impl FetchFn for RecordingFetch {
+    fn fetch(
+        &self,
+        request: FetchRequest,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FetchResponse, FetchError>> + Send>,
+    > {
+        if let Ok(mut requests) = self.requests.lock() {
+            requests.push(request);
+        }
+        Box::pin(async move {
+            let body = "data: {\"id\":\"1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+            Ok(FetchResponse {
+                status: 200,
+                status_text: String::new(),
+                headers: vec![("content-type".to_string(), "text/event-stream".to_string())],
+                body: FetchBody::Bytes(body.as_bytes().to_vec()),
+            })
+        })
+    }
+}
+
+/// Streams one turn through the provider dispatch and returns the recorded request.
+async fn recorded_request(
+    session_id: Option<&str>,
+    cache_retention: Option<CacheRetention>,
+) -> FetchRequest {
+    let requests: Arc<Mutex<Vec<FetchRequest>>> = Arc::new(Mutex::new(Vec::new()));
+    let provider = mtplx_provider(local_config());
+    let model = served_model();
+    let stream = provider.stream(
+        &model,
+        &context(),
+        Some(StreamOptions {
+            base: ProviderRequestOptions {
+                api_key: Some("mtplx-local".to_string()),
+                fetch: Some(Arc::new(RecordingFetch {
+                    requests: Arc::clone(&requests),
+                })),
+                ..ProviderRequestOptions::default()
+            },
+            session_id: session_id.map(str::to_string),
+            cache_retention,
+            ..StreamOptions::default()
+        }),
+    );
+    while stream.next().await.is_some() {}
+    let requests = requests
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    requests
+        .first()
+        .cloned()
+        .unwrap_or_else(|| panic!("no request reached the transport"))
+}
+
+fn sent_header(request: &FetchRequest, name: &str) -> Option<String> {
+    request
+        .headers
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.clone())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_wire_request_carries_session_and_client_headers() {
+    let request = recorded_request(Some("session-42"), None).await;
+    assert_eq!(request.url, "http://127.0.0.1:8000/v1/chat/completions");
+    assert_eq!(
+        sent_header(&request, "x-mtplx-session-id").as_deref(),
+        Some("session-42")
+    );
+    assert_eq!(
+        sent_header(&request, "x-mtplx-client").as_deref(),
+        Some("notagent")
+    );
+    assert_eq!(
+        sent_header(&request, "authorization").as_deref(),
+        Some("Bearer mtplx-local")
+    );
+    for unread in ["session_id", "x-client-request-id", "x-session-affinity"] {
+        assert_eq!(sent_header(&request, unread), None, "unexpected: {unread}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn disabling_cache_retention_drops_the_session_header_from_the_wire() {
+    // The stream path withholds the session id from the header builder when
+    // retention is off; the builder alone cannot show that.
+    let request = recorded_request(Some("session-42"), Some(CacheRetention::None)).await;
+    assert_eq!(sent_header(&request, "x-mtplx-session-id"), None);
+    // The client header rides on the model, not on the session, so it stays.
+    assert_eq!(
+        sent_header(&request, "x-mtplx-client").as_deref(),
+        Some("notagent")
+    );
 }
