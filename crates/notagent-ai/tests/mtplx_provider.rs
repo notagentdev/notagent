@@ -384,3 +384,52 @@ async fn a_running_server_populates_the_model_list() {
     // The id is whatever this server reports, not something we guessed.
     println!("served: {} ({})", model.id, model.name);
 }
+
+// ---------------------------------------------------------------------------
+// The models.json route
+// ---------------------------------------------------------------------------
+
+/// A user-defined provider in `models.json` reaches the same header through
+/// its `compat` block. The block is reparsed against the model's api and drops
+/// keys that api never reads, so this asserts the format survives that trip —
+/// without it the JSON route connects but sends no session header.
+#[test]
+fn the_session_format_survives_a_models_json_compat_block() {
+    let compat: notagent_ai::types::OpenAICompletionsCompat = serde_json::from_value(json!({
+        "sendSessionAffinityHeaders": true,
+        "sessionAffinityFormat": "mtplx",
+    }))
+    .expect("the compat block parses");
+    assert_eq!(compat.send_session_affinity_headers, Some(true));
+    assert_eq!(
+        compat.session_affinity_format,
+        Some(notagent_ai::types::SessionAffinityFormat::Mtplx)
+    );
+
+    let reparsed = notagent_ai::types::ModelCompat::from_api_value(
+        "openai-completions",
+        json!({ "sendSessionAffinityHeaders": true, "sessionAffinityFormat": "mtplx" }),
+    )
+    .expect("the api-keyed reparse succeeds");
+    let mut model = served_model();
+    model.compat = Some(reparsed);
+    let headers = build_client_headers(
+        &model,
+        &context(),
+        None,
+        Some("from-json"),
+        &get_compat(&model),
+    );
+    assert_eq!(
+        headers.get("x-mtplx-session-id"),
+        Some(&Some("from-json".to_string()))
+    );
+}
+
+/// The wire spelling is what a user types into `models.json`.
+#[test]
+fn the_format_serializes_as_the_name_a_user_writes() {
+    let value =
+        serde_json::to_value(notagent_ai::types::SessionAffinityFormat::Mtplx).expect("serializes");
+    assert_eq!(value, json!("mtplx"));
+}

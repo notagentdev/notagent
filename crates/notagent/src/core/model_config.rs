@@ -169,7 +169,7 @@ const THINKING_FORMATS: [&str; 11] = [
     "string-thinking",
     "ant-ling",
 ];
-const SESSION_AFFINITY_FORMATS: [&str; 3] = ["openai", "openai-nosession", "openrouter"];
+const SESSION_AFFINITY_FORMATS: [&str; 4] = ["openai", "openai-nosession", "openrouter", "mtplx"];
 
 impl Validator {
     fn push(&mut self, path: &[String], message: &str) {
