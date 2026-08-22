@@ -1169,6 +1169,14 @@ pub fn build_client_headers(
     {
         if compat.session_affinity_format == Some(SessionAffinityFormat::Openrouter) {
             headers.insert("x-session-id".to_string(), Some(session_id.to_string()));
+        } else if compat.session_affinity_format == Some(SessionAffinityFormat::Mtplx) {
+            // Its own arm rather than the shared tail below: the server reads
+            // this one header and none of the affinity headers the tail adds,
+            // so sending those would be noise on every request.
+            headers.insert(
+                "x-mtplx-session-id".to_string(),
+                Some(session_id.to_string()),
+            );
         } else {
             if compat.session_affinity_format == Some(SessionAffinityFormat::Openai) {
                 headers.insert("session_id".to_string(), Some(session_id.to_string()));

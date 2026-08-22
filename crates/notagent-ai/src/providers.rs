@@ -30,6 +30,7 @@ pub mod minimax_cn;
 pub mod mistral;
 pub mod moonshotai;
 pub mod moonshotai_cn;
+pub mod mtplx;
 pub mod nvidia;
 pub mod openai;
 pub mod openai_codex;

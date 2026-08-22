@@ -237,12 +237,17 @@ pub type ProviderEnv = BTreeMap<String, String>;
 pub type ProviderHeaders = BTreeMap<String, Option<String>>;
 
 /// `SessionAffinityFormat = "openai" | "openai-nosession" | "openrouter"`
+///
+/// `Mtplx` has no TypeScript counterpart: MTPLX keys its warm-prefix session
+/// bank on a header of its own, and without it the server falls back to
+/// inferring the session from a prompt prefix scan on every request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionAffinityFormat {
     Openai,
     OpenaiNosession,
     Openrouter,
+    Mtplx,
 }
 
 /// `ProviderResponse { status, headers }`
