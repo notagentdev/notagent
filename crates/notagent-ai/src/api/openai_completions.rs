@@ -29,6 +29,7 @@ use crate::types::{
     ModelThinkingLevel, ProviderRequestOptions, SimpleStreamOptions, StopReason, TextContent,
     ThinkingContent, ThinkingLevel, ToolCall, Usage,
 };
+use crate::utils::diagnostics::{AssistantMessageDiagnostic, append_assistant_message_diagnostic};
 use crate::utils::error_body::{
     NormalizedProviderError, RawProviderError, format_provider_error, normalize_provider_error,
 };
@@ -170,6 +171,10 @@ pub fn map_stop_reason(reason: Option<&str>) -> (StopReason, Option<String>) {
 // ---------------------------------------------------------------------------
 // Streaming state
 // ---------------------------------------------------------------------------
+
+/// Diagnostic type of a server-reported fallback from multi-token prediction to
+/// plain autoregressive decoding.
+pub const MTP_DISABLED_DIAGNOSTIC: &str = "mtplx_mtp_disabled";
 
 /// Scratch state of one streaming tool call; TS keeps these fields on the block itself
 /// and deletes them in `finishBlock`.
@@ -554,6 +559,54 @@ impl OpenAICompletionsStreamState {
         Ok(emitted)
     }
 
+    /// Records a server-reported MTP fallback as an informational diagnostic.
+    ///
+    /// `error` stays `None`: the turn succeeded, only slower. The details carry
+    /// the server's own field names untranslated. One diagnostic per stream —
+    /// the reason arrives on the final chunk, but a server that repeated it
+    /// must not produce duplicates.
+    fn record_mtp_disabled_reason(&mut self, chunk: &Map<String, Value>) {
+        let Some(stats) = chunk.get("mtplx_stats").and_then(Value::as_object) else {
+            return;
+        };
+        let Some(reason) = stats
+            .get("mtp_disabled_reason")
+            .and_then(Value::as_str)
+            .filter(|reason| !reason.is_empty())
+        else {
+            return;
+        };
+        let already_recorded = self
+            .output
+            .diagnostics
+            .iter()
+            .flatten()
+            .any(|diagnostic| diagnostic.r#type == MTP_DISABLED_DIAGNOSTIC);
+        if already_recorded {
+            return;
+        }
+        let mut details = Map::new();
+        details.insert(
+            "mtp_disabled_reason".to_string(),
+            Value::String(reason.to_string()),
+        );
+        if let Some(mode) = stats.get("generation_mode").and_then(Value::as_str) {
+            details.insert(
+                "generation_mode".to_string(),
+                Value::String(mode.to_string()),
+            );
+        }
+        append_assistant_message_diagnostic(
+            &mut self.output.diagnostics,
+            AssistantMessageDiagnostic {
+                r#type: MTP_DISABLED_DIAGNOSTIC.to_string(),
+                timestamp: crate::auth::resolve::now_ms(),
+                error: None,
+                details: Some(details),
+            },
+        );
+    }
+
     /// One decoded `ChatCompletionChunk`.
     pub fn process_chunk(
         &mut self,
@@ -585,6 +638,15 @@ impl OpenAICompletionsStreamState {
         if let Some(usage) = chunk.get("usage").filter(|usage| is_truthy(usage)) {
             self.output.usage = parse_chunk_usage(usage, &self.model);
         }
+
+        // An MTPLX server appends an `mtplx_stats` block to its final chunk. The
+        // one field acted on is `mtp_disabled_reason`: when set, the server has
+        // fallen back from multi-token prediction to plain autoregressive
+        // decoding, which is invisible in the output and shows only as a slower
+        // turn. Keyed on the field rather than the provider id, because a
+        // models.json-configured remote server carries a different provider id
+        // and still sends the block. Nothing else in the block is recorded.
+        self.record_mtp_disabled_reason(chunk);
 
         let Some(choice) = chunk
             .get("choices")

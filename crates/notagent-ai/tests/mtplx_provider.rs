@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use notagent_ai::api::openai_completions::MTP_DISABLED_DIAGNOSTIC;
 use notagent_ai::api::openai_completions_compat::get_compat;
 use notagent_ai::api::openai_completions_params::{
     OpenAICompletionsOptions, build_client_headers, build_params,
@@ -591,9 +592,13 @@ async fn a_server_that_is_not_running_leaves_the_provider_empty_without_failing(
 // while `cache_retention` is not `None`. These drive the full provider dispatch
 // with a recording transport, so that coupling is crossed, not restated.
 
-/// Answers every request with one complete SSE turn and records what was asked.
+/// One complete, unremarkable SSE turn.
+const PLAIN_SSE_TURN: &str = "data: {\"id\":\"1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+
+/// Answers every request with the canned SSE body and records what was asked.
 struct RecordingFetch {
     requests: Arc<Mutex<Vec<FetchRequest>>>,
+    body: String,
 }
 
 impl FetchFn for RecordingFetch {
@@ -606,23 +611,25 @@ impl FetchFn for RecordingFetch {
         if let Ok(mut requests) = self.requests.lock() {
             requests.push(request);
         }
+        let body = self.body.clone();
         Box::pin(async move {
-            let body = "data: {\"id\":\"1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
             Ok(FetchResponse {
                 status: 200,
                 status_text: String::new(),
                 headers: vec![("content-type".to_string(), "text/event-stream".to_string())],
-                body: FetchBody::Bytes(body.as_bytes().to_vec()),
+                body: FetchBody::Bytes(body.into_bytes()),
             })
         })
     }
 }
 
-/// Streams one turn through the provider dispatch and returns the recorded request.
-async fn recorded_request(
+/// Streams one turn through the provider dispatch; returns the recorded request
+/// and the finished message.
+async fn stream_turn(
+    body: &str,
     session_id: Option<&str>,
     cache_retention: Option<CacheRetention>,
-) -> FetchRequest {
+) -> (FetchRequest, notagent_ai::types::AssistantMessage) {
     let requests: Arc<Mutex<Vec<FetchRequest>>> = Arc::new(Mutex::new(Vec::new()));
     let provider = mtplx_provider(local_config());
     let model = served_model();
@@ -634,6 +641,7 @@ async fn recorded_request(
                 api_key: Some("mtplx-local".to_string()),
                 fetch: Some(Arc::new(RecordingFetch {
                     requests: Arc::clone(&requests),
+                    body: body.to_string(),
                 })),
                 ..ProviderRequestOptions::default()
             },
@@ -643,13 +651,25 @@ async fn recorded_request(
         }),
     );
     while stream.next().await.is_some() {}
+    let message = stream.result().await;
     let requests = requests
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    requests
+    let request = requests
         .first()
         .cloned()
-        .unwrap_or_else(|| panic!("no request reached the transport"))
+        .unwrap_or_else(|| panic!("no request reached the transport"));
+    (request, message)
+}
+
+/// Streams one turn and returns the recorded request.
+async fn recorded_request(
+    session_id: Option<&str>,
+    cache_retention: Option<CacheRetention>,
+) -> FetchRequest {
+    stream_turn(PLAIN_SSE_TURN, session_id, cache_retention)
+        .await
+        .0
 }
 
 fn sent_header(request: &FetchRequest, name: &str) -> Option<String> {
@@ -692,4 +712,88 @@ async fn disabling_cache_retention_drops_the_session_header_from_the_wire() {
         sent_header(&request, "x-mtplx-client").as_deref(),
         Some("notagent")
     );
+}
+
+// ---------------------------------------------------------------------------
+// The server's silent MTP fallback becomes a visible diagnostic
+// ---------------------------------------------------------------------------
+
+/// The final chunk of an MTPLX turn, shaped as the server sends it: the stats
+/// block sits at the top level beside `usage`.
+fn final_chunk_with_stats(stats: &serde_json::Value) -> String {
+    let done = json!({
+        "id": "1",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+        "mtplx_stats": stats,
+    });
+    format!(
+        "data: {{\"id\":\"1\",\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"ok\"}}}}]}}\n\ndata: {done}\n\ndata: [DONE]\n\n"
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reported_mtp_fallback_lands_as_a_diagnostic() {
+    let body = final_chunk_with_stats(&json!({
+        "generation_mode": "ar",
+        "mtp_disabled_reason": "batch_size_gt_1",
+        "decode_tok_s": 12.5,
+    }));
+    let (_, message) = stream_turn(&body, None, None).await;
+    let diagnostics = message
+        .diagnostics
+        .unwrap_or_else(|| panic!("the fallback produced no diagnostic"));
+    assert_eq!(diagnostics.len(), 1);
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.r#type, MTP_DISABLED_DIAGNOSTIC);
+    // Informational, not a failure: the turn succeeded, only slower.
+    assert_eq!(diagnostic.error, None);
+    let details = diagnostic
+        .details
+        .as_ref()
+        .unwrap_or_else(|| panic!("the diagnostic carries no details"));
+    assert_eq!(
+        details.get("mtp_disabled_reason").and_then(|v| v.as_str()),
+        Some("batch_size_gt_1")
+    );
+    assert_eq!(
+        details.get("generation_mode").and_then(|v| v.as_str()),
+        Some("ar")
+    );
+    // Only the two named fields travel; the rest of the 339-field block stays out.
+    assert_eq!(details.len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_mtp_turn_with_a_null_reason_stays_undiagnosed() {
+    // The server sends the stats block on every turn; the reason is null while
+    // MTP runs. A diagnostic on every healthy turn would drown the one that
+    // matters.
+    let body = final_chunk_with_stats(&json!({
+        "generation_mode": "mtp",
+        "mtp_disabled_reason": null,
+        "decode_tok_s": 51.7,
+    }));
+    let (_, message) = stream_turn(&body, None, None).await;
+    assert_eq!(message.diagnostics, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_repeated_reason_is_recorded_once() {
+    let chunk = json!({
+        "id": "1",
+        "choices": [{"index": 0, "delta": {"content": "ok"}}],
+        "mtplx_stats": {"mtp_disabled_reason": "batch_size_gt_1"},
+    });
+    let done = json!({
+        "id": "1",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "mtplx_stats": {"mtp_disabled_reason": "batch_size_gt_1"},
+    });
+    let body = format!("data: {chunk}\n\ndata: {done}\n\ndata: [DONE]\n\n");
+    let (_, message) = stream_turn(&body, None, None).await;
+    let diagnostics = message
+        .diagnostics
+        .unwrap_or_else(|| panic!("the fallback produced no diagnostic"));
+    assert_eq!(diagnostics.len(), 1);
 }
