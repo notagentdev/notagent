@@ -122,6 +122,19 @@ async fn an_activated_instance_without_a_server_offers_nothing_and_says_nothing(
     // what is on offer, and it is not running here. This must stay quiet rather
     // than surface as an availability error, because never having started MTPLX
     // is the ordinary case.
+    //
+    // The premise is machine state, so it is checked rather than assumed: with
+    // a real server on the local instance's port, the picker rightly offers its
+    // model and this case does not apply.
+    if std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], 8000)),
+        std::time::Duration::from_millis(300),
+    )
+    .is_ok()
+    {
+        println!("skipped: an MTPLX server is running on 127.0.0.1:8000");
+        return;
+    }
     let (catalog_base_url, _) = recording_catalog().await;
     let runtime = activated_runtime(catalog_base_url).await;
     let offered: Vec<String> = runtime

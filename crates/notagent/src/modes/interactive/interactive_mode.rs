@@ -134,7 +134,9 @@ use crate::modes::interactive::components::keybinding_hints::{
 };
 use crate::modes::interactive::components::list_selector::ListSelectorComponent;
 use crate::modes::interactive::components::login_dialog::{LoginCancelled, LoginDialogComponent};
-use crate::modes::interactive::components::model_selector::ModelSelectorComponent;
+use crate::modes::interactive::components::model_selector::{
+    ModelRefreshOutcome, ModelSelectorComponent,
+};
 use crate::modes::interactive::components::oauth_selector::{
     AuthSelectorMethod, AuthSelectorMode, AuthSelectorProvider, OAuthSelectorComponent,
 };
@@ -891,6 +893,13 @@ enum UiMessage {
         aborted: bool,
         errors: Vec<String>,
     },
+    /// The model selector's catalog refresh finished — the counterpart of the
+    /// `void this.refreshModels()` the TS constructor starts. The loop drives
+    /// the future; the outcome goes back to the selector still open under `id`.
+    ModelCatalogRefreshed {
+        id: u64,
+        outcome: ModelRefreshOutcome,
+    },
     TreeCopy {
         text: Option<String>,
     },
@@ -1141,6 +1150,8 @@ pub struct InteractiveMode {
     index_build_running: bool,
     /// The session selector while it is open; the loop runs its list loads.
     session_selector: Option<Rc<RefCell<SessionSelectorComponent>>>,
+    /// The model selector while it is open; its catalog refresh reports back.
+    model_selector: Option<Rc<RefCell<ModelSelectorComponent>>>,
     /// The models selector while it is open; its catalog refresh reports back.
     scoped_models_selector: Option<Rc<RefCell<ScopedModelsSelectorComponent>>>,
     /// The task browser while it is open, with the state it is fed from.
@@ -1388,6 +1399,7 @@ impl InteractiveMode {
             selector_id: 0,
             index_build_running: false,
             session_selector: None,
+            model_selector: None,
             scoped_models_selector: None,
             tasks_browser: None,
             login_dialog: None,
@@ -2367,6 +2379,18 @@ impl InteractiveMode {
             } => self.apply_scoped_models(enabled_ids, persist),
             UiMessage::ScopedModelsRefreshed { aborted, errors } => {
                 self.apply_scoped_models_refresh(aborted, errors)
+            }
+            UiMessage::ModelCatalogRefreshed { id, outcome } => {
+                // An outcome from a superseded selector must not touch its
+                // successor; `apply_refresh` itself handles a disposed one.
+                if self
+                    .active_selector
+                    .as_ref()
+                    .is_some_and(|active| active.id == id)
+                    && let Some(selector) = &self.model_selector
+                {
+                    selector.borrow_mut().apply_refresh(outcome);
+                }
             }
             UiMessage::TreeCopy { text } => match text {
                 None => self.show_error("Selected entry has no text to copy"),
@@ -3551,6 +3575,7 @@ impl InteractiveMode {
         }
         self.dispose_active_selector();
         self.session_selector = None;
+        self.model_selector = None;
         self.scoped_models_selector = None;
         if let Some((browser, _)) = self.tasks_browser.take() {
             browser.borrow_mut().dispose();
@@ -3618,6 +3643,19 @@ impl InteractiveMode {
             }),
             initial_search_input,
         )));
+        self.model_selector = Some(Rc::clone(&selector));
+        // The TS constructor ends with `void this.refreshModels()`; a Rust
+        // constructor cannot own that task, so the loop drives the future and
+        // the outcome returns as a message. Without this the picker only ever
+        // shows the startup snapshot and its "Refreshing model catalogs…"
+        // line never resolves.
+        let refresh = selector.borrow().refresh_models();
+        self.side_futures.push(Box::pin(async move {
+            UiMessage::ModelCatalogRefreshed {
+                id,
+                outcome: refresh.await,
+            }
+        }));
         let dispose_target = Rc::clone(&selector);
         self.show_selector(
             Rc::clone(&selector) as ComponentRef,
