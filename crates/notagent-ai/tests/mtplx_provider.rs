@@ -5,14 +5,16 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::openai_completions_compat::get_compat;
-use notagent_ai::api::openai_completions_params::build_client_headers;
+use notagent_ai::api::openai_completions_params::{
+    OpenAICompletionsOptions, build_client_headers, build_params,
+};
 use notagent_ai::auth::types::{
     ApiKeyAuthInput, ApiKeyCredential, AuthContext, AuthError, AuthEvent, AuthPrompt,
     AuthPromptKind, BoxFuture, ProviderAuthInteraction,
 };
 use notagent_ai::models::Provider;
 use notagent_ai::providers::mtplx::{MtplxProviderConfig, models_from_listing, mtplx_provider};
-use notagent_ai::types::{Context, Message, ProviderEnv, UserContent, UserMessage};
+use notagent_ai::types::{CacheRetention, Context, Message, ProviderEnv, UserContent, UserMessage};
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
@@ -432,4 +434,146 @@ fn the_format_serializes_as_the_name_a_user_writes() {
     let value =
         serde_json::to_value(notagent_ai::types::SessionAffinityFormat::Mtplx).expect("serializes");
     assert_eq!(value, json!("mtplx"));
+}
+
+// ---------------------------------------------------------------------------
+// No output ceiling we did not choose
+// ---------------------------------------------------------------------------
+
+fn request_body(options: OpenAICompletionsOptions, model_max_tokens: u64) -> serde_json::Value {
+    let mut model = served_model();
+    model.max_tokens = model_max_tokens;
+    let compat = get_compat(&model);
+    build_params(
+        &model,
+        &context(),
+        &options,
+        &compat,
+        CacheRetention::None,
+        &BTreeMap::new(),
+        1,
+    )
+    .unwrap_or_else(|error| panic!("building the request body failed: {error:?}"))
+}
+
+#[test]
+fn a_turn_that_sets_no_ceiling_sends_none() {
+    // The server owns the generation contract. A ceiling the user never chose
+    // would truncate long answers, and the model's own max_tokens must not leak
+    // into the request as one — the value is a budgeting hint, not a request
+    // parameter.
+    let body = request_body(OpenAICompletionsOptions::default(), 16_384);
+    assert!(body.get("max_tokens").is_none());
+    assert!(body.get("max_completion_tokens").is_none());
+}
+
+#[test]
+fn a_ceiling_the_caller_chose_is_sent() {
+    let body = request_body(
+        OpenAICompletionsOptions {
+            max_tokens: Some(512),
+            ..Default::default()
+        },
+        262_144,
+    );
+    // Which of the two fields carries it is the compat's decision, not ours.
+    let sent = body
+        .get("max_tokens")
+        .or_else(|| body.get("max_completion_tokens"))
+        .and_then(serde_json::Value::as_u64);
+    assert_eq!(sent, Some(512));
+}
+
+// ---------------------------------------------------------------------------
+// The refresh actually runs and talks to the configured server
+// ---------------------------------------------------------------------------
+
+/// One-shot loopback server answering a single GET with `body`, plus the path
+/// it was asked for.
+async fn serve_once(body: &'static str) -> (String, tokio::task::JoinHandle<Option<String>>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap_or_else(|error| panic!("binding a loopback port failed: {error}"));
+    let address = listener
+        .local_addr()
+        .unwrap_or_else(|error| panic!("reading the bound port failed: {error}"));
+    let handle = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.ok()?;
+        let mut buffer = vec![0_u8; 2048];
+        let read = tokio::io::AsyncReadExt::read(&mut socket, &mut buffer)
+            .await
+            .ok()?;
+        let request = String::from_utf8_lossy(&buffer[..read]).into_owned();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await;
+        let _ = tokio::io::AsyncWriteExt::flush(&mut socket).await;
+        request.lines().next().map(str::to_owned)
+    });
+    (format!("http://{address}/v1"), handle)
+}
+
+/// Drives `refresh_models` and returns what the provider ended up offering.
+async fn refresh(provider: &Arc<notagent_ai::models::BuiltProvider>) -> Vec<String> {
+    let context = notagent_ai::models::RefreshModelsContext {
+        credential: None,
+        stored: None,
+        publish: Box::new(|publication: notagent_ai::models::ModelsPublication<'_>| {
+            if let Some(update) = publication.update {
+                update();
+            }
+            Box::pin(async move { true }) as BoxFuture<'_, bool>
+        }),
+        allow_network: true,
+        force: Some(true),
+        signal: tokio_util::sync::CancellationToken::new(),
+    };
+    let refresh = notagent_ai::models::Provider::refresh_models(provider.as_ref(), context)
+        .unwrap_or_else(|| panic!("the provider offers no refresh"));
+    refresh
+        .await
+        .unwrap_or_else(|error| panic!("refreshing failed: {error}"));
+    provider
+        .get_models()
+        .into_iter()
+        .map(|model| model.id)
+        .collect()
+}
+
+#[tokio::test]
+async fn refreshing_asks_the_configured_server_and_publishes_what_it_answers() {
+    let (base_url, server) = serve_once(
+        r#"{"object":"list","data":[{"id":"served-by-this-server","capability":"chat","context_length":4096}]}"#,
+    )
+    .await;
+    let provider = mtplx_provider(MtplxProviderConfig {
+        base_url,
+        ..local_config()
+    });
+    assert!(
+        provider.get_models().is_empty(),
+        "nothing is offered before a refresh"
+    );
+    assert_eq!(refresh(&provider).await, vec!["served-by-this-server"]);
+    let request_line = server
+        .await
+        .unwrap_or_else(|error| panic!("the server task panicked: {error}"))
+        .unwrap_or_else(|| panic!("the server recorded no request"));
+    assert!(
+        request_line.starts_with("GET /v1/models "),
+        "unexpected request: {request_line}"
+    );
+}
+
+#[tokio::test]
+async fn a_server_that_is_not_running_leaves_the_provider_empty_without_failing() {
+    // Port 1 on loopback refuses immediately, which is the shape of "MTPLX was
+    // never started" — the common case, and not an error worth showing.
+    let provider = mtplx_provider(MtplxProviderConfig {
+        base_url: "http://127.0.0.1:1/v1".to_string(),
+        ..local_config()
+    });
+    assert!(refresh(&provider).await.is_empty());
 }

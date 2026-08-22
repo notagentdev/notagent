@@ -20,6 +20,7 @@ use notagent_ai::models::{
 };
 use notagent_ai::models_store::ModelsStore;
 use notagent_ai::providers::all as builtin_provider_catalog;
+use notagent_ai::providers::mtplx;
 use notagent_ai::providers::radius::{RadiusProviderOptions, radius_provider};
 use notagent_ai::types::{
     AssistantMessage, Context, DeferredCancelOptions, DeferredFetchOptions, DeferredHandle, Model,
@@ -284,7 +285,11 @@ impl ModelRuntime {
         let providers: Vec<Arc<dyn Provider>> = builtin_provider_catalog::builtin_providers()
             .into_iter()
             .map(|provider| {
-                if provider.id() == "radius" {
+                // The overlay replaces `refresh_models` outright rather than
+                // chaining to the provider it wraps, so a provider that sources
+                // its own catalog would never run its refresh and would stay
+                // empty. Those keep their own list instead of the shared one.
+                if provider.id() == "radius" || provider.id() == mtplx::LOCAL_PROVIDER_ID {
                     provider
                 } else {
                     with_remote_catalog(
