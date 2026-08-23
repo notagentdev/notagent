@@ -150,29 +150,22 @@ const ROW_INDENT: &str = " ";
 
 /// One rendered row.
 ///
-/// The shape carries the status; it takes no colour of its own. A green dot
-/// beside struck-through text and a purple one beside bold text say the same
-/// thing twice, and the second telling is the one that pulls the eye away from
-/// the task the user is actually reading.
+/// The shape carries the status; the icon takes no colour at all. A coloured
+/// dot beside struck-through text or bold text says the same thing twice, and
+/// the second telling is the one that pulls the eye away from the task the
+/// user is actually reading.
 pub fn format_todo_line(todo: &Todo) -> String {
     let theme = theme();
     let icon = panel_icon(todo.status);
     match todo.status {
         TodoStatus::Completed => format!(
-            "{ROW_INDENT}{} {}",
-            theme.fg(ThemeColor::Muted, icon),
+            "{ROW_INDENT}{icon} {}",
             theme.fg(ThemeColor::Muted, &theme.strikethrough(&todo.content))
         ),
-        TodoStatus::InProgress => format!(
-            "{ROW_INDENT}{} {}",
-            theme.fg(ThemeColor::Text, icon),
-            theme.bold(&todo.content)
-        ),
-        TodoStatus::Pending => format!(
-            "{ROW_INDENT}{} {}",
-            theme.fg(ThemeColor::Muted, icon),
-            todo.content
-        ),
+        TodoStatus::InProgress => {
+            format!("{ROW_INDENT}{icon} {}", theme.bold(&todo.content))
+        }
+        TodoStatus::Pending => format!("{ROW_INDENT}{icon} {}", todo.content),
     }
 }
 
