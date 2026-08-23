@@ -48,6 +48,7 @@ use notagent_ai::auth::types::{
     AuthCheck, AuthEvent, AuthOperationOptions, AuthPrompt, AuthPromptKind, AuthType,
 };
 use notagent_ai::compat::extension_oauth_types::OAuthDeviceCodeInfo;
+use notagent_ai::providers::mtplx;
 use notagent_ai::types::{
     AssistantMessage, ImageContent, Model, StopReason, TextContent, TextOrImageContent,
     ToolResultMessage, UserContent, UserMessage,
@@ -5900,6 +5901,7 @@ impl InteractiveMode {
                 }),
             });
             let auth = provider.auth();
+            let experimental = provider.id() == mtplx::LOCAL_PROVIDER_ID;
             if auth_type.is_none_or(|wanted| wanted == AuthType::OAuth)
                 && let Some(oauth) = auth.oauth.clone()
             {
@@ -5909,6 +5911,7 @@ impl InteractiveMode {
                     auth_type: AuthType::OAuth,
                     method: Some(AuthSelectorMethod::OAuth(oauth)),
                     status: status.clone(),
+                    experimental,
                 });
             }
             if auth_type.is_none_or(|wanted| wanted == AuthType::ApiKey)
@@ -5920,6 +5923,7 @@ impl InteractiveMode {
                     auth_type: AuthType::ApiKey,
                     method: Some(AuthSelectorMethod::ApiKey(api_key)),
                     status: status.clone(),
+                    experimental,
                 });
             }
         }
@@ -6107,6 +6111,7 @@ impl InteractiveMode {
                     .get_provider(&credential.provider_id)
                     .map(|provider| provider.name().to_owned())
                     .unwrap_or_else(|| credential.provider_id.clone()),
+                experimental: credential.provider_id == mtplx::LOCAL_PROVIDER_ID,
                 id: credential.provider_id,
                 auth_type: credential.credential_type,
                 method: None,

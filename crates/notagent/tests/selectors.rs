@@ -311,6 +311,7 @@ fn auth_provider(
         auth_type,
         method: None,
         status,
+        experimental: false,
     }
 }
 
@@ -340,6 +341,17 @@ fn renders_an_option_without_compiled_auth_status_as_unconfigured() {
     let output = render_oauth_selector(auth_provider("google", "Google", AuthType::ApiKey, None));
     assert!(output.contains("unconfigured"), "{output}");
     assert!(!output.contains("✓ configured"), "{output}");
+}
+
+#[test]
+fn labels_an_experimental_provider_behind_its_name() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+
+    let mut provider = auth_provider("mtplx", "MTPLX (local)", AuthType::ApiKey, None);
+    provider.experimental = true;
+    let output = render_oauth_selector(provider);
+    assert!(output.contains("MTPLX (local) (experimental)"), "{output}");
 }
 
 #[test]

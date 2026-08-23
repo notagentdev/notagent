@@ -50,6 +50,8 @@ pub struct AuthSelectorProvider {
     pub method: Option<AuthSelectorMethod>,
     /// Result of the auth check, when one ran.
     pub status: Option<AuthCheck>,
+    /// Marks a feature that is still settling; shown behind the name.
+    pub experimental: bool,
 }
 
 /// `"subscription"` for OAuth, `"API key"` otherwise.
@@ -186,7 +188,7 @@ impl OAuthSelectorComponent {
         } else {
             fuzzy_filter(&self.all_providers, query, |provider| {
                 format!(
-                    "{} {} {} {}",
+                    "{} {} {} {}{}",
                     provider.name,
                     provider.id,
                     auth_type_text(provider.auth_type),
@@ -194,7 +196,12 @@ impl OAuthSelectorComponent {
                         .method
                         .as_ref()
                         .map(AuthSelectorMethod::name)
-                        .unwrap_or("")
+                        .unwrap_or(""),
+                    if provider.experimental {
+                        " experimental"
+                    } else {
+                        ""
+                    }
                 )
             })
         };
@@ -225,6 +232,11 @@ impl OAuthSelectorComponent {
             let is_selected = index == self.selected_index;
 
             let status_indicator = format_status_indicator(provider);
+            let experimental_label = if provider.experimental {
+                theme_instance.fg(ThemeColor::Muted, " (experimental)")
+            } else {
+                String::new()
+            };
             let auth_type_label = if self.show_auth_type_labels {
                 theme_instance.fg(
                     ThemeColor::Muted,
@@ -239,10 +251,10 @@ impl OAuthSelectorComponent {
             let line = if is_selected {
                 let prefix = theme_instance.fg(ThemeColor::Accent, "→ ");
                 let text = theme_instance.fg(ThemeColor::Accent, &provider.name);
-                prefix + &text + &auth_type_label + &status_indicator
+                prefix + &text + &experimental_label + &auth_type_label + &status_indicator
             } else {
                 let text = format!("  {}", theme_instance.fg(ThemeColor::Text, &provider.name));
-                text + &auth_type_label + &status_indicator
+                text + &experimental_label + &auth_type_label + &status_indicator
             };
 
             list_container.add_child(component_ref(TruncatedText::new(line, 1, 0)));
