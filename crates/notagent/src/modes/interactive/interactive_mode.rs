@@ -973,6 +973,26 @@ expandable!(
 /// text introduces its own exploration keeps the run open, because the reference
 /// would not have closed it either: there, the calls follow the text inside the
 /// same turn.
+/// Characters of thinking an assistant message shows so far. Growth during
+/// streaming is the port's counterpart of the reference's `TaskReasoning`
+/// event, which closes the active exploration the moment reasoning appears.
+/// Deliberately thinking only: narration text that introduces its own
+/// exploration keeps the run in one block (see
+/// `assistant_message_ends_search_run` and the pinned e2e case), while a
+/// thought is a break in the exploration by definition.
+fn streamed_thinking_chars(message: &notagent_ai::types::AssistantMessage) -> usize {
+    message
+        .content
+        .iter()
+        .map(|content| match content {
+            notagent_ai::types::AssistantContent::Thinking(thinking) => {
+                thinking.thinking.trim().len()
+            }
+            _ => 0,
+        })
+        .sum()
+}
+
 fn assistant_message_ends_search_run(message: &notagent_ai::types::AssistantMessage) -> bool {
     let has_visible_content = message.content.iter().any(|content| match content {
         notagent_ai::types::AssistantContent::Text(text) => !text.text.trim().is_empty(),
@@ -1114,6 +1134,9 @@ pub struct InteractiveMode {
     /// reference's explore grouping, user decision 2026-08-17, v0.1.8).
     explore_block: Option<Rc<RefCell<ExploreBlockComponent>>>,
     chat_explore_blocks: Vec<Rc<RefCell<ExploreBlockComponent>>>,
+    /// Visible thinking/text of the streaming message at the last update, so
+    /// growth — the reference's reasoning/message moment — closes the block.
+    streaming_visible_chars: usize,
     /// Subagent lifecycle entries already written to the transcript, keyed by
     /// task id (user decision 2026-08-17, v0.1.8: one "started" and one
     /// "done"/"failed" line per subagent).
@@ -1382,6 +1405,7 @@ impl InteractiveMode {
             chat_tool_rows: Vec::new(),
             explore_block: None,
             chat_explore_blocks: Vec::new(),
+            streaming_visible_chars: 0,
             task_announcer: TaskAnnouncer::new(),
             chat_expandables: Vec::new(),
             last_escape_time: None,
@@ -8139,6 +8163,13 @@ impl InteractiveMode {
                     self.chat_expandables
                         .push(Rc::clone(&component) as Rc<RefCell<dyn Expandable>>);
                     self.streaming_component = Some(component);
+                    // A message that already opens with thinking is the same
+                    // reasoning moment as growth during streaming; only the
+                    // delivery granularity differs.
+                    self.streaming_visible_chars = streamed_thinking_chars(&message);
+                    if self.streaming_visible_chars > 0 {
+                        self.close_explore_block();
+                    }
                     self.streaming_message = Some(message);
                     self.ui.request_render();
                 }
@@ -8154,6 +8185,16 @@ impl InteractiveMode {
                     component
                         .borrow_mut()
                         .update_content(message.clone(), Some(true));
+                    // The reference closes the exploration on its reasoning
+                    // event; here that moment is the streamed message growing
+                    // thinking. Calls that follow open a fresh block, so a
+                    // thought separates two explorations instead of hiding
+                    // inside one.
+                    let visible = streamed_thinking_chars(&message);
+                    if visible > self.streaming_visible_chars {
+                        self.close_explore_block();
+                    }
+                    self.streaming_visible_chars = visible;
                     for content in message.content.iter() {
                         if let notagent_ai::types::AssistantContent::ToolCall(call) = content {
                             match self.tool_component(&call.id) {
@@ -8225,6 +8266,7 @@ impl InteractiveMode {
                     }
                     self.streaming_component = None;
                     self.streaming_message = None;
+                    self.streaming_visible_chars = 0;
                     self.footer.borrow_mut().invalidate();
                 }
                 self.ui.request_render();

@@ -150,24 +150,30 @@ impl StatusIndicator {
         status
     }
 
-    /// Update the running time in the message.
+    /// Update the running time beside the message.
     ///
     /// Returns whether the figure changed, which is the only reason to redraw
     /// on account of the clock — the animation redraws on its own schedule.
+    /// The clock is a suffix rather than part of the message, so the shimmer
+    /// never travels through it: motion on a figure reads as the figure
+    /// changing.
     pub fn tick_elapsed(&mut self) -> bool {
-        if self.settled {
+        if self.settled || self.timed_message.is_none() {
             return false;
         }
-        let Some(base) = self.timed_message.clone() else {
-            return false;
-        };
         let elapsed = format_elapsed_live(self.started.elapsed());
         if elapsed == self.shown_elapsed {
             return false;
         }
-        self.loader.set_message(match elapsed.as_ref() {
-            Some(elapsed) => format!("{base} ({elapsed})"),
-            None => base,
+        let theme = theme();
+        self.loader.set_suffix(match elapsed.as_ref() {
+            Some(elapsed) => format!(
+                " {}{}{}",
+                theme.fg(ThemeColor::Dim, "("),
+                theme.fg(ThemeColor::Muted, elapsed),
+                theme.fg(ThemeColor::Dim, ")")
+            ),
+            None => String::new(),
         });
         self.shown_elapsed = elapsed;
         true
@@ -198,6 +204,7 @@ impl StatusIndicator {
         self.loader.set_shimmer(None);
         self.loader
             .set_message_color(Rc::new(|text: &str| theme().fg(ThemeColor::Dim, text)));
+        self.loader.set_suffix("");
         self.loader.set_message(format!("Worked for {elapsed}"));
         self.loader.stop();
     }

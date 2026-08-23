@@ -314,3 +314,46 @@ async fn an_interrupted_exploration_settles_red() {
     })
     .await;
 }
+
+/// A thought between two explorations splits them into two blocks. The
+/// reference closes the active exploration the moment reasoning appears, so
+/// the thought stands between a settled block and a fresh one instead of
+/// hiding inside a block that keeps running through it.
+#[tokio::test(flavor = "current_thread")]
+async fn a_thought_closes_the_running_exploration() {
+    use notagent_ai::providers::faux::{faux_assistant_message, faux_thinking, faux_tool_call};
+    use notagent_ai::types::StopReason;
+
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        let project = e2e.path(".");
+        e2e.faux().set_responses(vec![
+            tool_call_reply("ls", "call-1", json!({ "path": &project })),
+            faux_assistant_message(
+                vec![
+                    faux_thinking("that listing needs a second look"),
+                    faux_tool_call(
+                        "ls",
+                        json!({ "path": &project }),
+                        Some("call-2".to_string()),
+                    ),
+                ],
+                StopReason::ToolUse,
+            )
+            .into(),
+            reply("Done looking."),
+        ]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("look around").await;
+        driver.wait_for("Done looking.").await;
+
+        // Two blocks of one listing each — not one block that swallowed both
+        // calls and kept exploring through the thought.
+        let screen = driver.screen();
+        assert!(!screen.contains("2 listings"), "{screen}");
+        assert_eq!(screen.matches("1 listing").count(), 2, "{screen}");
+    })
+    .await;
+}

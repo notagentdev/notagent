@@ -37,6 +37,10 @@ pub struct Loader {
     spinner_color_fn: ColorFn,
     message_color_fn: ColorFn,
     message: String,
+    /// Appended after the message, verbatim: the caller styles it, and the
+    /// shimmer never touches it. A running clock beside an animated message
+    /// stays still — motion on a figure reads as the figure changing.
+    suffix: String,
     render_requested: bool,
     /// When set, the message carries the animation itself and no spinner is
     /// drawn. `None` inside it means the terminal cannot show the fade, in
@@ -66,6 +70,7 @@ impl Loader {
             spinner_color_fn,
             message_color_fn,
             message: message.into(),
+            suffix: String::new(),
             render_requested: false,
             shimmer: None,
             started_at: Instant::now(),
@@ -112,6 +117,12 @@ impl Loader {
     /// Replace the message.
     pub fn set_message(&mut self, message: impl Into<String>) {
         self.message = message.into();
+        self.update_display();
+    }
+
+    /// Replace the pre-styled text appended after the message.
+    pub fn set_suffix(&mut self, suffix: impl Into<String>) {
+        self.suffix = suffix.into();
         self.update_display();
     }
 
@@ -178,7 +189,7 @@ impl Loader {
                 Some(palette) => shimmer(&self.message, palette, self.started_at.elapsed()),
                 None => (self.message_color_fn)(&self.message),
             };
-            self.text.set_text(message);
+            self.text.set_text(format!("{message}{}", self.suffix));
             self.render_requested = true;
             return;
         }
@@ -199,7 +210,8 @@ impl Loader {
             format!("{rendered_frame} ")
         };
         let message = (self.message_color_fn)(&self.message);
-        self.text.set_text(format!("{indicator}{message}"));
+        self.text
+            .set_text(format!("{indicator}{message}{}", self.suffix));
         self.render_requested = true;
     }
 }

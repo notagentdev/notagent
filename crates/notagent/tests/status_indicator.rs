@@ -7,7 +7,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use notagent::modes::interactive::components::status_indicator::{
     CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
 };
-use notagent::modes::interactive::theme::theme::init_theme;
+use notagent::modes::interactive::theme::theme::{ThemeColor, init_theme, theme};
 use notagent_tui::tui::{Component, Line};
 
 /// The status message carries its animation as a colour sequence per run of
@@ -122,6 +122,13 @@ fn counts_the_time_the_work_is_taking() {
         visible(&working.render(80).join("\n")).contains("Working... (1s)"),
         "{}",
         visible(&working.render(80).join("\n"))
+    );
+    // The clock sits outside the animated message: its figure carries the
+    // plain muted colour, never the travelling fade.
+    let raw = working.render(80).join("\n");
+    assert!(
+        raw.contains(&theme().fg(ThemeColor::Muted, "1s")),
+        "the elapsed figure is styled as a still suffix: {raw:?}"
     );
     assert!(!working.tick_elapsed(), "the same second was redrawn again");
 }
