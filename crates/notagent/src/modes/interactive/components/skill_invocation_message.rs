@@ -55,7 +55,7 @@ impl SkillInvocationMessageComponent {
         // block's colour leads, the name beside it (reference pattern).
         let badge_style = block_style() == BlockStyle::Badge;
         if badge_style {
-            self.content_box.set_padding(1, 0);
+            self.content_box.set_padding(0, 0);
             self.content_box.set_bg_fn(None);
         } else {
             self.content_box.set_padding(1, 1);

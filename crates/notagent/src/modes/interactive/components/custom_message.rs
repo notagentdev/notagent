@@ -75,7 +75,7 @@ impl CustomMessageComponent {
         // the content follows directly (reference compaction pattern).
         let badge_style = block_style() == BlockStyle::Badge;
         let mut content_box = if badge_style {
-            BoxComponent::new(1, 0, None)
+            BoxComponent::new(0, 0, None)
         } else {
             BoxComponent::new(
                 1,

@@ -301,7 +301,7 @@ impl AssistantMessageComponent {
                         }
                         self.content_container.add_child(component_ref(Text::new(
                             badge_line,
-                            self.output_pad,
+                            self.output_pad.saturating_sub(1),
                             0,
                         )));
                         if self.thinking_expanded {

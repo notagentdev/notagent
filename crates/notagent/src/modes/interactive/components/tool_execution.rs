@@ -462,8 +462,11 @@ impl ToolExecutionComponent {
             } else {
                 let mut content_box = self.content_box.borrow_mut();
                 // The badge carries the state on its own — no surface, no
-                // padding rows; the single-column inset stays.
-                content_box.set_padding(1, if badge_style { 0 } else { 1 });
+                // padding rows, no inset: the badge row starts at the margin.
+                content_box.set_padding(
+                    if badge_style { 0 } else { 1 },
+                    if badge_style { 0 } else { 1 },
+                );
                 content_box.set_bg_fn(if badge_style {
                     None
                 } else {
@@ -592,7 +595,7 @@ impl ToolExecutionComponent {
             let output = self.text_output();
             {
                 let mut content_box = self.content_box.borrow_mut();
-                content_box.set_padding(1, 0);
+                content_box.set_padding(0, 0);
                 content_box.set_bg_fn(None);
                 content_box.clear();
                 if output.is_empty() {

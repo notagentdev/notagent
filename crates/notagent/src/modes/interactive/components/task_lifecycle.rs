@@ -112,7 +112,7 @@ fn subagent_started_line(info: &SubagentTaskInfo, theme: &Theme, badge_style: bo
     let detail = single_line(&info.base.description);
     if badge_style {
         return format!(
-            " {}  {} {}",
+            "{}  {} {}",
             badge(
                 theme,
                 ThemeBg::ToolPendingBg,
@@ -142,7 +142,7 @@ fn subagent_ended_line(
     let elapsed = format_elapsed(base.started_at, base.ended_at.unwrap_or(now));
     if badge_style {
         return format!(
-            " {}  {} {}",
+            "{}  {} {}",
             badge(
                 theme,
                 if clean {
@@ -184,7 +184,7 @@ fn shell_ended_line(info: &ShellTaskInfo, theme: &Theme, badge_style: bool, now:
     };
     if badge_style {
         return format!(
-            " {}  {} {}",
+            "{}  {} {}",
             badge(
                 theme,
                 if clean {

@@ -364,7 +364,7 @@ impl Component for ExploreBlockComponent {
             } else {
                 "Explored"
             };
-            let mut badge_line = format!(" {}", badge(&theme_instance, self.background(), label));
+            let mut badge_line = badge(&theme_instance, self.background(), label);
             let runtime_text = if self.is_running() {
                 format_elapsed_live(self.started.elapsed())
             } else {
@@ -757,7 +757,7 @@ mod tests {
         // below — no surface padding rows.
         let expected = vec![
             "",
-            "  EXPLORED  (0ms)",
+            " EXPLORED  (0ms)",
             " Searched code workspace lock",
             " 1 search, 1 failed",
         ];
