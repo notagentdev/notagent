@@ -349,3 +349,48 @@ async fn a_prompt_is_refused_while_a_manual_compaction_is_running() {
     let _ = compaction.await.expect("join");
     assert!(refused, "the prompt guard never fired");
 }
+
+/// The threshold decides against the catalog's current window, not the
+/// session's snapshot. A dynamic provider's server can shrink its window
+/// between selection and use; compacting against the stale figure would wait
+/// until the server has long been rejecting the requests.
+#[tokio::test]
+async fn the_threshold_follows_the_catalogs_current_window() {
+    let harness = create_harness(HarnessOptions {
+        settings: Some(json!({ "compaction": { "enabled": true, "retainedUserTokens": 10 } })),
+        // The catalog now says the server enforces a far smaller window than
+        // the 128k the session model was selected with: threshold at 5 000
+        // tokens once the 16 384-token reserve is set aside.
+        runtime_window_override: Some(16_384 + 5_000),
+        ..HarnessOptions::default()
+    });
+    with_history(&harness, 2).await;
+
+    harness.set_responses(vec![reply("a short answer"), reply("## Goal\na summary")]);
+    harness
+        .session
+        .prompt(
+            &format!("consider this: {}", "x".repeat(30_000)),
+            PromptOptions::default(),
+        )
+        .await
+        .expect("prompt");
+
+    let reasons: Vec<CompactionReason> = harness
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            AgentSessionEvent::CompactionStart { reason } => Some(reason),
+            _ => None,
+        })
+        .collect();
+    // The summarization turn itself can cross the small threshold again, so
+    // the pinned fact is the trigger, not the count.
+    assert!(
+        !reasons.is_empty()
+            && reasons
+                .iter()
+                .all(|reason| *reason == CompactionReason::Threshold),
+        "{reasons:?}"
+    );
+}

@@ -138,6 +138,10 @@ pub struct HarnessOptions {
     /// The permission chain, for the cases that assert a call was gated —
     /// including the ones that borrow a tool over the lending endpoint.
     pub permissions: Option<Arc<notagent::core::permissions::gate::PermissionGate>>,
+    /// Context window the model RUNTIME reports, diverging from the session's
+    /// model snapshot — the shape of a dynamic provider whose server shrank
+    /// its window after the model was selected.
+    pub runtime_window_override: Option<u64>,
 }
 
 pub struct Harness {
@@ -311,7 +315,17 @@ pub fn create_harness(options: HarnessOptions) -> Harness {
         scoped_models: Vec::new(),
         resource_loader: Arc::new(EmptyResourceLoader::default()),
         model_runtime: Arc::new(FauxModelRuntime {
-            models: models.clone(),
+            models: match options.runtime_window_override {
+                Some(window) => models
+                    .iter()
+                    .cloned()
+                    .map(|mut model| {
+                        model.context_window = window;
+                        model
+                    })
+                    .collect(),
+                None => models.clone(),
+            },
             with_configured_auth,
         }),
         initial_active_tool_names: options.initial_active_tool_names.clone(),

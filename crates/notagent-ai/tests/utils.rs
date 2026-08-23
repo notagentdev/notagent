@@ -147,6 +147,14 @@ fn detects_provider_specific_overflow_errors() {
             "Prompt has 5,958,968 tokens, but the configured context size is 256,000 tokens",
             256000,
         ),
+        // An MTPLX 400 as the completions transport renders it: the body has
+        // no `error` key, so the whole JSON travels as the message. Both the
+        // code and the prose match a pattern, so a stale client-side window
+        // still ends in compact-and-retry rather than a dead turn.
+        (
+            "400 {\"detail\":{\"message\":\"This model's maximum context length is 131072 tokens, but the prompt alone has 140213 tokens, leaving no room to generate. Reduce the prompt or serve with a larger --context-window.\",\"code\":\"context_length_exceeded\"}}",
+            131072,
+        ),
     ];
     for (message, context_window) in cases {
         assert!(

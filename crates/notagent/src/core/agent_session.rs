@@ -3586,10 +3586,18 @@ impl AgentSession {
         }
 
         let model = self.model();
-        let context_window = model
+        // A dynamic provider's window is whatever its server enforces right
+        // now, while the session model is a snapshot from selection time.
+        // Deciding against a stale window compacts far too late when the
+        // window shrank server-side — the request then dies on the server's
+        // limit before the threshold is ever reached. The catalog carries the
+        // last fetched truth; a model no longer listed falls back to the
+        // snapshot.
+        let live_model = model
             .as_ref()
-            .map(|model| model.context_window)
-            .unwrap_or(0);
+            .and_then(|model| self.model_runtime.get_model(&model.provider, &model.id));
+        let current_model = live_model.as_ref().or(model.as_ref());
+        let context_window = current_model.map(|model| model.context_window).unwrap_or(0);
 
         // An overflow reported by a different model says nothing about this one:
         // switching from a small-context model to a large one must not inherit
@@ -3614,7 +3622,7 @@ impl AgentSession {
         let recoverable_length = same_model
             && is_recoverable_length(
                 assistant_message,
-                model.as_ref().map(|model| model.max_tokens).unwrap_or(0),
+                current_model.map(|model| model.max_tokens).unwrap_or(0),
             );
         if same_model
             && (is_context_overflow(assistant_message, Some(context_window)) || recoverable_length)
