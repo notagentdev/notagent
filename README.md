@@ -4,6 +4,21 @@ A terminal coding agent, written in Rust. It runs as a TUI, talks to LLM
 providers over their native APIs, and drives an agent loop with tools for
 reading, editing, searching, and running commands.
 
+## Crates
+
+| Crate | Description |
+|-------|-------------|
+| `notagent` | Interactive coding agent CLI (TUI, slash commands, session handling) |
+| `notagent-agent` | Agent runtime: agent loop, tools, queues, custom messages |
+| `notagent-ai` | Unified multi-provider LLM API (streaming, auth, model catalog) |
+| `notagent-tui` | Terminal UI library with differential rendering |
+| `notagent-client` | Transport-neutral protocol client with a lease system |
+| `notagent-protocol` | CBOR binary protocol for remote sessions |
+| `notagent-server` | Session server core with Unix socket transport |
+| `notagent-session-sqlite` | SQLite session storage backend |
+| `notagent-telemetry` | Vendor-neutral telemetry contracts (spans, events, attributes) |
+| `notagent-index` | Code symbol indexing using tree-sitter |
+
 ## Build
 
 ```sh
@@ -35,6 +50,13 @@ Additional OpenAI-compatible providers and models can be declared in
 `~/.notagent-v2/agent/models.json`. Entries there are layered over the built-in
 catalog: new providers appear in the picker, and known models can be
 overridden per field.
+
+## Permissions & containerization
+
+notagent has no built-in permission system for restricting filesystem,
+process, network, or credential access. It runs with the permissions of the
+user and process that launched it. If you need stronger boundaries, run it in
+a container or sandbox.
 
 ## Experimental
 
