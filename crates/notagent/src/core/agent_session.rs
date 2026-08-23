@@ -3812,7 +3812,7 @@ impl AgentSession {
     /// Whether an error is worth retrying. Context overflow is not: compaction
     /// handles that.
     fn is_retryable_error(&self, message: &AssistantMessage) -> bool {
-        let context_window = self.model().map(|model| model.context_window).unwrap_or(0);
+        let context_window = self.current_context_window();
         if is_context_overflow(message, Some(context_window)) {
             return false;
         }
@@ -4433,9 +4433,23 @@ impl AgentSession {
         }
     }
 
+    /// The context window as currently known: the catalog's entry for the
+    /// session model when it is listed — a dynamic provider's server decides
+    /// this and can change it between selection and use — otherwise the
+    /// session model's own snapshot.
+    pub fn current_context_window(&self) -> u64 {
+        let Some(model) = self.model() else {
+            return 0;
+        };
+        self.model_runtime
+            .get_model(&model.provider, &model.id)
+            .map(|live| live.context_window)
+            .unwrap_or(model.context_window)
+    }
+
     pub fn get_context_usage(&self) -> Option<ContextUsage> {
-        let model = self.model()?;
-        let context_window = model.context_window;
+        self.model()?;
+        let context_window = self.current_context_window();
         if context_window == 0 {
             return None;
         }

@@ -1918,6 +1918,33 @@ impl InteractiveMode {
             .collect();
             UiMessage::PackageUpdatesChecked { packages }
         }));
+        // A dynamic provider's catalog entry is only as fresh as its last
+        // network refresh, and startup restores from cache. Without this, a
+        // context window the server changed stays stale until the model
+        // picker happens to open — and the footer, the compaction threshold
+        // and the picker all read it.
+        let session_provider = self.session().model().map(|model| model.provider);
+        if let Some(provider) = session_provider
+            && self
+                .runtime
+                .services()
+                .model_runtime
+                .get_provider(&provider)
+                .is_some_and(|provider| provider.is_dynamic())
+        {
+            let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
+            self.side_futures.push(Box::pin(async move {
+                let _ = model_runtime
+                    .refresh(notagent_ai::models::ModelsRefreshOptions {
+                        providers: Some(vec![provider]),
+                        signal: Some(timeout_signal(15_000)),
+                        ..notagent_ai::models::ModelsRefreshOptions::default()
+                    })
+                    .await;
+                UiMessage::Noop
+            }));
+        }
+
         if let Some(warning) = Self::check_tmux_keyboard_setup() {
             self.show_warning(&warning);
         }

@@ -394,3 +394,25 @@ async fn the_threshold_follows_the_catalogs_current_window() {
         "{reasons:?}"
     );
 }
+
+/// The reported context usage follows the catalog's current window too: the
+/// footer reads this figure, and a stale one hides that the server will
+/// reject requests far before the shown window fills.
+#[tokio::test]
+async fn the_context_usage_reports_the_catalogs_current_window() {
+    let harness = create_harness(HarnessOptions {
+        runtime_window_override: Some(50_000),
+        ..HarnessOptions::default()
+    });
+    harness.set_responses(vec![reply("hello")]);
+    harness
+        .session
+        .prompt("hi", PromptOptions::default())
+        .await
+        .expect("prompt");
+
+    let usage = harness.session.get_context_usage().expect("usage");
+    assert_eq!(usage.context_window, 50_000);
+    // The session snapshot still says otherwise — the catalog outranks it.
+    assert_ne!(harness.model().context_window, 50_000);
+}
