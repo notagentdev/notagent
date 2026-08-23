@@ -109,7 +109,7 @@ use crate::core::settings_manager::{DoubleEscapeAction, FullscreenExitOutput, Tu
 use crate::core::slash_commands::BUILTIN_SLASH_COMMANDS;
 use crate::core::source_info::{SourceInfo, SourceScope};
 use crate::core::tasks::manager::TaskManager;
-use crate::core::tasks::types::{TaskInfo, TaskKind, TaskStatus};
+use crate::core::tasks::types::{TaskInfo, TaskStatus};
 use crate::core::todos::Todo;
 use crate::core::tools::truncate::TruncationResult;
 use crate::core::trust_manager::ProjectTrustStore;
@@ -3357,19 +3357,26 @@ impl InteractiveMode {
 
     /// `refreshSubagentPanel(tasks)` (`interactive-mode.ts:2845-2859`).
     fn refresh_subagent_panel(&mut self, tasks: &[TaskInfo]) {
-        let running: Vec<&TaskInfo> = tasks
+        // The signature includes settled children while they linger, so the
+        // marker turning green or red repaints, and so does the row leaving
+        // once its linger runs out.
+        let now = crate::modes::interactive::components::tasks_panel::now_ms();
+        let listed: Vec<&TaskInfo> = tasks
             .iter()
             .filter(|info| {
-                info.kind() == TaskKind::Subagent && info.status() == TaskStatus::Running
+                crate::modes::interactive::components::subagent_panel::is_listed_subagent(info, now)
             })
             .collect();
-        let signature = running
+        let any_running = listed
             .iter()
-            .map(|info| info.task_id().to_owned())
+            .any(|info| info.status() == TaskStatus::Running);
+        let signature = listed
+            .iter()
+            .map(|info| format!("{}:{}", info.task_id(), info.status().as_str()))
             .collect::<Vec<_>>()
             .join("|");
         self.subagent_panel.borrow_mut().set_tasks(tasks.to_vec());
-        if running.is_empty() && signature == self.subagent_panel_signature {
+        if !any_running && signature == self.subagent_panel_signature {
             return;
         }
         self.subagent_panel_signature = signature;

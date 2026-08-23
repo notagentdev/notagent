@@ -10,14 +10,15 @@
 //!
 //! So each running child gets a row: its name, what it may do, what it was
 //! asked, how long it has been at it, and what it has spent. The parent sits
-//! above them as the thing they were split off from.
+//! above them as the thing they were split off from. A finished child keeps
+//! its row for a few seconds so its outcome — the marker turning green or red
+//! — registers before the row leaves.
 
 use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
-use crate::core::modes::indicator::indicator_color_key;
 use crate::core::modes::shells::ShellId;
-use crate::core::tasks::types::{SubagentTaskInfo, TaskInfo, is_terminal_task_status};
+use crate::core::tasks::types::{SubagentTaskInfo, TaskInfo, TaskStatus, is_terminal_task_status};
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
 use super::tasks_panel::{now_ms, single_line};
@@ -28,11 +29,28 @@ const MAX_ROWS: usize = 6;
 /// Shortest a task label may be squeezed to before the row gives up on it.
 const MIN_LABEL_WIDTH: usize = 12;
 
-fn as_running_subagent(info: &TaskInfo) -> Option<&SubagentTaskInfo> {
+/// How long a finished child keeps its row: long enough to register how it
+/// ended, short enough that the list keeps showing what is actually running.
+const LINGER_MS: i64 = 5_000;
+
+/// Whether the panel lists a subagent at `now`: while it runs, and for
+/// [`LINGER_MS`] after it settled so its outcome is seen before the row leaves.
+pub fn is_listed_subagent(info: &TaskInfo, now: i64) -> bool {
     match info {
-        TaskInfo::Subagent(subagent) if !is_terminal_task_status(subagent.base.status) => {
-            Some(subagent)
+        TaskInfo::Subagent(subagent) => {
+            !is_terminal_task_status(subagent.base.status)
+                || subagent
+                    .base
+                    .ended_at
+                    .is_some_and(|ended| now.saturating_sub(ended) < LINGER_MS)
         }
+        _ => false,
+    }
+}
+
+fn as_listed_subagent(info: &TaskInfo, now: i64) -> Option<&SubagentTaskInfo> {
+    match info {
+        TaskInfo::Subagent(subagent) if is_listed_subagent(info, now) => Some(subagent),
         _ => None,
     }
 }
@@ -71,12 +89,14 @@ pub struct SubagentRow {
     /// The star name the child is shown under. A name distinguishes two
     /// children of the same type, which is the case this panel exists for.
     pub alias: String,
-    /// What it may do. Carried as the shell rather than as text so the row can
-    /// spend a colour on it instead of a column.
+    /// What it may do. Carried so the read-only restriction can be spelled out
+    /// after the name.
     pub shell: Option<ShellId>,
+    /// Where the child stands, carried by the marker's colour.
+    pub status: TaskStatus,
     /// What it was asked to do.
     pub label: String,
-    /// How long it has been running.
+    /// How long it has been running, frozen once it ended.
     pub elapsed: String,
     /// What it has spent.
     pub tokens: String,
@@ -84,16 +104,19 @@ pub struct SubagentRow {
 
 /// The rows for one snapshot, oldest child first so positions stay put.
 pub fn build_subagent_rows(tasks: &[TaskInfo], now: i64) -> Vec<SubagentRow> {
-    let mut running: Vec<&SubagentTaskInfo> =
-        tasks.iter().filter_map(as_running_subagent).collect();
-    running.sort_by_key(|info| info.base.started_at);
-    running
+    let mut listed: Vec<&SubagentTaskInfo> = tasks
+        .iter()
+        .filter_map(|info| as_listed_subagent(info, now))
+        .collect();
+    listed.sort_by_key(|info| info.base.started_at);
+    listed
         .into_iter()
         .map(|info| SubagentRow {
             alias: info.alias.clone(),
             shell: ShellId::parse(&info.agent),
+            status: info.base.status,
             label: single_line(&info.base.description),
-            elapsed: format_elapsed(info.base.started_at, now),
+            elapsed: format_elapsed(info.base.started_at, info.base.ended_at.unwrap_or(now)),
             tokens: format_tokens(info.tokens),
         })
         .collect()
@@ -113,16 +136,15 @@ fn row_name(row: &SubagentRow) -> String {
     }
 }
 
-/// Colour of the row's marker, carrying the shell without spending a column.
-///
-/// The same green/yellow split `indicator_color_key` gives the footer, so a
-/// reader who has learned it once has learned it everywhere. A row whose shell
-/// could not be read keeps the neutral colour rather than claiming either.
-fn marker_colour(shell: Option<ShellId>) -> ThemeColor {
-    match shell.map(indicator_color_key) {
-        Some("success") => ThemeColor::Success,
-        Some(_) => ThemeColor::Warning,
-        None => ThemeColor::Muted,
+/// Colour of the row's marker, carrying the child's state: grey while it runs,
+/// green once it completed cleanly, red for everything that ended badly
+/// (failed, timed out, killed, lost). The same split the tasks panel uses, so
+/// a reader who has learned it once has learned it everywhere.
+fn marker_colour(status: TaskStatus) -> ThemeColor {
+    match status {
+        TaskStatus::Running => ThemeColor::Dim,
+        TaskStatus::Completed => ThemeColor::Success,
+        _ => ThemeColor::Error,
     }
 }
 
@@ -174,7 +196,7 @@ impl Component for SubagentPanel {
             let name = row_name(row);
             let prefix = format!(
                 "  {} {}  ",
-                theme_instance.fg(marker_colour(row.shell), "○"),
+                theme_instance.fg(marker_colour(row.status), "○"),
                 theme_instance.fg(
                     ThemeColor::Accent,
                     &format!(

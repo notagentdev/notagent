@@ -4,8 +4,9 @@
 //!
 //! A delegated run produces nothing until it answers, so these two numbers —
 //! how long it has been going and what it has spent — are the only evidence it
-//! is alive. The cases below pin that they appear, that finished children stop
-//! appearing, and that the rows do not reshuffle underneath the eye.
+//! is alive. The cases below pin that they appear, that finished children
+//! linger briefly with their outcome and then leave, and that the rows do not
+//! reshuffle underneath the eye.
 
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -157,18 +158,36 @@ fn ignores_shell_tasks_which_have_their_own_panel() {
 }
 
 #[test]
-fn drops_a_child_once_it_has_finished() {
+fn keeps_a_finished_child_briefly_so_its_outcome_is_seen() {
     let rows = build_subagent_rows(
         &[subagent(
             "agent-1",
             "Done",
             SubagentOverrides {
                 status: TaskStatus::Completed,
-                ended_at: Some(1),
+                ended_at: Some(10_000),
                 ..Default::default()
             },
         )],
-        0,
+        12_000,
+    );
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].elapsed, "10s", "frozen at its end, not still counting");
+}
+
+#[test]
+fn drops_a_finished_child_once_its_linger_has_run_out() {
+    let rows = build_subagent_rows(
+        &[subagent(
+            "agent-1",
+            "Done",
+            SubagentOverrides {
+                status: TaskStatus::Completed,
+                ended_at: Some(10_000),
+                ..Default::default()
+            },
+        )],
+        16_000,
     );
     assert!(rows.is_empty());
 }
@@ -369,42 +388,45 @@ fn leaves_a_worker_unqualified() {
     assert!(!row.contains("worker"), "{row}");
 }
 
-/// The marker carries the shell as a colour, the same green/yellow split the
-/// footer uses for modes.
+/// The marker carries the child's state: grey while it runs, green once it
+/// completed cleanly, red for everything that ended badly — the same split the
+/// tasks panel uses.
 #[test]
-fn colours_the_marker_by_shell() {
+fn colours_the_marker_by_outcome() {
     let _guard = theme_lock();
-    let read_only = {
+    let row_for = |status: TaskStatus, ended_at: Option<i64>| {
         let mut panel = SubagentPanel::new();
         panel.set_tasks(vec![subagent(
             "agent-1",
             "Look around",
             SubagentOverrides {
-                agent: "read-only".to_string(),
+                status,
+                started_at: now_ms(),
+                ended_at,
                 ..Default::default()
             },
         )]);
         panel.render(100).get(1).cloned().unwrap_or_default()
     };
-    let worker = {
-        let mut panel = SubagentPanel::new();
-        panel.set_tasks(vec![subagent(
-            "agent-1",
-            "Look around",
-            SubagentOverrides {
-                agent: "worker".to_string(),
-                ..Default::default()
-            },
-        )]);
-        panel.render(100).get(1).cloned().unwrap_or_default()
-    };
+    let running = row_for(TaskStatus::Running, None);
+    let completed = row_for(TaskStatus::Completed, Some(now_ms()));
+    let failed = row_for(TaskStatus::Failed, Some(now_ms()));
+    let killed = row_for(TaskStatus::Killed, Some(now_ms()));
     let theme_instance = theme();
     assert!(
-        read_only.contains(&theme_instance.fg(ThemeColor::Success, "○")),
-        "{read_only}"
+        running.contains(&theme_instance.fg(ThemeColor::Dim, "○")),
+        "running is grey: {running}"
     );
     assert!(
-        worker.contains(&theme_instance.fg(ThemeColor::Warning, "○")),
-        "{worker}"
+        completed.contains(&theme_instance.fg(ThemeColor::Success, "○")),
+        "completed is green: {completed}"
+    );
+    assert!(
+        failed.contains(&theme_instance.fg(ThemeColor::Error, "○")),
+        "failed is red: {failed}"
+    );
+    assert!(
+        killed.contains(&theme_instance.fg(ThemeColor::Error, "○")),
+        "killed is red: {killed}"
     );
 }
