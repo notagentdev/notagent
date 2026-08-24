@@ -693,8 +693,9 @@ async fn injects_steering_messages_before_the_next_turn() {
     config.get_steering_messages = Some(Arc::new(move || {
         let counter = Arc::clone(&counter);
         Box::pin(async move {
-            // Steer exactly once, after the first turn.
-            if counter.fetch_add(1, Ordering::SeqCst) == 1 {
+            // The queue is first polled after the opening step; steer exactly
+            // once, on that poll.
+            if counter.fetch_add(1, Ordering::SeqCst) == 0 {
                 vec![user_message("steered")]
             } else {
                 Vec::new()

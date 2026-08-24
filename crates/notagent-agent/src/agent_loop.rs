@@ -145,6 +145,8 @@ pub async fn run_agent_loop(
 
     let stream_fn = stream_fn.or_else(|| get_default_stream_fn().ok());
     if let Some(stream_fn) = stream_fn {
+        // Fresh prompts are answered on their own first; steering typed in the
+        // meantime joins after the first completed step.
         run_loop(
             &mut current_context,
             &mut new_messages,
@@ -152,6 +154,7 @@ pub async fn run_agent_loop(
             signal,
             emit,
             stream_fn,
+            false,
         )
         .await;
     }
@@ -176,6 +179,8 @@ pub async fn run_agent_loop_continue(
 
     let stream_fn = stream_fn.or_else(|| get_default_stream_fn().ok());
     if let Some(stream_fn) = stream_fn {
+        // A continuation brings no fresh input of its own, so anything queued
+        // rides along with the resumed request instead of waiting a step.
         run_loop(
             &mut current_context,
             &mut new_messages,
@@ -183,6 +188,7 @@ pub async fn run_agent_loop_continue(
             signal,
             emit,
             stream_fn,
+            true,
         )
         .await;
     }
@@ -190,6 +196,11 @@ pub async fn run_agent_loop_continue(
 }
 
 /// `runLoop(...)` — the shared loop body.
+///
+/// `drain_steering_first` controls whether the steering queue is polled before
+/// the first request. A run started with fresh prompts defers the poll so the
+/// model answers those prompts alone; every later poll happens after a
+/// completed step, between two requests.
 async fn run_loop(
     current_context: &mut AgentContext,
     new_messages: &mut Vec<AgentMessage>,
@@ -197,13 +208,13 @@ async fn run_loop(
     signal: Option<CancellationToken>,
     emit: AgentEventSink,
     stream_function: StreamFn,
+    drain_steering_first: bool,
 ) {
     let mut config = initial_config;
     let mut first_turn = true;
-    // The user may have typed while the previous run was still going.
     let mut pending_messages: Vec<AgentMessage> = match &config.get_steering_messages {
-        Some(get_steering_messages) => get_steering_messages().await,
-        None => Vec::new(),
+        Some(get_steering_messages) if drain_steering_first => get_steering_messages().await,
+        _ => Vec::new(),
     };
 
     // Outer loop: runs again when follow-up messages arrive after the agent would stop.

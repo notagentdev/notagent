@@ -1665,13 +1665,13 @@ fn optional_string(value: Option<&str>) -> Value {
     value.map_or(Value::Null, Value::from)
 }
 
-/// The TS `steeringMode`/`followUpMode` accessors return the stored value
-/// unchecked; every consumer compares it against `"all"`, so an unknown value
-/// behaves like the default here as well.
+/// Queued messages are bundled into the next request by default; only an
+/// explicit `"one-at-a-time"` opts into delivering a single message per step.
+/// An absent or unknown value therefore behaves like `"all"`.
 fn queue_mode(value: &Option<Value>) -> QueueMode {
     match as_str(value) {
-        Some("all") => QueueMode::All,
-        _ => QueueMode::OneAtATime,
+        Some("one-at-a-time") => QueueMode::OneAtATime,
+        _ => QueueMode::All,
     }
 }
 

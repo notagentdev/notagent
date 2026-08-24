@@ -147,10 +147,10 @@ async fn a_second_prompt_during_a_run_is_rejected() {
 }
 
 #[tokio::test]
-async fn steering_messages_are_drained_one_at_a_time_by_default() {
-    let (stream_fn, calls) = scripted_stream_fn(vec!["first", "second", "third"]);
+async fn steering_waits_for_the_first_response_and_arrives_bundled() {
+    let (stream_fn, calls) = scripted_stream_fn(vec!["first", "second"]);
     let agent = Agent::new(options(stream_fn));
-    assert_eq!(agent.steering_mode(), QueueMode::OneAtATime);
+    assert_eq!(agent.steering_mode(), QueueMode::All);
 
     agent.steer(user_message("steer one"));
     agent.steer(user_message("steer two"));
@@ -161,33 +161,10 @@ async fn steering_messages_are_drained_one_at_a_time_by_default() {
         .await
         .expect("prompt");
 
-    // runLoop polls the steering queue once before the first turn, so turn one carries
-    // the prompt plus "steer one" and turn two carries "steer two": two provider calls.
+    // The first request carries only the fresh prompt; the queue is drained
+    // after that step, and both queued messages share the second request.
     assert_eq!(calls.load(Ordering::SeqCst), 2);
     assert!(!agent.has_queued_messages());
-}
-
-#[tokio::test]
-async fn queue_mode_all_drains_everything_at_once() {
-    let (stream_fn, calls) = scripted_stream_fn(vec!["first", "second"]);
-    let agent = Agent::new(AgentOptions {
-        steering_mode: Some(QueueMode::All),
-        ..options(stream_fn)
-    });
-
-    agent.steer(user_message("one"));
-    agent.steer(user_message("two"));
-    agent
-        .prompt(vec![user_message("start")])
-        .await
-        .expect("prompt");
-
-    // "all" drains both in the initial poll, so a single turn carries everything.
-    assert_eq!(
-        calls.load(Ordering::SeqCst),
-        1,
-        "both messages are injected into one turn"
-    );
     let state = agent.state();
     let user_texts: Vec<String> = state
         .messages
@@ -200,7 +177,28 @@ async fn queue_mode_all_drains_everything_at_once() {
             _ => None,
         })
         .collect();
-    assert_eq!(user_texts, ["start", "one", "two"]);
+    assert_eq!(user_texts, ["start", "steer one", "steer two"]);
+}
+
+#[tokio::test]
+async fn queue_mode_one_at_a_time_delivers_a_single_message_per_step() {
+    let (stream_fn, calls) = scripted_stream_fn(vec!["first", "second", "third"]);
+    let agent = Agent::new(AgentOptions {
+        steering_mode: Some(QueueMode::OneAtATime),
+        ..options(stream_fn)
+    });
+
+    agent.steer(user_message("one"));
+    agent.steer(user_message("two"));
+    agent
+        .prompt(vec![user_message("start")])
+        .await
+        .expect("prompt");
+
+    // Opting into one-at-a-time spreads the queue over the following steps:
+    // the prompt alone, then "one", then "two" — three provider calls.
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+    assert!(!agent.has_queued_messages());
 }
 
 #[tokio::test]
@@ -284,6 +282,28 @@ async fn continue_resumes_from_a_user_tail() {
     agent.continue_run().await.expect("continues");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(agent.state().messages.len(), 2);
+}
+
+#[tokio::test]
+async fn a_continuation_takes_queued_steering_into_its_first_request() {
+    let (stream_fn, calls) = scripted_stream_fn(vec!["resumed"]);
+    let agent = Agent::new(options(stream_fn));
+    agent.set_messages(vec![user_message("earlier")]);
+    agent.steer(user_message("queued"));
+
+    // A continuation has no fresh prompt of its own, so the queue is drained
+    // before the resumed request rather than waiting for a completed step.
+    agent.continue_run().await.expect("continues");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(!agent.has_queued_messages());
+    let state = agent.state();
+    assert!(
+        state
+            .messages
+            .iter()
+            .any(|message| matches!(message, AgentMessage::User(user)
+        if matches!(&user.content, UserContent::Text(text) if text == "queued")))
+    );
 }
 
 #[tokio::test]

@@ -626,8 +626,8 @@ fn default_project_trust_reads_the_global_scope_only() {
 fn resolves_the_remaining_defaults() {
     let harness = harness();
     let manager = manager(&harness);
-    assert_eq!(manager.get_steering_mode(), QueueMode::OneAtATime);
-    assert_eq!(manager.get_follow_up_mode(), QueueMode::OneAtATime);
+    assert_eq!(manager.get_steering_mode(), QueueMode::All);
+    assert_eq!(manager.get_follow_up_mode(), QueueMode::All);
     assert_eq!(manager.get_transport(), "auto");
     assert_eq!(
         manager.get_compaction_settings(),

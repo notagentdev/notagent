@@ -185,10 +185,10 @@ impl Agent {
             listeners: Mutex::new(Vec::new()),
             next_listener_id: Mutex::new(0),
             steering_queue: Mutex::new(PendingMessageQueue::new(
-                options.steering_mode.unwrap_or(QueueMode::OneAtATime),
+                options.steering_mode.unwrap_or(QueueMode::All),
             )),
             follow_up_queue: Mutex::new(PendingMessageQueue::new(
-                options.follow_up_mode.unwrap_or(QueueMode::OneAtATime),
+                options.follow_up_mode.unwrap_or(QueueMode::All),
             )),
             active_run: Mutex::new(None),
             options: Mutex::new(options),
@@ -414,7 +414,7 @@ impl Agent {
                     .to_string(),
             ));
         }
-        self.run_prompt_messages(messages, false).await
+        self.run_prompt_messages(messages).await
     }
 
     /// `continue()`
@@ -440,11 +440,11 @@ impl Agent {
             // Steering first, then follow-ups.
             let queued_steering = self.steering_queue.lock().expect("poisoned").drain();
             if !queued_steering.is_empty() {
-                return self.run_prompt_messages(queued_steering, true).await;
+                return self.run_prompt_messages(queued_steering).await;
             }
             let queued_follow_ups = self.follow_up_queue.lock().expect("poisoned").drain();
             if !queued_follow_ups.is_empty() {
-                return self.run_prompt_messages(queued_follow_ups, false).await;
+                return self.run_prompt_messages(queued_follow_ups).await;
             }
             return Err(AgentError(
                 "Cannot continue from message role: assistant".to_string(),
@@ -463,7 +463,7 @@ impl Agent {
         }
     }
 
-    fn create_loop_config(self: &Arc<Self>, skip_initial_steering_poll: bool) -> AgentLoopConfig {
+    fn create_loop_config(self: &Arc<Self>) -> AgentLoopConfig {
         let options = self.options.lock().expect("poisoned").clone();
         let (model, thinking_level) = {
             let state = self.state.lock().expect("poisoned");
@@ -481,9 +481,6 @@ impl Agent {
         base.base.transport = Some(options.transport.unwrap_or(Transport::Auto));
         base.base.base.max_retry_delay_ms = options.max_retry_delay_ms;
 
-        let skip_poll = Arc::new(std::sync::atomic::AtomicBool::new(
-            skip_initial_steering_poll,
-        ));
         let steering_agent = Arc::clone(self);
         let follow_up_agent = Arc::clone(self);
 
@@ -500,14 +497,7 @@ impl Agent {
             prepare_next_turn: options.prepare_next_turn.clone(),
             get_steering_messages: Some(Arc::new(move || {
                 let agent = Arc::clone(&steering_agent);
-                let skip_poll = Arc::clone(&skip_poll);
-                Box::pin(async move {
-                    // `continue()` already drained the queue for this run.
-                    if skip_poll.swap(false, std::sync::atomic::Ordering::SeqCst) {
-                        return Vec::new();
-                    }
-                    agent.steering_queue.lock().expect("poisoned").drain()
-                })
+                Box::pin(async move { agent.steering_queue.lock().expect("poisoned").drain() })
             })),
             get_follow_up_messages: Some(Arc::new(move || {
                 let agent = Arc::clone(&follow_up_agent);
@@ -543,10 +533,9 @@ impl Agent {
     async fn run_prompt_messages(
         self: &Arc<Self>,
         messages: Vec<AgentMessage>,
-        skip_initial_steering_poll: bool,
     ) -> Result<(), AgentError> {
         let context = self.create_context_snapshot();
-        let config = self.create_loop_config(skip_initial_steering_poll);
+        let config = self.create_loop_config();
         let sink = self.event_sink();
         let stream_fn = self.stream_function();
 
@@ -561,7 +550,7 @@ impl Agent {
 
     async fn run_continuation(self: &Arc<Self>) -> Result<(), AgentError> {
         let context = self.create_context_snapshot();
-        let config = self.create_loop_config(false);
+        let config = self.create_loop_config();
         let sink = self.event_sink();
         let stream_fn = self.stream_function();
 
