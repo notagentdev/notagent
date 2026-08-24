@@ -146,5 +146,5 @@ percentage in the footer reflects what the server actually processed.
 
 ## Acknowledgements
 
-notagent began as a Rust port of [pi](https://github.com/badlogic/pi-mono)
+notagent began as a Rust port of [pi](https://github.com/earendil-works/pi)
 and has grown well beyond it. Thanks to the pi authors for the foundation.
