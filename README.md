@@ -4,6 +4,53 @@ A terminal coding agent, written in Rust. It runs as a TUI, talks to LLM
 providers over their native APIs, and drives an agent loop with tools for
 reading, editing, searching, and running commands.
 
+The base is a heavily modified Rust port of
+[pi](https://github.com/badlogic/pi-mono). The agent loop, tools, and TUI
+follow the original closely; on top of that sit features the original does not
+have — token minification, shell-output compaction, cross-process file leases,
+goal mode, a local code index, and a remote session protocol.
+
+## Why notagent?
+
+**Save up to 50% tokens.** Two features cut the context cost of everyday
+agent work:
+
+- *Minified tools.* `read_minified` returns a compact view of a source file:
+  comments removed, blank lines dropped, indentation collapsed to one space
+  per nesting level. `patch_minified` and `multi_patch_minified` edit through
+  that same view — a source map translates the edit back to the real file, and
+  nothing is written until every edit succeeds. Surveying and navigating code
+  costs a fraction of a full `read`.
+- *Bash filter.* Conservative, process-free compaction of shell output before
+  it enters the context (`/bash-filter on|off`). Verbose build, test, and
+  package-manager output shrinks to what the agent actually needs. The filter
+  never loses information: whenever a compaction would be empty, larger than
+  the raw output, or uncertain, the raw output passes through untouched.
+
+**Atomic writes in the same branch or worktree.** With `/leases on`, every
+mutating file tool takes an advisory, time-bounded lease before it writes
+(`.notagent/leases` in the workspace). Several agents working in one checkout
+stop overwriting each other: only one holder may modify a file at a time, a
+content hash taken at reservation detects a file changed underneath the
+holder before the commit, and leases expire on their own so a crashed agent
+never blocks a file.
+
+**And the rest:**
+
+- *Goal mode* — `/goal` sets an objective the agent keeps pursuing across
+  turns, with optional turn and token budgets.
+- *Local code index* — `/index` builds a tree-sitter symbol index the agent
+  queries through a dedicated tool instead of grepping blindly.
+- *Session tree* — `/fork`, `/clone`, and `/tree` branch and navigate a
+  session; `/export` writes HTML or JSONL, `/import` resumes from JSONL.
+- *Remote sessions* — a CBOR binary protocol, a Unix-socket session server,
+  and SQLite session storage, so a session can outlive the terminal that
+  started it.
+- *MCP* — `/mcp` lists, adds, inspects, and authenticates MCP servers at
+  runtime.
+- *Single static binary* — `cargo build --release` and you are done; no
+  runtime, no node_modules.
+
 ## Crates
 
 | Crate | Description |
@@ -37,9 +84,12 @@ notagent
 Everything happens inside the TUI:
 
 - `/login` — pick a provider and store an API key or run an OAuth flow
-- `/logout` — remove a stored credential
 - `/model` — pick a model (fuzzy search, `/model <provider>/<model>` also works)
-- `/compact` — compact the conversation context manually
+- `/leases on|off` — atomic file leases (default: off)
+- `/bash-filter on|off` — shell-output compaction (default: off)
+- `/index on|off` — the local codebase index
+- `/goal <objective>` — goal mode
+- `/settings` — everything else
 
 Providers are also picked up from ambient environment variables
 (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) without a login.
