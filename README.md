@@ -4,12 +4,6 @@ A terminal coding agent, written in Rust. It runs as a TUI, talks to LLM
 providers over their native APIs, and drives an agent loop with tools for
 reading, editing, searching, and running commands.
 
-The base is a heavily modified Rust port of
-[pi](https://github.com/badlogic/pi-mono). The agent loop, tools, and TUI
-follow the original closely; on top of that sit features the original does not
-have — token minification, shell-output compaction, cross-process file leases,
-goal mode, a local code index, and a remote session protocol.
-
 ## Why notagent?
 
 **Save up to 50% tokens.** Two features cut the context cost of everyday
@@ -149,3 +143,8 @@ saturates a 32 GB machine. Full context needs 48 GB or more.
 Note that MTPLX compacts older tool results server-side, so the effective
 context stays far below what the raw conversation suggests; the context
 percentage in the footer reflects what the server actually processed.
+
+## Acknowledgements
+
+notagent began as a Rust port of [pi](https://github.com/badlogic/pi-mono)
+and has grown well beyond it. Thanks to the pi authors for the foundation.
