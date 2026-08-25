@@ -263,16 +263,28 @@ async fn the_local_runtimes_answer_on_their_documented_ports() {
 }
 
 #[tokio::test]
-async fn activating_a_local_runtime_asks_for_nothing() {
+async fn activating_a_local_runtime_takes_an_empty_key() {
+    // Both runtimes can be switched to requiring a token, so the question is
+    // asked; an empty answer is the ordinary case and stands a placeholder in.
     for provider in [ollama_provider(), lmstudio_provider()] {
-        let (credential, prompts) = login(&provider, &[]).await;
+        let (credential, prompts) = login(&provider, &[""]).await;
+        assert_eq!(prompts.len(), 1, "just the key: {prompts:?}");
         assert!(
-            prompts.is_empty(),
-            "a loopback server needs no secret: {prompts:?}"
+            matches!(prompts.first(), Some(AuthPromptKind::Secret { message, .. })
+                if message.contains("leave empty")),
+            "the question says the key is optional here: {prompts:?}"
         );
         assert!(credential.key.is_some(), "a placeholder still stands in");
         assert!(credential.env.is_none(), "a fixed address is not stored");
     }
+}
+
+#[tokio::test]
+async fn a_local_runtime_switched_to_requiring_a_token_takes_one() {
+    // LM Studio has an authentication toggle in its server settings; a token
+    // typed here is what the listing and every later request carry.
+    let (credential, _) = login(&lmstudio_provider(), &["lms-secret"]).await;
+    assert_eq!(credential.key.as_deref(), Some("lms-secret"));
 }
 
 #[tokio::test]
@@ -487,9 +499,9 @@ async fn a_custom_instance_asks_for_its_address_and_keeps_it() {
 }
 
 #[tokio::test]
-async fn a_custom_instance_on_loopback_is_not_asked_for_a_key() {
-    let (credential, prompts) = login(&custom_openai_provider(), &["localhost:8080"]).await;
-    assert_eq!(prompts.len(), 1, "only the address: {prompts:?}");
+async fn a_custom_instance_on_loopback_may_skip_the_key() {
+    let (credential, prompts) = login(&custom_openai_provider(), &["localhost:8080", ""]).await;
+    assert_eq!(prompts.len(), 2, "the address and the key: {prompts:?}");
     assert!(credential.key.is_some(), "a placeholder still stands in");
     assert_eq!(
         credential

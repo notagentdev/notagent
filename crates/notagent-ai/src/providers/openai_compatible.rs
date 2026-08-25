@@ -326,20 +326,33 @@ impl ApiKeyAuth for OpenAICompatibleAuth {
             if self.config.base_url.is_none() {
                 env.insert(BASE_URL_ENV.to_string(), base_url.clone());
             }
-            // On loopback the server authorizes everything, so asking for a
-            // secret that does not exist teaches the wrong thing.
-            let key = if is_loopback(&base_url) {
-                PLACEHOLDER_KEY.to_string()
+            // A local server authorizes everything until someone switches its
+            // authentication on, which both runtimes offer. So the key is
+            // asked for either way and the question says which case it is:
+            // optional on loopback, where an empty answer stands a placeholder
+            // in, and expected anywhere else.
+            let optional = is_loopback(&base_url);
+            let message = if optional {
+                format!("Enter {} (leave empty if the server needs none)", self.name)
             } else {
-                interaction
-                    .prompt(AuthPrompt {
-                        signal: Some(interaction.signal.clone()),
-                        kind: AuthPromptKind::Secret {
-                            message: format!("Enter {}", self.name),
-                            placeholder: None,
-                        },
-                    })
-                    .await?
+                format!("Enter {}", self.name)
+            };
+            let typed = interaction
+                .prompt(AuthPrompt {
+                    signal: Some(interaction.signal.clone()),
+                    kind: AuthPromptKind::Secret {
+                        message,
+                        placeholder: None,
+                    },
+                })
+                .await?;
+            let typed = typed.trim().to_string();
+            let key = match (typed.is_empty(), optional) {
+                (false, _) => typed,
+                (true, true) => PLACEHOLDER_KEY.to_string(),
+                (true, false) => {
+                    return Err(AuthError("No API key was given".to_string()));
+                }
             };
             if interaction.signal.is_cancelled() {
                 return Err(AuthError("The operation was aborted".to_string()));

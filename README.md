@@ -95,14 +95,22 @@ built-in catalog, so they offer exactly what that server holds:
 
 - **Ollama** — `/login ollama`, pointed at `http://127.0.0.1:11434/v1`.
 - **LM Studio** — `/login lmstudio`, pointed at `http://127.0.0.1:1234/v1`.
-- **Custom (OpenAI-compatible)** — `/login custom` asks for a base URL and,
-  unless it is on loopback, an API key. Both are stored with the credential,
-  so `/logout custom` removes the endpoint along with the key.
+- **Custom (OpenAI-compatible)** — `/login custom` asks for a base URL, which
+  is stored with the credential, so `/logout custom` removes the endpoint
+  along with the key. A URL may be typed without a scheme or without `/v1`;
+  both are filled in.
 
-None of them appear in the model picker until they are activated, and a
-server that is not running simply offers nothing. `/logout` deactivates them
-again. A base URL may be typed without a scheme or without `/v1`; both are
-filled in.
+The login asks for an API key in every case. On a loopback address the
+question can be answered with an empty line, since a local server authorizes
+everything until its own authentication is switched on — both runtimes offer
+that, and a key typed here is sent as a bearer token from then on.
+
+None of them appear in the model picker until they are activated, and
+`/logout` deactivates them again. The model list comes from the server, so it
+holds exactly what was pulled or loaded; an address nothing answers on is
+reported rather than passed over. Where a runtime reports a model's context
+window and whether it reasons, those are used, and the effort levels offered
+are the ones that runtime accepts.
 
 ## Custom providers (models.json)
 
