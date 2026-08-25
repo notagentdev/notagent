@@ -66,13 +66,17 @@ impl MtplxModelSpec {
         MtplxModelSpec {
             id: id.into(),
             name: name.into(),
-            // A served model's real window comes from the checkpoint; this is a
-            // conservative floor that every catalogued MTPLX model exceeds.
-            context_window: 131_072,
-            // Deliberately not a smaller default: a client-side ceiling the user
-            // never chose would silently truncate long generations, and the
-            // server owns the generation contract.
-            max_tokens: 131_072,
+            // A served model's real window comes from the server listing; this
+            // floor covers a server that does not report one. It is deliberately
+            // small: a machine with 32 GB runs out of memory far below the full
+            // model window, and an assumed window that is too large defers
+            // compaction until the server is already failing. A server that
+            // reports its window overrides this either way.
+            context_window: 32_768,
+            // No separate output ceiling: a client-side cap the user never
+            // chose would silently truncate long generations, and the server
+            // owns the generation contract.
+            max_tokens: 32_768,
             reasoning: true,
         }
     }
