@@ -275,6 +275,7 @@ enum SettingsEffect {
     AutocompleteMaxVisible(u64),
     ClearOnShrink(bool),
     TuiMode(TuiMode),
+    WorkspaceInFooter(bool),
 }
 
 /// A permission request on its way to the dialog.
@@ -1302,6 +1303,9 @@ impl InteractiveMode {
             Arc::clone(&footer_data)
                 as Arc<dyn crate::modes::interactive::components::footer::FooterData>,
         )));
+        footer
+            .borrow_mut()
+            .set_show_workspace(settings_manager.get_show_workspace_in_footer());
         let footer_container = Rc::new(RefCell::new(Container::new()));
         footer_container
             .borrow_mut()
@@ -4509,6 +4513,7 @@ impl InteractiveMode {
             default_project_trust: settings.get_default_project_trust(),
             clear_on_shrink: settings.get_clear_on_shrink(),
             show_terminal_progress: settings.get_show_terminal_progress(),
+            show_workspace_in_footer: settings.get_show_workspace_in_footer(),
             tui_mode: self.cell.mode(),
             fullscreen_exit_output: settings.get_fullscreen_exit_output(),
             fullscreen_scrollbar: scroll_view_scrollbar(settings.get_fullscreen_scrollbar()),
@@ -4716,6 +4721,14 @@ impl InteractiveMode {
                 let settings = Arc::clone(&settings);
                 Box::new(move |enabled| settings.set_show_terminal_progress(enabled))
             },
+            on_show_workspace_in_footer_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |enabled| {
+                    settings.set_show_workspace_in_footer(enabled);
+                    effect(&tx, id, SettingsEffect::WorkspaceInFooter(enabled));
+                })
+            },
             on_tui_mode_change: {
                 let tx = self.ui_tx.clone();
                 Box::new(move |mode| effect(&tx, id, SettingsEffect::TuiMode(mode)))
@@ -4775,6 +4788,10 @@ impl InteractiveMode {
             SettingsEffect::ThinkingLevel => {
                 self.footer.borrow_mut().invalidate();
                 self.update_editor_border_color();
+            }
+            SettingsEffect::WorkspaceInFooter(show) => {
+                self.footer.borrow_mut().set_show_workspace(show);
+                self.ui.request_render();
             }
             SettingsEffect::ThemeApplied => {
                 self.theme_controller.apply_from_settings().await;

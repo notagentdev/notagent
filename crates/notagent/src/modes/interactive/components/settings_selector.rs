@@ -166,6 +166,9 @@ pub struct SettingsConfig {
     pub default_project_trust: DefaultProjectTrust,
     pub clear_on_shrink: bool,
     pub show_terminal_progress: bool,
+    /// The footer line with the working directory and git branch; off by
+    /// default (user decision 2026-08-25).
+    pub show_workspace_in_footer: bool,
     pub tui_mode: TuiMode,
     pub fullscreen_exit_output: FullscreenExitOutput,
     pub fullscreen_scrollbar: ScrollViewScrollbar,
@@ -216,6 +219,7 @@ impl Default for SettingsConfig {
             default_project_trust: DefaultProjectTrust::Ask,
             clear_on_shrink: false,
             show_terminal_progress: false,
+            show_workspace_in_footer: false,
             tui_mode: TuiMode::Regular,
             fullscreen_exit_output: FullscreenExitOutput::Transcript,
             fullscreen_scrollbar: ScrollViewScrollbar::Hidden,
@@ -259,6 +263,7 @@ pub struct SettingsCallbacks {
     pub on_default_project_trust_change: Box<dyn FnMut(DefaultProjectTrust)>,
     pub on_clear_on_shrink_change: Box<dyn FnMut(bool)>,
     pub on_show_terminal_progress_change: Box<dyn FnMut(bool)>,
+    pub on_show_workspace_in_footer_change: Box<dyn FnMut(bool)>,
     pub on_tui_mode_change: Box<dyn FnMut(TuiMode)>,
     pub on_fullscreen_exit_output_change: Box<dyn FnMut(FullscreenExitOutput)>,
     pub on_fullscreen_scrollbar_change: Box<dyn FnMut(ScrollViewScrollbar)>,
@@ -299,6 +304,7 @@ impl Default for SettingsCallbacks {
             on_default_project_trust_change: Box::new(|_| {}),
             on_clear_on_shrink_change: Box::new(|_| {}),
             on_show_terminal_progress_change: Box::new(|_| {}),
+            on_show_workspace_in_footer_change: Box::new(|_| {}),
             on_tui_mode_change: Box::new(|_| {}),
             on_fullscreen_exit_output_change: Box::new(|_| {}),
             on_fullscreen_scrollbar_change: Box::new(|_| {}),
@@ -1423,6 +1429,22 @@ impl SettingsSelectorComponent {
             },
         );
 
+        // Workspace footer line toggle (insert after terminal-progress)
+        insert_after(
+            &mut items,
+            "terminal-progress",
+            SettingItem {
+                id: "workspace-in-footer".to_string(),
+                label: "Workspace in footer".to_string(),
+                description: Some(
+                    "Show the working directory and git branch under the input".to_string(),
+                ),
+                current_value: bool_value(config.show_workspace_in_footer),
+                values: Some(vec!["true".to_string(), "false".to_string()]),
+                submenu: None,
+            },
+        );
+
         // Add borders
         let mut container = Container::new();
         container.add_child(component_ref(DynamicBorder::new(None)));
@@ -1519,6 +1541,9 @@ impl SettingsSelectorComponent {
                     "clear-on-shrink" => (callbacks.on_clear_on_shrink_change)(new_value == "true"),
                     "terminal-progress" => {
                         (callbacks.on_show_terminal_progress_change)(new_value == "true")
+                    }
+                    "workspace-in-footer" => {
+                        (callbacks.on_show_workspace_in_footer_change)(new_value == "true")
                     }
                     "tui-mode" => {
                         if let Some(mode) = from_wire::<TuiMode>(new_value) {

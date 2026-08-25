@@ -277,6 +277,10 @@ impl FooterData for FooterDataProvider {
 pub struct FooterComponent {
     session: Arc<dyn FooterSession>,
     footer_data: Arc<dyn FooterData>,
+    /// Whether the working directory and git branch get their own line.
+    /// Off by default: the workspace rarely changes, and the row costs a
+    /// terminal line for the whole session (user decision 2026-08-25).
+    show_workspace: bool,
 }
 
 impl FooterComponent {
@@ -284,11 +288,16 @@ impl FooterComponent {
         Self {
             session,
             footer_data,
+            show_workspace: false,
         }
     }
 
     pub fn set_session(&mut self, session: Arc<dyn FooterSession>) {
         self.session = session;
+    }
+
+    pub fn set_show_workspace(&mut self, show: bool) {
+        self.show_workspace = show;
     }
 
     /// Clean up resources. Git watcher cleanup is handled by the provider.
@@ -396,22 +405,26 @@ impl Component for FooterComponent {
             _ => format!("{context_percent_value:.1}"),
         };
 
-        // Replace home directory with ~
-        let home = std::env::var("HOME")
-            .ok()
-            .or_else(|| std::env::var("USERPROFILE").ok());
-        let cwd = self.session.cwd();
-        let mut pwd = format_cwd_for_footer(&cwd, home.as_deref());
-
-        // Add git branch if available
-        if let Some(branch) = self.footer_data.get_git_branch() {
-            pwd = format!("{pwd} ({branch})");
+        // The location line: working directory plus git branch when enabled,
+        // the session name always. With everything hidden and no name set the
+        // line disappears entirely.
+        let mut location_parts: Vec<String> = Vec::new();
+        if self.show_workspace {
+            // Replace home directory with ~
+            let home = std::env::var("HOME")
+                .ok()
+                .or_else(|| std::env::var("USERPROFILE").ok());
+            let cwd = self.session.cwd();
+            let mut pwd = format_cwd_for_footer(&cwd, home.as_deref());
+            if let Some(branch) = self.footer_data.get_git_branch() {
+                pwd = format!("{pwd} ({branch})");
+            }
+            location_parts.push(pwd);
         }
-
-        // Add session name if set
         if let Some(session_name) = self.session.session_name() {
-            pwd = format!("{pwd} • {session_name}");
+            location_parts.push(session_name);
         }
+        let pwd = location_parts.join(" • ");
 
         // Build stats line
         let mut stats_parts: Vec<String> = Vec::new();
@@ -579,18 +592,20 @@ impl Component for FooterComponent {
         let dim_remainder = theme().fg(ThemeColor::Dim, remainder);
 
         // The footer stacks under the input as: the mode/stats line with the
-        // model right-aligned on it, then the working directory with its git
-        // branch (user decision 2026-08-18).
-        let pwd_line = format!(
-            "{indent}{}",
-            truncate_to_width_opts(
-                &theme().fg(ThemeColor::Dim, &pwd),
-                content_width,
-                &theme().fg(ThemeColor::Dim, "..."),
-                false,
-            )
-        );
-        let mut lines = vec![format!("{indent}{dim_stats_left}{dim_remainder}"), pwd_line];
+        // model right-aligned on it, then — when there is one — the location
+        // line (user decision 2026-08-18).
+        let mut lines = vec![format!("{indent}{dim_stats_left}{dim_remainder}")];
+        if !pwd.is_empty() {
+            lines.push(format!(
+                "{indent}{}",
+                truncate_to_width_opts(
+                    &theme().fg(ThemeColor::Dim, &pwd),
+                    content_width,
+                    &theme().fg(ThemeColor::Dim, "..."),
+                    false,
+                )
+            ));
+        }
         // The goal badge gets its own line under the stats: a running loop
         // spending the user's money has to be readable at a glance, and it must
         // not compete with the model name for the right edge.

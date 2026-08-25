@@ -91,6 +91,8 @@ fn config() -> SettingsConfig {
         default_project_trust: DefaultProjectTrust::Ask,
         clear_on_shrink: true,
         show_terminal_progress: true,
+        // Addition (v0.1.34), not in the TS oracle fixture.
+        show_workspace_in_footer: false,
         tui_mode: TuiMode::Regular,
         fullscreen_exit_output: FullscreenExitOutput::Transcript,
         fullscreen_scrollbar: ScrollViewScrollbar::Auto,

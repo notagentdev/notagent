@@ -238,6 +238,9 @@ settings_struct!(
     /// output of supported shell commands; absent = off (user decision
     /// 2026-08-17).
     bash_filter: bool,
+    /// The footer line with the working directory and git branch;
+    /// absent = hidden (user decision 2026-08-25).
+    show_workspace_in_footer: bool,
     /// Port addition (v0.1.9): chat-block style, "standard" | "badge";
     /// absent = badge (user decision 2026-08-17).
     block_style: String,
@@ -1056,6 +1059,16 @@ impl SettingsManager {
     /// is a trade the user opts into with `/bash-filter on`.
     pub fn get_bash_filter_enabled(&self) -> bool {
         self.settings_snapshot().bash_filter.unwrap_or(false)
+    }
+
+    pub fn get_show_workspace_in_footer(&self) -> bool {
+        self.settings_snapshot()
+            .show_workspace_in_footer
+            .unwrap_or(false)
+    }
+
+    pub fn set_show_workspace_in_footer(&self, enabled: bool) {
+        self.set_global_field("showWorkspaceInFooter", Value::from(enabled));
     }
 
     pub fn set_bash_filter_enabled(&self, enabled: bool) {
