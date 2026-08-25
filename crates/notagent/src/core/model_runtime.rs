@@ -21,6 +21,7 @@ use notagent_ai::models::{
 use notagent_ai::models_store::ModelsStore;
 use notagent_ai::providers::all as builtin_provider_catalog;
 use notagent_ai::providers::mtplx;
+use notagent_ai::providers::openai_compatible;
 use notagent_ai::providers::radius::{RadiusProviderOptions, radius_provider};
 use notagent_ai::types::{
     AssistantMessage, Context, DeferredCancelOptions, DeferredFetchOptions, DeferredHandle, Model,
@@ -289,7 +290,11 @@ impl ModelRuntime {
                 // chaining to the provider it wraps, so a provider that sources
                 // its own catalog would never run its refresh and would stay
                 // empty. Those keep their own list instead of the shared one.
-                if provider.id() == "radius" || provider.id() == mtplx::LOCAL_PROVIDER_ID {
+                if provider.id() == "radius"
+                    || provider.id() == mtplx::LOCAL_PROVIDER_ID
+                    || openai_compatible::OPENAI_COMPATIBLE_PROVIDER_IDS
+                        .contains(&provider.id())
+                {
                     provider
                 } else {
                     with_remote_catalog(

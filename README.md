@@ -88,6 +88,22 @@ Everything happens inside the TUI:
 Providers are also picked up from ambient environment variables
 (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) without a login.
 
+## Local and custom endpoints
+
+Three providers take their model list from a server rather than from a
+built-in catalog, so they offer exactly what that server holds:
+
+- **Ollama** — `/login ollama`, pointed at `http://127.0.0.1:11434/v1`.
+- **LM Studio** — `/login lmstudio`, pointed at `http://127.0.0.1:1234/v1`.
+- **Custom (OpenAI-compatible)** — `/login custom` asks for a base URL and,
+  unless it is on loopback, an API key. Both are stored with the credential,
+  so `/logout custom` removes the endpoint along with the key.
+
+None of them appear in the model picker until they are activated, and a
+server that is not running simply offers nothing. `/logout` deactivates them
+again. A base URL may be typed without a scheme or without `/v1`; both are
+filled in.
+
 ## Custom providers (models.json)
 
 Additional OpenAI-compatible providers and models can be declared in
