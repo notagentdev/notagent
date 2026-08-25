@@ -163,6 +163,14 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
         "Be concise in your responses".to_string(),
         &mut guidelines_list,
     );
+    // Some models decorate every heading and list item with one. In a terminal
+    // that is noise at best, and at worst it breaks alignment: an emoji is two
+    // columns wide in some terminals and one in others, so a line that contains
+    // one cannot be laid out reliably.
+    add_guideline(
+        "Never use emoji, anywhere: not in replies, headings, lists, commit messages, code, or comments".to_string(),
+        &mut guidelines_list,
+    );
     add_guideline(
         "Show file paths clearly when working with files".to_string(),
         &mut guidelines_list,
