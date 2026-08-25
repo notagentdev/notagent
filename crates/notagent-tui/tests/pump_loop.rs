@@ -142,6 +142,79 @@ async fn a_request_during_the_wait_wakes_the_loop() {
         .await;
 }
 
+/// Input outranks painting.
+///
+/// A component that asks for another frame from inside its own render — which
+/// is what an animated status row does — leaves a frame due on every pass. A
+/// loop that painted before it read would then never get to stdin, and a
+/// keypress would wait for a lull that a streaming response never has. This is
+/// the case behind Escape arriving long after it was pressed.
+#[tokio::test(flavor = "current_thread")]
+async fn input_is_read_even_while_a_frame_is_always_due() {
+    struct AlwaysRepainting {
+        core: TuiCore,
+        rendered: Rc<Cell<usize>>,
+    }
+
+    impl Component for AlwaysRepainting {
+        fn render(&mut self, _width: usize) -> Vec<Line> {
+            self.rendered.set(self.rendered.get() + 1);
+            // The next frame is due before this one is on screen.
+            self.core.request_render();
+            shared_lines(vec!["working".to_string()])
+        }
+
+        fn invalidate(&mut self) {}
+    }
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let terminal = VirtualTerminal::new(20, 4);
+            let mut pump = terminal.pump_handle();
+            let mut ui = TuiMainScreen::new(Box::new(terminal.clone()));
+
+            let rendered = Rc::new(Cell::new(0));
+            ui.core().add_child(component_ref(AlwaysRepainting {
+                core: ui.core().clone(),
+                rendered: Rc::clone(&rendered),
+            }));
+
+            let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+            let done_tx = Rc::new(RefCell::new(Some(done_tx)));
+            ui.core().add_input_listener(Box::new(move |data: &str| {
+                if data == "\x1b"
+                    && let Some(sender) = done_tx.borrow_mut().take()
+                {
+                    let _ = sender.send(());
+                }
+                Default::default()
+            }));
+            ui.start();
+
+            let sender = terminal.clone();
+            tokio::task::spawn_local(async move {
+                // Long enough for the loop to have painted many frames first.
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                sender.send_input("\x1b");
+            });
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                run_until(&mut ui, &mut pump, done_rx),
+            )
+            .await
+            .expect("the key was read while frames kept coming")
+            .expect("the listener saw it");
+
+            assert!(
+                rendered.get() > 1,
+                "the loop really was painting throughout: {} frames",
+                rendered.get()
+            );
+        })
+        .await;
+}
+
 /// The loop of `startStartupTui` plus an awaited dialog: input arrives, the
 /// frame is rendered without the test driving it, and the result comes back.
 ///

@@ -455,6 +455,58 @@ async fn emits_tool_execution_end_in_completion_order_and_results_in_source_orde
     );
 }
 
+/// An interrupt is only as fast as what it interrupts, unless the wait is
+/// bounded. Every tool is handed the signal, but a tool is free to be inside
+/// something that never looks at it, and waiting for that one makes the whole
+/// turn hang on it — which is what a delayed abort looks like from the outside.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_cancelled_turn_does_not_wait_for_a_tool_that_ignores_it() {
+    let tool = Arc::new(TestTool {
+        // Far longer than any grace window, and deaf to the signal.
+        delay: Duration::from_secs(30),
+        ..TestTool::new("slow")
+    });
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
+    };
+    let (stream_fn, _) = scripted_stream_fn(vec![
+        assistant_message(
+            vec![tool_call("call_0", "slow", json!({}))],
+            StopReason::ToolUse,
+        ),
+        assistant_message(
+            vec![AssistantContent::Text(TextContent::new("done"))],
+            StopReason::Stop,
+        ),
+    ]);
+
+    let signal = tokio_util::sync::CancellationToken::new();
+    let canceller = signal.clone();
+    let started = Instant::now();
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        Some(signal),
+        Some(stream_fn),
+    );
+    tokio::spawn(async move {
+        // Once the tool is inside its call, which is the case that matters.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        canceller.cancel();
+    });
+    let (_, _) = collect(stream).await;
+    let elapsed = started.elapsed();
+
+    assert_eq!(tool.started.load(Ordering::SeqCst), 1, "the tool did run");
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "the turn waited {elapsed:?} for a tool it had already cancelled"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn executes_tools_in_parallel() {
     // The proof the plan asks for: three tools with 150 ms latency each must finish in

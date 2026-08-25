@@ -80,10 +80,15 @@ where
     let mut stdin_open = true;
     loop {
         let core = ui.core().clone();
+        // Input outranks painting. The arms are polled in order, and a frame is
+        // due again the instant one was requested — during a streaming response
+        // that is every pass, so a render arm ahead of the pump would keep
+        // winning and a keypress would wait for a lull that never comes. That
+        // is what made Escape arrive late: the key was already in the channel,
+        // and nothing read it.
         tokio::select! {
             biased;
             output = &mut until => return output,
-            () = core.wait_until_render_due() => ui.render_pending_frame(),
             result = async {
                 if stdin_open {
                     pump.pump().await
@@ -95,6 +100,7 @@ where
                     stdin_open = false;
                 }
             }
+            () = core.wait_until_render_due() => ui.render_pending_frame(),
         }
     }
 }

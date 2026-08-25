@@ -778,11 +778,7 @@ async fn execute_tool_calls_parallel(
     }
 
     let mut ordered: Vec<(usize, FinalizedToolCall)> = immediate;
-    while let Some(joined) = tasks.join_next().await {
-        if let Ok(entry) = joined {
-            ordered.push(entry);
-        }
-    }
+    join_tool_calls(&mut tasks, &mut ordered, signal.as_ref()).await;
     // Phase 3: result messages in assistant source order.
     ordered.sort_by_key(|(index, _)| *index);
 
@@ -800,6 +796,67 @@ async fn execute_tool_calls_parallel(
     ExecutedToolCallBatch {
         terminate: should_terminate_tool_batch(&finalized_calls),
         messages,
+    }
+}
+
+/// How long a cancelled tool is given to come back on its own.
+///
+/// Every tool is handed the signal, but a tool is free to be in the middle of
+/// something that does not look at it — a parse, a write, a syscall. Waiting
+/// for it without a bound makes the interrupt as slow as the slowest tool,
+/// which is what an interrupt exists to avoid. Long enough for a tool that does
+/// check to finish its own unwinding and report properly.
+const CANCELLED_TOOL_GRACE_MS: u64 = 100;
+
+/// Collects the spawned tool calls, and stops waiting once cancelled.
+///
+/// A tool that answers within the grace window still has its result recorded —
+/// a cancelled `bash` reports what it managed to run, which is worth keeping.
+/// Past that the task is dropped where it stands: its result is not going to be
+/// used, and the turn has a user waiting on it.
+async fn join_tool_calls(
+    tasks: &mut JoinSet<(usize, FinalizedToolCall)>,
+    ordered: &mut Vec<(usize, FinalizedToolCall)>,
+    signal: Option<&CancellationToken>,
+) {
+    loop {
+        if tasks.is_empty() {
+            return;
+        }
+        let joined = match signal {
+            // Not cancelled yet: wait for the next tool, but wake if the wait
+            // itself is what gets interrupted. Checking only between tools
+            // would leave the first one free to hold the turn for as long as it
+            // likes, which is the whole case this exists for.
+            Some(signal) if !signal.is_cancelled() => {
+                tokio::select! {
+                    joined = tasks.join_next() => joined,
+                    () = signal.cancelled() => continue,
+                }
+            }
+            // Cancelled: give what is still running a moment to come back on
+            // its own, then leave it where it stands.
+            Some(_) => {
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(CANCELLED_TOOL_GRACE_MS),
+                    tasks.join_next(),
+                )
+                .await
+                {
+                    Ok(joined) => joined,
+                    Err(_) => {
+                        tasks.shutdown().await;
+                        return;
+                    }
+                }
+            }
+            None => tasks.join_next().await,
+        };
+        match joined {
+            Some(Ok(entry)) => ordered.push(entry),
+            Some(Err(_)) => {}
+            None => return,
+        }
     }
 }
 

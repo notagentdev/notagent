@@ -12,7 +12,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use notagent_tui::components::loader::{Loader, LoaderIndicatorOptions};
-use notagent_tui::components::shimmer::ShimmerPalette;
+use notagent_tui::components::shimmer::{ShimmerPalette, fade_toward_background};
 use notagent_tui::tui::{Component, Line};
 
 use crate::modes::interactive::theme::theme::{
@@ -88,15 +88,16 @@ fn message_in(color: ThemeColor) -> Rc<dyn Fn(&str) -> String> {
 
 /// The fade the travelling band pulls the message toward.
 ///
-/// Dim rather than a fixed dark value: in the light theme the dim colour is
-/// lighter than the text and in the dark theme it is darker, so the message
-/// loses contrast either way instead of turning the wrong direction in one of
-/// them.
+/// The background rather than the theme's dim colour: dim is a text colour and
+/// stops well short of the ground, which left the band shallow — most visibly
+/// in the light theme, where dim is a mid grey a long way from the page. The
+/// direction comes from the message colour itself, so it reverses with the
+/// theme rather than having to be told which one is in use.
 fn shimmer_palette(base: ThemeColor) -> Option<ShimmerPalette> {
-    let theme = theme();
+    let base = theme().get_fg_rgb(base)?;
     Some(ShimmerPalette {
-        base: theme.get_fg_rgb(base)?,
-        fade: theme.get_fg_rgb(ThemeColor::Dim)?,
+        base,
+        fade: fade_toward_background(base),
     })
 }
 
@@ -212,6 +213,23 @@ impl StatusIndicator {
     /// Whether the indicator has stopped and is only reporting its runtime.
     pub fn is_settled(&self) -> bool {
         self.settled
+    }
+
+    /// Report that the user asked for the run to stop.
+    ///
+    /// The cancellation itself is instant, but what it cancels is not: a tool
+    /// already inside a call has to come back before the turn can unwind, and
+    /// until then nothing on screen would have changed. A user who pressed a
+    /// key and saw the same row keep counting presses it again. This says the
+    /// key arrived, and leaves the clock running, because the wait is real.
+    pub fn mark_interrupting(&mut self) {
+        if self.settled {
+            return;
+        }
+        self.loader.set_shimmer(None);
+        self.loader
+            .set_message_color(Rc::new(|text: &str| theme().fg(ThemeColor::Warning, text)));
+        self.loader.set_message("Stopping...");
     }
 
     /// `WorkingStatusIndicator`.

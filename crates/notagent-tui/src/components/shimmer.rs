@@ -5,21 +5,22 @@
 //! same thing using the message itself, so the eye is drawn to the words rather
 //! than away from them.
 //!
-//! The band fades the text toward a dimmer colour rather than brightening it.
-//! Brightening would need a colour lighter than the text, which on a light
-//! terminal does not exist; fading toward the dim colour of the theme reads the
-//! same way in both directions.
+//! The band pulls the text toward the background rather than brightening it.
+//! Brightening needs a colour beyond the text, which on a light terminal does
+//! not exist; the background is always there and lies in opposite directions in
+//! the two themes, so the same rule reads correctly in both.
 
 use std::fmt::Write as _;
 use std::time::Duration;
 
 /// How often the band moves.
 ///
-/// Fast enough to read as motion, and no faster: every frame rewrites the whole
-/// line, so the status row is one of several regions repainting on their own
-/// timers underneath whatever else is on screen. Four frames a second is enough
-/// for a two-second sweep to look continuous.
-pub const SHIMMER_FRAME_MS: u64 = 200;
+/// A sweep that advances five times a second reads as a series of jumps rather
+/// than as motion — the band moves several characters between frames, which is
+/// what makes it look like it is lagging behind rather than travelling. Thirty
+/// frames a second is the rate at which the step falls below one character.
+/// Only the status row repaints, and only while something is running.
+pub const SHIMMER_FRAME_MS: u64 = 32;
 
 /// How long one pass across the text takes.
 const SWEEP_SECONDS: f32 = 2.0;
@@ -41,6 +42,24 @@ const MAX_FADE: f32 = 0.9;
 pub struct ShimmerPalette {
     pub base: (u8, u8, u8),
     pub fade: (u8, u8, u8),
+}
+
+/// The colour the band should pull `base` toward: the background behind it.
+///
+/// Derived from the text rather than asked for, because the two themes differ
+/// in exactly this and nothing else: light text sits on a dark ground and dark
+/// text on a light one. Taking the direction from the text's own brightness
+/// therefore reverses with the theme without anything having to be configured,
+/// and a theme with an unusual palette still gets the direction that lowers
+/// contrast rather than one that raises it past the text.
+pub fn fade_toward_background(base: (u8, u8, u8)) -> (u8, u8, u8) {
+    // Rec. 601 luma: green carries most of the perceived brightness, blue least.
+    let luma = 0.299 * base.0 as f32 + 0.587 * base.1 as f32 + 0.114 * base.2 as f32;
+    if luma > 127.5 {
+        (0, 0, 0)
+    } else {
+        (255, 255, 255)
+    }
 }
 
 fn blend(from: (u8, u8, u8), to: (u8, u8, u8), amount: f32) -> (u8, u8, u8) {
@@ -151,6 +170,27 @@ mod tests {
         let escapes = rendered.matches("\x1b[38;2;").count();
         assert!(escapes < 20, "one escape per character: {escapes}");
         assert!(rendered.contains("\x1b[38;2;200;200;200m"));
+    }
+
+    #[test]
+    fn the_band_travels_less_than_a_character_per_frame() {
+        // A step of several characters between frames reads as jumping rather
+        // than as motion, which is what "laggy" looks like.
+        let shortest_message = 8.0;
+        let period = shortest_message + PADDING as f32 * 2.0;
+        let per_frame = period * (SHIMMER_FRAME_MS as f32 / 1000.0) / SWEEP_SECONDS;
+        assert!(per_frame < 1.0, "{per_frame} characters per frame");
+    }
+
+    #[test]
+    fn the_fade_reverses_with_the_theme() {
+        // Light text sits on a dark ground and dark text on a light one, so the
+        // direction that lowers contrast is the opposite one in each.
+        assert_eq!(fade_toward_background((212, 212, 212)), (0, 0, 0));
+        assert_eq!(fade_toward_background((31, 35, 40)), (255, 255, 255));
+        // Judged by brightness, not by the largest channel: this blue is dark
+        // despite a full blue channel.
+        assert_eq!(fade_toward_background((0, 0, 255)), (255, 255, 255));
     }
 
     #[test]

@@ -8102,6 +8102,14 @@ impl InteractiveMode {
         }
         if self.session().is_streaming() {
             self.restore_queued_messages_to_editor(true);
+            // Acknowledge the key now. The token is cancelled immediately, but
+            // a tool already inside a call still has to return before the turn
+            // unwinds, and without this the row would go on as if nothing had
+            // been pressed.
+            if let Some(indicator) = self.active_status_indicator.as_ref() {
+                indicator.borrow_mut().mark_interrupting();
+            }
+            self.ui.request_render();
         } else if self.session().is_bash_running() {
             self.session().abort_bash();
         } else if self.is_bash_mode {

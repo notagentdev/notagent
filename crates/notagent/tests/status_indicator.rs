@@ -133,6 +133,31 @@ fn counts_the_time_the_work_is_taking() {
     assert!(!working.tick_elapsed(), "the same second was redrawn again");
 }
 
+/// The keypress is answered on the row even though what it cancels has not
+/// come back yet — a run that looked untouched would just be interrupted again.
+#[test]
+fn says_it_is_stopping_the_moment_it_is_asked_to() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+
+    let mut working = StatusIndicator::working("Working...", None);
+    working.mark_interrupting();
+
+    let rendered = working.render(80).join("\n");
+    assert!(visible(&rendered).contains("Stopping..."), "{rendered:?}");
+    assert!(
+        rendered.contains(&theme().fg(ThemeColor::Warning, "Stopping...")),
+        "the row reads as a warning rather than as ordinary progress: {rendered:?}"
+    );
+    // The clock keeps running: the wait for the tool to return is real, and
+    // hiding it would suggest the run is already over.
+    assert!(!working.is_settled());
+
+    // Settling still reports the whole run, not the time since the key.
+    working.settle();
+    assert!(visible(&working.render(80).join("\n")).contains("Worked for"));
+}
+
 /// The line stays behind and says what the work took, instead of being blanked
 /// at the moment that figure becomes final.
 #[test]
