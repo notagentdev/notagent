@@ -486,6 +486,37 @@ async fn treats_unimplemented_catalog_routes_as_an_unavailable_overlay() {
     assert!(stored.checked_at.is_some());
 }
 
+#[tokio::test]
+async fn treats_an_html_answer_as_an_unavailable_overlay() {
+    // A parked domain or captive portal answers every path with 200 and an
+    // HTML page; that is the host saying "no catalog here", not an error the
+    // picker should show on every open.
+    let server = TestServer::start(
+        Vec::new(),
+        CannedResponse {
+            status: 200,
+            headers: vec![("content-type".to_owned(), "text/html".to_owned())],
+            body: "<!DOCTYPE html><html><body>Parked</body></html>".to_owned(),
+            hold: false,
+        },
+    )
+    .await;
+    let provider = test_provider(&server.base_url, None);
+    let store = InMemoryModelsStore::new();
+
+    refresh_provider(&provider, &store, RefreshOverrides::default())
+        .await
+        .expect("refresh reports no error");
+    assert_eq!(ids(&provider.get_models()), vec!["static"]);
+    let stored = store
+        .read("test-provider", None)
+        .await
+        .expect("read")
+        .expect("entry");
+    assert!(stored.models.is_empty());
+    assert!(stored.checked_at.is_some());
+}
+
 /// `new Date(ms).toUTCString()`
 fn httpdate(millis: i64) -> String {
     chrono::DateTime::from_timestamp_millis(millis)

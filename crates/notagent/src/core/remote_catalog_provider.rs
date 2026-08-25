@@ -179,7 +179,17 @@ impl RemoteCatalogProvider {
             .await;
             return Ok(());
         }
-        if status == 404 || status == 501 {
+        // No catalog to be had: a missing endpoint, but also a host that
+        // answers every path with an HTML page — a parked domain, a captive
+        // portal. Both are a property of the host, not of this refresh, so
+        // they persist as "no remote catalog" instead of erroring on every
+        // picker open.
+        let is_json = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.to_ascii_lowercase().contains("json"));
+        if status == 404 || status == 501 || ((200..300).contains(&status) && !is_json) {
             (context.publish)(ModelsPublication {
                 persist: Some(Some(ModelsStoreEntry {
                     checked_at: Some(checked_at),
