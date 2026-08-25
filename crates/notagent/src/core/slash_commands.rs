@@ -94,6 +94,12 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
         "Toggle compaction of bash output before it enters the context (default: off)",
         "[on|off]",
     ),
+    // Addition over the TS original (user decision 2026-08-25, v0.1.35): a
+    // child explores the project and writes its `AGENTS.md`.
+    command(
+        "init",
+        "Explore the project and write AGENTS.md for it",
+    ),
     // Addition over the TS original (user decision 2026-08-17, v0.1.21): goal
     // mode, where the agent keeps working toward an objective on its own.
     command_with_hint(
@@ -181,6 +187,8 @@ mod tests {
                 "leases",
                 // Port addition (user decision, v0.1.20), not in the TS list.
                 "bash-filter",
+                // Port addition (user decision, v0.1.35), not in the TS list.
+                "init",
                 // Port addition (user decision, v0.1.21), not in the TS list.
                 "goal",
                 // Port addition (user decision, v0.1.22), not in the TS list.

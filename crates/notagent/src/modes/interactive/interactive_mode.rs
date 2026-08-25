@@ -821,6 +821,11 @@ enum UiMessage {
         message: String,
         done: bool,
     },
+    /// The `/init` run settled (port addition, v0.1.35); `error` is the reason
+    /// when it did not produce a file.
+    InitFinished {
+        error: Option<String>,
+    },
     /// A selector reported a choice or a cancellation.
     ModelSelected {
         id: u64,
@@ -1173,6 +1178,9 @@ pub struct InteractiveMode {
     /// Whether a `/index` build is running; a second `/index` is a no-op
     /// while it is, like the reference's disabled Reindex button.
     index_build_running: bool,
+    /// Whether an `/init` child is running. A second one would explore the
+    /// same project and race the first for the same file.
+    init_running: bool,
     /// The session selector while it is open; the loop runs its list loads.
     session_selector: Option<Rc<RefCell<SessionSelectorComponent>>>,
     /// The model selector while it is open; its catalog refresh reports back.
@@ -1427,6 +1435,7 @@ impl InteractiveMode {
             active_selector: None,
             selector_id: 0,
             index_build_running: false,
+            init_running: false,
             session_selector: None,
             model_selector: None,
             scoped_models_selector: None,
@@ -2317,6 +2326,13 @@ impl InteractiveMode {
                     self.index_build_running = false;
                 }
                 self.show_status(&message);
+            }
+            UiMessage::InitFinished { error } => {
+                self.init_running = false;
+                match error {
+                    Some(error) => self.show_warning(&error),
+                    None => self.show_status("AGENTS.md written."),
+                }
             }
             UiMessage::ForkAt {
                 id,
@@ -7023,6 +7039,10 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_compact_command(instructions.as_deref()).await;
             }
+            "/init" => {
+                self.clear_editor_text();
+                self.handle_init_command().await;
+            }
             "/reload" => {
                 self.clear_editor_text();
                 self.handle_reload_command().await;
@@ -7632,6 +7652,30 @@ impl InteractiveMode {
         // The result is reported through `compaction_end`; a failure here is the
         // same event with an error message.
         let _ = self.session().compact(custom_instructions).await;
+    }
+
+    /// Starts the `/init` child and lets the loop carry on.
+    ///
+    /// Awaiting the run here would freeze the UI for as long as the child
+    /// explores, which is exactly when the user wants to watch the subagent
+    /// panel — so the run goes into the side futures and reports back.
+    async fn handle_init_command(&mut self) {
+        if self.init_running {
+            self.show_warning("An init run is already going.");
+            return;
+        }
+        if self.session().is_streaming() {
+            self.show_warning("Wait for the current response to finish before running init.");
+            return;
+        }
+        self.init_running = true;
+        self.show_status("Exploring the project to write AGENTS.md...");
+        let session = self.session();
+        self.side_futures.push(Box::pin(async move {
+            UiMessage::InitFinished {
+                error: session.run_init().await.err(),
+            }
+        }));
     }
 
     /// `handleReloadCommand` (`interactive-mode.ts:5968-6056`).

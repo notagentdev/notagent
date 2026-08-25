@@ -43,6 +43,7 @@ pub mod resource_loader;
 pub mod runtime_credentials;
 pub mod sdk;
 pub mod session_cwd;
+pub mod session_init;
 pub mod session_manager;
 pub mod settings_manager;
 pub mod share;

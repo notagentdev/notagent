@@ -83,7 +83,14 @@ use crate::core::source_info::{
     SourceInfo, SyntheticSourceInfoOptions, create_synthetic_source_info,
 };
 use crate::core::system_prompt::{BuildSystemPromptOptions, ContextFile, build_system_prompt};
-use crate::core::tasks::manager::{TaskManager, TaskManagerOptions};
+use crate::core::delegation::agent_type::SubagentType;
+use crate::core::delegation::run::{DelegationOptions, DelegationRun, run_delegation};
+use crate::core::session_init::{
+    INIT_PROMPT, INIT_REMINDER_TYPE, init_completion_reminder, read_written_guide,
+};
+use crate::core::tasks::manager::{RegisterTaskOptions, TaskManager, TaskManagerOptions};
+use crate::core::tasks::subagent_task::{SubagentRunResult, SubagentTask, SubagentTaskOptions};
+use crate::core::tasks::types::BackgroundTask;
 use crate::core::tasks::notification::{
     NOTIFICATION_PREVIEW_BYTES, NotificationOutput, TaskNotificationDelivery,
     TaskNotificationDetails, TaskNotificationHost, TaskNotificationMessage,
@@ -1577,6 +1584,63 @@ impl AgentSession {
         }
     }
 
+    /// The tools a delegated child is built with.
+    ///
+    /// Deliberately carries no task wiring at all: that is what makes "a
+    /// subagent starts no background work" structural rather than a rule it
+    /// could ignore.
+    fn child_tool_options(&self) -> ToolsOptions {
+        use crate::core::tools::bash::BashToolOptions;
+        use crate::core::tools::edit::EditToolOptions;
+        use crate::core::tools::patch_minified::PatchMinifiedToolOptions;
+        use crate::core::tools::read::ReadToolOptions;
+        use crate::core::tools::write::WriteToolOptions;
+
+        // A subagent mutates the same workspace as its parent, so it takes
+        // leases on the same terms — without this the feature would miss
+        // exactly the concurrency it exists for. The same reasoning for the
+        // bash filter: a delegated `cargo test` floods the context exactly as a
+        // direct one would.
+        let leases = self.lease_gate();
+        let bash_filter = self.bash_filter_gate();
+        ToolsOptions {
+            read: Some(ReadToolOptions {
+                auto_resize_images: self.settings_manager.get_image_auto_resize(),
+                ..ReadToolOptions::default()
+            }),
+            bash: Some(BashToolOptions {
+                command_prefix: self.settings_manager.get_shell_command_prefix(),
+                shell_path: self.settings_manager.get_shell_path(),
+                bash_filter: Some(bash_filter),
+                ..BashToolOptions::default()
+            }),
+            find_codebase: Some(self.find_codebase_options()),
+            // A child's changes are snapshotted like the parent's, so the
+            // parent can take back what a subagent did.
+            write: Some(WriteToolOptions {
+                leases: Some(Arc::clone(&leases)),
+                snapshots: Some(snapshot_store()),
+                ..WriteToolOptions::default()
+            }),
+            edit: Some(EditToolOptions {
+                leases: Some(Arc::clone(&leases)),
+                snapshots: Some(snapshot_store()),
+                ..EditToolOptions::default()
+            }),
+            patch_minified: Some(PatchMinifiedToolOptions {
+                leases: Some(Arc::clone(&leases)),
+                snapshots: Some(snapshot_store()),
+                ..PatchMinifiedToolOptions::default()
+            }),
+            multi_patch_minified: Some(PatchMinifiedToolOptions {
+                leases: Some(leases),
+                snapshots: Some(snapshot_store()),
+                ..PatchMinifiedToolOptions::default()
+            }),
+            ..ToolsOptions::default()
+        }
+    }
+
     fn build_tool_options(
         self: &Arc<Self>,
         auto_resize_images: bool,
@@ -1735,52 +1799,8 @@ impl AgentSession {
             // task wiring at all: that is what makes "a subagent starts no
             // background work" structural rather than a rule it could ignore.
             tool_options: Some({
-                let find_codebase = self.find_codebase_options();
-                // A subagent mutates the same workspace as its parent, so it
-                // takes leases on the same terms — without this the feature
-                // would miss exactly the concurrency it exists for.
-                let leases = self.lease_gate();
-                // The same reasoning for the bash filter: a delegated `cargo
-                // test` floods the context exactly as a direct one would.
-                let bash_filter = self.bash_filter_gate();
-                Arc::new(move || {
-                    Some(ToolsOptions {
-                        read: Some(ReadToolOptions {
-                            auto_resize_images,
-                            ..ReadToolOptions::default()
-                        }),
-                        bash: Some(BashToolOptions {
-                            command_prefix: shell_command_prefix.clone(),
-                            shell_path: shell_path.clone(),
-                            bash_filter: Some(Arc::clone(&bash_filter)),
-                            ..BashToolOptions::default()
-                        }),
-                        find_codebase: Some(find_codebase.clone()),
-                        // A child's changes are snapshotted like the parent's,
-                        // so the parent can take back what a subagent did.
-                        write: Some(WriteToolOptions {
-                            leases: Some(Arc::clone(&leases)),
-                            snapshots: Some(snapshot_store()),
-                            ..WriteToolOptions::default()
-                        }),
-                        edit: Some(EditToolOptions {
-                            leases: Some(Arc::clone(&leases)),
-                            snapshots: Some(snapshot_store()),
-                            ..EditToolOptions::default()
-                        }),
-                        patch_minified: Some(PatchMinifiedToolOptions {
-                            leases: Some(Arc::clone(&leases)),
-                            snapshots: Some(snapshot_store()),
-                            ..PatchMinifiedToolOptions::default()
-                        }),
-                        multi_patch_minified: Some(PatchMinifiedToolOptions {
-                            leases: Some(Arc::clone(&leases)),
-                            snapshots: Some(snapshot_store()),
-                            ..PatchMinifiedToolOptions::default()
-                        }),
-                        ..ToolsOptions::default()
-                    })
-                })
+                let weak = Arc::downgrade(self);
+                Arc::new(move || weak.upgrade().map(|session| session.child_tool_options()))
             }),
             transcripts: TaskTranscriptStore::default(),
             cwd: Some({
@@ -4570,6 +4590,117 @@ impl AgentSession {
             .collect();
         let trimmed = text.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
+    }
+
+    /// Runs `/init`: a child explores the project, writes `AGENTS.md`, and the
+    /// result is read back into this conversation.
+    ///
+    /// The child is a worker rather than a reader — it has to write the file —
+    /// and it is registered with the task manager like any delegated run, so
+    /// the panel shows it and the user can stop it from there.
+    pub async fn run_init(self: &Arc<Self>) -> Result<(), String> {
+        if self.model().is_none() {
+            return Err("No model is selected.".to_string());
+        }
+        if self.is_streaming() {
+            return Err("The agent is busy; wait for the current turn to finish.".to_string());
+        }
+
+        let session_id = notagent_ai::uuidv7();
+        let alias = self.subagent_aliases.reserve(None);
+        // The child answers to its own controller, so stopping it from the task
+        // panel does not reach into anything else this session is doing.
+        let controller = CancellationToken::new();
+        let tokens = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let token_sink = Arc::clone(&tokens);
+        let (run_sender, run_receiver) = tokio::sync::oneshot::channel::<SubagentRunResult>();
+
+        let delegation = DelegationOptions {
+            parent: Arc::clone(&self.agent),
+            agent: SubagentType::Worker,
+            skills: Vec::new(),
+            alias: alias.clone(),
+            cwd: self.cwd.clone(),
+            task: INIT_PROMPT.to_string(),
+            history: None,
+            session_id: Some(session_id.clone()),
+            signal: Some(controller.clone()),
+            tool_options: Some(self.child_tool_options()),
+            resolve_tool: Some({
+                let weak = Arc::downgrade(self);
+                Arc::new(move |name: ToolName| {
+                    weak.upgrade()
+                        .and_then(|session| session.resolve_child_tool(name.as_str()))
+                })
+            }),
+            timeout_ms: None,
+            on_tokens: Some(Arc::new(move |spent| {
+                token_sink.store(spent, std::sync::atomic::Ordering::SeqCst);
+            })),
+            model_override: self.subagent_model(),
+        };
+
+        let aliases = self.subagent_aliases.clone();
+        let released = alias.clone();
+        let (done_sender, done_receiver) = tokio::sync::oneshot::channel::<DelegationRun>();
+        tokio::spawn(async move {
+            let run = run_delegation(delegation).await;
+            aliases.release(&released);
+            let _ = run_sender.send(SubagentRunResult {
+                text: run.text.clone(),
+                failed: run.failed,
+            });
+            let _ = done_sender.send(run);
+        });
+
+        if let Some(manager) = self.task_manager() {
+            let cancel_controller = controller.clone();
+            let task: Arc<dyn BackgroundTask> = Arc::new(SubagentTask::new(SubagentTaskOptions {
+                description: "Write AGENTS.md".to_string(),
+                tokens: Some(Arc::new(move || {
+                    tokens.load(std::sync::atomic::Ordering::SeqCst)
+                })),
+                session_id,
+                agent: SubagentType::Worker.as_str().to_string(),
+                alias,
+                run: run_receiver,
+                cancel: Arc::new(move || cancel_controller.cancel()),
+            }));
+            let _ = manager.register(task, RegisterTaskOptions::default());
+        }
+
+        let run = done_receiver
+            .await
+            .map_err(|_| "The init run ended without an answer.".to_string())?;
+        if controller.is_cancelled() {
+            return Err("Init was stopped.".to_string());
+        }
+        if run.failed {
+            return Err(format!("Init failed: {}", run.text));
+        }
+
+        // The reload is what puts the new file into the system prompt; the
+        // reminder is what puts it into this conversation, which the rebuilt
+        // prompt alone would not do for the turns already behind us.
+        self.resource_loader.reload(Default::default()).await;
+        self.build_runtime(BuildRuntimeOptions {
+            active_tool_names: Some(self.get_active_tool_names()),
+        });
+        let written = read_written_guide(&self.cwd);
+        self.send_custom_message(
+            CustomMessage {
+                custom_type: INIT_REMINDER_TYPE.to_string(),
+                content: UserContent::Blocks(vec![TextOrImageContent::Text(TextContent::new(
+                    init_completion_reminder(written.as_deref()),
+                ))]),
+                display: false,
+                details: None,
+                timestamp: now_millis(),
+            },
+            SendCustomMessageOptions::default(),
+        )
+        .await;
+        Ok(())
     }
 
     /// Reloads settings, resources, modes and tools.
