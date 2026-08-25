@@ -25,7 +25,9 @@ use crate::auth::types::{
     AuthResult, BoxFuture, Credential, ModelAuth, ProviderAuth, ProviderAuthInteraction,
 };
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
-use crate::types::{Api, Modality, Model, ModelCost, ProviderEnv};
+use crate::types::{
+    Api, Modality, Model, ModelCost, ModelThinkingLevel, ProviderEnv, ThinkingLevelMap,
+};
 
 /// These servers expose `/v1/chat/completions`, not `/v1/responses`.
 const COMPLETIONS_API: &str = "openai-completions";
@@ -424,6 +426,11 @@ pub struct ListedModel {
     /// `None` when the listing does not say, which is the OpenAI shape's answer
     /// to every question beyond the name.
     pub context_window: Option<u64>,
+    /// Whether the model thinks. `None` when the listing does not say, which is
+    /// taken as "assume it can": offering a level that turns out to do nothing
+    /// costs a wasted setting, while withholding one from a reasoning model
+    /// leaves no way to ask it to think at all.
+    pub reasoning: Option<bool>,
 }
 
 /// What a GET returned, or why there is nothing to read.
@@ -618,10 +625,12 @@ async fn fetch_ollama_models(
             Some(details) => listed.push(ListedModel {
                 id: name,
                 context_window: details.context_window,
+                reasoning: details.reasoning,
             }),
             None => listed.push(ListedModel {
                 id: name,
                 context_window: None,
+                reasoning: None,
             }),
         }
     }
@@ -632,6 +641,8 @@ async fn fetch_ollama_models(
 pub struct OllamaDetails {
     pub chats: bool,
     pub context_window: Option<u64>,
+    /// `None` when the build reports no capabilities at all.
+    pub reasoning: Option<bool>,
 }
 
 async fn ollama_model_details(
@@ -671,18 +682,20 @@ async fn ollama_model_details(
 /// Split from the request so the shape handling is exercised without a server.
 pub fn ollama_details_from_show(body: &Value) -> OllamaDetails {
     // The capability list is the server's own answer to "what is this for".
-    // A model that only embeds is not a chat target; one that says nothing is
-    // taken at its word as usable, because older builds report no capabilities
-    // at all and dropping everything would empty the picker.
+    // A build that reports none is taken at its word as usable, because
+    // dropping everything would empty the picker.
     let capabilities: Vec<&str> = body
         .get("capabilities")
         .and_then(Value::as_array)
         .map(|entries| entries.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
-    let chats = capabilities.is_empty()
-        || capabilities
-            .iter()
-            .any(|capability| *capability == "completion" || *capability == "tools");
+    // Keyed on the embedding capability rather than on the presence of
+    // `completion`, which the server reports for everything it can run.
+    let chats = !capabilities.contains(&"embedding");
+    // `thinking` is the server's own verdict, so it is worth more than a guess
+    // from the name — this is the one place a local model's effort levels can
+    // be got right.
+    let reasoning = (!capabilities.is_empty()).then(|| capabilities.contains(&"thinking"));
 
     // The window is keyed by architecture — `llama.context_length`,
     // `qwen3.context_length` — so the suffix is what identifies it.
@@ -699,6 +712,7 @@ pub fn ollama_details_from_show(body: &Value) -> OllamaDetails {
     OllamaDetails {
         chats,
         context_window,
+        reasoning,
     }
 }
 
@@ -751,6 +765,8 @@ pub fn models_from_lmstudio_listing(body: &Value) -> Result<Vec<ListedModel>, St
             Some(ListedModel {
                 id: id.to_string(),
                 context_window,
+                // The listing has no field for it, so this stays a guess.
+                reasoning: None,
             })
         })
         .collect())
@@ -772,9 +788,22 @@ pub fn models_from_openai_listing(body: &Value) -> Result<Vec<ListedModel>, Stri
             Some(ListedModel {
                 id: id.to_string(),
                 context_window: None,
+                reasoning: None,
             })
         })
         .collect())
+}
+
+/// The effort levels a runtime accepts, as a map that marks the rest absent.
+///
+/// Both runtimes take `low`, `medium` and `high` on their OpenAI surface and
+/// reject anything else, so `minimal` has to be struck: offering it would put a
+/// setting in front of the user that the server answers with an error. `xhigh`
+/// and `max` need no entry — a level is only offered when the map names it.
+fn low_medium_high() -> ThinkingLevelMap {
+    let mut map = ThinkingLevelMap::new();
+    map.insert(ModelThinkingLevel::Minimal, None);
+    map
 }
 
 fn build_model(config: &OpenAICompatibleConfig, base_url: &str, listed: &ListedModel) -> Model {
@@ -784,12 +813,14 @@ fn build_model(config: &OpenAICompatibleConfig, base_url: &str, listed: &ListedM
         api: Api::from(COMPLETIONS_API),
         provider: config.id.clone(),
         base_url: base_url.to_string(),
-        // Which of these think cannot be told from a listing. Claiming the
-        // capability costs nothing when it is unused — the thinking level is
-        // off until someone raises it — while denying it would leave a
-        // reasoning model with no way to be asked for reasoning.
-        reasoning: true,
-        thinking_level_map: None,
+        reasoning: listed.reasoning.unwrap_or(true),
+        // A server this knows the effort vocabulary of gets it; one it does not
+        // — any endpoint the user pointed at — keeps the full range, since it
+        // may be a service whose levels are the OpenAI ones.
+        thinking_level_map: match config.catalog {
+            CatalogSource::LmStudio | CatalogSource::Ollama => Some(low_medium_high()),
+            CatalogSource::OpenAI => None,
+        },
         input: vec![Modality::Text],
         // A local runtime bills nothing, and a custom endpoint bills something
         // this cannot know. Reporting real zeroes keeps cost accounting honest
@@ -899,7 +930,8 @@ mod tests {
             listed,
             [ListedModel {
                 id: "qwen3-coder:30b".to_string(),
-                context_window: None
+                context_window: None,
+                reasoning: None
             }]
         );
         assert!(models_from_openai_listing(&json!({})).is_err());
@@ -945,14 +977,17 @@ mod tests {
             [
                 ListedModel {
                     id: "qwen3-coder-30b".to_string(),
-                    context_window: Some(262_144)
+                    context_window: Some(262_144),
+                    // The listing has no field for it.
+                    reasoning: None
                 },
                 // A vision model still chats; only the embedder is dropped.
                 ListedModel {
                     id: "qwen2-vl-7b".to_string(),
                     // What it was actually loaded with wins over what it could
                     // have been given.
-                    context_window: Some(8_192)
+                    context_window: Some(8_192),
+                    reasoning: None
                 },
             ]
         );
@@ -995,18 +1030,97 @@ mod tests {
         let details = ollama_details_from_show(&body);
         assert!(details.chats);
         assert_eq!(details.context_window, Some(262_144));
+        assert_eq!(details.reasoning, Some(true), "the server said it thinks");
 
+        // `completion` is reported for everything the server can run, so the
+        // embedding capability is what settles it.
         let embedder = ollama_details_from_show(&json!({
-            "capabilities": ["embedding"],
+            "capabilities": ["completion", "embedding"],
             "model_info": { "nomic-bert.context_length": 2048 }
         }));
         assert!(!embedder.chats, "an embedder is not a chat target");
 
+        let plain = ollama_details_from_show(&json!({
+            "capabilities": ["completion", "tools"],
+            "model_info": {}
+        }));
+        assert_eq!(
+            plain.reasoning,
+            Some(false),
+            "a model without the thinking capability is not offered effort levels"
+        );
+
         // An older build reports no capabilities at all; dropping everything
-        // then would empty the picker.
+        // then would empty the picker, and the thinking question stays open.
         let silent = ollama_details_from_show(&json!({ "model_info": {} }));
         assert!(silent.chats);
         assert_eq!(silent.context_window, None);
+        assert_eq!(silent.reasoning, None);
+    }
+
+    #[test]
+    fn a_local_runtime_offers_only_the_effort_levels_it_accepts() {
+        // Both runtimes take low, medium and high on their OpenAI surface and
+        // reject `minimal`; `xhigh` and `max` are never offered without a map
+        // entry naming them.
+        let thinker = build_model(
+            &config(),
+            OLLAMA_BASE_URL,
+            &ListedModel {
+                id: "qwen3:8b".to_string(),
+                context_window: None,
+                reasoning: Some(true),
+            },
+        );
+        assert!(thinker.reasoning);
+        assert_eq!(
+            crate::models::get_supported_thinking_levels(&thinker),
+            [
+                ModelThinkingLevel::Off,
+                ModelThinkingLevel::Low,
+                ModelThinkingLevel::Medium,
+                ModelThinkingLevel::High,
+            ]
+        );
+
+        let plain = build_model(
+            &config(),
+            OLLAMA_BASE_URL,
+            &ListedModel {
+                id: "llama3.2:3b".to_string(),
+                context_window: None,
+                reasoning: Some(false),
+            },
+        );
+        assert!(!plain.reasoning);
+        assert_eq!(
+            crate::models::get_supported_thinking_levels(&plain),
+            [ModelThinkingLevel::Off],
+            "a model that does not think is offered no effort at all"
+        );
+    }
+
+    #[test]
+    fn an_endpoint_nobody_knows_keeps_the_full_range() {
+        // A custom address may be any service, including one whose levels are
+        // the OpenAI ones, so nothing is struck from it.
+        let custom = OpenAICompatibleConfig {
+            catalog: CatalogSource::OpenAI,
+            ..config()
+        };
+        let model = build_model(
+            &custom,
+            OLLAMA_BASE_URL,
+            &ListedModel {
+                id: "gpt-5".to_string(),
+                context_window: None,
+                reasoning: None,
+            },
+        );
+        assert!(
+            crate::models::get_supported_thinking_levels(&model)
+                .contains(&ModelThinkingLevel::Minimal)
+        );
     }
 
     #[test]
@@ -1017,6 +1131,7 @@ mod tests {
             &ListedModel {
                 id: "qwen3-coder:30b".to_string(),
                 context_window: None,
+                reasoning: None,
             },
         );
         assert_eq!(model.base_url, OLLAMA_BASE_URL);
