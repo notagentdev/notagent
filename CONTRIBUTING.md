@@ -35,6 +35,29 @@ If a test fails because of your change, decide deliberately whether the code or
 the expectation is wrong, and say which you concluded. A pinned expectation that
 no longer matches is sometimes the bug and sometimes exactly the point.
 
+Some expectations are generated rather than written: the oracles under
+`tools/gen-*-oracle.mjs` and the fixtures in `crates/*/tests/fixtures/`. Never
+hand over a regenerated one you have not read. Regenerating turns a failing test
+green whether or not the new output is right, which is the one thing a test was
+there to stop.
+
+## Scope
+
+Agree on what a change is before writing it. Anything that touches the system
+prompt, agent behaviour, providers, tool schemas, permissions, the TUI, or the
+runtime architecture is settled first, not shown as a finished diff — those are
+the places where two reasonable readings of the same request lead to entirely
+different work.
+
+Then stay inside what was agreed. If the fix turns out to need a neighbouring
+change, say so and get that agreed too, rather than widening the diff on your
+own judgement. A change that arrives larger than the thing that was asked for
+has to be reviewed from scratch, and the part nobody asked for is where the
+surprises live.
+
+Large refactors need their own agreement. So does a second code path for an old
+format: never add one without asking first.
+
 ## The rules that apply while you work
 
 [AGENTS.md](AGENTS.md) is the working guide: crate layout, build and test
@@ -47,7 +70,18 @@ in German; everything else — code, comments, commits — is English.
 
 ## Reporting a problem
 
-Say what you did, what happened, and what you expected instead. A command and
-its output beats a description of the output. If it only happens with a
-particular provider, model, or terminal, name it — those three account for most
-of what cannot be reproduced.
+Keep it to one screen, and make it something somebody can act on without asking
+you a question first:
+
+- The version (`notagent --version`), the operating system, and the terminal.
+- The provider and model. Behaviour differs enough between them that a report
+  without this often cannot be placed at all.
+- The exact steps, as commands and input rather than as a description of them.
+- What you expected, and what happened instead — both, separately.
+- The relevant output. Not the whole transcript: the part that shows it, with a
+  sentence saying what to look at.
+- The crate it appears to be in, if you can tell — `notagent`, `notagent-ai`,
+  `notagent-tui`, and so on.
+
+What does not help: "doesn't work" on its own, a long transcript pasted without
+a summary, and anything that leaves the reproduction to be guessed at.
