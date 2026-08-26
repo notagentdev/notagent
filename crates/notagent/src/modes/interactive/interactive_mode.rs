@@ -8100,19 +8100,30 @@ impl InteractiveMode {
             }
             EscapeTarget::Default => {}
         }
-        if self.session().is_streaming() {
+        // Everything running stops, not whichever the first branch happened to
+        // name. A `!` command and an agent turn can be going at once, and a key
+        // that means "stop" leaving one of them running is a key the user has
+        // to press again with no way to know why the first press did nothing.
+        let streaming = self.session().is_streaming();
+        let bash_running = self.session().is_bash_running();
+        if bash_running {
+            self.session().abort_bash();
+        }
+        if streaming {
             self.restore_queued_messages_to_editor(true);
-            // Acknowledge the key now. The token is cancelled immediately, but
-            // a tool already inside a call still has to return before the turn
+            // Acknowledge the key now. Cancelling is immediate, but a tool
+            // already inside a call still has to come back before the turn
             // unwinds, and without this the row would go on as if nothing had
             // been pressed.
             if let Some(indicator) = self.active_status_indicator.as_ref() {
                 indicator.borrow_mut().mark_interrupting();
             }
             self.ui.request_render();
-        } else if self.session().is_bash_running() {
-            self.session().abort_bash();
-        } else if self.is_bash_mode {
+        }
+        if streaming || bash_running {
+            return;
+        }
+        if self.is_bash_mode {
             self.clear_editor_text();
             self.is_bash_mode = false;
             self.update_editor_border_color();
