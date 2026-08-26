@@ -217,11 +217,16 @@ impl StatusIndicator {
 
     /// Report that the user asked for the run to stop.
     ///
-    /// The cancellation itself is instant, but what it cancels is not: a tool
-    /// already inside a call has to come back before the turn can unwind, and
-    /// until then nothing on screen would have changed. A user who pressed a
-    /// key and saw the same row keep counting presses it again. This says the
-    /// key arrived, and leaves the clock running, because the wait is real.
+    /// The cancellation itself is instant, but what it cancels is not: a slow
+    /// model or a tool inside a call has to come back before the turn can
+    /// unwind, and until then nothing on screen would have changed. A user who
+    /// pressed a key and saw the same row keep counting presses it again.
+    ///
+    /// The clock goes with the old label. It measured the whole run, which is
+    /// still what it would show — but beside "Stopping..." the same figure
+    /// reads as how long the stopping has taken, and answers a question nobody
+    /// asked with a number that means something else. What the run took is
+    /// reported once it settles, where it is unambiguous again.
     pub fn mark_interrupting(&mut self) {
         if self.settled {
             return;
@@ -230,6 +235,8 @@ impl StatusIndicator {
         self.loader
             .set_message_color(Rc::new(|text: &str| theme().fg(ThemeColor::Warning, text)));
         self.loader.set_message("Stopping...");
+        self.loader.set_suffix("");
+        self.timed_message = None;
     }
 
     /// `WorkingStatusIndicator`.

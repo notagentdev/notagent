@@ -141,6 +141,10 @@ fn says_it_is_stopping_the_moment_it_is_asked_to() {
     init_theme(Some("dark"), false);
 
     let mut working = StatusIndicator::working("Working...", None);
+    std::thread::sleep(std::time::Duration::from_millis(1050));
+    assert!(working.tick_elapsed(), "the run has a figure to show");
+    assert!(visible(&working.render(80).join("\n")).contains("(1s)"));
+
     working.mark_interrupting();
 
     let rendered = working.render(80).join("\n");
@@ -149,11 +153,16 @@ fn says_it_is_stopping_the_moment_it_is_asked_to() {
         rendered.contains(&theme().fg(ThemeColor::Warning, "Stopping...")),
         "the row reads as a warning rather than as ordinary progress: {rendered:?}"
     );
-    // The clock keeps running: the wait for the tool to return is real, and
-    // hiding it would suggest the run is already over.
+    // The clock goes with the old label: beside "Stopping..." the figure would
+    // read as how long the stopping has taken, which is not what it measures.
+    assert!(
+        !visible(&rendered).contains('('),
+        "the run's clock is not left beside a label it does not belong to: {rendered:?}"
+    );
+    assert!(!working.tick_elapsed(), "and it stops being updated");
     assert!(!working.is_settled());
 
-    // Settling still reports the whole run, not the time since the key.
+    // Settling still reports the whole run, where the figure is unambiguous.
     working.settle();
     assert!(visible(&working.render(80).join("\n")).contains("Worked for"));
 }
