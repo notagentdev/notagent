@@ -232,8 +232,11 @@ impl StatusIndicator {
             return;
         }
         self.loader.set_shimmer(None);
+        // The footer's `auto` yellow rather than the warning one: this is a
+        // state the user asked for, not something that went wrong, and the two
+        // yellows read very differently.
         self.loader
-            .set_message_color(Rc::new(|text: &str| theme().fg(ThemeColor::Warning, text)));
+            .set_message_color(Rc::new(|text: &str| theme().fg(ThemeColor::ModeAuto, text)));
         self.loader.set_message("Stopping...");
         self.loader.set_suffix("");
         self.timed_message = None;

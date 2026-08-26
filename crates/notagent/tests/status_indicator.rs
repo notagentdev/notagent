@@ -150,8 +150,8 @@ fn says_it_is_stopping_the_moment_it_is_asked_to() {
     let rendered = working.render(80).join("\n");
     assert!(visible(&rendered).contains("Stopping..."), "{rendered:?}");
     assert!(
-        rendered.contains(&theme().fg(ThemeColor::Warning, "Stopping...")),
-        "the row reads as a warning rather than as ordinary progress: {rendered:?}"
+        rendered.contains(&theme().fg(ThemeColor::ModeAuto, "Stopping...")),
+        "the row wears the footer's mode yellow, not the warning one: {rendered:?}"
     );
     // The clock goes with the old label: beside "Stopping..." the figure would
     // read as how long the stopping has taken, which is not what it measures.

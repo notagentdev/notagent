@@ -241,6 +241,9 @@ settings_struct!(
     /// The footer line with the working directory and git branch;
     /// absent = hidden (user decision 2026-08-25).
     show_workspace_in_footer: bool,
+    /// Whether a step that only continues an execution reasons one level below
+    /// the session's; absent = off.
+    tiered_thinking: bool,
     /// Port addition (v0.1.9): chat-block style, "standard" | "badge";
     /// absent = badge (user decision 2026-08-17).
     block_style: String,
@@ -1059,6 +1062,14 @@ impl SettingsManager {
     /// is a trade the user opts into with `/bash-filter on`.
     pub fn get_bash_filter_enabled(&self) -> bool {
         self.settings_snapshot().bash_filter.unwrap_or(false)
+    }
+
+    pub fn get_tiered_thinking(&self) -> bool {
+        self.settings_snapshot().tiered_thinking.unwrap_or(false)
+    }
+
+    pub fn set_tiered_thinking(&self, enabled: bool) {
+        self.set_global_field("tieredThinking", Value::from(enabled));
     }
 
     pub fn get_show_workspace_in_footer(&self) -> bool {

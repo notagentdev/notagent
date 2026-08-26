@@ -169,6 +169,9 @@ pub struct SettingsConfig {
     /// The footer line with the working directory and git branch; off by
     /// default (user decision 2026-08-25).
     pub show_workspace_in_footer: bool,
+    /// Lower reasoning for steps that only carry out work already decided; off
+    /// by default.
+    pub tiered_thinking: bool,
     pub tui_mode: TuiMode,
     pub fullscreen_exit_output: FullscreenExitOutput,
     pub fullscreen_scrollbar: ScrollViewScrollbar,
@@ -220,6 +223,7 @@ impl Default for SettingsConfig {
             clear_on_shrink: false,
             show_terminal_progress: false,
             show_workspace_in_footer: false,
+            tiered_thinking: false,
             tui_mode: TuiMode::Regular,
             fullscreen_exit_output: FullscreenExitOutput::Transcript,
             fullscreen_scrollbar: ScrollViewScrollbar::Hidden,
@@ -264,6 +268,7 @@ pub struct SettingsCallbacks {
     pub on_clear_on_shrink_change: Box<dyn FnMut(bool)>,
     pub on_show_terminal_progress_change: Box<dyn FnMut(bool)>,
     pub on_show_workspace_in_footer_change: Box<dyn FnMut(bool)>,
+    pub on_tiered_thinking_change: Box<dyn FnMut(bool)>,
     pub on_tui_mode_change: Box<dyn FnMut(TuiMode)>,
     pub on_fullscreen_exit_output_change: Box<dyn FnMut(FullscreenExitOutput)>,
     pub on_fullscreen_scrollbar_change: Box<dyn FnMut(ScrollViewScrollbar)>,
@@ -305,6 +310,7 @@ impl Default for SettingsCallbacks {
             on_clear_on_shrink_change: Box::new(|_| {}),
             on_show_terminal_progress_change: Box::new(|_| {}),
             on_show_workspace_in_footer_change: Box::new(|_| {}),
+            on_tiered_thinking_change: Box::new(|_| {}),
             on_tui_mode_change: Box::new(|_| {}),
             on_fullscreen_exit_output_change: Box::new(|_| {}),
             on_fullscreen_scrollbar_change: Box::new(|_| {}),
@@ -1445,6 +1451,23 @@ impl SettingsSelectorComponent {
             },
         );
 
+        // Tiered thinking toggle (insert after workspace-in-footer)
+        insert_after(
+            &mut items,
+            "workspace-in-footer",
+            SettingItem {
+                id: "tiered-thinking".to_string(),
+                label: "Tiered thinking".to_string(),
+                description: Some(
+                    "Reason one level lower on steps that only carry out work already decided"
+                        .to_string(),
+                ),
+                current_value: bool_value(config.tiered_thinking),
+                values: Some(vec!["true".to_string(), "false".to_string()]),
+                submenu: None,
+            },
+        );
+
         // Add borders
         let mut container = Container::new();
         container.add_child(component_ref(DynamicBorder::new(None)));
@@ -1544,6 +1567,9 @@ impl SettingsSelectorComponent {
                     }
                     "workspace-in-footer" => {
                         (callbacks.on_show_workspace_in_footer_change)(new_value == "true")
+                    }
+                    "tiered-thinking" => {
+                        (callbacks.on_tiered_thinking_change)(new_value == "true")
                     }
                     "tui-mode" => {
                         if let Some(mode) = from_wire::<TuiMode>(new_value) {

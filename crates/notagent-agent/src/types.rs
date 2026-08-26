@@ -448,10 +448,58 @@ pub trait AgentTool: Send + Sync {
         Tool {
             name: self.name().to_string(),
             description: self.description().to_string(),
-            parameters: self.parameters().clone(),
+            parameters: required_first(self.parameters()),
             constrained_sampling: self.constrained_sampling().cloned(),
         }
     }
+}
+
+/// Moves `required` ahead of `properties` at every level of a JSON schema.
+///
+/// A model reads the schema in the order it arrives and commits to the shape of
+/// the call early; a `required` list it reaches only after the whole property
+/// block has gone by arrives too late to steer what it is already writing.
+/// Serialisation here preserves insertion order, so the order in the map is the
+/// order on the wire.
+///
+/// Applied at the one place every tool passes through rather than in each
+/// schema, so a tool added later cannot forget it and a schema that arrives
+/// from an MCP server — which nobody here wrote — is covered too.
+pub fn required_first(schema: &Value) -> Value {
+    let Value::Object(fields) = schema else {
+        return schema.clone();
+    };
+    let mut reordered = serde_json::Map::with_capacity(fields.len());
+    // `type` stays in front: it says what the rest of the object even is.
+    if let Some(kind) = fields.get("type") {
+        reordered.insert("type".to_string(), kind.clone());
+    }
+    if let Some(required) = fields.get("required") {
+        reordered.insert("required".to_string(), required.clone());
+    }
+    for (key, value) in fields {
+        if key == "type" || key == "required" {
+            continue;
+        }
+        let value = match (key.as_str(), value) {
+            // The nested schemas a model still has to read in order: one per
+            // property, the element schema of an array, and the branches of a
+            // union.
+            ("properties", Value::Object(properties)) => Value::Object(
+                properties
+                    .iter()
+                    .map(|(name, property)| (name.clone(), required_first(property)))
+                    .collect(),
+            ),
+            ("items", value) => required_first(value),
+            ("anyOf" | "oneOf" | "allOf", Value::Array(branches)) => {
+                Value::Array(branches.iter().map(required_first).collect())
+            }
+            _ => value.clone(),
+        };
+        reordered.insert(key.clone(), value);
+    }
+    Value::Object(reordered)
 }
 
 /// `AgentContext` — Kontext-Snapshot für den Low-Level-Loop.
@@ -543,5 +591,82 @@ impl AgentEvent {
             AgentEvent::ToolExecutionUpdate { .. } => "tool_execution_update",
             AgentEvent::ToolExecutionEnd { .. } => "tool_execution_end",
         }
+    }
+}
+
+#[cfg(test)]
+mod required_first_tests {
+    use super::required_first;
+    use serde_json::json;
+
+    /// The order in the map is the order on the wire, so the check is on the
+    /// serialised form rather than on equality of values.
+    fn keys(schema: &serde_json::Value) -> Vec<String> {
+        schema
+            .as_object()
+            .expect("object")
+            .keys()
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn required_arrives_before_the_properties_it_constrains() {
+        let reordered = required_first(&json!({
+            "type": "object",
+            "properties": { "path": { "type": "string" } },
+            "required": ["path"],
+        }));
+        assert_eq!(keys(&reordered), ["type", "required", "properties"]);
+        assert_eq!(reordered["required"], json!(["path"]));
+        assert_eq!(reordered["properties"]["path"]["type"], json!("string"));
+    }
+
+    #[test]
+    fn every_nested_schema_is_reordered_too() {
+        // The shape `edit` uses: an array of objects, each with its own
+        // required list.
+        let reordered = required_first(&json!({
+            "type": "object",
+            "properties": {
+                "edits": {
+                    "type": "array",
+                    "items": {
+                        "properties": {
+                            "old_string": { "type": "string" },
+                            "new_string": { "type": "string" },
+                        },
+                        "type": "object",
+                        "required": ["old_string", "new_string"],
+                    },
+                },
+            },
+            "required": ["path", "edits"],
+        }));
+        assert_eq!(
+            keys(&reordered["properties"]["edits"]["items"]),
+            ["type", "required", "properties"]
+        );
+    }
+
+    #[test]
+    fn a_schema_with_nothing_to_move_keeps_its_order() {
+        let schema = json!({ "type": "object", "properties": {} });
+        assert_eq!(keys(&required_first(&schema)), ["type", "properties"]);
+        // And a schema that is not an object at all is handed back untouched.
+        assert_eq!(required_first(&json!("string")), json!("string"));
+    }
+
+    #[test]
+    fn union_branches_are_reordered() {
+        let reordered = required_first(&json!({
+            "anyOf": [
+                { "properties": { "a": {} }, "type": "object", "required": ["a"] },
+            ],
+        }));
+        assert_eq!(
+            keys(&reordered["anyOf"][0]),
+            ["type", "required", "properties"]
+        );
     }
 }

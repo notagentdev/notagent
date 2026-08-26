@@ -93,6 +93,7 @@ fn config() -> SettingsConfig {
         show_terminal_progress: true,
         // Addition (v0.1.34), not in the TS oracle fixture.
         show_workspace_in_footer: false,
+        tiered_thinking: false,
         tui_mode: TuiMode::Regular,
         fullscreen_exit_output: FullscreenExitOutput::Transcript,
         fullscreen_scrollbar: ScrollViewScrollbar::Auto,

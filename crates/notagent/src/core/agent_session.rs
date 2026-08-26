@@ -936,13 +936,15 @@ impl AgentSession {
                                 .base_system_prompt
                                 .clone()
                         });
+                    let continues_execution = !turn.tool_results.is_empty();
                     let update = snapshot.get_or_insert_with(Default::default);
                     let mut context = update.context.clone().unwrap_or(turn.context);
                     context.system_prompt = system_prompt;
                     context.tools = Some(state.tools.clone());
                     update.context = Some(context);
                     update.model = Some(state.model.clone());
-                    update.thinking_level = Some(state.thinking_level);
+                    update.thinking_level =
+                        Some(session.step_thinking_level(state.thinking_level, continues_execution));
                     snapshot
                 })
             }));
@@ -3298,6 +3300,116 @@ impl AgentSession {
                 ThinkingLevel::from(clamped)
             }
             None => ThinkingLevel::Off,
+        }
+    }
+
+    /// The level one step of a turn is given, clamped to what the model offers.
+    fn step_thinking_level(
+        &self,
+        session_level: ThinkingLevel,
+        continues_execution: bool,
+    ) -> ThinkingLevel {
+        let level = step_thinking_level(
+            session_level,
+            continues_execution,
+            self.settings_manager.get_tiered_thinking(),
+        );
+        if level == session_level {
+            return level;
+        }
+        // The model may not offer the level below; clamping picks the nearest
+        // one it does.
+        self.clamp_thinking_level(level)
+    }
+}
+
+/// The level one step of a turn is given, which is not always the level the
+/// session is set to.
+///
+/// The first request of a turn is where the work is decided — what the task is,
+/// which files matter, in what order. The requests after it mostly carry that
+/// decision out, and paying full reasoning for each of them buys less than it
+/// costs. So a step that only continues an execution already under way drops
+/// one level; the next turn starts from the session's level again, since fresh
+/// input means the deciding starts over.
+///
+/// A step continues an execution exactly when the one before it produced tool
+/// results. A step reached any other way exists because new input arrived, and
+/// that is a decision again rather than an execution.
+///
+/// Off by default: it trades reasoning for latency, and which side of that is
+/// worth more is the user's call rather than this function's.
+fn step_thinking_level(
+    session_level: ThinkingLevel,
+    continues_execution: bool,
+    enabled: bool,
+) -> ThinkingLevel {
+    if !continues_execution || !enabled {
+        return session_level;
+    }
+    match session_level {
+        // Never down to `off`: a model that was reasoning and abruptly is not
+        // changes the shape of the request, not just its budget.
+        ThinkingLevel::Off | ThinkingLevel::Minimal => session_level,
+        ThinkingLevel::Low => ThinkingLevel::Minimal,
+        ThinkingLevel::Medium => ThinkingLevel::Low,
+        ThinkingLevel::High => ThinkingLevel::Medium,
+        ThinkingLevel::Xhigh => ThinkingLevel::High,
+        ThinkingLevel::Max => ThinkingLevel::Xhigh,
+    }
+}
+
+#[cfg(test)]
+mod step_thinking_level_tests {
+    use super::{ThinkingLevel, step_thinking_level};
+
+    #[test]
+    fn the_step_that_decides_the_work_keeps_the_level() {
+        // The first request of a turn produced no tool results before it.
+        assert_eq!(
+            step_thinking_level(ThinkingLevel::High, false, true),
+            ThinkingLevel::High
+        );
+    }
+
+    #[test]
+    fn a_step_that_only_carries_it_out_drops_one_level() {
+        assert_eq!(
+            step_thinking_level(ThinkingLevel::Max, true, true),
+            ThinkingLevel::Xhigh
+        );
+        assert_eq!(
+            step_thinking_level(ThinkingLevel::High, true, true),
+            ThinkingLevel::Medium
+        );
+        assert_eq!(
+            step_thinking_level(ThinkingLevel::Low, true, true),
+            ThinkingLevel::Minimal
+        );
+    }
+
+    #[test]
+    fn it_never_drops_reasoning_away_entirely() {
+        // Off is not a smaller budget, it is a different request.
+        assert_eq!(
+            step_thinking_level(ThinkingLevel::Minimal, true, true),
+            ThinkingLevel::Minimal
+        );
+        assert_eq!(
+            step_thinking_level(ThinkingLevel::Off, true, true),
+            ThinkingLevel::Off
+        );
+    }
+
+    #[test]
+    fn nothing_moves_while_the_setting_is_off() {
+        for level in [
+            ThinkingLevel::Low,
+            ThinkingLevel::Medium,
+            ThinkingLevel::High,
+            ThinkingLevel::Max,
+        ] {
+            assert_eq!(step_thinking_level(level, true, false), level);
         }
     }
 }

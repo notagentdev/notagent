@@ -4530,6 +4530,7 @@ impl InteractiveMode {
             clear_on_shrink: settings.get_clear_on_shrink(),
             show_terminal_progress: settings.get_show_terminal_progress(),
             show_workspace_in_footer: settings.get_show_workspace_in_footer(),
+            tiered_thinking: settings.get_tiered_thinking(),
             tui_mode: self.cell.mode(),
             fullscreen_exit_output: settings.get_fullscreen_exit_output(),
             fullscreen_scrollbar: scroll_view_scrollbar(settings.get_fullscreen_scrollbar()),
@@ -4744,6 +4745,12 @@ impl InteractiveMode {
                     settings.set_show_workspace_in_footer(enabled);
                     effect(&tx, id, SettingsEffect::WorkspaceInFooter(enabled));
                 })
+            },
+            // Read at the start of every step, so the next one already follows
+            // the new setting — no session restart, and no effect to send.
+            on_tiered_thinking_change: {
+                let settings = Arc::clone(&settings);
+                Box::new(move |enabled| settings.set_tiered_thinking(enabled))
             },
             on_tui_mode_change: {
                 let tx = self.ui_tx.clone();
