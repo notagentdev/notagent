@@ -68,6 +68,16 @@ the repository root so it picks that file up, and hold it to what is in there.
 deeper on module layout, error handling, async, and dependencies. It is written
 in German; everything else — code, comments, commits — is English.
 
+## Licensing
+
+This project is MIT. By contributing you agree that your contribution is
+licensed under those terms; there is no separate CLA.
+
+Substantial portions derive from pi, which is MIT as well, and one subsystem
+from an Apache-2.0 work. Both are recorded in [NOTICE](NOTICE). If you carry
+code in from somewhere else, it goes in there too, with its licence and a
+sentence on what was changed — before the code lands, not afterwards.
+
 ## Reporting a problem
 
 Keep it to one screen, and make it something somebody can act on without asking

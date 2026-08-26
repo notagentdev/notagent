@@ -1,6 +1,27 @@
 Third-party notices
 ===================
 
+pi
+--
+
+This software began as a port of the following work, and substantial portions
+of it still derive from it — 435 of 524 source files name their counterpart in
+their module header:
+
+    pi
+    Copyright (c) 2025 Mario Zechner
+    Copyright (c) 2025 notagentdev
+    https://github.com/earendil-works/pi
+    Licensed under the MIT License
+
+The port is a translation rather than a reimplementation: module paths, type
+and function names, and the decomposition into functions follow the original
+where nothing argued against it, so that behaviour can be checked against the
+source. What has been added since — the MCP client, atomic file leases, the
+minified read and patch tools, the codebase index, goal mode, the remote
+session protocol, the local and custom OpenAI-compatible providers — has no
+counterpart there.
+
 Bash filter
 -----------
 

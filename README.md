@@ -172,3 +172,8 @@ percentage in the footer reflects what the server actually processed.
 
 notagent began as a Rust port of [pi](https://github.com/earendil-works/pi)
 and has grown well beyond it. Thanks to the pi authors for the foundation.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Portions derive from pi (MIT) and from an
+Apache-2.0 work; both are recorded in [NOTICE](NOTICE).
