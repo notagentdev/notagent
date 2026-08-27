@@ -9,11 +9,12 @@
 mod suite;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use notagent::core::agent_session::{PromptOptions, QueueBehavior};
+use notagent::core::agent_session::{AgentSessionEvent, PromptOptions, QueueBehavior};
 use notagent_agent::types::{
-    AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentMessage, AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture,
+    ToolExecutionError,
 };
 use notagent_ai::providers::faux::{
     FauxResponseStep, faux_assistant_message, faux_text, faux_tool_call,
@@ -287,6 +288,100 @@ async fn queues_a_prompt_during_streaming_when_told_how() {
 
     running.await.expect("first prompt");
     assert!(harness.user_texts().contains(&"second".to_string()));
+}
+
+#[tokio::test]
+async fn an_abort_discards_queued_messages_instead_of_starting_a_fresh_run() {
+    let harness = create_harness(HarnessOptions {
+        tokens_per_second: Some(5.0),
+        ..HarnessOptions::default()
+    });
+    harness.set_responses(vec![
+        reply("a long answer that remains in flight until it is cancelled"),
+        reply("must not run"),
+    ]);
+
+    let session = Arc::clone(&harness.session);
+    let running = tokio::spawn(async move {
+        session
+            .prompt("first", PromptOptions::default())
+            .await
+            .expect("prompt");
+    });
+    harness.wait_until_streaming().await;
+    harness
+        .session
+        .prompt(
+            "second",
+            PromptOptions {
+                streaming_behavior: Some(QueueBehavior::FollowUp),
+                ..PromptOptions::default()
+            },
+        )
+        .await
+        .expect("queued");
+
+    harness.session.abort().await;
+    running.await.expect("first prompt");
+
+    assert_eq!(harness.user_texts(), vec!["first".to_string()]);
+    assert_eq!(harness.pending_response_count(), 1);
+    assert!(harness.session.get_steering_messages().is_empty());
+    assert!(harness.session.get_follow_up_messages().is_empty());
+    assert!(matches!(
+        harness.session.messages().last(),
+        Some(AgentMessage::Assistant(message)) if message.stop_reason == StopReason::Aborted
+    ));
+}
+
+#[tokio::test]
+async fn an_abort_at_an_agent_step_boundary_still_ends_the_whole_turn() {
+    let harness = create_harness(HarnessOptions::default());
+    harness.set_responses(vec![reply("the completed low-level step")]);
+
+    let requested = Arc::new(AtomicBool::new(false));
+    let request_once = Arc::clone(&requested);
+    let session = Arc::clone(&harness.session);
+    let _subscription = harness.session.subscribe(Arc::new(move |event| {
+        if matches!(event, AgentSessionEvent::AgentEnd { .. })
+            && !request_once.swap(true, Ordering::SeqCst)
+        {
+            assert!(
+                session.request_abort(),
+                "the session turn must remain cancellable at an agent-step boundary"
+            );
+        }
+    }));
+
+    harness
+        .session
+        .prompt("stop at the boundary", PromptOptions::default())
+        .await
+        .expect("prompt");
+
+    assert!(requested.load(Ordering::SeqCst));
+    assert_eq!(
+        harness
+            .session
+            .messages()
+            .iter()
+            .filter(|message| {
+                matches!(
+                    message,
+                    AgentMessage::Assistant(message) if message.stop_reason == StopReason::Aborted
+                )
+            })
+            .count(),
+        1,
+        "the Escape request must be represented by exactly one aborted assistant message"
+    );
+    assert!(matches!(
+        harness.session.messages().last(),
+        Some(AgentMessage::Assistant(message))
+            if message.stop_reason == StopReason::Aborted
+                && message.error_message.as_deref() == Some("Operation aborted")
+    ));
+    assert!(harness.session.is_idle());
 }
 
 #[tokio::test]

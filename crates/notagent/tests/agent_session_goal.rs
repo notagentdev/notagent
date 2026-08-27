@@ -6,10 +6,13 @@
 
 mod suite;
 
+use notagent::core::agent_session::PromptOptions;
 use notagent::core::goal::{
     GOAL_REMINDER_CONTINUATION, GOAL_REMINDER_KIND, GOAL_REMINDER_TYPE, GOAL_REMINDER_WRAP_UP,
     MAX_CONTINUATIONS_PER_TURN, ThreadGoal, ThreadGoalStatus,
 };
+use notagent::core::todos::reminder::TODO_REMINDER_TYPE;
+use notagent::core::todos::{Todo, TodoStatus};
 use notagent_agent::types::AgentMessage;
 use notagent_ai::providers::faux::{FauxResponseStep, faux_assistant_message, faux_text};
 use notagent_ai::types::StopReason;
@@ -91,6 +94,59 @@ async fn an_active_goal_hands_the_agent_a_continuation() {
     );
     // The turn was counted against the goal even without a turn budget.
     assert!(harness.session.goal().expect("goal").turns_used >= 1);
+}
+
+#[tokio::test]
+async fn an_abort_does_not_drive_an_active_goal_or_open_todos() {
+    let harness = create_harness(HarnessOptions {
+        tokens_per_second: Some(5.0),
+        ..HarnessOptions::default()
+    });
+    harness.set_responses(vec![
+        reply("a long answer that remains in flight until it is cancelled"),
+        reply("must not run"),
+    ]);
+    set_goal(&harness, ThreadGoal::new("ship", None, None));
+    harness
+        .session
+        .todo_store()
+        .lock()
+        .expect("todo store")
+        .replace(vec![Todo {
+            content: "finish the change".to_string(),
+            active_form: "finishing the change".to_string(),
+            status: TodoStatus::InProgress,
+        }])
+        .expect("valid todo");
+
+    let session = std::sync::Arc::clone(&harness.session);
+    let running = tokio::spawn(async move {
+        session
+            .prompt("go", PromptOptions::default())
+            .await
+            .expect("prompt");
+    });
+    harness.wait_until_streaming().await;
+
+    harness.session.abort().await;
+    running.await.expect("prompt task");
+
+    let internal_continuations = harness
+        .session
+        .messages()
+        .into_iter()
+        .filter(|message| {
+            matches!(
+                message,
+                AgentMessage::Custom(custom)
+                    if custom.custom_type == GOAL_REMINDER_TYPE
+                        || custom.custom_type == TODO_REMINDER_TYPE
+            )
+        })
+        .count();
+    assert_eq!(internal_continuations, 0);
+    assert_eq!(harness.pending_response_count(), 1);
+    assert_eq!(harness.session.goal().expect("goal").turns_used, 0);
 }
 
 /// The stop that holds when the user gave no budget at all.

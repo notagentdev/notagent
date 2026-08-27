@@ -215,33 +215,6 @@ impl StatusIndicator {
         self.settled
     }
 
-    /// Report that the user asked for the run to stop.
-    ///
-    /// The cancellation itself is instant, but what it cancels is not: a slow
-    /// model or a tool inside a call has to come back before the turn can
-    /// unwind, and until then nothing on screen would have changed. A user who
-    /// pressed a key and saw the same row keep counting presses it again.
-    ///
-    /// The clock goes with the old label. It measured the whole run, which is
-    /// still what it would show — but beside "Stopping..." the same figure
-    /// reads as how long the stopping has taken, and answers a question nobody
-    /// asked with a number that means something else. What the run took is
-    /// reported once it settles, where it is unambiguous again.
-    pub fn mark_interrupting(&mut self) {
-        if self.settled {
-            return;
-        }
-        self.loader.set_shimmer(None);
-        // The footer's `auto` yellow rather than the warning one: this is a
-        // state the user asked for, not something that went wrong, and the two
-        // yellows read very differently.
-        self.loader
-            .set_message_color(Rc::new(|text: &str| theme().fg(ThemeColor::ModeAuto, text)));
-        self.loader.set_message("Stopping...");
-        self.loader.set_suffix("");
-        self.timed_message = None;
-    }
-
     /// `WorkingStatusIndicator`.
     pub fn working(message: impl Into<String>, indicator: Option<LoaderIndicatorOptions>) -> Self {
         Self::animated(

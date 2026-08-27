@@ -98,6 +98,16 @@ impl Harness {
     async fn run(&self, input: Value) -> Result<AgentToolResult, ToolExecutionError> {
         self.tool.execute("call-1", input, None, None, None).await
     }
+
+    async fn run_with_signal(
+        &self,
+        input: Value,
+        signal: tokio_util::sync::CancellationToken,
+    ) -> Result<AgentToolResult, ToolExecutionError> {
+        self.tool
+            .execute("call-1", input, Some(signal), None, None)
+            .await
+    }
 }
 
 fn harness(parent_shell: ShellId, background: bool) -> Harness {
@@ -113,6 +123,15 @@ fn harness_with_aliases(
     background: bool,
     aliases: notagent::core::delegation::aliases::AliasRegistry,
 ) -> Harness {
+    harness_with_stream(parent_shell, background, aliases, false)
+}
+
+fn harness_with_stream(
+    parent_shell: ShellId,
+    background: bool,
+    aliases: notagent::core::delegation::aliases::AliasRegistry,
+    hangs: bool,
+) -> Harness {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&calls);
     let parent = Agent::new(AgentOptions {
@@ -126,6 +145,9 @@ fn harness_with_aliases(
             let index = counter.fetch_add(1, Ordering::SeqCst) + 1;
             Box::pin(async move {
                 let stream = create_assistant_message_event_stream();
+                if hangs {
+                    return stream;
+                }
                 // Padded past the minimum a handoff must reach: a short answer
                 // costs an extra turn by design, and these cases are not about
                 // that.
@@ -276,6 +298,46 @@ async fn runs_one_subagent_per_task_and_returns_each_answer() {
     let text = text_of(&result);
     assert!(text.contains("answer 1"), "{text}");
     assert!(text.contains("answer 2"), "{text}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cancelling_a_foreground_task_call_stops_every_subagent() {
+    let harness = harness_with_stream(
+        ShellId::Worker,
+        false,
+        notagent::core::delegation::aliases::AliasRegistry::new(),
+        true,
+    );
+    let signal = tokio_util::sync::CancellationToken::new();
+    let canceller = signal.clone();
+    let calls = Arc::clone(&harness.calls);
+    tokio::spawn(async move {
+        while calls.load(Ordering::SeqCst) < 2 {
+            tokio::task::yield_now().await;
+        }
+        canceller.cancel();
+    });
+
+    tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        harness.run_with_signal(
+            json!({ "tasks": ["first task", "second task"], "agent": "worker" }),
+            signal,
+        ),
+    )
+    .await
+    .expect("the interrupted foreground task call must settle promptly")
+    .expect("the task tool reports the interrupted children as results");
+
+    assert_eq!(
+        harness.calls.load(Ordering::SeqCst),
+        2,
+        "both delegated runs must start before the interruption"
+    );
+    assert!(
+        harness.manager.list(true, None).is_empty(),
+        "no foreground subagent may remain running after its turn is interrupted"
+    );
 }
 
 #[tokio::test]

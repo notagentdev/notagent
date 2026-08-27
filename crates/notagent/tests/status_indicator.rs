@@ -133,40 +133,6 @@ fn counts_the_time_the_work_is_taking() {
     assert!(!working.tick_elapsed(), "the same second was redrawn again");
 }
 
-/// The keypress is answered on the row even though what it cancels has not
-/// come back yet — a run that looked untouched would just be interrupted again.
-#[test]
-fn says_it_is_stopping_the_moment_it_is_asked_to() {
-    let _guard = theme_lock();
-    init_theme(Some("dark"), false);
-
-    let mut working = StatusIndicator::working("Working...", None);
-    std::thread::sleep(std::time::Duration::from_millis(1050));
-    assert!(working.tick_elapsed(), "the run has a figure to show");
-    assert!(visible(&working.render(80).join("\n")).contains("(1s)"));
-
-    working.mark_interrupting();
-
-    let rendered = working.render(80).join("\n");
-    assert!(visible(&rendered).contains("Stopping..."), "{rendered:?}");
-    assert!(
-        rendered.contains(&theme().fg(ThemeColor::ModeAuto, "Stopping...")),
-        "the row wears the footer's mode yellow, not the warning one: {rendered:?}"
-    );
-    // The clock goes with the old label: beside "Stopping..." the figure would
-    // read as how long the stopping has taken, which is not what it measures.
-    assert!(
-        !visible(&rendered).contains('('),
-        "the run's clock is not left beside a label it does not belong to: {rendered:?}"
-    );
-    assert!(!working.tick_elapsed(), "and it stops being updated");
-    assert!(!working.is_settled());
-
-    // Settling still reports the whole run, where the figure is unambiguous.
-    working.settle();
-    assert!(visible(&working.render(80).join("\n")).contains("Worked for"));
-}
-
 /// The line stays behind and says what the work took, instead of being blanked
 /// at the moment that figure becomes final.
 #[test]

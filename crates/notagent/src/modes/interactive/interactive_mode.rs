@@ -6783,7 +6783,7 @@ impl InteractiveMode {
         if all_queued.is_empty() {
             self.update_pending_messages_display();
             if abort {
-                self.session().agent().abort();
+                self.session().request_abort();
             }
             return 0;
         }
@@ -6797,7 +6797,7 @@ impl InteractiveMode {
         self.editor.borrow_mut().editor_mut().set_text(&combined);
         self.update_pending_messages_display();
         if abort {
-            self.session().agent().abort();
+            self.session().request_abort();
         }
         all_queued.len()
     }
@@ -8361,7 +8361,7 @@ impl InteractiveMode {
                 return;
             }
             EscapeTarget::Retry => {
-                self.session().abort_retry();
+                self.restore_queued_messages_to_editor(true);
                 return;
             }
             EscapeTarget::BranchSummary => {
@@ -8381,14 +8381,6 @@ impl InteractiveMode {
         }
         if streaming {
             self.restore_queued_messages_to_editor(true);
-            // Acknowledge the key now. Cancelling is immediate, but a tool
-            // already inside a call still has to come back before the turn
-            // unwinds, and without this the row would go on as if nothing had
-            // been pressed.
-            if let Some(indicator) = self.active_status_indicator.as_ref() {
-                indicator.borrow_mut().mark_interrupting();
-            }
-            self.ui.request_render();
         }
         if streaming || bash_running {
             return;

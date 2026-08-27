@@ -508,6 +508,9 @@ pub struct AgentSession {
     unsubscribe_agent: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 
     is_agent_run_active: AtomicBool,
+    /// Lives for the complete user turn, across individual agent runs, retry
+    /// waits, and the gaps where the next step is being selected.
+    agent_run_signal: Mutex<Option<CancellationToken>>,
     idle: Arc<tokio::sync::Notify>,
 
     queues: Mutex<QueueState>,
@@ -582,6 +585,7 @@ impl AgentSession {
             next_listener_id: AtomicU64::new(0),
             unsubscribe_agent: Mutex::new(None),
             is_agent_run_active: AtomicBool::new(false),
+            agent_run_signal: Mutex::new(None),
             idle: Arc::new(tokio::sync::Notify::new()),
             queues: Mutex::new(QueueState::default()),
             modes: Mutex::new(ModeState::default()),
@@ -802,8 +806,12 @@ impl AgentSession {
         let Some(hooks) = self.hooks.as_ref() else {
             // Even without hooks, the end of a turn with no tool results is
             // where open todos have to be handed back.
-            if let AgentEvent::TurnEnd { tool_results, .. } = event
+            if let AgentEvent::TurnEnd {
+                message: AgentMessage::Assistant(message),
+                tool_results,
+            } = event
                 && tool_results.is_empty()
+                && message.stop_reason != StopReason::Aborted
             {
                 self.remind_about_open_todos();
                 self.drive_active_goal();
@@ -818,7 +826,10 @@ impl AgentSession {
             // handed back — a checklist the agent walks away from is worse than
             // none, because it tells the user work is tracked while it no
             // longer is.
-            AgentEvent::TurnEnd { tool_results, .. } if tool_results.is_empty() => {
+            AgentEvent::TurnEnd {
+                message: AgentMessage::Assistant(message),
+                tool_results,
+            } if tool_results.is_empty() && message.stop_reason != StopReason::Aborted => {
                 self.remind_about_open_todos();
                 self.drive_active_goal();
             }
@@ -2718,14 +2729,67 @@ impl AgentSession {
 
 impl AgentSession {
     async fn run_agent_prompt(self: &Arc<Self>, messages: Vec<AgentMessage>) {
+        let turn_signal = CancellationToken::new();
+        *self.agent_run_signal.lock().expect("poisoned") = Some(turn_signal.clone());
         self.is_agent_run_active.store(true, Ordering::SeqCst);
-        let _ = self.agent.prompt(messages).await;
-        while self.handle_post_agent_run().await {
-            let _ = self.agent.continue_run().await;
+        let _ = self
+            .agent
+            .prompt_with_signal(messages, turn_signal.child_token())
+            .await;
+        loop {
+            if self.finish_cancelled_agent_turn(&turn_signal).await {
+                break;
+            }
+            if !self.handle_post_agent_run().await {
+                break;
+            }
+            if self.finish_cancelled_agent_turn(&turn_signal).await {
+                break;
+            }
+            let _ = self
+                .agent
+                .continue_run_with_signal(turn_signal.child_token())
+                .await;
+        }
+
+        let cancelled_at_boundary = self
+            .agent_run_signal
+            .lock()
+            .expect("poisoned")
+            .take()
+            .is_some_and(|signal| signal.is_cancelled());
+        if cancelled_at_boundary {
+            self.finish_cancelled_agent_turn(&turn_signal).await;
         }
         *self.system_prompt_override.lock().expect("poisoned") = None;
         self.flush_pending_bash_messages();
         self.emit_agent_settled().await;
+    }
+
+    async fn finish_cancelled_agent_turn(self: &Arc<Self>, signal: &CancellationToken) -> bool {
+        if !signal.is_cancelled() {
+            return false;
+        }
+
+        self.clear_queue();
+        let already_recorded = self
+            .agent
+            .state()
+            .messages
+            .iter()
+            .rev()
+            .find_map(|message| match message {
+                AgentMessage::Assistant(message) => {
+                    Some(message.stop_reason == StopReason::Aborted)
+                }
+                _ => None,
+            })
+            .unwrap_or(false);
+        if !already_recorded {
+            let _ = self.agent.record_abort().await;
+        }
+        *self.last_assistant_message.lock().expect("poisoned") = None;
+        true
     }
 
     async fn handle_post_agent_run(self: &Arc<Self>) -> bool {
@@ -2733,6 +2797,14 @@ impl AgentSession {
         let Some(message) = message else {
             return false;
         };
+
+        if message.stop_reason == StopReason::Aborted {
+            // Steering and follow-ups belong to the turn that was cancelled.
+            // Letting one survive would immediately create a fresh run with a
+            // fresh cancellation token after Escape.
+            self.clear_queue();
+            return false;
+        }
 
         if self.is_retryable_error(&message) && self.prepare_retry(&message).await {
             return true;
@@ -3074,10 +3146,26 @@ impl AgentSession {
         .await
     }
 
+    /// Requests cancellation of the complete active turn.
+    pub fn request_abort(&self) -> bool {
+        self.abort_retry();
+        let signal = self
+            .agent_run_signal
+            .lock()
+            .expect("poisoned")
+            .as_ref()
+            .cloned();
+        let Some(signal) = signal else {
+            return false;
+        };
+        signal.cancel();
+        self.agent.abort();
+        true
+    }
+
     /// Aborts the current operation and waits for the agent to go idle.
     pub async fn abort(&self) {
-        self.abort_retry();
-        self.agent.abort();
+        self.request_abort();
         self.wait_for_idle().await;
     }
 
@@ -4956,11 +5044,10 @@ impl AgentSession {
     /// Removes all listeners, stops everything running, and disconnects from
     /// the agent. Call this when completely done with the session.
     pub fn dispose(&self) {
-        self.abort_retry();
+        self.request_abort();
         self.abort_compaction();
         self.abort_branch_summary();
         self.abort_bash();
-        self.agent.abort();
 
         self.stop_background_tasks();
         if let Some(unsubscribe) = self.unsubscribe_agent.lock().expect("poisoned").take() {

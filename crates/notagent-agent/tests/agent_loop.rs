@@ -105,6 +105,16 @@ fn scripted_stream_fn(messages: Vec<AssistantMessage>) -> (StreamFn, Arc<AtomicU
     (stream_fn, calls)
 }
 
+fn hanging_stream_fn() -> (StreamFn, Arc<AtomicUsize>) {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&calls);
+    let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move { create_assistant_message_event_stream() })
+    });
+    (stream_fn, calls)
+}
+
 fn base_config(stream_fn_model: Model) -> AgentLoopConfig {
     AgentLoopConfig {
         base: SimpleStreamOptions::default(),
@@ -143,6 +153,7 @@ struct TestTool {
     parameters: Value,
     execution_mode: Option<ToolExecutionMode>,
     delay: Duration,
+    respect_signal: bool,
     result: AgentToolResult,
     fail: bool,
     started: Arc<AtomicUsize>,
@@ -157,6 +168,7 @@ impl TestTool {
             parameters: json!({"type": "object", "properties": {"value": {"type": "string"}}, "required": []}),
             execution_mode: None,
             delay: Duration::ZERO,
+            respect_signal: false,
             result: AgentToolResult {
                 content: vec![TextOrImageContent::Text(TextContent::new("ok"))],
                 details: Some(json!({})),
@@ -195,7 +207,7 @@ impl AgentTool for TestTool {
         &'a self,
         _tool_call_id: &'a str,
         _params: Value,
-        _signal: Option<tokio_util::sync::CancellationToken>,
+        signal: Option<tokio_util::sync::CancellationToken>,
         on_update: Option<AgentToolUpdateCallback>,
     ) -> BoxFuture<'a, Result<AgentToolResult, ToolExecutionError>> {
         Box::pin(async move {
@@ -209,7 +221,18 @@ impl AgentTool for TestTool {
                 });
             }
             if !self.delay.is_zero() {
-                tokio::time::sleep(self.delay).await;
+                match signal.filter(|_| self.respect_signal) {
+                    Some(signal) => {
+                        tokio::select! {
+                            () = tokio::time::sleep(self.delay) => {}
+                            () = signal.cancelled() => {
+                                self.concurrent.fetch_sub(1, Ordering::SeqCst);
+                                return Err(ToolExecutionError::new("tool aborted"));
+                            }
+                        }
+                    }
+                    None => tokio::time::sleep(self.delay).await,
+                }
             }
             self.concurrent.fetch_sub(1, Ordering::SeqCst);
             if self.fail {
@@ -460,7 +483,7 @@ async fn emits_tool_execution_end_in_completion_order_and_results_in_source_orde
 /// something that never looks at it, and waiting for that one makes the whole
 /// turn hang on it — which is what a delayed abort looks like from the outside.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a_cancelled_turn_does_not_wait_for_a_tool_that_ignores_it() {
+async fn a_cancelled_turn_closes_every_tool_call_and_never_requests_again() {
     let tool = Arc::new(TestTool {
         // Far longer than any grace window, and deaf to the signal.
         delay: Duration::from_secs(30),
@@ -471,9 +494,11 @@ async fn a_cancelled_turn_does_not_wait_for_a_tool_that_ignores_it() {
         messages: vec![],
         tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
     };
-    let (stream_fn, _) = scripted_stream_fn(vec![
+    let (stream_fn, calls) = scripted_stream_fn(vec![
         assistant_message(
-            vec![tool_call("call_0", "slow", json!({}))],
+            (0..3)
+                .map(|index| tool_call(&format!("call_{index}"), "slow", json!({})))
+                .collect(),
             StopReason::ToolUse,
         ),
         assistant_message(
@@ -497,14 +522,244 @@ async fn a_cancelled_turn_does_not_wait_for_a_tool_that_ignores_it() {
         tokio::time::sleep(Duration::from_millis(50)).await;
         canceller.cancel();
     });
-    let (_, _) = collect(stream).await;
+    let (events, messages) = collect(stream).await;
     let elapsed = started.elapsed();
 
-    assert_eq!(tool.started.load(Ordering::SeqCst), 1, "the tool did run");
+    assert_eq!(tool.started.load(Ordering::SeqCst), 3, "all calls did run");
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "a cancelled turn must not make another model request"
+    );
     assert!(
-        elapsed < Duration::from_secs(2),
+        elapsed < Duration::from_secs(3),
         "the turn waited {elapsed:?} for a tool it had already cancelled"
     );
+    let results: Vec<_> = messages
+        .iter()
+        .filter_map(|message| match message {
+            AgentMessage::ToolResult(result) => Some(result),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        results
+            .iter()
+            .map(|result| result.tool_call_id.as_str())
+            .collect::<Vec<_>>(),
+        ["call_0", "call_1", "call_2"],
+        "every tool call must have a result in provider order"
+    );
+    for result in results {
+        assert!(result.is_error, "an interrupted tool cannot report success");
+        let output = result.content.iter().find_map(|content| match content {
+            TextOrImageContent::Text(text) => Some(text.text.as_str()),
+            TextOrImageContent::Image(_) => None,
+        });
+        assert_eq!(
+            output,
+            Some("Tool \"slow\" aborted by grace timeout (2000ms)"),
+            "a tool that ignores cancellation gets the bounded fallback result"
+        );
+    }
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, AgentEvent::ToolExecutionEnd { .. }))
+            .count(),
+        3,
+        "every started tool must reach a terminal event"
+    );
+    assert!(matches!(
+        messages.last(),
+        Some(AgentMessage::Assistant(message)) if message.stop_reason == StopReason::Aborted
+    ));
+}
+
+#[tokio::test]
+async fn cancellation_ends_a_model_stream_that_never_answers() {
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![]),
+    };
+    let (stream_fn, calls) = hanging_stream_fn();
+    let signal = tokio_util::sync::CancellationToken::new();
+    let canceller = signal.clone();
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        Some(signal),
+        Some(stream_fn),
+    );
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        canceller.cancel();
+    });
+
+    let (_, messages) = tokio::time::timeout(Duration::from_secs(1), collect(stream))
+        .await
+        .expect("cancellation must end a provider stream that ignores its signal");
+
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "cancellation must not retry or start another model request"
+    );
+    assert!(matches!(
+        messages.last(),
+        Some(AgentMessage::Assistant(message)) if message.stop_reason == StopReason::Aborted
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_cancelled_sequential_batch_starts_no_later_call_and_closes_them_all() {
+    let tool = Arc::new(TestTool {
+        execution_mode: Some(ToolExecutionMode::Sequential),
+        delay: Duration::from_secs(30),
+        respect_signal: true,
+        ..TestTool::new("slow")
+    });
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
+    };
+    let (stream_fn, calls) = scripted_stream_fn(vec![
+        assistant_message(
+            (0..3)
+                .map(|index| tool_call(&format!("call_{index}"), "slow", json!({})))
+                .collect(),
+            StopReason::ToolUse,
+        ),
+        assistant_message(
+            vec![AssistantContent::Text(TextContent::new("unreachable"))],
+            StopReason::Stop,
+        ),
+    ]);
+
+    let signal = tokio_util::sync::CancellationToken::new();
+    let canceller = signal.clone();
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        Some(signal),
+        Some(stream_fn),
+    );
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        canceller.cancel();
+    });
+    let (_, messages) = collect(stream).await;
+
+    assert_eq!(
+        tool.started.load(Ordering::SeqCst),
+        1,
+        "queued sequential calls must not start after cancellation"
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "a cancelled sequential batch must not make another model request"
+    );
+    let results: Vec<_> = messages
+        .iter()
+        .filter_map(|message| match message {
+            AgentMessage::ToolResult(result) => Some(result),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        results
+            .iter()
+            .map(|result| result.tool_call_id.as_str())
+            .collect::<Vec<_>>(),
+        ["call_0", "call_1", "call_2"],
+        "even calls skipped after cancellation need matching results"
+    );
+    for result in results {
+        let output = result.content.iter().find_map(|content| match content {
+            TextOrImageContent::Text(text) => Some(text.text.as_str()),
+            TextOrImageContent::Image(_) => None,
+        });
+        assert!(
+            output.is_some_and(|output| {
+                output.contains("The user manually interrupted \"slow\"")
+                    && output.contains("wait for the user's next instruction")
+            }),
+            "the model must be told this was a deliberate user interruption: {output:?}"
+        );
+    }
+    assert!(matches!(
+        messages.last(),
+        Some(AgentMessage::Assistant(message)) if message.stop_reason == StopReason::Aborted
+    ));
+}
+
+#[tokio::test]
+async fn cancellation_between_a_tool_result_and_the_next_step_is_terminal() {
+    let tool = Arc::new(TestTool::new("probe"));
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool as Arc<dyn AgentTool>]),
+    };
+    let (stream_fn, calls) = scripted_stream_fn(vec![
+        assistant_message(
+            vec![tool_call("call_1", "probe", json!({}))],
+            StopReason::ToolUse,
+        ),
+        assistant_message(
+            vec![AssistantContent::Text(TextContent::new("unreachable"))],
+            StopReason::Stop,
+        ),
+    ]);
+    let signal = tokio_util::sync::CancellationToken::new();
+    let canceller = signal.clone();
+    let mut config = base_config(model());
+    config.should_stop_after_turn = Some(Arc::new(move |_context| {
+        let canceller = canceller.clone();
+        Box::pin(async move {
+            canceller.cancel();
+            false
+        })
+    }));
+
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        config,
+        Some(signal),
+        Some(stream_fn),
+    );
+    let (_, messages) = collect(stream).await;
+
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "cancellation between steps must prevent the next provider request"
+    );
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| {
+                matches!(
+                    message,
+                    AgentMessage::Assistant(message) if message.stop_reason == StopReason::Aborted
+                )
+            })
+            .count(),
+        1,
+        "one turn cancellation must produce exactly one aborted assistant message"
+    );
+    assert!(matches!(
+        messages.last(),
+        Some(AgentMessage::Assistant(message))
+            if message.stop_reason == StopReason::Aborted
+                && message.error_message.as_deref() == Some("Operation aborted")
+    ));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

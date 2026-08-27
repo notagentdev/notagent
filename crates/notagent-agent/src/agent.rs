@@ -408,17 +408,36 @@ impl Agent {
 
     /// `prompt(messages)`
     pub async fn prompt(self: &Arc<Self>, messages: Vec<AgentMessage>) -> Result<(), AgentError> {
+        self.prompt_with_signal(messages, CancellationToken::new())
+            .await
+    }
+
+    /// Starts a prompt as one step of a longer-lived turn.
+    pub async fn prompt_with_signal(
+        self: &Arc<Self>,
+        messages: Vec<AgentMessage>,
+        signal: CancellationToken,
+    ) -> Result<(), AgentError> {
         if self.active_run.lock().expect("poisoned").is_some() {
             return Err(AgentError(
                 "Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."
                     .to_string(),
             ));
         }
-        self.run_prompt_messages(messages).await
+        self.run_prompt_messages(messages, signal).await
     }
 
     /// `continue()`
     pub async fn continue_run(self: &Arc<Self>) -> Result<(), AgentError> {
+        self.continue_run_with_signal(CancellationToken::new())
+            .await
+    }
+
+    /// Continues as one step of a longer-lived turn.
+    pub async fn continue_run_with_signal(
+        self: &Arc<Self>,
+        signal: CancellationToken,
+    ) -> Result<(), AgentError> {
         if self.active_run.lock().expect("poisoned").is_some() {
             return Err(AgentError(
                 "Agent is already processing. Wait for completion before continuing.".to_string(),
@@ -440,18 +459,37 @@ impl Agent {
             // Steering first, then follow-ups.
             let queued_steering = self.steering_queue.lock().expect("poisoned").drain();
             if !queued_steering.is_empty() {
-                return self.run_prompt_messages(queued_steering).await;
+                return self
+                    .run_prompt_messages(queued_steering, signal.clone())
+                    .await;
             }
             let queued_follow_ups = self.follow_up_queue.lock().expect("poisoned").drain();
             if !queued_follow_ups.is_empty() {
-                return self.run_prompt_messages(queued_follow_ups).await;
+                return self.run_prompt_messages(queued_follow_ups, signal).await;
             }
             return Err(AgentError(
                 "Cannot continue from message role: assistant".to_string(),
             ));
         }
 
-        self.run_continuation().await
+        self.run_continuation(signal).await
+    }
+
+    /// Records a cancellation that landed between two processing steps.
+    pub async fn record_abort(self: &Arc<Self>) -> Result<(), AgentError> {
+        if self.active_run.lock().expect("poisoned").is_some() {
+            return Err(AgentError(
+                "Agent is already processing. Abort the active run instead.".to_string(),
+            ));
+        }
+
+        self.run_with_lifecycle(CancellationToken::new(), move |signal| {
+            Box::pin(async move {
+                signal.cancel();
+                Err(AgentError("Operation aborted".to_string()))
+            })
+        })
+        .await
     }
 
     fn create_context_snapshot(&self) -> AgentContext {
@@ -533,13 +571,14 @@ impl Agent {
     async fn run_prompt_messages(
         self: &Arc<Self>,
         messages: Vec<AgentMessage>,
+        signal: CancellationToken,
     ) -> Result<(), AgentError> {
         let context = self.create_context_snapshot();
         let config = self.create_loop_config();
         let sink = self.event_sink();
         let stream_fn = self.stream_function();
 
-        self.run_with_lifecycle(move |signal| {
+        self.run_with_lifecycle(signal, move |signal| {
             Box::pin(async move {
                 run_agent_loop(messages, context, config, sink, Some(signal), stream_fn).await;
                 Ok(())
@@ -548,13 +587,16 @@ impl Agent {
         .await
     }
 
-    async fn run_continuation(self: &Arc<Self>) -> Result<(), AgentError> {
+    async fn run_continuation(
+        self: &Arc<Self>,
+        signal: CancellationToken,
+    ) -> Result<(), AgentError> {
         let context = self.create_context_snapshot();
         let config = self.create_loop_config();
         let sink = self.event_sink();
         let stream_fn = self.stream_function();
 
-        self.run_with_lifecycle(move |signal| {
+        self.run_with_lifecycle(signal, move |signal| {
             Box::pin(async move {
                 run_agent_loop_continue(context, config, sink, Some(signal), stream_fn)
                     .await
@@ -566,11 +608,14 @@ impl Agent {
     }
 
     /// `runWithLifecycle(executor)`
-    async fn run_with_lifecycle<F>(self: &Arc<Self>, executor: F) -> Result<(), AgentError>
+    async fn run_with_lifecycle<F>(
+        self: &Arc<Self>,
+        signal: CancellationToken,
+        executor: F,
+    ) -> Result<(), AgentError>
     where
         F: FnOnce(CancellationToken) -> BoxFuture<'static, Result<(), AgentError>>,
     {
-        let signal = CancellationToken::new();
         let idle = Arc::new(tokio::sync::Notify::new());
         {
             let mut active_run = self.active_run.lock().expect("poisoned");
@@ -588,12 +633,31 @@ impl Agent {
             state.streaming_message = None;
             state.error_message = None;
         }
+        let first_run_message = self.state.lock().expect("poisoned").messages.len();
 
         let outcome = executor(signal.clone()).await;
         if let Err(error) = &outcome {
             self.handle_run_failure(error, signal.is_cancelled()).await;
         }
-        self.finish_run();
+        let abort_recorded = self
+            .state
+            .lock()
+            .expect("poisoned")
+            .messages
+            .get(first_run_message..)
+            .is_some_and(|messages| {
+                messages.iter().any(|message| {
+                    matches!(
+                        message,
+                        AgentMessage::Assistant(message) if message.stop_reason == StopReason::Aborted
+                    )
+                })
+            });
+        if self.close_run_unless_abort_needs_recording(&signal, abort_recorded) {
+            self.handle_run_failure(&AgentError("Operation aborted".to_string()), true)
+                .await;
+            self.finish_run();
+        }
         idle.notify_waiters();
         Ok(())
     }
@@ -648,6 +712,25 @@ impl Agent {
             state.pending_tool_calls.clear();
         }
         *self.active_run.lock().expect("poisoned") = None;
+    }
+
+    fn close_run_unless_abort_needs_recording(
+        &self,
+        signal: &CancellationToken,
+        abort_recorded: bool,
+    ) -> bool {
+        let mut active_run = self.active_run.lock().expect("poisoned");
+        if signal.is_cancelled() && !abort_recorded {
+            return true;
+        }
+        {
+            let mut state = self.state.lock().expect("poisoned");
+            state.is_streaming = false;
+            state.streaming_message = None;
+            state.pending_tool_calls.clear();
+        }
+        *active_run = None;
+        false
     }
 
     /// `processEvents(event)` — reducer first, then the listeners in subscription order.

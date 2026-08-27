@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use notagent_ai::types::{
     AssistantMessage, Context, StopReason, TextContent, TextOrImageContent, ToolResultMessage,
+    Usage,
 };
 use notagent_ai::utils::event_stream::EventStream;
 use notagent_ai::utils::validation::validate_tool_arguments;
@@ -229,6 +230,11 @@ async fn run_loop(
                 first_turn = false;
             }
 
+            if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
+                finish_cancelled_turn(current_context, new_messages, &config, &emit).await;
+                return;
+            }
+
             if !pending_messages.is_empty() {
                 for message in std::mem::take(&mut pending_messages) {
                     emit(AgentEvent::MessageStart {
@@ -313,6 +319,18 @@ async fn run_loop(
             })
             .await;
 
+            if finish_cancelled_after_turn(
+                current_context,
+                new_messages,
+                &config,
+                signal.as_ref(),
+                &emit,
+            )
+            .await
+            {
+                return;
+            }
+
             if let Some(prepare_next_turn) = &config.prepare_next_turn {
                 let update = prepare_next_turn(PrepareNextTurnContext {
                     message: message.clone(),
@@ -334,15 +352,41 @@ async fn run_loop(
                 }
             }
 
-            if let Some(should_stop_after_turn) = &config.should_stop_after_turn
-                && should_stop_after_turn(ShouldStopAfterTurnContext {
+            if finish_cancelled_after_turn(
+                current_context,
+                new_messages,
+                &config,
+                signal.as_ref(),
+                &emit,
+            )
+            .await
+            {
+                return;
+            }
+
+            let should_stop = if let Some(should_stop_after_turn) = &config.should_stop_after_turn {
+                should_stop_after_turn(ShouldStopAfterTurnContext {
                     message: message.clone(),
                     tool_results: tool_results.clone(),
                     context: current_context.clone(),
                     new_messages: new_messages.clone(),
                 })
                 .await
+            } else {
+                false
+            };
+            if finish_cancelled_after_turn(
+                current_context,
+                new_messages,
+                &config,
+                signal.as_ref(),
+                &emit,
+            )
+            .await
             {
+                return;
+            }
+            if should_stop {
                 emit(AgentEvent::AgentEnd {
                     messages: new_messages.clone(),
                 })
@@ -354,6 +398,17 @@ async fn run_loop(
                 Some(get_steering_messages) => get_steering_messages().await,
                 None => Vec::new(),
             };
+            if finish_cancelled_after_turn(
+                current_context,
+                new_messages,
+                &config,
+                signal.as_ref(),
+                &emit,
+            )
+            .await
+            {
+                return;
+            }
         }
 
         // The agent would stop here; check for follow-up messages.
@@ -361,6 +416,17 @@ async fn run_loop(
             Some(get_follow_up_messages) => get_follow_up_messages().await,
             None => Vec::new(),
         };
+        if finish_cancelled_after_turn(
+            current_context,
+            new_messages,
+            &config,
+            signal.as_ref(),
+            &emit,
+        )
+        .await
+        {
+            return;
+        }
         if !follow_up_messages.is_empty() {
             pending_messages = follow_up_messages;
             continue;
@@ -374,6 +440,91 @@ async fn run_loop(
     .await;
 }
 
+async fn finish_cancelled_after_turn(
+    context: &mut AgentContext,
+    new_messages: &mut Vec<AgentMessage>,
+    config: &AgentLoopConfig,
+    signal: Option<&CancellationToken>,
+    emit: &AgentEventSink,
+) -> bool {
+    if !signal.is_some_and(CancellationToken::is_cancelled) {
+        return false;
+    }
+    emit(AgentEvent::TurnStart).await;
+    finish_cancelled_turn(context, new_messages, config, emit).await;
+    true
+}
+
+fn create_aborted_assistant_message(
+    config: &AgentLoopConfig,
+    partial: Option<&AssistantMessage>,
+) -> AssistantMessage {
+    if let Some(partial) = partial {
+        return AssistantMessage {
+            stop_reason: StopReason::Aborted,
+            deferred: None,
+            error_message: Some("Operation aborted".to_string()),
+            raw_stop_reason: None,
+            end_turn: None,
+            timestamp: now_ms(),
+            ..partial.clone()
+        };
+    }
+
+    AssistantMessage {
+        content: Vec::new(),
+        api: config.model.api.clone(),
+        provider: config.model.provider.clone(),
+        model: config.model.id.clone(),
+        response_model: None,
+        response_id: None,
+        diagnostics: None,
+        usage: Usage::default(),
+        stop_reason: StopReason::Aborted,
+        deferred: None,
+        error_message: Some("Operation aborted".to_string()),
+        raw_stop_reason: None,
+        end_turn: None,
+        timestamp: now_ms(),
+    }
+}
+
+async fn finish_cancelled_turn(
+    context: &mut AgentContext,
+    new_messages: &mut Vec<AgentMessage>,
+    config: &AgentLoopConfig,
+    emit: &AgentEventSink,
+) {
+    let message = create_aborted_assistant_message(config, None);
+    finish_assistant_message(context, &message, false, emit).await;
+    new_messages.push(AgentMessage::Assistant(message.clone()));
+    emit(AgentEvent::TurnEnd {
+        message: AgentMessage::Assistant(message),
+        tool_results: Vec::new(),
+    })
+    .await;
+    emit(AgentEvent::AgentEnd {
+        messages: new_messages.clone(),
+    })
+    .await;
+}
+
+async fn finish_cancelled_response(
+    context: &mut AgentContext,
+    config: &AgentLoopConfig,
+    added_partial: bool,
+    emit: &AgentEventSink,
+) -> AssistantMessage {
+    let partial = added_partial.then(|| context.messages.last()).flatten();
+    let partial = partial.and_then(|message| match message {
+        AgentMessage::Assistant(message) => Some(message),
+        _ => None,
+    });
+    let message = create_aborted_assistant_message(config, partial);
+    finish_assistant_message(context, &message, added_partial, emit).await;
+    message
+}
+
 /// `streamAssistantResponse(...)` — the only place that converts to LLM messages.
 async fn stream_assistant_response(
     context: &mut AgentContext,
@@ -382,11 +533,19 @@ async fn stream_assistant_response(
     emit: AgentEventSink,
     stream_function: StreamFn,
 ) -> AssistantMessage {
+    if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
+        return finish_cancelled_response(context, config, false, &emit).await;
+    }
+
     let mut messages = context.messages.clone();
     if let Some(transform_context) = &config.transform_context {
         messages = transform_context(messages, signal.clone()).await;
     }
     let llm_messages = (config.convert_to_llm)(messages).await;
+
+    if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
+        return finish_cancelled_response(context, config, false, &emit).await;
+    }
 
     let llm_context = Context {
         system_prompt: Some(context.system_prompt.clone()),
@@ -404,15 +563,46 @@ async fn stream_assistant_response(
     }
     .or_else(|| config.base.base.base.api_key.clone());
 
+    if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
+        return finish_cancelled_response(context, config, false, &emit).await;
+    }
+
     let mut options = config.base.clone();
     options.base.base.api_key = resolved_api_key;
-    options.base.base.signal = signal;
+    options.base.base.signal = signal.clone();
 
-    let response = stream_function(config.model.clone(), llm_context, Some(options)).await;
+    let request = stream_function(config.model.clone(), llm_context, Some(options));
+    let response = match signal.as_ref() {
+        Some(signal) => {
+            tokio::select! {
+                biased;
+                () = signal.cancelled() => {
+                    return finish_cancelled_response(context, config, false, &emit).await;
+                }
+                response = request => response,
+            }
+        }
+        None => request.await,
+    };
 
     let mut added_partial = false;
     let mut streaming = false;
-    while let Some(event) = response.next().await {
+    loop {
+        let event = match signal.as_ref() {
+            Some(signal) => {
+                tokio::select! {
+                    biased;
+                    () = signal.cancelled() => {
+                        return finish_cancelled_response(context, config, added_partial, &emit).await;
+                    }
+                    event = response.next() => event,
+                }
+            }
+            None => response.next().await,
+        };
+        let Some(event) = event else {
+            break;
+        };
         use notagent_ai::types::AssistantMessageEvent as Event;
         match &event {
             Event::Start { partial } => {
@@ -488,6 +678,8 @@ struct ExecutedToolCallBatch {
     terminate: bool,
 }
 
+const CANCELLED_TOOL_GRACE_MS: u64 = 2_000;
+
 /// `createErrorToolResult(message)`
 fn create_error_tool_result(message: impl Into<String>) -> AgentToolResult {
     AgentToolResult {
@@ -496,6 +688,30 @@ fn create_error_tool_result(message: impl Into<String>) -> AgentToolResult {
         usage: None,
         added_tool_names: None,
         terminate: None,
+    }
+}
+
+fn create_aborted_tool_result(tool_name: &str) -> AgentToolResult {
+    create_error_tool_result(format!(
+        "The user manually interrupted \"{tool_name}\" (and anything else running at the same time). This was a deliberate user action, not a system error, timeout, or capacity limit. Do not retry automatically or guess at the cause — wait for the user's next instruction."
+    ))
+}
+
+fn create_grace_timeout_tool_result(tool_name: &str) -> AgentToolResult {
+    create_error_tool_result(format!(
+        "Tool \"{tool_name}\" aborted by grace timeout ({CANCELLED_TOOL_GRACE_MS}ms)"
+    ))
+}
+
+fn normalize_cancelled_tool_failure(
+    result: (AgentToolResult, bool),
+    signal: &CancellationToken,
+    tool_name: &str,
+) -> (AgentToolResult, bool) {
+    if signal.is_cancelled() && result.1 {
+        (create_aborted_tool_result(tool_name), true)
+    } else {
+        result
     }
 }
 
@@ -659,7 +875,7 @@ async fn execute_tool_calls_sequential(
                 is_error,
             },
             PreparedToolCall::Prepared { tool, args } => {
-                let executed = execute_prepared_tool_call(
+                let executed = execute_prepared_tool_call_with_grace(
                     &tool,
                     tool_call,
                     args.clone(),
@@ -685,10 +901,6 @@ async fn execute_tool_calls_sequential(
         emit_tool_result_message(&message, &emit).await;
         finalized_calls.push(finalized);
         messages.push(message);
-
-        if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
-            break;
-        }
     }
 
     ExecutedToolCallBatch {
@@ -734,9 +946,6 @@ async fn execute_tool_calls_parallel(
                 };
                 emit_tool_execution_end(&finalized, &emit).await;
                 immediate.push((index, finalized));
-                if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
-                    break;
-                }
                 continue;
             }
             PreparedToolCall::Prepared { tool, args } => {
@@ -748,7 +957,7 @@ async fn execute_tool_calls_parallel(
                 let signal = signal.clone();
                 let emit = emit.clone();
                 tasks.spawn(async move {
-                    let executed = execute_prepared_tool_call(
+                    let executed = execute_prepared_tool_call_with_grace(
                         &tool,
                         &tool_call,
                         args.clone(),
@@ -772,13 +981,33 @@ async fn execute_tool_calls_parallel(
                 });
             }
         }
-        if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
-            break;
-        }
     }
 
     let mut ordered: Vec<(usize, FinalizedToolCall)> = immediate;
-    join_tool_calls(&mut tasks, &mut ordered, signal.as_ref()).await;
+    join_tool_calls(&mut tasks, &mut ordered).await;
+    for (index, tool_call) in tool_calls.iter().enumerate() {
+        if ordered
+            .iter()
+            .any(|(finalized_index, _)| *finalized_index == index)
+        {
+            continue;
+        }
+        let result = if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
+            create_aborted_tool_result(&tool_call.name)
+        } else {
+            create_error_tool_result(format!(
+                "Tool \"{}\" failed before producing a result",
+                tool_call.name
+            ))
+        };
+        let finalized = FinalizedToolCall {
+            tool_call: tool_call.clone(),
+            result,
+            is_error: true,
+        };
+        emit_tool_execution_end(&finalized, &emit).await;
+        ordered.push((index, finalized));
+    }
     // Phase 3: result messages in assistant source order.
     ordered.sort_by_key(|(index, _)| *index);
 
@@ -799,63 +1028,13 @@ async fn execute_tool_calls_parallel(
     }
 }
 
-/// How long a cancelled tool is given to come back on its own.
-///
-/// Every tool is handed the signal, but a tool is free to be in the middle of
-/// something that does not look at it — a parse, a write, a syscall. Waiting
-/// for it without a bound makes the interrupt as slow as the slowest tool,
-/// which is what an interrupt exists to avoid. Long enough for a tool that does
-/// check to finish its own unwinding and report properly.
-const CANCELLED_TOOL_GRACE_MS: u64 = 100;
-
-/// Collects the spawned tool calls, and stops waiting once cancelled.
-///
-/// A tool that answers within the grace window still has its result recorded —
-/// a cancelled `bash` reports what it managed to run, which is worth keeping.
-/// Past that the task is dropped where it stands: its result is not going to be
-/// used, and the turn has a user waiting on it.
 async fn join_tool_calls(
     tasks: &mut JoinSet<(usize, FinalizedToolCall)>,
     ordered: &mut Vec<(usize, FinalizedToolCall)>,
-    signal: Option<&CancellationToken>,
 ) {
-    loop {
-        if tasks.is_empty() {
-            return;
-        }
-        let joined = match signal {
-            // Not cancelled yet: wait for the next tool, but wake if the wait
-            // itself is what gets interrupted. Checking only between tools
-            // would leave the first one free to hold the turn for as long as it
-            // likes, which is the whole case this exists for.
-            Some(signal) if !signal.is_cancelled() => {
-                tokio::select! {
-                    joined = tasks.join_next() => joined,
-                    () = signal.cancelled() => continue,
-                }
-            }
-            // Cancelled: give what is still running a moment to come back on
-            // its own, then leave it where it stands.
-            Some(_) => {
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(CANCELLED_TOOL_GRACE_MS),
-                    tasks.join_next(),
-                )
-                .await
-                {
-                    Ok(joined) => joined,
-                    Err(_) => {
-                        tasks.shutdown().await;
-                        return;
-                    }
-                }
-            }
-            None => tasks.join_next().await,
-        };
-        match joined {
-            Some(Ok(entry)) => ordered.push(entry),
-            Some(Err(_)) => {}
-            None => return,
+    while let Some(joined) = tasks.join_next().await {
+        if let Ok(entry) = joined {
+            ordered.push(entry);
         }
     }
 }
@@ -920,7 +1099,7 @@ async fn prepare_tool_call(
         .await;
         if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
             return PreparedToolCall::Immediate {
-                result: create_error_tool_result("Operation aborted"),
+                result: create_aborted_tool_result(&tool_call.name),
                 is_error: true,
             };
         }
@@ -944,7 +1123,7 @@ async fn prepare_tool_call(
 
     if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
         return PreparedToolCall::Immediate {
-            result: create_error_tool_result("Operation aborted"),
+            result: create_aborted_tool_result(&tool_call.name),
             is_error: true,
         };
     }
@@ -998,6 +1177,43 @@ async fn execute_prepared_tool_call(
     match outcome {
         Ok(result) => (result, false),
         Err(error) => (create_error_tool_result(error.to_string()), true),
+    }
+}
+
+async fn execute_prepared_tool_call_with_grace(
+    tool: &Arc<dyn AgentTool>,
+    tool_call: &AgentToolCall,
+    args: Value,
+    signal: Option<CancellationToken>,
+    emit: AgentEventSink,
+) -> (AgentToolResult, bool) {
+    if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
+        return (create_aborted_tool_result(&tool_call.name), true);
+    }
+
+    let execution = execute_prepared_tool_call(tool, tool_call, args, signal.clone(), emit);
+    tokio::pin!(execution);
+
+    let Some(signal) = signal else {
+        return execution.await;
+    };
+
+    tokio::select! {
+        biased;
+        () = signal.cancelled() => {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(CANCELLED_TOOL_GRACE_MS),
+                &mut execution,
+            )
+            .await
+            {
+                Ok(result) => normalize_cancelled_tool_failure(result, &signal, &tool_call.name),
+                Err(_) => (create_grace_timeout_tool_result(&tool_call.name), true),
+            }
+        }
+        result = &mut execution => {
+            normalize_cancelled_tool_failure(result, &signal, &tool_call.name)
+        },
     }
 }
 
