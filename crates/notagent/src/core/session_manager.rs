@@ -369,6 +369,17 @@ impl SessionEntry {
 }
 
 /// Raw file entry (includes the header).
+///
+/// The two variants differ in size by a few hundred bytes, and boxing the
+/// larger one would be the wrong way round here: a session file holds exactly
+/// one header and every other line is an entry, so the vector is made almost
+/// entirely of the large variant. Boxing it would add one allocation and one
+/// indirection per entry, for the whole life of the session, to shrink a
+/// collection that has a single small element in it.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the large variant is the common one; see above"
+)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileEntry {
     Session(SessionHeader),

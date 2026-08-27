@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
+use notagent::config::USER_CONFIG_DIR_NAME;
 use notagent::core::keybindings::KeybindingsManager;
 use notagent::core::resource_loader::{ResolvedResource, ResolvedResources};
 use notagent::core::settings_manager::{
@@ -192,11 +193,15 @@ fn groups_resources_by_source_and_sorts_packages_first() {
     );
 
     let lines = harness.lines();
+    // Derived rather than spelled out: user-level state lives under its own
+    // directory so this build does not share one with the original, and a
+    // literal here went stale the moment that split happened.
     assert_eq!(
         &lines[3..5],
         &[
-            "Global Resources                      tab switch mode · space toggle · esc close",
-            "~/.notagent/agent/settings.json",
+            "Global Resources                      tab switch mode · space toggle · esc close"
+                .to_string(),
+            format!("~/{USER_CONFIG_DIR_NAME}/agent/settings.json"),
         ]
     );
     // A skill named SKILL.md shows its folder; the package group sorts first.
