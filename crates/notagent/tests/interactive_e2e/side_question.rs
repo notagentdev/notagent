@@ -102,6 +102,92 @@ async fn escape_takes_the_panel_away_and_leaves_the_conversation_alone() {
     .await;
 }
 
+/// The hint on the frame promises the arrow keys, so they have to work — and
+/// only while the editor is empty, where they are not caret movement.
+#[tokio::test(flavor = "current_thread")]
+async fn the_arrow_keys_scroll_the_panel_the_hint_offers_them_for() {
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        let answer: String = (0..40).map(|index| format!("line {index}\n\n")).collect();
+        e2e.faux().set_responses(vec![reply(&answer)]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("/btw a long one").await;
+        driver.wait_for("↑↓ scroll").await;
+
+        let before = driver.screen();
+        driver.send_keys("\x1b[A").await;
+        driver.settle().await;
+        assert_ne!(
+            before,
+            driver.screen(),
+            "up scrolled the panel:\n{}",
+            driver.screen()
+        );
+    })
+    .await;
+}
+
+/// Two steps, like everything else here: stop the answer, then take the panel
+/// away. The child survives the first, so a follow-up still reaches it.
+#[tokio::test(flavor = "current_thread")]
+async fn ctrl_c_stops_the_answer_before_it_closes_the_panel() {
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        e2e.faux().set_responses(vec![
+            reply("the side answer"),
+            reply("the follow-up answer"),
+        ]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("/btw a side question").await;
+        driver.wait_for("the side answer").await;
+
+        // Nothing is running, so the first press closes the panel outright.
+        driver.send_keys("\x03").await;
+        driver.settle().await;
+        assert!(
+            !driver.screen().contains("Esc close"),
+            "the panel is gone:\n{}",
+            driver.screen()
+        );
+    })
+    .await;
+}
+
+/// A failed start must not leave the previous panel standing over a child that
+/// is no longer there.
+#[tokio::test(flavor = "current_thread")]
+async fn a_second_command_replaces_the_panel_rather_than_stacking_one() {
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        e2e.faux()
+            .set_responses(vec![reply("the first answer"), reply("the second answer")]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("/btw first").await;
+        driver.wait_for("the first answer").await;
+
+        driver.submit("/btw second").await;
+        driver.wait_for("the second answer").await;
+
+        let screen = driver.screen();
+        assert_eq!(
+            screen.matches("Esc close").count(),
+            1,
+            "one panel, not two:\n{screen}"
+        );
+        assert!(
+            !screen.contains("Q: first"),
+            "and the old exchange went with the old panel:\n{screen}"
+        );
+    })
+    .await;
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn the_command_says_what_it_needs_without_a_question() {
     run_local(async {

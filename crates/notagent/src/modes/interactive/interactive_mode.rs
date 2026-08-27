@@ -793,6 +793,11 @@ enum AppAction {
     Exit,
     /// `app.interrupt` — Escape.
     Escape,
+    /// Up or down on an empty editor, which the side-question panel takes when
+    /// one is open.
+    ScrollSideQuestion {
+        up: bool,
+    },
 }
 
 /// What the component callbacks post into [`InteractiveMode::run`].
@@ -1798,6 +1803,20 @@ impl InteractiveMode {
         editor.on_paste_image = Some(Box::new(move || {
             let _ = tx.send(UiMessage::Action(AppAction::PasteImage));
         }));
+        let tx = self.ui_tx.clone();
+        editor.on_up_arrow_empty = Some(Box::new(move || {
+            tx.send(UiMessage::Action(AppAction::ScrollSideQuestion {
+                up: true,
+            }))
+            .is_ok()
+        }));
+        let tx = self.ui_tx.clone();
+        editor.on_down_arrow_empty = Some(Box::new(move || {
+            tx.send(UiMessage::Action(AppAction::ScrollSideQuestion {
+                up: false,
+            }))
+            .is_ok()
+        }));
         for (action, message) in [
             ("app.clear", AppAction::Clear),
             ("app.message.followUp", AppAction::FollowUp),
@@ -2326,6 +2345,13 @@ impl InteractiveMode {
                 self.detach_foreground_tasks();
             }
             UiMessage::Action(AppAction::Escape) => self.handle_escape(),
+            UiMessage::Action(AppAction::ScrollSideQuestion { up }) => {
+                if let Some(panel) = self.side_question_panel.clone()
+                    && panel.borrow_mut().scroll(up)
+                {
+                    self.ui.request_render();
+                }
+            }
             UiMessage::Settings { id, effect } => {
                 let _ = id;
                 self.apply_settings_effect(effect).await;
@@ -7705,11 +7731,14 @@ impl InteractiveMode {
             self.show_warning("Ask something: /btw <question>");
             return;
         };
+        // The open one goes first, and goes even when the new one cannot be
+        // started: a panel left standing over a child that is gone answers
+        // nothing and invites a follow-up that cannot arrive.
+        self.close_side_question_panel();
         if let Err(error) = self.session().start_side_question() {
             self.show_error(&error);
             return;
         }
-        self.close_side_question_panel();
 
         let markdown_theme = get_markdown_theme();
         let editor = Rc::clone(&self.editor);
@@ -7826,24 +7855,30 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// Takes the panel down. The child goes with it while it is still
-    /// answering, or while nothing has been asked yet — in both cases there is
-    /// nothing left to read.
-    fn close_side_question_panel(&mut self) -> bool {
-        let Some(panel) = self.side_question_panel.take() else {
+    /// Stops an answer that is still coming, leaving the panel and everything
+    /// already in it standing. Returns whether there was one.
+    fn stop_side_question_answer(&mut self) -> bool {
+        let Some(panel) = self.side_question_panel.clone() else {
             return false;
         };
-        let should_cancel = {
-            let panel = panel.borrow();
-            panel.is_running() || panel.is_empty()
-        };
-        if should_cancel {
-            self.session().cancel_side_question();
-        } else {
-            // The exchange is over but the child would otherwise sit there
-            // holding its conversation; nothing more will be asked of it.
-            self.session().cancel_side_question();
+        if !panel.borrow().is_running() {
+            return false;
         }
+        // The child survives, so a follow-up still reaches the same
+        // conversation; only the run in flight ends.
+        self.session().stop_side_question_answer();
+        panel.borrow_mut().mark_failed("Stopped.");
+        self.ui.request_render();
+        true
+    }
+
+    /// Takes the panel down, and the child with it — nothing more will be asked
+    /// of a child whose panel is gone.
+    fn close_side_question_panel(&mut self) -> bool {
+        if self.side_question_panel.take().is_none() {
+            return false;
+        }
+        self.session().cancel_side_question();
         self.widget_container_above.borrow_mut().clear();
         self.ui.request_render();
         true
@@ -8281,6 +8316,13 @@ impl InteractiveMode {
 
     /// `handleCtrlC` (`interactive-mode.ts:4010-4018`).
     async fn handle_ctrl_c(&mut self) {
+        // The panel stacks above the transcript, so the key reaches it first —
+        // in two steps, like everything else here: stop the answer that is
+        // still coming, and only on a second press take the panel away.
+        if self.stop_side_question_answer() || self.close_side_question_panel() {
+            self.last_sigint_time = None;
+            return;
+        }
         let now = Instant::now();
         if self
             .last_sigint_time

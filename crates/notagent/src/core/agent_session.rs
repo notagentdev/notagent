@@ -4783,6 +4783,23 @@ impl AgentSession {
             .is_some_and(|open| open.agent.state().is_streaming)
     }
 
+    /// Stops the answer that is coming, and keeps the child.
+    ///
+    /// Distinct from dropping it: the panel stays, what it already holds stays,
+    /// and a follow-up still reaches the same conversation. Only the run in
+    /// flight ends.
+    pub fn stop_side_question_answer(&self) -> bool {
+        let open = self.side_question.lock().expect("poisoned");
+        let Some(open) = open.as_ref() else {
+            return false;
+        };
+        if !open.agent.state().is_streaming {
+            return false;
+        }
+        open.agent.abort();
+        true
+    }
+
     /// Stops the child and drops it. Nothing is written anywhere: the exchange
     /// existed only in the panel.
     pub fn cancel_side_question(&self) {

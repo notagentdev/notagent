@@ -38,6 +38,11 @@ pub struct CustomEditor {
     pub on_ctrl_d: Option<Box<dyn FnMut()>>,
     /// Invoked for `app.clipboard.pasteImage`.
     pub on_paste_image: Option<Box<dyn FnMut()>>,
+    /// Up and down while there is nothing to move a caret through. Return
+    /// `true` to take the key; the editor gets it otherwise, so a caret in a
+    /// multi-line draft is never stolen from.
+    pub on_up_arrow_empty: Option<Box<dyn FnMut() -> bool>>,
+    pub on_down_arrow_empty: Option<Box<dyn FnMut() -> bool>>,
 }
 
 impl CustomEditor {
@@ -55,6 +60,8 @@ impl CustomEditor {
             on_escape: None,
             on_ctrl_d: None,
             on_paste_image: None,
+            on_up_arrow_empty: None,
+            on_down_arrow_empty: None,
         }
     }
 
@@ -165,6 +172,23 @@ impl Component for CustomEditor {
             }
             return;
             // Fall through to editor handling for delete-char-forward when not empty
+        }
+
+        // Up and down on an empty editor belong to whatever is stacked above
+        // it. With text in the buffer they are caret movement and nothing else.
+        if self.editor.get_text().is_empty() && !self.editor.is_showing_autocomplete() {
+            if self.matches(data, "tui.editor.cursorUp")
+                && let Some(on_up) = self.on_up_arrow_empty.as_mut()
+                && on_up()
+            {
+                return;
+            }
+            if self.matches(data, "tui.editor.cursorDown")
+                && let Some(on_down) = self.on_down_arrow_empty.as_mut()
+                && on_down()
+            {
+                return;
+            }
         }
 
         // Explicit history bindings take precedence over app actions while the editor is focused.
