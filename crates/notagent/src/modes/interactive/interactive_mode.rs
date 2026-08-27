@@ -7727,10 +7727,9 @@ impl InteractiveMode {
     /// two side channels would compete for the same editor and the same
     /// attention.
     fn handle_side_question_command(&mut self, question: Option<&str>) {
-        let Some(question) = question.map(str::trim).filter(|text| !text.is_empty()) else {
-            self.show_warning("Ask something: /btw <question>");
-            return;
-        };
+        // The question is optional: without one the panel opens empty and waits,
+        // which is the same thing a follow-up does once it is open.
+        let question = question.map(str::trim).filter(|text| !text.is_empty());
         // The open one goes first, and goes even when the new one cannot be
         // started: a panel left standing over a child that is gone answers
         // nothing and invites a follow-up that cannot arrive.
@@ -7762,7 +7761,9 @@ impl InteractiveMode {
         }
         self.side_question_panel = Some(panel);
         self.ui.request_render();
-        self.ask_side_question(question);
+        if let Some(question) = question {
+            self.ask_side_question(question);
+        }
     }
 
     /// Puts a question to the open child and streams the answer into the panel.

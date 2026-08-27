@@ -189,14 +189,26 @@ async fn a_second_command_replaces_the_panel_rather_than_stacking_one() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn the_command_says_what_it_needs_without_a_question() {
+async fn the_command_without_a_question_opens_the_panel_and_waits() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
+        e2e.faux().set_responses(vec![reply("The answer.")]);
         let mut driver = e2e.start().await;
         driver.wait_for(APP_NAME).await;
 
+        // No question yet, so the panel stands open with nothing asked.
         driver.submit("/btw").await;
-        driver.wait_for("Ask something").await;
+        driver.wait_for("BTW").await;
+        let screen = driver.screen();
+        assert!(
+            !screen.contains("Q: "),
+            "nothing has been asked yet:\n{screen}"
+        );
+
+        // And the line typed under it is the question, exactly as a follow-up is.
+        driver.submit("asked afterwards").await;
+        driver.wait_for("Q: asked afterwards").await;
+        driver.wait_for("The answer.").await;
     })
     .await;
 }

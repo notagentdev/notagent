@@ -102,7 +102,7 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
     command_with_hint(
         "btw",
         "Ask a forked side agent a question, without touching this conversation",
-        "<question>",
+        "[question]",
     ),
     // Addition over the TS original (user decision 2026-08-17, v0.1.21): goal
     // mode, where the agent keeps working toward an objective on its own.
