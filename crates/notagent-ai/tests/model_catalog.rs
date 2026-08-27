@@ -62,10 +62,11 @@ fn every_embedded_file_matches_its_manifest_digest() {
 }
 
 #[test]
-fn the_catalog_contains_exactly_1237_models_across_40_providers() {
+fn the_catalog_contains_exactly_1238_models_across_40_providers() {
     // +11 ClinePass models, +2 GLM-5.3 (zai, zai-coding-cn); v0.1.16.
+    // +1 GLM-5.3-Flash on zai (2026-08-27).
     assert_eq!(get_builtin_providers().len(), 40);
-    assert_eq!(all_builtin_models().len(), 1237);
+    assert_eq!(all_builtin_models().len(), 1238);
 }
 
 #[test]

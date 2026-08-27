@@ -236,7 +236,8 @@ fn every_builtin_provider_matches_the_typescript_fixture() {
         // Models this port adds keep the fixture readable as the TS snapshot it
         // is: they are named here rather than written into it (v0.1.16).
         let port_added: &[&str] = match id {
-            "zai" | "zai-coding-cn" => &["glm-5.3"],
+            "zai" => &["glm-5.3", "glm-5.3-flash"],
+            "zai-coding-cn" => &["glm-5.3"],
             _ => &[],
         };
         let models: Vec<_> = provider

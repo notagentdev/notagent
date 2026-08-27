@@ -122,6 +122,41 @@
 			"contextWindow": 1000000,
 			"maxTokens": 131072
 		},
+		"glm-5.3-flash": {
+			"id": "glm-5.3-flash",
+			"name": "GLM-5.3-Flash",
+			"api": "openai-completions",
+			"provider": "zai",
+			"baseUrl": "https://api.z.ai/api/coding/paas/v4",
+			"reasoning": true,
+			"thinkingLevelMap": {
+				"minimal": null,
+				"low": "high",
+				"medium": "high",
+				"high": "high",
+				"max": "max"
+			},
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"compat": {
+				"supportsStore": false,
+				"supportsDeveloperRole": false,
+				"supportsReasoningEffort": true,
+				"maxTokensField": "max_tokens",
+				"thinkingFormat": "zai",
+				"zaiToolStream": true
+			},
+			"contextWindow": 1000000,
+			"maxTokens": 131072
+		},
 		"glm-5.2-highspeed": {
 			"id": "glm-5.2-highspeed",
 			"name": "GLM-5.2 Highspeed",
