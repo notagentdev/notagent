@@ -316,6 +316,46 @@ fn badge_style_leads_with_a_state_badge_and_drops_the_padding_rows() {
 }
 
 #[test]
+fn badge_style_keeps_continuation_and_result_lines_under_the_badge_column() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let tool: ToolDef = std::sync::Arc::new(StubTool {
+        call_text: Some("first line\nsecond line"),
+        result_text: Some("the output"),
+        ..StubTool::new("custom_tool")
+    });
+    let mut component = ToolExecutionComponent::new(
+        "custom_tool",
+        "tool-badge-column",
+        json!({}),
+        ToolExecutionOptions::default(),
+        Some(tool),
+        no_render(),
+        cwd(),
+    );
+    component.update_result(text_result(""), false);
+
+    let stripped: Vec<String> = component
+        .render(60)
+        .iter()
+        .map(|line| strip_ansi(line).trim_end().to_string())
+        .collect();
+
+    // The badge row's own text starts one column in (the pill's padding), and
+    // everything stacked below it shares that column — the same one the
+    // explore and thinking blocks keep under their badges.
+    let expected = vec![
+        "".to_string(),
+        " CUSTOM TOOL  (first line)".to_string(),
+        " second line".to_string(),
+        " the output".to_string(),
+    ];
+    assert_eq!(stripped, expected);
+}
+
+#[test]
 fn badge_style_badge_carries_the_three_states() {
     use notagent::modes::interactive::theme::theme::{ThemeBg, badge, theme};
 

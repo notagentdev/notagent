@@ -60,6 +60,20 @@ struct BadgeCallHeader {
     parens: bool,
 }
 
+/// A line below the badge row, moved under the badge's first character.
+///
+/// The badge pill carries one space of padding on each side, and every block
+/// that stacks content under a badge keeps that column (the explore block
+/// prefixes its rows, the thinking block renders at `output_pad`). Continuation
+/// lines at the margin would sit one column out of line with the row above.
+fn under_badge(line: &Line) -> Line {
+    use notagent_tui::utils::visible_width;
+    if visible_width(line) == 0 {
+        return Line::clone(line);
+    }
+    Line::from(format!(" {line}"))
+}
+
 impl Component for BadgeCallHeader {
     fn render(&mut self, width: usize) -> Vec<Line> {
         use notagent_tui::utils::visible_width;
@@ -91,14 +105,14 @@ impl Component for BadgeCallHeader {
                     format!("{} {}", self.badge, first.trim_end())
                 };
                 let mut out = vec![Line::from(head)];
-                out.append(&mut lines);
+                out.extend(lines.iter().map(under_badge));
                 return out;
             }
         }
         let lines = self.call.borrow_mut().render(width);
         let mut out = vec![Line::from(self.badge.as_str())];
         if lines.iter().any(|line| visible_width(line) > 0) {
-            out.extend(lines);
+            out.extend(lines.iter().map(under_badge));
         }
         out
     }
@@ -566,6 +580,16 @@ impl ToolExecutionComponent {
             }
 
             if let Some(component) = result_component {
+                // The result is a sibling of the badge row, so it takes the
+                // same column the call's continuation lines get from
+                // `under_badge`.
+                let component = if badge_style {
+                    let mut inset = BoxComponent::new(1, 0, None);
+                    inset.add_child(component);
+                    component_ref(inset)
+                } else {
+                    component
+                };
                 self.add_to_render_container(self_managed, component);
                 has_content = true;
             }
@@ -580,7 +604,7 @@ impl ToolExecutionComponent {
                             ThemeColor::Muted,
                             &format!("({} to collapse)", key_text("app.tools.expand")),
                         ),
-                        0,
+                        1,
                         0,
                     )),
                 );
@@ -617,7 +641,7 @@ impl ToolExecutionComponent {
                     && content != "null"
                     && content != "{}"
                 {
-                    content_box.add_child(component_ref(Text::new(format!("\n{content}"), 0, 0)));
+                    content_box.add_child(component_ref(Text::new(format!("\n{content}"), 1, 0)));
                 }
             }
             self.container
