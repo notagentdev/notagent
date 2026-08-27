@@ -83,7 +83,23 @@ Everything happens inside the TUI:
 - `/bash-filter on|off` — shell-output compaction (default: off)
 - `/index on|off` — the local codebase index
 - `/goal <objective>` — goal mode
+- `/btw <question>` — ask a side question (see below)
 - `/settings` — everything else
+
+## Side questions
+
+`/btw <question>` opens a panel above the input and answers there. The question
+goes to a forked child that already knows the whole conversation, so nothing has
+to be explained to it — but the exchange never enters the conversation itself.
+It costs one answer, not a permanent place in every later request.
+
+While the panel is open, a plain line is a follow-up to it rather than a prompt
+for the agent; slash commands still work as usual. The arrow keys scroll the
+panel once there is more than fits, and Escape closes it. Closing discards the
+exchange: what you learned there, the agent does not know.
+
+The child cannot use tools. It answers from what it already knows, and says so
+when it does not know.
 
 Providers are also picked up from ambient environment variables
 (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) without a login.

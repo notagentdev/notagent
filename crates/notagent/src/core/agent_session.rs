@@ -53,7 +53,9 @@ use crate::core::compaction::{
     estimate_context_tokens, estimate_tokens, generate_branch_summary, prepare_compaction,
     should_compact,
 };
+use crate::core::delegation::agent_type::SubagentType;
 use crate::core::delegation::aliases::AliasRegistry;
+use crate::core::delegation::run::{DelegationOptions, DelegationRun, run_delegation};
 use crate::core::goal::{
     GOAL_REMINDER_CONTINUATION, GOAL_REMINDER_KIND, GOAL_REMINDER_TYPE, GOAL_REMINDER_WRAP_UP,
     GoalNudge, GoalState, ThreadGoal,
@@ -73,30 +75,29 @@ use crate::core::modes::{
 };
 use crate::core::prompt_templates::{PromptTemplate, expand_prompt_template};
 use crate::core::resource_loader::ResourceLoader;
+use crate::core::session_init::{
+    INIT_PROMPT, INIT_REMINDER_TYPE, init_completion_reminder, read_written_guide,
+};
 use crate::core::session_manager::{
     BranchSummaryEntry, SessionEntry, SessionManager, get_latest_compaction_entry,
 };
 use crate::core::settings_manager::SettingsManager;
+use crate::core::side_question::{SideQuestionFork, complete_messages, create_side_question_agent};
 use crate::core::skills::Skill;
 use crate::core::snapshots::snapshot_store;
 use crate::core::source_info::{
     SourceInfo, SyntheticSourceInfoOptions, create_synthetic_source_info,
 };
 use crate::core::system_prompt::{BuildSystemPromptOptions, ContextFile, build_system_prompt};
-use crate::core::delegation::agent_type::SubagentType;
-use crate::core::delegation::run::{DelegationOptions, DelegationRun, run_delegation};
-use crate::core::session_init::{
-    INIT_PROMPT, INIT_REMINDER_TYPE, init_completion_reminder, read_written_guide,
-};
 use crate::core::tasks::manager::{RegisterTaskOptions, TaskManager, TaskManagerOptions};
-use crate::core::tasks::subagent_task::{SubagentRunResult, SubagentTask, SubagentTaskOptions};
-use crate::core::tasks::types::BackgroundTask;
 use crate::core::tasks::notification::{
     NOTIFICATION_PREVIEW_BYTES, NotificationOutput, TaskNotificationDelivery,
     TaskNotificationDetails, TaskNotificationHost, TaskNotificationMessage,
     TaskNotificationSendOptions, TaskNotifier, TranscriptNotification, active_task_reminder,
 };
 use crate::core::tasks::store::TaskStore;
+use crate::core::tasks::subagent_task::{SubagentRunResult, SubagentTask, SubagentTaskOptions};
+use crate::core::tasks::types::BackgroundTask;
 use crate::core::todos::reminder::build_pending_todos_reminder;
 use crate::core::todos::{Todo, TodoStore};
 use crate::core::tools::bash::{BashOperations, create_local_bash_operations};
@@ -548,6 +549,11 @@ pub struct AgentSession {
     bash_signals: Mutex<Vec<CancellationToken>>,
     pending_bash_messages: Mutex<Vec<BashExecutionMessage>>,
 
+    /// The side-question child, while one is open. Held here rather than by the
+    /// UI so the child survives a panel rebuild, and so a session teardown can
+    /// stop it.
+    side_question: Mutex<Option<SideQuestionChild>>,
+
     last_assistant_message: Mutex<Option<AssistantMessage>>,
     system_prompt_override: Mutex<Option<String>>,
 
@@ -596,6 +602,7 @@ impl AgentSession {
             retry_attempt: AtomicU64::new(0),
             bash_signals: Mutex::new(Vec::new()),
             pending_bash_messages: Mutex::new(Vec::new()),
+            side_question: Mutex::new(None),
             last_assistant_message: Mutex::new(None),
             system_prompt_override: Mutex::new(None),
             initial_active_tool_names: config.initial_active_tool_names,
@@ -943,8 +950,9 @@ impl AgentSession {
                     context.tools = Some(state.tools.clone());
                     update.context = Some(context);
                     update.model = Some(state.model.clone());
-                    update.thinking_level =
-                        Some(session.step_thinking_level(state.thinking_level, continues_execution));
+                    update.thinking_level = Some(
+                        session.step_thinking_level(state.thinking_level, continues_execution),
+                    );
                     snapshot
                 })
             }));
@@ -969,6 +977,17 @@ impl Drop for ListenerHandle {
 struct BuildRuntimeOptions {
     active_tool_names: Option<Vec<String>>,
 }
+
+/// The open side-question child and the token that stops it.
+struct SideQuestionChild {
+    agent: Arc<Agent>,
+    signal: CancellationToken,
+}
+
+/// Where a side question's events go. The panel is the only reader; nothing is
+/// forwarded to the session's own listeners, which is what keeps the exchange
+/// out of the transcript and out of the session file.
+pub type SideQuestionListener = Arc<dyn Fn(AgentEvent) + Send + Sync>;
 
 // ============================================================================
 // Operating modes
@@ -4702,6 +4721,76 @@ impl AgentSession {
             .collect();
         let trimmed = text.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
+    }
+
+    /// Opens a side question: a child that already knows this conversation,
+    /// answers from that knowledge alone, and reaches nothing here.
+    ///
+    /// Replaces an open one — a second side channel would compete with the
+    /// first for the panel and for the user's attention.
+    pub fn start_side_question(self: &Arc<Self>) -> Result<(), String> {
+        if self.model().is_none() {
+            return Err("No model is selected.".to_string());
+        }
+        self.cancel_side_question();
+        let child = create_side_question_agent(&SideQuestionFork {
+            parent: Arc::clone(&self.agent),
+            // The parent's cache identity, deliberately: see `side_question`.
+            session_id: self.session_id(),
+            history: complete_messages(&self.agent),
+        });
+        *self.side_question.lock().expect("poisoned") = Some(SideQuestionChild {
+            agent: child,
+            signal: CancellationToken::new(),
+        });
+        Ok(())
+    }
+
+    /// Puts a question to the open child and streams its answer back through
+    /// `on_event`. Follow-ups reuse the same child, so the panel reads as one
+    /// conversation and the child's own prefix stays warm.
+    pub async fn ask_side_question(
+        self: &Arc<Self>,
+        question: &str,
+        on_event: SideQuestionListener,
+    ) -> Result<(), String> {
+        let (child, signal) = {
+            let open = self.side_question.lock().expect("poisoned");
+            let open = open.as_ref().ok_or("No side question is open.")?;
+            (Arc::clone(&open.agent), open.signal.clone())
+        };
+        let unsubscribe = child.subscribe(Arc::new(move |event, _signal| {
+            let on_event = Arc::clone(&on_event);
+            let event = event.clone();
+            Box::pin(async move { on_event(event) })
+        }));
+        let result = tokio::select! {
+            result = child.prompt_text(question, None, now_millis()) => {
+                result.map_err(|error| error.to_string())
+            }
+            () = signal.cancelled() => Err("Side question was stopped.".to_string()),
+        };
+        unsubscribe();
+        result
+    }
+
+    /// Whether a child is open and still answering.
+    pub fn side_question_is_running(&self) -> bool {
+        self.side_question
+            .lock()
+            .expect("poisoned")
+            .as_ref()
+            .is_some_and(|open| open.agent.state().is_streaming)
+    }
+
+    /// Stops the child and drops it. Nothing is written anywhere: the exchange
+    /// existed only in the panel.
+    pub fn cancel_side_question(&self) {
+        let Some(open) = self.side_question.lock().expect("poisoned").take() else {
+            return;
+        };
+        open.signal.cancel();
+        open.agent.abort();
     }
 
     /// Runs `/init`: a child explores the project, writes `AGENTS.md`, and the

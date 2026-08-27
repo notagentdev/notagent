@@ -108,12 +108,10 @@ async fn the_reminder_stays_out_of_the_transcript() {
     harness.session.run_init().await.expect("init");
 
     // The model has to read it; the user already watched the child work.
-    let hidden = harness
-        .session
-        .messages()
-        .into_iter()
-        .any(|message| matches!(message, AgentMessage::Custom(custom)
-            if custom.custom_type == "init" && !custom.display));
+    let hidden = harness.session.messages().into_iter().any(|message| {
+        matches!(message, AgentMessage::Custom(custom)
+            if custom.custom_type == "init" && !custom.display)
+    });
     assert!(hidden, "the reminder is not displayed");
 }
 
@@ -140,7 +138,9 @@ async fn refuses_to_start_while_a_turn_is_running() {
         tokens_per_second: Some(20.0),
         ..HarnessOptions::default()
     });
-    harness.set_responses(vec![reply("a long answer the model is still streaming out")]);
+    harness.set_responses(vec![reply(
+        "a long answer the model is still streaming out",
+    )]);
 
     let session = std::sync::Arc::clone(&harness.session);
     let running =

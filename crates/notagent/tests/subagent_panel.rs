@@ -172,7 +172,10 @@ fn keeps_a_finished_child_briefly_so_its_outcome_is_seen() {
         12_000,
     );
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].elapsed, "10s", "frozen at its end, not still counting");
+    assert_eq!(
+        rows[0].elapsed, "10s",
+        "frozen at its end, not still counting"
+    );
 }
 
 #[test]

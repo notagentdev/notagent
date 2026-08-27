@@ -308,8 +308,9 @@ impl ApiKeyAuth for OpenAICompatibleAuth {
                         .prompt(AuthPrompt {
                             signal: Some(interaction.signal.clone()),
                             kind: AuthPromptKind::Text {
-                                message: "Enter the base URL (for example http://localhost:8080/v1)"
-                                    .to_string(),
+                                message:
+                                    "Enter the base URL (for example http://localhost:8080/v1)"
+                                        .to_string(),
                                 placeholder: None,
                             },
                         })
@@ -386,9 +387,7 @@ impl ApiKeyAuth for OpenAICompatibleAuth {
             }
             // An ambient key activates a fixed instance, but not a custom one:
             // without an address there is nothing for the key to authorize.
-            if self.config.base_url.is_none()
-                && self.ambient_base_url(&input).await.is_none()
-            {
+            if self.config.base_url.is_none() && self.ambient_base_url(&input).await.is_none() {
                 return Ok(None);
             }
             if let Some(value) = input
@@ -920,8 +919,14 @@ mod tests {
 
     #[test]
     fn the_native_api_sits_beside_the_openai_one_not_under_it() {
-        assert_eq!(server_root("http://127.0.0.1:1234/v1"), "http://127.0.0.1:1234");
-        assert_eq!(server_root("http://127.0.0.1:11434/v1/"), "http://127.0.0.1:11434");
+        assert_eq!(
+            server_root("http://127.0.0.1:1234/v1"),
+            "http://127.0.0.1:1234"
+        );
+        assert_eq!(
+            server_root("http://127.0.0.1:11434/v1/"),
+            "http://127.0.0.1:11434"
+        );
         // Nothing to strip: a gateway that is not mounted at /v1 keeps its path.
         assert_eq!(
             server_root("https://gateway.example.com/openai"),

@@ -118,7 +118,11 @@ impl RouteServer {
                     };
                     let request = String::from_utf8_lossy(&buffer[..read]).into_owned();
                     let line = request.lines().next().unwrap_or_default().to_owned();
-                    let path = line.split_whitespace().nth(1).unwrap_or_default().to_owned();
+                    let path = line
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or_default()
+                        .to_owned();
                     recorder.lock().expect("asked").push(line);
                     let response = match routes.get(path.as_str()) {
                         Some(body) => format!(

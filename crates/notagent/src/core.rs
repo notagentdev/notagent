@@ -47,6 +47,7 @@ pub mod session_init;
 pub mod session_manager;
 pub mod settings_manager;
 pub mod share;
+pub mod side_question;
 pub mod skills;
 pub mod slash_commands;
 pub mod snapshots;

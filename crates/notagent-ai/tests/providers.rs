@@ -181,8 +181,7 @@ const DYNAMIC_PROVIDERS: [&str; 5] = ["radius", "mtplx", "ollama", "lmstudio", "
 /// Providers this port adds, which the TypeScript fixture cannot contain.
 /// They are checked on their own (see `cline_pass_is_an_openai_compatible_provider`,
 /// `tests/mtplx_provider.rs` and `tests/openai_compatible_providers.rs`).
-const PORT_ADDED_PROVIDERS: [&str; 5] =
-    ["cline-pass", "mtplx", "ollama", "lmstudio", "custom"];
+const PORT_ADDED_PROVIDERS: [&str; 5] = ["cline-pass", "mtplx", "ollama", "lmstudio", "custom"];
 
 #[test]
 fn every_builtin_provider_matches_the_typescript_fixture() {

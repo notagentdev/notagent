@@ -1568,9 +1568,7 @@ impl SettingsSelectorComponent {
                     "workspace-in-footer" => {
                         (callbacks.on_show_workspace_in_footer_change)(new_value == "true")
                     }
-                    "tiered-thinking" => {
-                        (callbacks.on_tiered_thinking_change)(new_value == "true")
-                    }
+                    "tiered-thinking" => (callbacks.on_tiered_thinking_change)(new_value == "true"),
                     "tui-mode" => {
                         if let Some(mode) = from_wire::<TuiMode>(new_value) {
                             (callbacks.on_tui_mode_change)(mode);

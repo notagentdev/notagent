@@ -20,6 +20,7 @@ mod mcp;
 mod prompt_roundtrip;
 mod resize;
 mod selectors;
+mod side_question;
 mod startup;
 mod theme_switch;
 mod todo_hide;

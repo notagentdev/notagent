@@ -96,9 +96,13 @@ pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
     ),
     // Addition over the TS original (user decision 2026-08-25, v0.1.35): a
     // child explores the project and writes its `AGENTS.md`.
-    command(
-        "init",
-        "Explore the project and write AGENTS.md for it",
+    command("init", "Explore the project and write AGENTS.md for it"),
+    // Addition over the TS original (user decision 2026-08-27): a side question
+    // the conversation does not have to carry.
+    command_with_hint(
+        "btw",
+        "Ask a forked side agent a question, without touching this conversation",
+        "<question>",
     ),
     // Addition over the TS original (user decision 2026-08-17, v0.1.21): goal
     // mode, where the agent keeps working toward an objective on its own.
@@ -189,6 +193,8 @@ mod tests {
                 "bash-filter",
                 // Port addition (user decision, v0.1.35), not in the TS list.
                 "init",
+                // Port addition (user decision 2026-08-27), not in the TS list.
+                "btw",
                 // Port addition (user decision, v0.1.21), not in the TS list.
                 "goal",
                 // Port addition (user decision, v0.1.22), not in the TS list.
@@ -236,6 +242,7 @@ mod tests {
                 "index",
                 "leases",
                 "bash-filter",
+                "btw",
                 "goal",
                 "mcp",
                 "login"

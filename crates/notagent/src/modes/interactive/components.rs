@@ -36,6 +36,7 @@ pub mod session_selector;
 pub mod session_selector_search;
 pub mod settings_selector;
 pub mod show_images_selector;
+pub mod side_question_panel;
 pub mod skill_invocation_message;
 pub mod status_indicator;
 pub mod subagent_panel;

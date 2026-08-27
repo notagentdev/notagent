@@ -292,8 +292,7 @@ impl ModelRuntime {
                 // empty. Those keep their own list instead of the shared one.
                 if provider.id() == "radius"
                     || provider.id() == mtplx::LOCAL_PROVIDER_ID
-                    || openai_compatible::OPENAI_COMPATIBLE_PROVIDER_IDS
-                        .contains(&provider.id())
+                    || openai_compatible::OPENAI_COMPATIBLE_PROVIDER_IDS.contains(&provider.id())
                 {
                     provider
                 } else {

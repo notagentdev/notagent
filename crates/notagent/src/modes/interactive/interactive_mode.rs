@@ -150,6 +150,9 @@ use crate::modes::interactive::components::session_selector::{
 use crate::modes::interactive::components::settings_selector::{
     SettingsCallbacks, SettingsConfig, SettingsSelectorComponent,
 };
+use crate::modes::interactive::components::side_question_panel::{
+    SideQuestionPanel, SideQuestionPanelOptions,
+};
 use crate::modes::interactive::components::skill_invocation_message::SkillInvocationMessageComponent;
 use crate::modes::interactive::components::status_indicator::{
     CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
@@ -826,6 +829,15 @@ enum UiMessage {
     InitFinished {
         error: Option<String>,
     },
+    /// The side-question child produced an event. Boxed: `AgentEvent` carries a
+    /// whole message and would otherwise set the size of every variant here.
+    SideQuestionEvent {
+        event: Box<AgentEvent>,
+    },
+    /// The side question settled; `error` is why, when it did not answer.
+    SideQuestionFinished {
+        error: Option<String>,
+    },
     /// A selector reported a choice or a cancellation.
     ModelSelected {
         id: u64,
@@ -1097,6 +1109,10 @@ pub struct InteractiveMode {
     subagent_panel: Rc<RefCell<SubagentPanel>>,
     subagent_panel_signature: String,
     widget_container_above: Rc<RefCell<Container>>,
+    /// The side-question panel while one is open. Held apart from the container
+    /// it is mounted in, because the loop has to reach it on every event the
+    /// child produces.
+    side_question_panel: Option<Rc<RefCell<SideQuestionPanel>>>,
     editor_container: Rc<RefCell<Container>>,
     widget_container_below: Rc<RefCell<Container>>,
     footer_container: Rc<RefCell<Container>>,
@@ -1391,6 +1407,7 @@ impl InteractiveMode {
             subagent_panel,
             subagent_panel_signature: String::new(),
             widget_container_above: Rc::new(RefCell::new(Container::new())),
+            side_question_panel: None,
             editor_container,
             widget_container_below: Rc::new(RefCell::new(Container::new())),
             footer_container,
@@ -2334,6 +2351,8 @@ impl InteractiveMode {
                     None => self.show_status("AGENTS.md written."),
                 }
             }
+            UiMessage::SideQuestionEvent { event } => self.handle_side_question_event(*event),
+            UiMessage::SideQuestionFinished { error } => self.handle_side_question_finished(error),
             UiMessage::ForkAt {
                 id,
                 entry_id,
@@ -2541,6 +2560,15 @@ impl InteractiveMode {
     async fn handle_submit(&mut self, text: String) {
         let text = text.trim().to_owned();
         if text.is_empty() {
+            return;
+        }
+
+        // While the panel is open the editor belongs to it: a line typed under
+        // an open side question is a follow-up, not a prompt for the main
+        // agent. A slash command still gets through, so `/btw` can replace the
+        // panel and every other command keeps working.
+        if self.side_question_takes_input() && !text.starts_with('/') {
+            self.submit_to_side_question(&text);
             return;
         }
 
@@ -7050,6 +7078,11 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_init_command().await;
             }
+            _ if text == "/btw" || text.starts_with("/btw ") => {
+                let question = argument("/btw ");
+                self.clear_editor_text();
+                self.handle_side_question_command(question.as_deref());
+            }
             "/reload" => {
                 self.clear_editor_text();
                 self.handle_reload_command().await;
@@ -7661,6 +7694,186 @@ impl InteractiveMode {
         let _ = self.session().compact(custom_instructions).await;
     }
 
+    /// `/btw <question>` — opens the side-question panel and asks the first
+    /// question.
+    ///
+    /// A second invocation replaces the open panel rather than stacking one:
+    /// two side channels would compete for the same editor and the same
+    /// attention.
+    fn handle_side_question_command(&mut self, question: Option<&str>) {
+        let Some(question) = question.map(str::trim).filter(|text| !text.is_empty()) else {
+            self.show_warning("Ask something: /btw <question>");
+            return;
+        };
+        if let Err(error) = self.session().start_side_question() {
+            self.show_error(&error);
+            return;
+        }
+        self.close_side_question_panel();
+
+        let markdown_theme = get_markdown_theme();
+        let editor = Rc::clone(&self.editor);
+        let ui = self.ui.clone();
+        let panel = Rc::new(RefCell::new(SideQuestionPanel::new(
+            SideQuestionPanelOptions {
+                markdown_theme,
+                // Not while the user is typing: the caret needs the arrows more
+                // than the panel does.
+                can_use_scroll_keys: Rc::new(move || {
+                    editor.borrow().editor().get_text().is_empty()
+                }),
+                terminal_rows: Rc::new(move || ui.with_terminal(|terminal| terminal.rows())),
+            },
+        )));
+        {
+            let mut container = self.widget_container_above.borrow_mut();
+            container.clear();
+            container.add_child(component_ref(Spacer::new(1)));
+            container.add_child(Rc::clone(&panel) as ComponentRef);
+        }
+        self.side_question_panel = Some(panel);
+        self.ui.request_render();
+        self.ask_side_question(question);
+    }
+
+    /// Puts a question to the open child and streams the answer into the panel.
+    fn ask_side_question(&mut self, question: &str) {
+        let Some(panel) = self.side_question_panel.clone() else {
+            return;
+        };
+        if !panel.borrow_mut().submit(question) {
+            return;
+        }
+        let Some(question) = panel.borrow_mut().take_pending_prompt() else {
+            return;
+        };
+        let session = self.session();
+        let tx = self.ui_tx.clone();
+        self.side_futures.push(Box::pin(async move {
+            let sink = tx.clone();
+            let outcome = session
+                .ask_side_question(
+                    &question,
+                    Arc::new(move |event| {
+                        let _ = sink.send(UiMessage::SideQuestionEvent {
+                            event: Box::new(event),
+                        });
+                    }),
+                )
+                .await;
+            UiMessage::SideQuestionFinished {
+                error: outcome.err(),
+            }
+        }));
+    }
+
+    /// The answer text and the reasoning text of an assistant message, each
+    /// joined from the blocks that carry it.
+    fn side_question_texts(message: &notagent_ai::types::AssistantMessage) -> (String, String) {
+        let mut answer = String::new();
+        let mut thinking = String::new();
+        for block in &message.content {
+            match block {
+                notagent_ai::types::AssistantContent::Text(text) => answer.push_str(&text.text),
+                notagent_ai::types::AssistantContent::Thinking(block) => {
+                    thinking.push_str(&block.thinking)
+                }
+                _ => {}
+            }
+        }
+        (answer, thinking)
+    }
+
+    /// The child's events, as the panel reads them.
+    fn handle_side_question_event(&mut self, event: AgentEvent) {
+        let Some(panel) = self.side_question_panel.clone() else {
+            return;
+        };
+        match event {
+            AgentEvent::MessageUpdate { message, .. } => {
+                let AgentMessage::Assistant(message) = message else {
+                    return;
+                };
+                // The panel keeps the whole text rather than deltas, so the
+                // update replaces what is there instead of appending to it.
+                let (text, thinking) = Self::side_question_texts(&message);
+                let mut panel = panel.borrow_mut();
+                panel.set_answer(&text);
+                panel.set_thinking(&thinking);
+            }
+            AgentEvent::MessageEnd { message } => {
+                if let AgentMessage::Assistant(message) = message {
+                    let (text, thinking) = Self::side_question_texts(&message);
+                    let mut panel = panel.borrow_mut();
+                    panel.set_answer(&text);
+                    panel.set_thinking(&thinking);
+                }
+            }
+            _ => return,
+        }
+        self.ui.request_render();
+    }
+
+    /// The run settled, one way or the other.
+    fn handle_side_question_finished(&mut self, error: Option<String>) {
+        let Some(panel) = self.side_question_panel.clone() else {
+            return;
+        };
+        match error {
+            Some(error) => panel.borrow_mut().mark_failed(error),
+            None => panel.borrow_mut().mark_done(None),
+        }
+        self.ui.request_render();
+    }
+
+    /// Takes the panel down. The child goes with it while it is still
+    /// answering, or while nothing has been asked yet — in both cases there is
+    /// nothing left to read.
+    fn close_side_question_panel(&mut self) -> bool {
+        let Some(panel) = self.side_question_panel.take() else {
+            return false;
+        };
+        let should_cancel = {
+            let panel = panel.borrow();
+            panel.is_running() || panel.is_empty()
+        };
+        if should_cancel {
+            self.session().cancel_side_question();
+        } else {
+            // The exchange is over but the child would otherwise sit there
+            // holding its conversation; nothing more will be asked of it.
+            self.session().cancel_side_question();
+        }
+        self.widget_container_above.borrow_mut().clear();
+        self.ui.request_render();
+        true
+    }
+
+    /// Whether the editor's text belongs to the panel rather than to the main
+    /// agent.
+    fn side_question_takes_input(&self) -> bool {
+        self.side_question_panel.is_some()
+    }
+
+    /// A submitted line while the panel is open.
+    fn submit_to_side_question(&mut self, text: &str) {
+        let Some(panel) = self.side_question_panel.clone() else {
+            return;
+        };
+        if panel.borrow().is_running() {
+            // Not queued: two questions in flight at once is a state the panel
+            // cannot show and the child cannot answer.
+            panel
+                .borrow_mut()
+                .add_transient_notice("Wait for the answer before asking again.");
+            self.editor.borrow_mut().editor_mut().set_text(text);
+            self.ui.request_render();
+            return;
+        }
+        self.clear_editor_text();
+        self.ask_side_question(text);
+    }
+
     /// Starts the `/init` child and lets the loop carry on.
     ///
     /// Awaiting the run here would freeze the UI for as long as the child
@@ -8091,6 +8304,13 @@ impl InteractiveMode {
     /// The double-escape action (`/tree` or `/fork`) needs the selectors and
     /// arrives with their slice.
     fn handle_escape(&mut self) {
+        // The panel stacks above everything else and is what the key most
+        // obviously points at. Closing it must not also stop the main turn —
+        // the two are unrelated, and a user dismissing a side question is not
+        // asking the agent to stop working.
+        if self.close_side_question_panel() {
+            return;
+        }
         match self.escape_target {
             // While a compaction or a retry runs, Escape aborts that instead.
             EscapeTarget::Compaction => {
