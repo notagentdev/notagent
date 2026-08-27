@@ -277,11 +277,16 @@ async fn a_new_turn_starts_its_own_block() {
     .await;
 }
 
-/// An exploration cut short settles red rather than reading as one that went
-/// fine (user decision 2026-08-17). A failed turn is the reachable form of the
-/// abort here; both take the same path.
+/// A search that finished keeps its result, even when the turn it ran in did
+/// not.
+///
+/// The abort path fails only the calls that never reported back
+/// (`ExploreBlockComponent::fail_running_calls`); a completed one is a fact
+/// about that search, not about the turn around it. Colouring it red because
+/// the provider gave up afterwards would tell the user a search failed that
+/// did not, and send them looking for a fault in the wrong place.
 #[tokio::test(flavor = "current_thread")]
-async fn an_interrupted_exploration_settles_red() {
+async fn a_finished_search_keeps_its_result_when_the_turn_fails() {
     use notagent::modes::interactive::theme::theme::{ThemeBg, badge, theme};
 
     run_local(async {
@@ -296,19 +301,21 @@ async fn an_interrupted_exploration_settles_red() {
 
         driver.submit("look around").await;
         driver.wait_for("EXPLORED").await;
+        // The turn really did fail — otherwise this proves nothing.
+        driver.wait_for("the provider gave up").await;
 
-        // The badge carries the error fill, not the success one — read off the
-        // raw writes, since the fill only exists as an escape sequence.
+        // The fill only exists as an escape sequence, so it is read off the raw
+        // writes rather than off the screen.
         let raw = driver.terminal().get_writes();
         let theme = theme();
         assert!(
-            raw.contains(&badge(&theme, ThemeBg::ToolErrorBg, "explored")),
-            "the interrupted block settles red:\n{}",
+            raw.contains(&badge(&theme, ThemeBg::ToolSuccessBg, "explored")),
+            "the search that finished settles green:\n{}",
             driver.screen()
         );
         assert!(
-            !raw.contains(&badge(&theme, ThemeBg::ToolSuccessBg, "explored")),
-            "and never green:\n{}",
+            !raw.contains(&badge(&theme, ThemeBg::ToolErrorBg, "explored")),
+            "and is not repainted red by the turn's failure:\n{}",
             driver.screen()
         );
     })

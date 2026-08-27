@@ -27,6 +27,34 @@ fn dark_theme() -> serde_json::Value {
         .expect("dark.json parses")
 }
 
+/// The dark theme's accent as the sequence a slot holds, read from the theme
+/// rather than written out again.
+///
+/// A literal here is a second copy of a value that lives in `dark.json`, and it
+/// goes stale the moment the colour is changed — which is a change to how the
+/// app looks, not to what any of these cases are about.
+fn dark_accent_ansi() -> String {
+    let theme = dark_theme();
+    let token = theme["colors"]["accent"]
+        .as_str()
+        .expect("the accent slot names a var")
+        .to_string();
+    let hex = theme["vars"][&token]
+        .as_str()
+        .unwrap_or(&token)
+        .trim_start_matches('#')
+        .to_string();
+    let channel = |range: std::ops::Range<usize>| {
+        u8::from_str_radix(&hex[range], 16).expect("the accent is a hex colour")
+    };
+    format!(
+        "\x1b[38;2;{};{};{}m",
+        channel(0..2),
+        channel(2..4),
+        channel(4..6)
+    )
+}
+
 struct AgentDir {
     root: PathBuf,
     themes_dir: PathBuf,
@@ -237,11 +265,9 @@ fn falls_back_to_dark_when_the_configured_theme_is_invalid() {
 
     init_theme(Some("broken"), true);
     assert!(is_theme_initialized());
-    // The dark theme's accent is `#b6a6d9`.
-    assert_eq!(
-        theme().get_fg_ansi(ThemeColor::Accent),
-        "\x1b[38;2;182;166;217m"
-    );
+    // A theme missing a required token falls back to dark, so the accent is
+    // dark's.
+    assert_eq!(theme().get_fg_ansi(ThemeColor::Accent), dark_accent_ansi());
 
     let result = set_theme("broken", true);
     assert!(!result.success);
@@ -251,10 +277,7 @@ fn falls_back_to_dark_when_the_configured_theme_is_invalid() {
             .expect("error message")
             .contains("Missing required color tokens")
     );
-    assert_eq!(
-        theme().get_fg_ansi(ThemeColor::Accent),
-        "\x1b[38;2;182;166;217m"
-    );
+    assert_eq!(theme().get_fg_ansi(ThemeColor::Accent), dark_accent_ansi());
 }
 
 #[test]
@@ -441,10 +464,7 @@ fn does_not_watch_the_built_in_themes() {
     init_theme(Some("dark"), true);
     // No watcher was installed, so a directory event is ignored.
     notify_theme_directory_event(Some("dark.json"));
-    assert_eq!(
-        theme().get_fg_ansi(ThemeColor::Accent),
-        "\x1b[38;2;182;166;217m"
-    );
+    assert_eq!(theme().get_fg_ansi(ThemeColor::Accent), dark_accent_ansi());
 }
 
 // ---------------------------------------------------------------------------

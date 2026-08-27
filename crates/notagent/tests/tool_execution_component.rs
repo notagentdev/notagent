@@ -309,9 +309,9 @@ fn badge_style_leads_with_a_state_badge_and_drops_the_padding_rows() {
         .map(|line| strip_ansi(line).trim_end().to_string())
         .collect();
 
-    // Spacer, then badge and call sharing one row (underscores read as
-    // spaces) — no surface, no padding rows.
-    let expected = vec!["".to_string(), "  CUSTOM TOOL  (custom call)".to_string()];
+    // Spacer, then badge and call sharing one row — no surface, no padding
+    // rows, and the badge starts at the margin rather than a column in.
+    let expected = vec!["".to_string(), " CUSTOM TOOL  (custom call)".to_string()];
     assert_eq!(stripped, expected);
 }
 
@@ -396,7 +396,7 @@ fn badge_style_fallback_shares_the_badge_row_with_the_first_output_line() {
     // Spacer, then the badge (with its pill padding) sharing its row with
     // the output — no padding rows, no second name line, no argument JSON
     // while collapsed.
-    let expected = vec!["".to_string(), "  GOAL  done".to_string()];
+    let expected = vec!["".to_string(), " GOAL  done".to_string()];
     assert_eq!(stripped, expected);
 }
 
