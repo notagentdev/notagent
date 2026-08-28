@@ -31,6 +31,7 @@ pub mod settings_selector;
 pub mod show_images_selector;
 pub mod side_question_panel;
 pub mod skill_invocation_message;
+pub mod startup_header;
 pub mod status_indicator;
 pub mod subagent_panel;
 pub mod task_lifecycle;

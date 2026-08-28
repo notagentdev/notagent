@@ -10,8 +10,10 @@ async fn paints_the_header_and_takes_input_in_the_editor() {
 
         // The header of a non-quiet startup.
         driver.wait_for(APP_NAME).await;
-        driver.assert_shows("commands");
-        driver.assert_shows("bash");
+        driver.assert_shows("Send /help for help information.");
+        driver.assert_shows("Directory:");
+        driver.assert_shows("Git: not a repository");
+        driver.assert_shows("Model: faux/faux-1");
 
         // The editor has the focus: what is typed lands on screen and stays
         // there until it is submitted.

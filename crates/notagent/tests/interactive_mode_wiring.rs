@@ -233,8 +233,20 @@ async fn the_startup_screen_shows_the_header_and_the_editor() {
         driver.wait_for("notagent").await;
         let screen = driver.screen();
         assert!(
-            screen.contains("/ commands") && screen.contains("! bash"),
-            "the compact startup help is part of the header: {screen}"
+            screen.contains("Send /help for help information.")
+                && screen.contains("Directory:")
+                && screen.contains("Git: not a repository")
+                && screen.contains("Model: faux/faux-1"),
+            "the startup card shows the current runtime context: {screen}"
+        );
+        assert!(
+            screen.contains('╭') && screen.contains('╯'),
+            "the startup card has its own frame: {screen}"
+        );
+        assert!(
+            !screen.contains("Press ctrl+o to show full startup help")
+                && !screen.contains("Notagent can explain its own features"),
+            "the old startup copy is gone: {screen}"
         );
         // The editor is focused, so the mode drew its border.
         assert!(
@@ -798,7 +810,7 @@ async fn ctrl_o_toggles_the_tool_output_expansion() {
         let mut driver = Driver::start(&app, terminal).await;
         driver.wait_for("notagent").await;
 
-        // `app.tools.expand` is Ctrl+O; it also expands the startup header.
+        // `app.tools.expand` is Ctrl+O.
         driver.send_keys("\x0f").await;
         driver.wait_for("Tool output: expanded").await;
         driver.send_keys("\x0f").await;

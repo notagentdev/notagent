@@ -93,9 +93,7 @@ use crate::modes::interactive::components::explore_block::{
     ExploreBlockComponent, is_explore_tool,
 };
 use crate::modes::interactive::components::footer::{FooterComponent, format_tokens};
-use crate::modes::interactive::components::keybinding_hints::{
-    key_display_text, key_hint, key_text, raw_key_hint,
-};
+use crate::modes::interactive::components::keybinding_hints::key_display_text;
 use crate::modes::interactive::components::list_selector::ListSelectorComponent;
 use crate::modes::interactive::components::login_dialog::{LoginCancelled, LoginDialogComponent};
 use crate::modes::interactive::components::model_selector::{
@@ -117,6 +115,7 @@ use crate::modes::interactive::components::side_question_panel::{
     SideQuestionPanel, SideQuestionPanelOptions,
 };
 use crate::modes::interactive::components::skill_invocation_message::SkillInvocationMessageComponent;
+use crate::modes::interactive::components::startup_header::{StartupHeader, StartupHeaderData};
 use crate::modes::interactive::components::status_indicator::{
     CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
 };
@@ -1073,11 +1072,9 @@ pub struct InteractiveMode {
     #[allow(dead_code)]
     keybindings: Rc<RefCell<KeybindingsManager>>,
     theme_controller: InteractiveThemeController,
-    built_in_header: Option<Rc<RefCell<ExpandableText>>>,
     /// The layout the alternate screen renders (`fullscreenLayoutRoot`).
     fullscreen_layout_root: Option<ComponentRef>,
 
-    version: String,
     is_initialized: bool,
 
     /// The active animated indicator. Compaction mounts it in the transcript;
@@ -1366,9 +1363,7 @@ impl InteractiveMode {
             footer_data,
             keybindings,
             theme_controller,
-            built_in_header: None,
             fullscreen_layout_root: None,
-            version: VERSION.to_owned(),
             is_initialized: false,
             active_status_indicator: None,
             compaction_chat_indicator: None,
@@ -1619,78 +1614,23 @@ impl InteractiveMode {
     fn build_header(&mut self) {
         let settings = self.settings();
         if self.options.verbose || !settings.get_quiet_startup() {
-            let logo = format!(
-                "{}{}",
-                theme().bold(&theme().fg(ThemeColor::Accent, APP_NAME)),
-                theme().fg(ThemeColor::Dim, &format!(" v{}", self.version))
-            );
-            let expanded_instructions = [
-                key_hint("app.interrupt", "to interrupt"),
-                key_hint("app.clear", "to clear"),
-                raw_key_hint(&format!("{} twice", key_text("app.clear")), "to exit"),
-                key_hint("app.exit", "to exit (empty)"),
-                key_hint("app.suspend", "to suspend"),
-                key_hint("tui.editor.deleteToLineEnd", "to delete to end"),
-                key_hint("app.mode.cycle", "to cycle mode"),
-                key_hint("app.thinking.cycle", "to cycle thinking level"),
-                raw_key_hint(
-                    &format!(
-                        "{}/{}",
-                        key_text("app.model.cycleForward"),
-                        key_text("app.model.cycleBackward")
-                    ),
-                    "to cycle models",
-                ),
-                key_hint("app.model.select", "to select model"),
-                key_hint("app.tools.expand", "to expand tools"),
-                key_hint("app.thinking.toggle", "to expand thinking"),
-                key_hint("app.editor.external", "for external editor"),
-                raw_key_hint("/", "for commands"),
-                raw_key_hint("!", "to run bash"),
-                raw_key_hint("!!", "to run bash (no context)"),
-                key_hint("app.message.followUp", "to queue follow-up"),
-                key_hint("app.message.dequeue", "to edit all queued messages"),
-                key_hint(
-                    "app.clipboard.pasteImage",
-                    "to paste image (with text fallback)",
-                ),
-                raw_key_hint("drop files", "to attach"),
-            ]
-            .join("\n");
-            let compact_instructions = [
-                key_hint("app.interrupt", "interrupt"),
-                raw_key_hint(
-                    &format!("{}/{}", key_text("app.clear"), key_text("app.exit")),
-                    "clear/exit",
-                ),
-                raw_key_hint("/", "commands"),
-                raw_key_hint("!", "bash"),
-                key_hint("app.tools.expand", "more"),
-            ]
-            .join(&theme().fg(ThemeColor::Muted, " · "));
-            let compact_onboarding = theme().fg(
-                ThemeColor::Dim,
-                &format!(
-                    "Press {} to show full startup help and loaded resources.",
-                    key_text("app.tools.expand")
-                ),
-            );
-            let onboarding = theme().fg(
-                ThemeColor::Dim,
-                "Notagent can explain its own features and look up its docs. Ask it how to use or extend Notagent.",
-            );
-            let header = Rc::new(RefCell::new(ExpandableText::new(
-                format!("{logo}\n{compact_instructions}\n{compact_onboarding}\n\n{onboarding}"),
-                format!("{logo}\n{expanded_instructions}\n\n{onboarding}"),
-                self.tool_output_expanded,
-                1,
-            )));
+            let runtime = Arc::clone(&self.runtime);
+            let footer_data = Arc::clone(&self.footer_data);
+            let header = StartupHeader::from_provider(Rc::new(move || {
+                let model = runtime
+                    .session()
+                    .model()
+                    .map(|model| format!("{}/{}", model.provider, model.id));
+                StartupHeaderData {
+                    directory: runtime.cwd(),
+                    git_branch: footer_data.get_git_branch(),
+                    model,
+                }
+            }));
             let mut container = self.header_container.borrow_mut();
             container.add_child(component_ref(Spacer::new(1)));
-            container.add_child(Rc::clone(&header) as ComponentRef);
+            container.add_child(component_ref(header));
             container.add_child(component_ref(Spacer::new(1)));
-            drop(container);
-            self.built_in_header = Some(header);
         } else {
             self.header_container
                 .borrow_mut()
@@ -3486,9 +3426,6 @@ impl InteractiveMode {
     fn toggle_tool_output_expansion(&mut self) {
         let expanded = !self.tool_output_expanded;
         self.tool_output_expanded = expanded;
-        if let Some(header) = self.built_in_header.clone() {
-            header.borrow_mut().set_expanded(expanded);
-        }
         for component in self.chat_expandables.iter() {
             component.borrow_mut().set_expanded(expanded);
         }
@@ -7767,9 +7704,6 @@ impl InteractiveMode {
         self.keybindings.borrow_mut().reload();
         self.setup_autocomplete_provider();
         set_keybindings(self.keybindings.borrow().to_tui());
-        if let Some(header) = self.built_in_header.clone() {
-            header.borrow_mut().set_expanded(self.tool_output_expanded);
-        }
         let _ = set_registered_themes(self.session().resource_loader().get_themes().0);
         self.theme_controller.apply_from_settings().await;
         self.apply_runtime_settings();
