@@ -19,6 +19,9 @@ use app_runtime::{HeadlessApp, reply};
 use notagent::modes::interactive::interactive_mode::{
     InteractiveModeHandle, InteractiveModeOptions, InteractiveTerminal, create_interactive_mode,
 };
+use notagent_agent::types::AgentMessage;
+use notagent_ai::providers::faux::faux_assistant_message;
+use notagent_ai::types::{AssistantContent, StopReason, TextContent, UserContent, UserMessage};
 use notagent_tui::terminal::TerminalPump;
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{RenderLoop, run_until};
@@ -187,6 +190,39 @@ async fn local<F: std::future::Future>(body: F) -> F::Output {
     tokio::task::LocalSet::new().run_until(body).await
 }
 
+fn stored_user_message(text: &str) -> AgentMessage {
+    AgentMessage::User(UserMessage {
+        content: UserContent::Text(text.to_owned()),
+        timestamp: 1,
+    })
+}
+
+fn stored_assistant_message(text: &str) -> AgentMessage {
+    AgentMessage::Assistant(faux_assistant_message(
+        vec![AssistantContent::Text(TextContent::new(text))],
+        StopReason::Stop,
+    ))
+}
+
+fn append_compactable_history(app: &HeadlessApp) -> String {
+    app.session().with_session_manager(|manager| {
+        let mut last_user_id = String::new();
+        for (question, answer) in [
+            ("First question", "Old answer must survive compaction"),
+            ("Second question", "Second answer"),
+            ("Third question", "Third answer"),
+        ] {
+            last_user_id = manager
+                .append_message(&stored_user_message(question))
+                .expect("stored user entry");
+            manager
+                .append_message(&stored_assistant_message(answer))
+                .expect("stored assistant entry");
+        }
+        last_user_id
+    })
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn the_startup_screen_shows_the_header_and_the_editor() {
     local(async {
@@ -230,6 +266,79 @@ async fn a_submitted_prompt_reaches_the_provider_and_the_answer_reaches_the_tran
         assert_eq!(
             app.session().get_last_assistant_text().as_deref(),
             Some("Answer from the faux provider")
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_resumed_compacted_session_keeps_the_full_transcript_once() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let first_kept_entry_id = append_compactable_history(&app);
+        app.session().with_session_manager(|manager| {
+            manager
+                .append_compaction(
+                    "The compacted summary",
+                    &first_kept_entry_id,
+                    None,
+                    7_388,
+                    Some(193),
+                    None,
+                    None,
+                    None,
+                )
+                .expect("stored compaction entry");
+        });
+
+        let terminal = VirtualTerminal::new(100, 60);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("Old answer must survive compaction").await;
+        driver.wait_for("Compacted from").await;
+
+        let screen = driver.terminal.get_viewport().join("\n");
+        assert!(
+            screen.contains("Old answer must survive compaction"),
+            "resume must render the durable transcript, not the reduced model context: {screen}"
+        );
+        assert_eq!(
+            screen.matches("Compacted from").count(),
+            1,
+            "a persisted compaction entry must be rendered exactly once: {screen}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn live_compaction_replaces_its_indicator_without_rewriting_the_transcript() {
+    local(async {
+        let app = HeadlessApp::create_slow(10.0).await;
+        append_compactable_history(&app);
+        app.faux().set_responses(vec![reply(
+            "## Goal\nKeep the complete visible transcript while reducing model context.",
+        )]);
+        let terminal = VirtualTerminal::new(100, 60);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("Old answer must survive compaction").await;
+
+        driver.submit("/compact").await;
+        driver.wait_for("Compacting context").await;
+        driver.wait_for("Compacted from").await;
+
+        let screen = driver.terminal.get_viewport().join("\n");
+        assert!(
+            screen.contains("Old answer must survive compaction"),
+            "live compaction must leave existing transcript rows untouched: {screen}"
+        );
+        assert!(
+            !screen.contains("Compacting context"),
+            "the running indicator must be replaced after compaction: {screen}"
+        );
+        assert_eq!(
+            screen.matches("Compacted from").count(),
+            1,
+            "live compaction must append one completed block: {screen}"
         );
     })
     .await;

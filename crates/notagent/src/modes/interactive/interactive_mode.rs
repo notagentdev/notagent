@@ -342,6 +342,14 @@ type RunningSessionLoad = (LoadRequest, Pin<Box<dyn Future<Output = Vec<SessionI
 /// The prompt the main loop currently drives, if any.
 type PromptFuture = Pin<Box<dyn Future<Output = Result<(), String>>>>;
 
+/// A manual compaction the main loop drives beside its UI and session events.
+type CompactionFuture = Pin<Box<dyn Future<Output = ()>>>;
+
+struct ActiveCompactionChatIndicator {
+    spacer: ComponentRef,
+    indicator: ComponentRef,
+}
+
 /// What [`create_interactive_mode`] hands back: the three pieces a caller needs
 /// to run the mode on its own render loop.
 pub struct InteractiveModeHandle {
@@ -1072,8 +1080,10 @@ pub struct InteractiveMode {
     version: String,
     is_initialized: bool,
 
-    /// The status line: the idle placeholder or one indicator.
+    /// The active animated indicator. Compaction mounts it in the transcript;
+    /// other activities use the status line.
     active_status_indicator: Option<Rc<RefCell<StatusIndicator>>>,
+    compaction_chat_indicator: Option<ActiveCompactionChatIndicator>,
     working_message: Option<String>,
     working_visible: bool,
     hidden_thinking_label: String,
@@ -1163,6 +1173,7 @@ pub struct InteractiveMode {
     pasted_images: HashMap<u32, ImageContent>,
     next_image_paste_id: u32,
     pending_user_inputs: VecDeque<String>,
+    pending_compactions: VecDeque<Option<String>>,
 
     is_shutting_down: bool,
     exit_code: Option<i32>,
@@ -1360,6 +1371,7 @@ impl InteractiveMode {
             version: VERSION.to_owned(),
             is_initialized: false,
             active_status_indicator: None,
+            compaction_chat_indicator: None,
             working_message: None,
             working_visible: true,
             hidden_thinking_label: DEFAULT_HIDDEN_THINKING_LABEL.to_owned(),
@@ -1405,6 +1417,7 @@ impl InteractiveMode {
             pasted_images: HashMap::new(),
             next_image_paste_id: 1,
             pending_user_inputs: VecDeque::new(),
+            pending_compactions: VecDeque::new(),
             is_shutting_down: false,
             exit_code: None,
             approval_tx,
@@ -1923,6 +1936,7 @@ impl InteractiveMode {
         let mut bash_rx = self.bash_rx.take().expect("run called once");
         let mut approval_rx = self.approval_rx.take().expect("run called once");
         let mut prompt: Option<PromptFuture> = None;
+        let mut compaction: Option<CompactionFuture> = None;
         let mut session_load: Option<RunningSessionLoad> = None;
         let mut side: futures::stream::FuturesUnordered<Pin<Box<dyn Future<Output = UiMessage>>>> =
             futures::stream::FuturesUnordered::new();
@@ -1950,6 +1964,14 @@ impl InteractiveMode {
                             },
                         )
                         .await
+                }));
+            }
+            if compaction.is_none()
+                && let Some(instructions) = self.pending_compactions.pop_front()
+            {
+                let session = self.session();
+                compaction = Some(Box::pin(async move {
+                    let _ = session.compact(instructions.as_deref()).await;
                 }));
             }
 
@@ -2005,6 +2027,15 @@ impl InteractiveMode {
                     if let Err(message) = result {
                         self.show_error(&message);
                     }
+                    None
+                }
+                () = async {
+                    match compaction.as_mut() {
+                        Some(compaction) => compaction.await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    compaction = None;
                     None
                 }
                 result = async {
@@ -6871,7 +6902,7 @@ impl InteractiveMode {
             _ if text == "/compact" || text.starts_with("/compact ") => {
                 let instructions = argument("/compact ");
                 self.clear_editor_text();
-                self.handle_compact_command(instructions.as_deref()).await;
+                self.handle_compact_command(instructions);
             }
             "/init" => {
                 self.clear_editor_text();
@@ -7468,10 +7499,11 @@ impl InteractiveMode {
         }
     }
 
-    async fn handle_compact_command(&mut self, custom_instructions: Option<&str>) {
-        // The result is reported through `compaction_end`; a failure here is the
-        // same event with an error message.
-        let _ = self.session().compact(custom_instructions).await;
+    fn handle_compact_command(&mut self, custom_instructions: Option<String>) {
+        // The session reports start and completion through its event channel.
+        // Keeping the work in the main select lets those events render while
+        // the provider is still producing the summary.
+        self.pending_compactions.push_back(custom_instructions);
     }
 
     /// `/btw <question>` — opens the side-question panel and asks the first
@@ -7786,10 +7818,17 @@ impl InteractiveMode {
 
     fn rebuild_chat_from_messages(&mut self) {
         self.chat_container.borrow_mut().clear();
-        let entries = self
-            .session()
-            .with_session_manager(|manager| manager.build_context_entries());
+        // The transcript is the durable record the user resumes. Compaction
+        // only changes the context sent to the model, never this projection.
+        let entries = self.session().with_session_manager(|manager| {
+            manager
+                .get_branch(None)
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        });
         self.render_session_entries(&entries, false);
+        self.restore_compaction_chat_indicator();
     }
 
     /// because the renderer keeps that pass private to the frame it writes.
@@ -8464,9 +8503,7 @@ impl InteractiveMode {
                 }
                 // The editor stays live; submissions are queued while it runs.
                 self.escape_target = EscapeTarget::Compaction;
-                self.show_status_indicator(StatusIndicator::compaction(compaction_status_reason(
-                    reason,
-                )));
+                self.show_compaction_chat_indicator(compaction_status_reason(reason));
                 self.ui.request_render();
             }
             AgentSessionEvent::CompactionEnd {
@@ -8483,7 +8520,7 @@ impl InteractiveMode {
                 if self.escape_target == EscapeTarget::Compaction {
                     self.escape_target = EscapeTarget::Default;
                 }
-                self.clear_status_indicator(Some(StatusIndicatorKind::Compaction));
+                self.clear_compaction_chat_indicator();
                 if aborted {
                     if reason == CompactionReason::Manual {
                         self.show_error("Compaction cancelled");
@@ -8491,8 +8528,6 @@ impl InteractiveMode {
                         self.show_status("Auto-compaction cancelled");
                     }
                 } else if let Some(result) = result {
-                    self.chat_container.borrow_mut().clear();
-                    self.rebuild_chat_from_messages();
                     self.add_message_to_chat(
                         &AgentMessage::CompactionSummary(create_compaction_summary_message(
                             &result.summary,
@@ -8684,9 +8719,13 @@ impl InteractiveMode {
     // ------------------------------------------------------------------
 
     fn render_initial_messages(&mut self) {
-        let entries = self
-            .session()
-            .with_session_manager(|manager| manager.build_context_entries());
+        let entries = self.session().with_session_manager(|manager| {
+            manager
+                .get_branch(None)
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        });
         self.render_session_entries(&entries, true);
         self.render_project_trust_warning_if_needed();
 
@@ -9074,6 +9113,45 @@ impl InteractiveMode {
         container.add_child(Rc::clone(&indicator) as ComponentRef);
         drop(container);
         self.active_status_indicator = Some(indicator);
+    }
+
+    fn show_compaction_chat_indicator(&mut self, reason: CompactionStatusReason) {
+        self.clear_compaction_chat_indicator();
+        self.clear_status_indicator(None);
+
+        let indicator = Rc::new(RefCell::new(StatusIndicator::compaction(reason)));
+        indicator.borrow_mut().loader_mut().start();
+        let spacer = component_ref(Spacer::new(1));
+        let component = Rc::clone(&indicator) as ComponentRef;
+        {
+            let mut chat = self.chat_container.borrow_mut();
+            chat.add_child(Rc::clone(&spacer));
+            chat.add_child(Rc::clone(&component));
+        }
+        self.compaction_chat_indicator = Some(ActiveCompactionChatIndicator {
+            spacer,
+            indicator: component,
+        });
+        self.active_status_indicator = Some(indicator);
+    }
+
+    fn restore_compaction_chat_indicator(&self) {
+        let Some(active) = self.compaction_chat_indicator.as_ref() else {
+            return;
+        };
+        let mut chat = self.chat_container.borrow_mut();
+        chat.add_child(Rc::clone(&active.spacer));
+        chat.add_child(Rc::clone(&active.indicator));
+    }
+
+    fn clear_compaction_chat_indicator(&mut self) {
+        self.clear_status_indicator(Some(StatusIndicatorKind::Compaction));
+        let Some(active) = self.compaction_chat_indicator.take() else {
+            return;
+        };
+        let mut chat = self.chat_container.borrow_mut();
+        chat.remove_child(&active.indicator);
+        chat.remove_child(&active.spacer);
     }
 
     /// Stop the indicator but leave it on screen, reporting what the work took.
