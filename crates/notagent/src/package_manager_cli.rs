@@ -1,20 +1,3 @@
-//! Port of `packages/coding-agent/src/package-manager-cli.ts` (889 LOC).
-//!
-//! The `install`, `remove`/`uninstall`, `update` and `list` sub-commands.
-//!
-//! Deviations:
-//!
-//! * Class 1 — `console.log`/`console.error` go through [`ConsoleIo`] and
-//!   `process.exitCode` becomes the return value, so the ported suite can read
-//!   both the way the TypeScript reads its `console` spies.
-//! * Class 2 — the extension pre-pass of `createCommandSettingsManager`
-//!   (`loadProjectTrustExtensions`) is gone with the extension system, and so is
-//!   the Windows npm quarantine (`utils/windows-self-update.ts`), which
-//!   protects native npm dependencies a Rust binary does not have.
-//! * Class 3 — `chalk` becomes direct ANSI (master substitution); the colours
-//!   are suppressed when the stream is not a terminal, which is what chalk's
-//!   `supports-color` does.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -124,7 +107,6 @@ impl Paint {
 }
 
 /// What the host hands the command: where it runs, how it prints, and the two
-/// seams the TypeScript reaches through globals (`process`, the spawner).
 pub struct PackageCommandRuntime {
     pub cwd: String,
     pub agent_dir: String,
@@ -133,7 +115,6 @@ pub struct PackageCommandRuntime {
     pub color: bool,
     /// Whether there is a user to ask for project trust (`process.stdin.isTTY
     /// && process.stdout.isTTY` plus the prompt itself, which lives in C's
-    /// `cli/project-trust.ts`).
     pub project_trust_context: ProjectTrustContext,
     /// Terminal width for the update note (`process.stdout.columns ?? 80`).
     pub terminal_width: Option<usize>,
@@ -495,7 +476,6 @@ fn parse_package_command(args: &[String]) -> Option<PackageCommandOptions> {
                 }
                 update_target = Some(UpdateTarget::Extensions(Some(positional)));
             }
-        // Two branches in the TypeScript (`--all`, and `--self --extensions`),
         // one here — they set the same target.
         } else if all_flag || (self_flag && extensions_flag) {
             update_target = Some(UpdateTarget::All);
@@ -575,7 +555,6 @@ async fn refresh_model_catalogs(
             ..CreateModelRuntimeOptions::default()
         })
         .await?;
-        // `handlePackageCommand(args, { extensionFactories })` (`main.ts:663`)
         // hands the built-in extensions to the package command as well, so the
         // llama.cpp catalog is part of `update --models` there too.
         let llama = crate::core::llama::provider::create_llama_provider();
@@ -785,7 +764,6 @@ async fn run_self_update(
 }
 
 /// `createCommandSettingsManager(options)`
-///
 /// Deviation (class 2): the extension pre-pass that let extensions answer the
 /// trust question is gone; everything else — saved trust, `--approve`,
 /// `defaultProjectTrust`, the prompt — is unchanged.
@@ -860,11 +838,6 @@ fn print_config_command_help(runtime: &PackageCommandRuntime) {
 }
 
 /// `handleConfigCommand(args, runtimeOptions)`
-///
-/// `None` means the arguments are not the config command (the TypeScript's
-/// `false`); otherwise the process exit code. TypeScript ends the successful
-/// run with `process.exit(0)` from inside the dialog callback; the port returns
-/// the code so the caller's render loop unwinds first (deviation class 1).
 pub async fn handle_config_command(
     args: &[String],
     runtime: &PackageCommandRuntime,
@@ -966,9 +939,6 @@ pub async fn handle_config_command(
 }
 
 /// `handlePackageCommand(args, runtimeOptions)`
-///
-/// `None` means the arguments are not a package command (the TypeScript's
-/// `false`); otherwise the process exit code (`0` where the TypeScript leaves
 /// `process.exitCode` untouched).
 pub async fn handle_package_command(
     args: &[String],
@@ -1204,7 +1174,6 @@ pub async fn handle_package_command(
                         "{APP_NAME} self-update on Windows is only supported for npm and pnpm installs."
                     )));
                     console.error(&paint.dim(&format!(
-                        // `binary` instead of the TypeScript's `bun-binary`,
                         // the name `config.rs` gives the standalone install.
                         "Detected install method: {}. Update {APP_NAME} manually.",
                         install_method.as_str()

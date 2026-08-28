@@ -1,10 +1,3 @@
-//! Azure OpenAI Responses API.
-//!
-//! 1:1 port of `packages/ai/src/api/azure-openai-responses.ts`. The message, tool and
-//! stream handling come from [`crate::api::openai_responses_shared`]; what is specific
-//! here is the deployment-name resolution, the base-URL normalization and the `api-key`
-//! authentication the `AzureOpenAI` client performs.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -149,7 +142,6 @@ pub fn normalize_azure_base_url(base_url: &str) -> Result<String, AzureOpenAIErr
 }
 
 /// `buildURL(path, query)` of the SDK for `path = "/responses"`.
-///
 /// The base URL and the path are concatenated as plain strings before parsing, so a base
 /// URL that carries a query swallows the path into that query — the SDK then re-encodes
 /// it (`?custom=true%2Fresponses`). That quirk is part of the wire behaviour and is
@@ -453,7 +445,6 @@ fn format_azure_openai_error(error: &AzureTransportError) -> String {
 fn empty_output(model: &Model, timestamp: i64) -> AssistantMessage {
     AssistantMessage {
         content: Vec::new(),
-        // TS pins the api to the literal, independent of `model.api`.
         api: "azure-openai-responses".to_string(),
         provider: model.provider.clone(),
         model: model.id.clone(),
@@ -779,7 +770,6 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)` — throws without an api key, like TS.
 pub fn stream_simple(
     model: Model,
     context: Context,

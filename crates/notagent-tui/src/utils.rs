@@ -1,11 +1,3 @@
-//! Breitenberechnung, ANSI-Parsing, Word-Wrap und Zeilen-Slicing.
-//!
-//! 1:1-Port von `packages/tui/src/utils.ts` (1326 LOC).
-//!
-//! Zwei Eigenheiten der Vorlage, die der Port beibehält:
-//! - Zeilen sind Strings mit eingebetteten ANSI-Sequenzen (kein Zellpuffer).
-//! - `extract_ansi_code` erkennt bei CSI **nur** die Finalbytes `m G K H J`.
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -18,13 +10,11 @@ use crate::unicode_tables::{
     RGI_ZWJ_SEQUENCES, TERMINAL_SPACING_MARK, ZERO_WIDTH, in_ranges,
 };
 
-/// Graphem-Cluster eines Strings (entspricht `Intl.Segmenter` mit
 /// `granularity: "grapheme"`; UAX #29 erweiterte Cluster).
 pub fn graphemes(text: &str) -> impl DoubleEndedIterator<Item = &str> {
     UnicodeSegmentation::graphemes(text, true)
 }
 
-/// Wortsegmente eines Strings (entspricht `Intl.Segmenter` mit
 /// `granularity: "word"`; UAX #29 Wortgrenzen).
 pub fn word_segments_public(text: &str) -> impl Iterator<Item = &str> {
     word_segments(text)
@@ -34,9 +24,6 @@ pub(crate) fn word_segments(text: &str) -> impl Iterator<Item = &str> {
     text.split_word_bounds()
 }
 
-/// Schnelle Vorprüfung, ob ein Cluster überhaupt ein RGI-Emoji sein kann.
-///
-/// Die geprüften Unicode-Blöcke sind bewusst großzügig (`utils.ts:27-37`).
 fn could_be_emoji(segment: &str) -> bool {
     let Some(cp) = segment.chars().next().map(u32::from) else {
         return false;
@@ -46,7 +33,6 @@ fn could_be_emoji(segment: &str) -> bool {
         || (0x2600..=0x27bf).contains(&cp)
         || (0x2b50..=0x2b55).contains(&cp)
         || segment.contains('\u{fe0f}')
-        // TS: `segment.length > 2` zählt UTF-16-Codeeinheiten.
         || segment.encode_utf16().count() > 2
 }
 
@@ -69,12 +55,10 @@ fn is_non_printing_char(c: char) -> bool {
     in_ranges(NON_PRINTING_CHAR, u32::from(c))
 }
 
-/// Entspricht `cjkBreakRegex.test(...)` — Han/Hiragana/Katakana/Hangul/Bopomofo.
 pub fn is_cjk_break(text: &str) -> bool {
     text.chars().any(|c| in_ranges(CJK_BREAK, u32::from(c)))
 }
 
-/// `eastAsianWidth(cp)` aus `get-east-asian-width` (ambiguousAsWide = false).
 fn east_asian_width(cp: u32) -> usize {
     if in_ranges(EAW_WIDE, cp) { 2 } else { 1 }
 }
@@ -91,7 +75,6 @@ fn is_regional_indicator(c: char) -> bool {
     ('\u{1f1e6}'..='\u{1f1ff}').contains(&c)
 }
 
-/// Entspricht `\p{RGI_Emoji}` (Basic_Emoji, Keycap, Flag, Tag, Modifier, ZWJ).
 fn is_rgi_emoji(segment: &str) -> bool {
     let mut chars = segment.chars();
     let Some(first) = chars.next() else {
@@ -127,7 +110,6 @@ fn is_rgi_emoji(segment: &str) -> bool {
     RGI_ZWJ_SEQUENCES.binary_search(&segment).is_ok()
 }
 
-// Cache für Nicht-ASCII-Strings (`utils.ts:50-52`).
 const WIDTH_CACHE_SIZE: usize = 512;
 
 thread_local! {
@@ -262,13 +244,11 @@ fn finalize_truncated_result(
     }
 }
 
-/// Terminalbreite eines einzelnen Graphem-Clusters (`utils.ts:159-217`).
 fn grapheme_width(segment: &str) -> usize {
     if segment == "\t" {
         return 3;
     }
 
-    // Manche Marks belegen auch ohne Basiszeichen Zellen.
     if is_terminal_spacing_mark_cluster(segment) {
         return segment.chars().count();
     }
@@ -288,14 +268,12 @@ fn grapheme_width(segment: &str) -> usize {
     };
     let cp = u32::from(first);
 
-    // Regionalindikatoren gelten auch isoliert als 2 Zellen (Streaming-Drift).
     if (0x1f1e6..=0x1f1ff).contains(&cp) {
         return 2;
     }
 
     let mut width = east_asian_width(cp);
 
-    // Nachlaufende sichtbare Codepoints, für die Terminals Zellen vergeben.
     let mut follows_mark = false;
     for c in base.chars().skip(1) {
         if in_ranges(TERMINAL_SPACING_MARK, u32::from(c)) {
@@ -317,7 +295,6 @@ fn grapheme_width(segment: &str) -> usize {
     width
 }
 
-/// Sichtbare Breite eines Strings in Terminalspalten.
 pub fn visible_width(text: &str) -> usize {
     if text.is_empty() {
         return 0;
@@ -369,7 +346,6 @@ pub fn visible_width(text: &str) -> usize {
     width
 }
 
-/// Entfernt ANSI-, OSC- und APC-Sequenzen, behält sichtbaren Text.
 pub fn strip_terminal_sequences(text: &str) -> String {
     if !text.contains('\x1b') {
         return text.to_string();
@@ -388,14 +364,12 @@ pub fn strip_terminal_sequences(text: &str) -> String {
     result
 }
 
-/// Zellbereich, den das Graphem an einer sichtbaren Spalte belegt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GraphemeCellRange {
     pub start: usize,
     pub end: usize,
 }
 
-/// Gibt den Zellbereich des Graphems an der sichtbaren Spalte zurück.
 pub fn get_grapheme_cell_range(line: &str, column: usize) -> Option<GraphemeCellRange> {
     let mut current_col = 0;
     let mut i = 0;
@@ -423,12 +397,10 @@ pub fn get_grapheme_cell_range(line: &str, column: usize) -> Option<GraphemeCell
     None
 }
 
-/// Länge des Zeichens an Byte-Position `pos` (Hilfsfunktion für Bytescans).
 fn next_char_len(text: &str, pos: usize) -> usize {
     text[pos..].chars().next().map_or(1, char::len_utf8)
 }
 
-/// OSC-8-Hyperlink, der eine sichtbare Terminalspalte überdeckt.
 pub fn get_osc8_link_at_column(line: &str, column: usize) -> Option<String> {
     let mut active_url: Option<String> = None;
     let mut current_col = 0;
@@ -461,9 +433,6 @@ pub fn get_osc8_link_at_column(line: &str, column: usize) -> Option<String> {
     None
 }
 
-/// Entspricht `/^\x1b\]8;[^;]*;([^\x07\x1b]*)(?:\x07|\x1b\\)$/` in
-/// `getOsc8LinkAtColumn`: liefert `Some(None)` beim Schließen, `Some(Some(url))`
-/// beim Öffnen und `None`, wenn die Sequenz kein OSC-8-Link ist.
 fn parse_osc8_url_for_lookup(code: &str) -> Option<Option<String>> {
     let body = code.strip_prefix("\x1b]8;")?;
     let body = body
@@ -485,15 +454,7 @@ fn parse_osc8_url_for_lookup(code: &str) -> Option<Option<String>> {
     })
 }
 
-/// Normalisiert Text für die Terminalausgabe ohne den logischen Inhalt zu ändern.
-///
-/// Thai-/Lao-AM-Vokale werden kompatibilitätszerlegt (gleiche Zellbreite, aber
-/// keine Stale-Cell-Artefakte); sichtbare Tabs werden auf die feste Layoutbreite
-/// expandiert, Tabs innerhalb von Terminalsequenzen bleiben unberührt.
-///
 /// In the common case — no tab, no Thai/Lao AM vowel — the input slice is
-/// returned as-is. The TS original returns the same string object on that path
-/// (`utils.ts:386`); the owned return the port used to have was a porting
 /// artifact, not template behaviour.
 pub fn normalize_terminal_output(text: &str) -> std::borrow::Cow<'_, str> {
     use std::borrow::Cow;
@@ -535,19 +496,12 @@ pub fn normalize_terminal_output(text: &str) -> std::borrow::Cow<'_, str> {
     Cow::Owned(result)
 }
 
-/// Ergebnis von [`extract_ansi_code`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnsiCode<'a> {
-    /// Die vollständige Sequenz.
     pub code: &'a str,
-    /// Länge der Sequenz in Bytes.
     pub length: usize,
 }
 
-/// Extrahiert eine ANSI-Escape-Sequenz an der Byte-Position `pos`.
-///
-/// **CSI wird nur mit den Finalbytes `m G K H J` erkannt** — genau wie in TS
-/// (`utils.ts:399-437`); andere CSI-Sequenzen zählen zur sichtbaren Breite.
 pub fn extract_ansi_code(text: &str, pos: usize) -> Option<AnsiCode<'_>> {
     let bytes = text.as_bytes();
     if pos >= text.len() || bytes[pos] != 0x1b {
@@ -571,7 +525,6 @@ pub fn extract_ansi_code(text: &str, pos: usize) -> Option<AnsiCode<'_>> {
         return None;
     }
 
-    // OSC: ESC ] … BEL oder ST (ESC \), APC: ESC _ … BEL oder ST
     if next == Some(b']') || next == Some(b'_') {
         let mut j = pos + 2;
         while j < text.len() {
@@ -617,7 +570,6 @@ struct ActiveHyperlink {
     terminator: Osc8Terminator,
 }
 
-/// `undefined` (kein OSC 8) → `None`; `null` (Schließen) → `Some(None)`.
 fn parse_osc8_hyperlink(ansi_code: &str) -> Option<Option<ActiveHyperlink>> {
     if !ansi_code.starts_with("\x1b]8;") {
         return None;
@@ -677,7 +629,7 @@ fn get_active_osc8_close(prefix: &str) -> String {
     active.map_or_else(String::new, |h| format_osc8_close(h.terminator))
 }
 
-/// Verfolgt aktive SGR-Codes, um Stil über Zeilenumbrüche zu erhalten.
+/// Tracks active SGR codes so styles survive line wrapping.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct AnsiCodeTracker {
     bold: bool,
@@ -699,7 +651,6 @@ impl AnsiCodeTracker {
     }
 
     pub(crate) fn process(&mut self, ansi_code: &str) {
-        // OSC 8: Terminator bleibt erhalten — manche Terminals machen nur
         // BEL-terminierte Links klickbar (OAuth-Login-URLs).
         if let Some(hyperlink) = parse_osc8_hyperlink(ansi_code) {
             self.active_hyperlink = hyperlink;
@@ -730,7 +681,6 @@ impl AnsiCodeTracker {
         while i < parts.len() {
             let code: i64 = parts[i].parse().unwrap_or(i64::MIN);
 
-            // 256-Farben und RGB verbrauchen mehrere Parameter.
             if code == 38 || code == 48 {
                 if parts.get(i + 1) == Some(&"5") && parts.get(i + 2).is_some() {
                     let color = format!("{};{};{}", parts[i], parts[i + 1], parts[i + 2]);
@@ -806,10 +756,9 @@ impl AnsiCodeTracker {
         self.strikethrough = false;
         self.fg_color = None;
         self.bg_color = None;
-        // SGR-Reset berührt den OSC-8-Zustand nicht.
     }
 
-    #[allow(dead_code)] // 1:1-Port des gepoolten Trackers; hier lokal erzeugt.
+    #[allow(dead_code)] // Kept for callers that reuse the pooled tracker.
     pub(crate) fn clear(&mut self) {
         self.reset();
         self.active_hyperlink = None;
@@ -859,7 +808,7 @@ impl AnsiCodeTracker {
         result
     }
 
-    #[allow(dead_code)] // 1:1-Port; Konsument ist der Markdown-Renderer (Task 11).
+    #[allow(dead_code)] // Used by renderers that inspect active terminal styles.
     pub(crate) fn has_active_codes(&self) -> bool {
         self.bold
             || self.dim
@@ -874,7 +823,6 @@ impl AnsiCodeTracker {
             || self.active_hyperlink.is_some()
     }
 
-    /// Reset-Codes für Attribute, die am Zeilenende geschlossen werden müssen.
     pub(crate) fn get_line_end_reset(&self) -> String {
         let mut result = String::new();
         if self.underline {
@@ -905,7 +853,6 @@ enum TokenKind {
     Word,
 }
 
-/// Zerlegt Text in Tokens, ANSI-Codes bleiben am folgenden Zeichen kleben.
 fn split_into_tokens_with_ansi(text: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -976,21 +923,15 @@ fn split_into_tokens_with_ansi(text: &str) -> Vec<String> {
     tokens
 }
 
-/// Wie `String.prototype.trimEnd()`: Unicode-WhiteSpace plus U+FEFF.
 fn js_trim_end(text: &str) -> &str {
     text.trim_end_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
 }
 
-/// Bricht Text auf `width` sichtbare Spalten um, ANSI-Codes bleiben erhalten.
-///
-/// Nur Wortumbruch — **kein** Padding, **keine** Hintergrundfarben. Die
-/// Ergebniszeilen sind nicht auf `width` aufgefüllt.
 pub fn wrap_text_with_ansi(text: &str, width: usize) -> Vec<String> {
     if text.is_empty() {
         return vec![String::new()];
     }
 
-    // Zeilenenden einzeln behandeln, ANSI-Zustand über Zeilen mitführen.
     let input_lines = split_lines(text);
     let mut result: Vec<String> = Vec::new();
     let mut tracker = AnsiCodeTracker::new();
@@ -1120,7 +1061,6 @@ fn wrap_single_line(line: &str, width: usize) -> Vec<String> {
     }
 }
 
-/// Satzzeichen wie `PUNCTUATION_REGEX` in `utils.ts:936`.
 pub fn is_punctuation_char(text: &str) -> bool {
     text.chars().any(|c| {
         matches!(
@@ -1159,7 +1099,6 @@ pub fn is_punctuation_char(text: &str) -> bool {
     })
 }
 
-/// Entspricht `/\s/.test(char)` in JavaScript.
 pub fn is_whitespace_char(text: &str) -> bool {
     text.chars().any(|c| c.is_whitespace() || c == '\u{feff}')
 }
@@ -1234,7 +1173,6 @@ fn break_long_word(word: &str, width: usize, tracker: &mut AnsiCodeTracker) -> V
     }
 }
 
-/// Wendet eine Hintergrundfunktion auf eine auf `width` aufgefüllte Zeile an.
 pub fn apply_background_to_line(
     line: &str,
     width: usize,
@@ -1245,12 +1183,10 @@ pub fn apply_background_to_line(
     bg_fn(&(line.to_string() + &padding))
 }
 
-/// Kürzt Text auf `max_width` sichtbare Spalten mit Ellipse `"..."`.
 pub fn truncate_to_width(text: &str, max_width: usize) -> String {
     truncate_to_width_opts(text, max_width, "...", false)
 }
 
-/// Wie [`truncate_to_width`], mit wählbarer Ellipse und optionalem Padding.
 pub fn truncate_to_width_opts(text: &str, max_width: usize, ellipsis: &str, pad: bool) -> String {
     if max_width == 0 {
         return String::new();
@@ -1417,24 +1353,17 @@ pub fn truncate_to_width_opts(text: &str, max_width: usize, ellipsis: &str, pad:
     )
 }
 
-/// Schneidet einen Bereich sichtbarer Spalten aus einer Zeile.
-///
-/// `strict`: breite Zeichen an der Grenze, die über den Bereich hinausragen,
-/// werden ausgeschlossen.
 pub fn slice_by_column(line: &str, start_col: usize, length: usize, strict: bool) -> String {
     slice_with_width(line, start_col, length, strict).text
 }
 
-/// Ergebnis von [`slice_with_width`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SliceWithWidth {
-    /// Der ausgeschnittene Text inklusive ANSI-Sequenzen.
     pub text: String,
     /// Sichtbare Breite von `text`.
     pub width: usize,
 }
 
-/// Wie [`slice_by_column`], liefert zusätzlich die sichtbare Breite.
 pub fn slice_with_width(
     line: &str,
     start_col: usize,
@@ -1499,25 +1428,16 @@ pub fn slice_with_width(
     }
 }
 
-/// Ergebnis von [`extract_segments`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtractedSegments {
-    /// Inhalt vor dem Overlay-Bereich.
     pub before: String,
     /// Sichtbare Breite von `before`.
     pub before_width: usize,
-    /// Inhalt nach dem Overlay-Bereich (erbt den Stil von davor).
     pub after: String,
     /// Sichtbare Breite von `after`.
     pub after_width: usize,
 }
 
-/// Extrahiert "before"- und "after"-Segmente einer Zeile in einem Durchlauf.
-///
-/// Wird für die Overlay-Komposition gebraucht. Der Stil vor dem Overlay wird an
-/// den "after"-Teil vererbt. Die TS-Vorlage nutzt dafür einen global gepoolten
-/// Tracker; hier ist er lokal (Abweichungsklasse 1 — `clear()` beim Eintritt
-/// macht das Verhalten identisch, ohne globalen Zustand).
 pub fn extract_segments(
     line: &str,
     before_end: usize,

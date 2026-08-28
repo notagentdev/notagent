@@ -1,40 +1,3 @@
-//! Port of `packages/coding-agent/src/modes/interactive/interactive-mode.ts`
-//! (6 688 LOC) — the wiring between the TUI components and the agent session.
-//!
-//! The file is ported in vertical slices; every slice carries its own section
-//! below and its own entry in `crates/notagent/PARITY.md`. What is here now:
-//! the entry point with the terminal seam (interface request A-23), the main
-//! loop, the editor submit path and the transcript half of the session events.
-//!
-//! # How this differs in shape from the TypeScript original
-//!
-//! TypeScript keeps one long-lived object whose callbacks (`onSubmit`,
-//! `onAction`, the agent subscription) mutate its fields while the Node event
-//! loop renders in between. Rust has neither an ambient event loop nor
-//! re-entrant `&mut self`, so two things change (deviation class 1, no
-//! behavioural difference):
-//!
-//! 1. **The loop is written out.** [`InteractiveMode::run`] is a `select!` over
-//!    the editor's submissions, the session's events, the in-flight prompt and
-//!    the animation deadlines. The callbacks the components take only *post*
-//!    to that loop; every field mutation happens inside it, where `&mut self`
-//!    is available. `Editor::take_submitted`/`take_changes` (workstream A) are
-//!    the queue the submit and change handlers of TypeScript drain from.
-//! 2. **Rendering is driven from outside.** `createInteractiveTui` hands
-//!    TypeScript a renderer that schedules its own frames through
-//!    `setTimeout`; here the caller owns the render loop
-//!    (`notagent_tui::tui::run_until`, interface request A-20) and drives the
-//!    renderer this module hands back. That is the same seam the startup
-//!    dialogs use (`cli/startup_ui.rs`) and the seam the G3 end-to-end
-//!    scenarios need, because it lets a test pass its own terminal — exactly
-//!    what `InteractiveTuiOptions.terminal` does in TypeScript
-//!    (`interactive-mode.ts:344-354`).
-//!
-//! The third consequence is the exit code. `shutdown()` ends the TypeScript
-//! process with `process.exit(0)` from inside the class; a future that owns the
-//! terminal cannot do that without stranding the render loop, so the mode
-//! resolves with the exit code and `main_app` returns it (deviation class 1).
-
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -201,23 +164,17 @@ use crate::utils::tools_manager::{ManagedTool, ensure_tool};
 use crate::utils::version_check::{LatestPiRelease, check_for_new_pi_version};
 
 // ============================================================================
-// The terminal seam (interface request A-23)
 // ============================================================================
 
 /// A terminal handed to the interactive mode from outside, together with the
 /// pump that feeds it.
-///
-/// TypeScript passes a single `terminal` (`InteractiveTuiOptions.terminal`);
-/// in the port `ProcessTerminal::new().into_shared()` splits the terminal into
 /// the handle the TUI writes to and the pump the render loop drives
-/// (interface request A-20), so both halves travel together.
 pub struct InteractiveTerminal {
     pub terminal: Box<dyn Terminal>,
     pub pump: Box<dyn TerminalPump>,
 }
 
 /// Options for the interactive mode — `InteractiveModeOptions`
-/// (`interactive-mode.ts:325-342`) plus the terminal seam.
 #[derive(Default)]
 pub struct InteractiveModeOptions {
     /// Providers that were migrated to `auth.json` (shows a warning).
@@ -227,7 +184,6 @@ pub struct InteractiveModeOptions {
     /// Cwd to trust after a reload if it gained a `.notagent` directory during
     /// this implicitly trusted session.
     pub auto_trust_on_reload_cwd: Option<String>,
-    /// `registerSignalHandlers()` (`interactive-mode.ts:4122-4155`): the binary
     /// owns the process signals and cancels this token on SIGTERM/SIGHUP; the
     /// mode then runs the `fromSignal` shutdown on its own thread, where the
     /// terminal lives.
@@ -247,7 +203,6 @@ pub struct InteractiveModeOptions {
 }
 
 /// Which queue a message waiting for the end of a compaction belongs to
-/// (`CompactionQueuedMessage` in `interactive-mode.ts:212-215`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompactionQueueMode {
     Steer,
@@ -347,7 +302,6 @@ enum TaskBrowserAction {
     ClearNotice,
 }
 
-/// The state the browser is fed from (`push()` in TypeScript).
 #[derive(Clone)]
 struct TasksBrowserState {
     filter: TasksFilter,
@@ -406,8 +360,6 @@ pub struct InteractiveModeHandle {
 }
 
 /// Build the interactive mode over `runtime`.
-///
-/// The composition root of `createInteractiveTui` (`interactive-mode.ts:353-366`)
 /// together with the constructor of `InteractiveMode`. Nothing is drawn yet;
 /// the first frame goes out when the returned future is driven.
 pub fn create_interactive_mode(
@@ -443,7 +395,6 @@ pub fn create_interactive_mode(
 // ============================================================================
 
 /// The renderer of the interactive mode.
-///
 /// `TuiMainScreen` today; the alternate screen joins it with the fullscreen
 /// slice, which is why the renderer already lives behind a cell that can be
 /// swapped underneath a caller holding [`InteractiveRenderer`].
@@ -463,8 +414,6 @@ struct RendererState {
 
 /// The terminal, shared between the renderer that has it now and the one a
 /// fullscreen switch replaces it with.
-///
-/// Deviation (class 1): TypeScript reads `previousUi.terminal` and hands the
 /// same object to the next renderer; a `Box<dyn Terminal>` cannot be read out
 /// of the core, so the mode keeps the terminal itself and gives every renderer
 /// a handle onto it.
@@ -731,7 +680,6 @@ impl RendererCell {
 }
 
 /// The renderer handed to the caller's render loop.
-///
 /// `RenderLoop::core` returns a reference, so the handle keeps its own clone of
 /// the current core and re-reads it whenever the renderer behind the cell was
 /// replaced — which can only happen between two frames.
@@ -761,7 +709,6 @@ impl RenderLoop for InteractiveRenderer {
 // ============================================================================
 
 /// One of the app actions the editor dispatches (`onAction` in
-/// `setupKeyHandlers`, `interactive-mode.ts:3035-3057`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppAction {
     /// `app.clear` — Ctrl+C.
@@ -818,18 +765,15 @@ enum UiMessage {
         message: String,
         level: HookReportLevel,
     },
-    /// The `/subagent-model` selector reported a choice (port addition, v0.1.6).
     SubagentModelSelected {
         id: u64,
         model: Box<Model>,
     },
-    /// A codebase-index build (`/index`) reports progress (port addition,
     /// v0.1.7). `done` carries the final message.
     IndexBuildProgress {
         message: String,
         done: bool,
     },
-    /// The `/init` run settled (port addition, v0.1.35); `error` is the reason
     /// when it did not produce a file.
     InitFinished {
         error: Option<String>,
@@ -918,7 +862,6 @@ enum UiMessage {
         errors: Vec<String>,
     },
     /// The model selector's catalog refresh finished — the counterpart of the
-    /// `void this.refreshModels()` the TS constructor starts. The loop drives
     /// the future; the outcome goes back to the selector still open under `id`.
     ModelCatalogRefreshed {
         id: u64,
@@ -955,11 +898,7 @@ enum UiMessage {
 // A text component with a collapsed and an expanded form
 // ============================================================================
 
-/// `interface Expandable` (`interactive-mode.ts:182-188`).
-///
-/// TypeScript checks `"setExpanded" in component` on the container's children;
 /// a `dyn Component` cannot be inspected that way, so the mode keeps the
-/// expandable children in their own list (deviation class 1, same set).
 trait Expandable {
     fn set_expanded(&mut self, expanded: bool);
 }
@@ -988,7 +927,6 @@ expandable!(
 );
 
 /// Whether a finished assistant message ends a run of exploration.
-///
 /// The reference closes the block on the reasoning and the message events
 /// themselves (`TaskReasoning`, `TaskMessage`), which arrive before the tool
 /// calls they lead to. Our messages carry both at once, so the same rule reads
@@ -998,7 +936,6 @@ expandable!(
 /// would not have closed it either: there, the calls follow the text inside the
 /// same turn.
 /// Characters of thinking an assistant message shows so far. Growth during
-/// streaming is the port's counterpart of the reference's `TaskReasoning`
 /// event, which closes the active exploration the moment reasoning appears.
 /// Deliberately thinking only: narration text that introduces its own
 /// exploration keeps the run in one block (see
@@ -1034,7 +971,6 @@ fn assistant_message_ends_search_run(message: &notagent_ai::types::AssistantMess
     has_visible_content && !announced_exploration
 }
 
-/// `class ExpandableText extends Text` (`interactive-mode.ts:190-216`).
 struct ExpandableText {
     text: Text,
     collapsed: String,
@@ -1086,7 +1022,6 @@ impl Component for ExpandableText {
 // The mode
 // ============================================================================
 
-/// `class InteractiveMode` (`interactive-mode.ts:398-6687`).
 pub struct InteractiveMode {
     runtime: Arc<AgentSessionRuntime>,
     options: InteractiveModeOptions,
@@ -1191,8 +1126,6 @@ pub struct InteractiveMode {
     /// Whether anything could be detached, as of the last panel refresh.
     has_foreground_tasks: Rc<std::cell::Cell<bool>>,
     /// Work the loop drives alongside everything else; each future ends in a
-    /// message. TypeScript starts these with `void promise.then(...)` and lets
-    /// the event loop carry them (deviation class 1).
     side_futures: Vec<Pin<Box<dyn Future<Output = UiMessage>>>>,
     active_selector: Option<ActiveSelector>,
     selector_id: u64,
@@ -1485,8 +1418,6 @@ impl InteractiveMode {
     }
 
     /// `permissionPresent = (request) => interactiveMode.requestApproval(request)`
-    /// (`main.ts:1021`).
-    ///
     /// Deviation (class 1): the gate runs wherever the tool call runs and needs
     /// a `Send` presenter, while the dialog is `!Send`. The presenter therefore
     /// hands the request to the loop and awaits the answer on a `oneshot`; a
@@ -1505,7 +1436,6 @@ impl InteractiveMode {
         })
     }
 
-    /// `hookReport` (`main.ts:1022-1023`) — the reporter posts into the loop,
     /// because it is called from wherever a hook ran.
     pub fn reporter(&self) -> HookReporter {
         let tx = self.ui_tx.clone();
@@ -1527,7 +1457,6 @@ impl InteractiveMode {
     }
 
     // ------------------------------------------------------------------
-    // Convenience accessors (the TS getters)
     // ------------------------------------------------------------------
 
     fn session(&self) -> Arc<AgentSession> {
@@ -1547,9 +1476,6 @@ impl InteractiveMode {
     // init
     // ------------------------------------------------------------------
 
-    /// `async init()` (`interactive-mode.ts:848-1010`).
-    ///
-    /// Not ported yet and tracked with the later slices: `ensureTool` for fd/rg
     /// (autocomplete slice), the scoped-model startup line, the fullscreen
     /// layout root and the extension-free remainder of `rebindCurrentSession`.
     async fn init(&mut self) {
@@ -1586,7 +1512,6 @@ impl InteractiveMode {
 
         // Deviation (class 1): the theme watcher fires from its own thread, so
         // the callback posts a repaint into the loop instead of touching the
-        // `!Send` core the way the TypeScript closure does.
         let tx = self.ui_tx.clone();
         on_theme_change(Arc::new(move || {
             let _ = tx.send(UiMessage::ThemeChanged);
@@ -1596,11 +1521,9 @@ impl InteractiveMode {
         self.update_available_provider_count();
     }
 
-    /// `mountInteractiveTui` (`interactive-mode.ts:780-786`) with the component
     /// list `init` builds.
     fn mount(&mut self) {
         // `init()` builds the fullscreen layout: the transcript scrolls, the
-        // dock below it keeps its size (`interactive-mode.ts:875-903`).
         let transcript = component_ref(ScrollView::new(
             Rc::clone(&self.document_container) as ComponentRef,
             ScrollViewOptions {
@@ -1613,7 +1536,6 @@ impl InteractiveMode {
             },
         ));
         let mut dock = VStack::new(StackOptions::default());
-        // Deviation from the TS order (user decision 2026-08-16): the tasks
         // panel sits below the footer, like the roster in notagent-main-rust,
         // instead of above the editor.
         for (component, min_size) in [
@@ -1681,7 +1603,6 @@ impl InteractiveMode {
         self.show_idle_status();
     }
 
-    /// The header block of `init` (`interactive-mode.ts:905-1009`).
     fn build_header(&mut self) {
         let settings = self.settings();
         if self.options.verbose || !settings.get_quiet_startup() {
@@ -1764,7 +1685,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `updateTerminalTitle` (`interactive-mode.ts:1011-1024`).
     fn update_terminal_title(&self) {
         let session = self.session();
         let (cwd, name) = session.with_session_manager(|manager| {
@@ -1784,8 +1704,6 @@ impl InteractiveMode {
         self.ui.with_terminal(|terminal| terminal.set_title(&title));
     }
 
-    /// `setupKeyHandlers` (`interactive-mode.ts:3003-3072`).
-    ///
     /// Every handler posts into the loop instead of mutating the mode: the
     /// editor holds the callback while the loop holds `&mut self`. The slices
     /// still to come add the remaining actions.
@@ -1874,8 +1792,6 @@ impl InteractiveMode {
         }));
     }
 
-    /// `subscribeToAgent` (`interactive-mode.ts:3307-3312`).
-    ///
     /// The session emits from wherever the run happens to be; the events cross
     /// into the single-threaded UI over a channel and are handled in the loop.
     fn subscribe_to_agent(&mut self) {
@@ -1885,9 +1801,6 @@ impl InteractiveMode {
         })));
     }
 
-    /// `rebindCurrentSession` (`interactive-mode.ts:1935-1960`).
-    ///
-    /// Deviation (class 1): TypeScript hands the runtime a callback
     /// (`setRebindSession`) because an extension could switch the session too;
     /// without extensions every switch starts in this loop, and the callback
     /// would have to be `Send` and would deadlock against the loop that is
@@ -1903,7 +1816,6 @@ impl InteractiveMode {
         self.update_terminal_title();
     }
 
-    /// `renderCurrentSessionState` (`interactive-mode.ts:1970-1985`).
     fn render_current_session_state(&mut self) {
         // The list belonged to the session being replaced.
         self.clear_todo_panel();
@@ -1922,11 +1834,7 @@ impl InteractiveMode {
     // run
     // ------------------------------------------------------------------
 
-    /// `async run()` (`interactive-mode.ts:1025-1117`).
-    ///
-    /// The startup checks TypeScript fires off in the background (version
     /// check, package updates, tmux keyboard setup, the model-runtime refresh)
-    /// belong to later slices and are noted in `PARITY.md`.
     pub async fn run(&mut self) -> i32 {
         self.init().await;
 
@@ -2189,9 +2097,6 @@ impl InteractiveMode {
     }
 
     /// The next animation deadline the loop has to wake for.
-    ///
-    /// TypeScript lets `setInterval` inside the loader drive the spinner; the
-    /// port drives every time seam from the loop (interface request A-23).
     fn next_deadline(&self) -> Option<Instant> {
         // `startTasksPanelRefresh` — the one-second interval of the panels.
         let mut deadline: Option<Instant> = self.next_panel_refresh;
@@ -2566,7 +2471,6 @@ impl InteractiveMode {
             (editor.take_changes(), editor.take_submitted())
         };
         if let Some(text) = changes.last() {
-            // `onChange` (`interactive-mode.ts:3060-3066`).
             let was_bash_mode = self.is_bash_mode;
             self.is_bash_mode = text.trim_start().starts_with('!');
             if was_bash_mode != self.is_bash_mode {
@@ -2578,8 +2482,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `onSubmit` (`interactive-mode.ts:3113-3306`).
-    ///
     /// The slash-command table, the bash mode and the compaction queue arrive
     /// with the slices that own them; what is wired here is the path a plain
     /// prompt takes.
@@ -2657,7 +2559,6 @@ impl InteractiveMode {
         self.editor.borrow_mut().editor_mut().add_to_history(&text);
     }
 
-    /// `recordVersionSeen()` (`interactive-mode.ts:1196-1210`).
     fn record_version_seen(&self) {
         if !self.session().messages().is_empty() {
             return;
@@ -2677,7 +2578,6 @@ impl InteractiveMode {
         crate::core::telemetry::report_install_telemetry(&settings, VERSION);
     }
 
-    /// `checkTmuxKeyboardSetup()` (`interactive-mode.ts:1136-1194`).
     fn check_tmux_keyboard_setup() -> Option<String> {
         std::env::var("TMUX")
             .ok()
@@ -2711,7 +2611,6 @@ impl InteractiveMode {
         None
     }
 
-    /// `showNewVersionNotification(release)` (`interactive-mode.ts:4379-4406`).
     fn show_new_version_notification(&mut self, release: LatestPiRelease) {
         let action = theme().fg(ThemeColor::Accent, &format!("{APP_NAME} update"));
         let update_instruction = format!(
@@ -2766,7 +2665,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `showPackageUpdateNotification(packages)` (`interactive-mode.ts:4408-4428`).
     fn show_package_update_notification(&mut self, packages: Vec<String>) {
         let action = theme().fg(
             ThemeColor::Accent,
@@ -2804,7 +2702,6 @@ impl InteractiveMode {
     }
 
     /// `maybeShowCacheMissNotice(message)` and `addCacheMissNotice(miss)`
-    /// (`interactive-mode.ts:3926-3948`).
     fn maybe_show_cache_miss_notice(&mut self, message: &AssistantMessage) {
         if !self.settings().get_show_cache_miss_notices() {
             return;
@@ -2853,7 +2750,6 @@ impl InteractiveMode {
     }
 
     /// `maybeWarnAboutAnthropicSubscriptionAuth(model)`
-    /// (`interactive-mode.ts:4925-4953`).
     async fn maybe_warn_about_anthropic_subscription_auth(&mut self, model: Option<Model>) {
         if self.settings().get_warnings().anthropic_extra_usage == Some(false)
             || self.anthropic_subscription_warning_shown
@@ -2892,7 +2788,6 @@ impl InteractiveMode {
     // The loaded resources
     // ------------------------------------------------------------------
 
-    /// `formatDisplayPath(p)` (`interactive-mode.ts:1242-1252`).
     fn format_display_path(&self, path: &str) -> String {
         match dirs::home_dir() {
             Some(home) => {
@@ -2906,7 +2801,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `formatContextPath(p)` (`interactive-mode.ts:1260-1269`).
     fn format_context_path(&self, path: &str) -> String {
         let cwd = self.cwd();
         match crate::utils::paths::get_cwd_relative_path(path, &cwd) {
@@ -2915,19 +2809,16 @@ impl InteractiveMode {
         }
     }
 
-    /// `getStartupExpansionState()` (`interactive-mode.ts:1271-1276`).
     fn startup_expansion_state(&self) -> bool {
         self.options.verbose || self.tool_output_expanded
     }
 
-    /// `isPackageSource(sourceInfo)` (`interactive-mode.ts:1462-1465`).
     fn is_package_source(source_info: Option<&SourceInfo>) -> bool {
         source_info.is_some_and(|source_info| {
             source_info.source.starts_with("npm:") || source_info.source.starts_with("git:")
         })
     }
 
-    /// `getScopeGroup(sourceInfo)` (`interactive-mode.ts:1453-1460`).
     fn scope_group(source_info: Option<&SourceInfo>) -> &'static str {
         let source = source_info.map_or("local", |source_info| source_info.source.as_str());
         let scope = source_info.map_or(SourceScope::Project, |source_info| source_info.scope);
@@ -2941,8 +2832,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `getShortPath(fullPath, sourceInfo)` (`interactive-mode.ts:1278-1313`), for
-    /// the cases the port can reach: a package base directory and the npm/git
     /// checkout layouts.
     fn short_path(&self, full_path: &str, source_info: Option<&SourceInfo>) -> String {
         let normalized = full_path.replace('\\', "/");
@@ -2982,7 +2871,6 @@ impl InteractiveMode {
     }
 
     /// `buildScopeGroups(items)` and `formatScopeGroups(groups, options)`
-    /// (`interactive-mode.ts:1467-1536`), in one pass.
     fn format_scope_groups(
         &self,
         items: &[(String, Option<SourceInfo>)],
@@ -3047,7 +2935,6 @@ impl InteractiveMode {
         lines.join("\n")
     }
 
-    /// `formatDiagnostics(diagnostics, sourceInfos)` (`interactive-mode.ts:1562-1613`).
     fn format_diagnostics(
         &self,
         diagnostics: &[ResourceDiagnostic],
@@ -3152,7 +3039,6 @@ impl InteractiveMode {
         lines.join("\n")
     }
 
-    /// `showLoadedResources(options)` (`interactive-mode.ts:1615-1829`), minus
     /// the extension sections and their diagnostics (class 2).
     fn show_loaded_resources(&mut self, force: bool, show_diagnostics_when_quiet: bool) {
         self.loaded_resources_container.borrow_mut().clear();
@@ -3356,7 +3242,6 @@ impl InteractiveMode {
     // Panels
     // ------------------------------------------------------------------
 
-    /// `refreshTasksPanel()` (`interactive-mode.ts:2822-2843`) together with
     /// `refreshSubagentPanel` — driven by the loop's one-second tick instead of
     /// `setInterval`.
     fn refresh_tasks_panel(&mut self) {
@@ -3429,7 +3314,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `refreshSubagentPanel(tasks)` (`interactive-mode.ts:2845-2859`).
     fn refresh_subagent_panel(&mut self, tasks: &[TaskInfo]) {
         // The signature includes settled children while they linger, so the
         // marker turning green or red repaints, and so does the row leaving
@@ -3457,7 +3341,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `syncTodoPanel(todos, fromToolCall)` (`interactive-mode.ts:2810-2815`).
     fn sync_todo_panel(&mut self, todos: Vec<Todo>, from_tool_call: bool) {
         self.todo_visibility.update(todos, from_tool_call);
         let rows = self.ui.rows();
@@ -3471,13 +3354,11 @@ impl InteractiveMode {
         panel.set_todos(visible);
     }
 
-    /// `clearTodoPanel()` (`interactive-mode.ts:2817-2820`).
     fn clear_todo_panel(&mut self) {
         self.todo_visibility.reset();
         self.todo_panel.borrow_mut().set_todos(Vec::new());
     }
 
-    /// `cycleTasksPanel()` (`interactive-mode.ts:2979-2984`).
     fn cycle_tasks_panel(&mut self) {
         self.tasks_panel.borrow_mut().cycle_scope();
         self.tasks_panel_signature = String::new();
@@ -3485,8 +3366,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `detachForegroundTasks()` (`interactive-mode.ts:2993-3001`).
-    ///
     /// Returns `false` when there is nothing to move, so the key falls through
     /// to the editor — it is also the cursor-left binding.
     fn detach_foreground_tasks(&mut self) -> bool {
@@ -3513,7 +3392,6 @@ impl InteractiveMode {
     // Key actions
     // ------------------------------------------------------------------
 
-    /// `cycleOperatingMode()` (`interactive-mode.ts:4260-4268`).
     fn cycle_operating_mode(&mut self) {
         let Some(mode) = self.session().cycle_mode() else {
             self.show_status("No operating modes available");
@@ -3528,7 +3406,6 @@ impl InteractiveMode {
         self.show_status(&notice);
     }
 
-    /// `cycleThinkingLevel()` (`interactive-mode.ts:4270-4279`).
     fn cycle_thinking_level(&mut self) {
         match self.session().cycle_thinking_level() {
             None => self.show_status("Current model does not support thinking"),
@@ -3540,7 +3417,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `cycleModel(direction)` (`interactive-mode.ts:4281-4298`).
     fn cycle_model(&mut self, forward: bool) {
         match self.session().cycle_model(forward) {
             None => {
@@ -3576,7 +3452,6 @@ impl InteractiveMode {
     }
 
     /// `toggleToolOutputExpansion()`/`setToolsExpanded(expanded)`
-    /// (`interactive-mode.ts:4300-4320`).
     fn toggle_tool_output_expansion(&mut self) {
         let expanded = !self.tool_output_expanded;
         self.tool_output_expanded = expanded;
@@ -3592,7 +3467,6 @@ impl InteractiveMode {
         ));
     }
 
-    /// `toggleThinkingBlockVisibility()` (`interactive-mode.ts:4322-4338`).
     fn toggle_thinking_block_visibility(&mut self) {
         self.hide_thinking_block = !self.hide_thinking_block;
         self.settings()
@@ -3621,9 +3495,6 @@ impl InteractiveMode {
         ));
     }
 
-    /// `handleOpenExternalEditor()` (`interactive-mode.ts:4340-4360`).
-    ///
-    /// The editor runs while the TUI is stopped, exactly as in TypeScript; the
     /// caller's render loop finds the screen back up afterwards.
     fn handle_open_external_editor(&mut self) {
         let command = self.settings().get_external_editor_command();
@@ -3638,7 +3509,6 @@ impl InteractiveMode {
     }
 
     /// The double-escape branch of `setupKeyHandlers`
-    /// (`interactive-mode.ts:3018-3032`).
     fn handle_double_escape(&mut self) {
         let action = self.settings().get_double_escape_action();
         if action == DoubleEscapeAction::None {
@@ -3661,11 +3531,8 @@ impl InteractiveMode {
     // Selectors
     // ------------------------------------------------------------------
 
-    /// `showSelector(create)` (`interactive-mode.ts:4623-4646`).
-    ///
     /// The selector takes the editor's place; `done` — here
     /// [`Self::close_selector`] with the id the selector was opened under —
-    /// puts the editor back. The id is the port's counterpart of the TypeScript
     /// token: a message from a selector that has already been replaced must not
     /// close its successor.
     fn show_selector(
@@ -3688,7 +3555,6 @@ impl InteractiveMode {
         id
     }
 
-    /// `disposeActiveSelector` (`interactive-mode.ts:4612-4617`).
     fn dispose_active_selector(&mut self) {
         if let Some(selector) = self.active_selector.take()
             && let Some(dispose) = selector.dispose
@@ -3723,7 +3589,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `showModelSelector(initialSearchInput)` (`interactive-mode.ts:5025-5055`).
     fn show_model_selector(&mut self, initial_search_input: Option<&str>) {
         self.show_model_selector_impl(initial_search_input, false);
     }
@@ -3748,7 +3613,6 @@ impl InteractiveMode {
             Arc::clone(&self.runtime.services().model_runtime),
             // The two `ScopedModel` types are structurally identical; the
             // selector takes the one of `model_resolver`, the session hands out
-            // its own (deviation class 1, a naming split of the port).
             self.session()
                 .scoped_models()
                 .into_iter()
@@ -3777,7 +3641,6 @@ impl InteractiveMode {
             initial_search_input,
         )));
         self.model_selector = Some(Rc::clone(&selector));
-        // The TS constructor ends with `void this.refreshModels()`; a Rust
         // constructor cannot own that task, so the loop drives the future and
         // the outcome returns as a message. Without this the picker only ever
         // shows the startup snapshot and its "Refreshing model catalogs…"
@@ -3811,7 +3674,6 @@ impl InteractiveMode {
     }
 
     /// The `onSelect` half of the subagent-model selector and of
-    /// `/subagent-model <term>` (port addition, v0.1.6). Persisted like
     /// `/model`; the child resolves it at spawn time and inherits the main
     /// model when the setting is absent or names a model that no longer
     /// exists.
@@ -3821,7 +3683,6 @@ impl InteractiveMode {
         self.show_status(&format!("Subagent model: {}", model.id));
     }
 
-    /// `/subagent-model` (port addition, v0.1.6): no argument opens the
     /// selector, `default`/`inherit` clears the setting, anything else is
     /// matched like `/model <term>`.
     async fn handle_subagent_model_command(&mut self, search_term: Option<&str>) {
@@ -3843,7 +3704,6 @@ impl InteractiveMode {
         self.show_subagent_model_selector(Some(search_term));
     }
 
-    /// `/index` (port addition, v0.1.7) — the command form of the reference's
     /// Indexing settings section: no argument rebuilds the `find_codebase`
     /// index with progress in the status line, `on`/`off` toggles the
     /// setting. Enabling kicks off a build immediately, so the toggle is
@@ -3871,7 +3731,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `/leases` (port addition, v0.1.19) — the command form of the
     /// reference's Atomic leases setting: `on`/`off` set the gate, an omitted
     /// argument toggles it, as the reference's own toggle does. Off by default
     /// (user decision 2026-08-17); the gate is read at call time, so the next
@@ -3895,8 +3754,6 @@ impl InteractiveMode {
     }
 
     /// Connects the configured MCP servers and registers their tools
-    /// (port addition, v0.1.22).
-    ///
     /// A project-local `.mcp.json` names programs to run on this machine, so
     /// one with no remembered answer is accepted only when the project itself
     /// is already trusted. Anything else waits for `/mcp` rather than
@@ -3945,8 +3802,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `/mcp` (port addition, v0.1.22) — the configured MCP servers.
-    ///
     /// Bare `/mcp` reports each server's state and tool count; `reconnect
     /// <server>` retries one whose cause has been fixed. Six states are worth
     /// nothing if the user cannot see which one a server is in, and a failed
@@ -4124,7 +3979,6 @@ impl InteractiveMode {
     }
 
     /// `/mcp lend [off]` — serves this session's tools to an external agent.
-    ///
     /// Prints the `.mcp.json` entry rather than only the URL, because the token
     /// belongs in a header and a URL alone invites pasting it somewhere that
     /// drops the header and then fails with an unexplained 401.
@@ -4158,7 +4012,6 @@ impl InteractiveMode {
     }
 
     /// `/mcp import [user] <json>` — adds servers to a configuration file.
-    ///
     /// The JSON is the shape `.mcp.json` already has, so what a server's
     /// documentation prints can be pasted straight in. Only the named scope's
     /// own file is touched: merging into the other one would move a server
@@ -4255,7 +4108,6 @@ impl InteractiveMode {
     }
 
     /// `/mcp show <server>` — the configuration a server is running under.
-    ///
     /// Reads the merged view rather than one file, because that is the one the
     /// session actually uses, and prints the error alongside when there is one:
     /// the configuration and the reason it did not work belong together.
@@ -4321,10 +4173,8 @@ impl InteractiveMode {
         }
     }
 
-    /// `/goal` (port addition, v0.1.21) — goal mode: the agent keeps working
     /// toward an objective across turns until it completes it, reports itself
     /// blocked, or a budget runs out.
-    ///
     /// A create that finds a goal already running reports the running one and
     /// leaves it alone; `replace` is how the user says otherwise. Overwriting
     /// silently would discard work in progress on a typo.
@@ -4391,7 +4241,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `/bash-filter` (port addition, v0.1.20) — the command form of the
     /// reference's shell-output filter setting: `on`/`off` set the gate, an
     /// omitted argument toggles it. Off by default (user decision 2026-08-17);
     /// the gate is read at call time, so the next `bash` call already follows
@@ -4456,7 +4305,6 @@ impl InteractiveMode {
         });
     }
 
-    /// `handleModelCommand(searchTerm)` (`interactive-mode.ts:4857-4879`).
     async fn handle_model_command(&mut self, search_term: Option<&str>) {
         let Some(search_term) = search_term else {
             self.show_model_selector(None);
@@ -4469,7 +4317,6 @@ impl InteractiveMode {
         self.show_model_selector(Some(search_term));
     }
 
-    /// `findExactModelMatch(searchTerm)` (`interactive-mode.ts:4881-4914`).
     async fn find_exact_model_match(&mut self, search_term: &str) -> Option<Model> {
         let session = self.session();
         let scoped = session.scoped_models();
@@ -4503,7 +4350,6 @@ impl InteractiveMode {
         find_exact_model_reference_match(search_term, &model_runtime.get_available_snapshot())
     }
 
-    /// `checkDaxnutsEasterEgg(model)` (`interactive-mode.ts:6565-6569`).
     fn check_daxnuts_easter_egg(&mut self, model: &Model) {
         if model.provider == "opencode" && model.id.to_lowercase().contains("kimi-k2.5") {
             let mut chat = self.chat_container.borrow_mut();
@@ -4514,7 +4360,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `updateAvailableProviderCount` (`interactive-mode.ts:4916-4923`).
     fn update_available_provider_count(&self) {
         let session = self.session();
         let scoped = session.scoped_models();
@@ -4532,8 +4377,6 @@ impl InteractiveMode {
             .set_available_provider_count(providers.len() as u64);
     }
 
-    /// `showSettingsSelector()` (`interactive-mode.ts:4648-4855`).
-    ///
     /// Deviation (class 1): the callbacks that only write a setting do so
     /// directly — the settings manager is shared and needs no loop. The ones
     /// that also change mode state (images in the transcript, thinking blocks,
@@ -4674,7 +4517,6 @@ impl InteractiveMode {
                 Box::new(move |transport| {
                     settings.set_transport(transport_wire_name(transport));
                     // `session.agent.transport = transport` — the next run picks
-                    // it up, exactly as the field assignment does in TypeScript.
                     session
                         .agent()
                         .update_options(|options| options.transport = Some(transport));
@@ -4914,9 +4756,6 @@ impl InteractiveMode {
     }
 
     /// Runs `body` for every tool row in the transcript.
-    ///
-    /// TypeScript walks `chatContainer.children` and filters by
-    /// `instanceof ToolExecutionComponent`; the port keeps the rows in a list
     /// instead, because a `dyn Component` cannot be downcast (deviation
     /// class 1, same set of rows).
     fn for_each_tool_row(&self, mut body: impl FnMut(&mut ToolExecutionComponent)) {
@@ -4925,7 +4764,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `showUserMessageSelector()` (`interactive-mode.ts:5180-5216`).
     fn show_user_message_selector(&mut self) {
         let messages = self.session().get_user_messages_for_forking();
         if messages.is_empty() {
@@ -4980,7 +4818,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleCloneCommand()` (`interactive-mode.ts:5218-5237`).
     async fn handle_clone_command(&mut self) {
         let leaf_id = self
             .session()
@@ -4992,10 +4829,7 @@ impl InteractiveMode {
         self.fork_session(&leaf_id, ForkPosition::At).await;
     }
 
-    /// `showTrustSelector()` (`interactive-mode.ts:4981-5011`).
     /// `maybeSaveImplicitProjectTrustAfterReload()`
-    /// (`interactive-mode.ts:4955-4979`).
-    ///
     /// A session that started in a folder without trust-requiring resources was
     /// trusted implicitly. If the reload brought such resources in, that
     /// implicit decision is written down once, so the next start does not ask.
@@ -5070,8 +4904,6 @@ impl InteractiveMode {
         ));
     }
 
-    /// `requestApproval(request)` (`interactive-mode.ts:5013-5023`).
-    ///
     /// The tool call stays open until the dialog answers; dismissing it denies,
     /// so a call can never proceed because a prompt was closed.
     fn show_approval_selector(
@@ -5095,8 +4927,6 @@ impl InteractiveMode {
         self.show_selector(Rc::clone(&selector) as ComponentRef, focus, None);
     }
 
-    /// `createBaseAutocompleteProvider()` (`interactive-mode.ts:677-761`).
-    ///
     /// The extension commands are gone with the extension system (class 2);
     /// what remains are the built-in commands with their two argument
     /// completions, the prompt templates and the skill commands.
@@ -5149,7 +4979,6 @@ impl InteractiveMode {
                     )
                 }) as Pin<Box<dyn Future<Output = Option<Vec<AutocompleteItem>>>>>
             });
-            // `/subagent-model` (port addition, v0.1.6) completes from the
             // same list of available models as `/model`.
             for name in ["model", "subagent-model"] {
                 if let Some(command) = commands.iter_mut().find(|command| command.name == name) {
@@ -5171,7 +5000,6 @@ impl InteractiveMode {
             });
         }
 
-        // `/llama`. TypeScript appends the extension commands here, between
         // the prompt templates and the skill commands; the source tag its
         // description carried (`[t]`, from the synthetic source info of an
         // inline extension) goes with the extension system (class 2).
@@ -5209,7 +5037,6 @@ impl InteractiveMode {
     }
 
     /// `prefixAutocompleteDescription(description, sourceInfo)`
-    /// (`interactive-mode.ts:654-660`).
     fn prefix_autocomplete_description(
         &self,
         description: Option<String>,
@@ -5222,7 +5049,6 @@ impl InteractiveMode {
         })
     }
 
-    /// `getAutocompleteSourceTag(sourceInfo)` (`interactive-mode.ts:629-652`).
     fn autocomplete_source_tag(&self, source_info: &SourceInfo) -> Option<String> {
         let scope_prefix = match source_info.scope {
             SourceScope::User => "u",
@@ -5236,7 +5062,6 @@ impl InteractiveMode {
         Some(format!("{scope_prefix}:{source}"))
     }
 
-    /// `setupAutocompleteProvider()` (`interactive-mode.ts:762-778`).
     fn setup_autocomplete_provider(&mut self) {
         let provider = self.create_base_autocomplete_provider();
         self.editor
@@ -5245,10 +5070,7 @@ impl InteractiveMode {
             .set_autocomplete_provider(Rc::new(provider));
     }
 
-    /// `showSessionSelector()` (`interactive-mode.ts:5381-5417`).
-    ///
     /// The component asks for its session lists instead of loading them itself
-    /// (workstream A's `take_pending_load`/`apply_load_result` seam), so the
     /// main loop runs the loads — the same shape `cli/session_picker.rs` uses.
     fn show_session_selector(&mut self) {
         let id = self.selector_id + 1;
@@ -5294,7 +5116,6 @@ impl InteractiveMode {
         self.show_selector(Rc::clone(&selector) as ComponentRef, focus, None);
     }
 
-    /// `handleResumeSession(sessionPath)` (`interactive-mode.ts:5419-5454`).
     async fn handle_resume_session(&mut self, session_path: &str) {
         self.clear_status_indicator(None);
         match self.runtime.switch_session(session_path, None).await {
@@ -5325,7 +5146,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `promptForMissingSessionCwd(error)` (`interactive-mode.ts:2482-2488`).
     async fn prompt_for_missing_session_cwd(
         &mut self,
         error: &MissingSessionCwdError,
@@ -5339,7 +5159,6 @@ impl InteractiveMode {
         confirmed.then(|| error.0.fallback_cwd.clone())
     }
 
-    /// `showTreeSelector(initialSelectedId)` (`interactive-mode.ts:5239-5379`).
     fn show_tree_selector(&mut self, initial_selected_id: Option<String>) {
         let session = self.session();
         let (tree, real_leaf_id) = session.with_session_manager(|manager| {
@@ -5390,7 +5209,6 @@ impl InteractiveMode {
     }
 
     /// The `onSelect` half of the tree selector.
-    ///
     async fn navigate_tree(&mut self, entry_id: &str) {
         if self
             .session()
@@ -5417,7 +5235,6 @@ impl InteractiveMode {
                     )
                     .await;
                 let Some(answer) = choice else {
-                    // Escape re-opens the tree on the same entry, as in TypeScript.
                     self.show_tree_selector(Some(entry_id.to_owned()));
                     return;
                 };
@@ -5531,9 +5348,7 @@ impl InteractiveMode {
         answer
     }
 
-    /// `showExtensionEditor(title, prefill)` (`interactive-mode.ts:2549-2577`)
     /// — the free-text dialog of the tree's third answer, under the neutral
-    /// name workstream A gave the component (interface request C-23).
     async fn ask_text(&mut self, title: &str) -> Option<String> {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel::<Option<String>>();
         let done_tx = Rc::new(RefCell::new(Some(done_tx)));
@@ -5597,7 +5412,6 @@ impl InteractiveMode {
         answer
     }
 
-    /// `showModelsSelector()` (`interactive-mode.ts:5057-5178`).
     fn show_models_selector(&mut self) {
         let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
         let available_models = model_runtime.get_available_snapshot();
@@ -5750,10 +5564,7 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `showTasksBrowser()` (`interactive-mode.ts:2861-2977`).
-    ///
     /// The polling, the output reads and the stop calls are driven by the main
-    /// loop (`setInterval` and `void promise.then(...)` in TypeScript).
     fn show_tasks_browser(&mut self) {
         let Some(manager) = self.session().task_manager() else {
             self.show_status("No task manager in this session");
@@ -5983,7 +5794,6 @@ impl InteractiveMode {
     // Login and logout
     // ------------------------------------------------------------------
 
-    /// `getLoginProviderOptions(authType)` (`interactive-mode.ts:5456-5485`).
     fn login_provider_options(&self, auth_type: Option<AuthType>) -> Vec<AuthSelectorProvider> {
         let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
         let mut options: Vec<AuthSelectorProvider> = Vec::new();
@@ -6032,7 +5842,6 @@ impl InteractiveMode {
         options
     }
 
-    /// `findLoginProviderOptions(providerRef)` (`interactive-mode.ts:5498-5510`).
     fn find_login_provider_options(&self, provider_ref: &str) -> Vec<AuthSelectorProvider> {
         let normalized = provider_ref.trim().to_lowercase();
         if normalized.is_empty() {
@@ -6047,7 +5856,6 @@ impl InteractiveMode {
             .collect()
     }
 
-    /// `handleLoginCommand(providerRef)` (`interactive-mode.ts:5512-5533`).
     fn handle_login_command(&mut self, provider_ref: Option<&str>) {
         let Some(provider_ref) = provider_ref else {
             self.show_login_auth_type_selector(None);
@@ -6071,7 +5879,6 @@ impl InteractiveMode {
         self.show_login_provider_selector(None, Some(provider_ref));
     }
 
-    /// `startProviderLogin(providerOption)` (`interactive-mode.ts:5535-5543`).
     fn start_provider_login(&mut self, provider: AuthSelectorProvider) {
         match (&provider.auth_type, &provider.method) {
             (AuthType::OAuth, _) => self.show_login_dialog(provider, AuthType::OAuth),
@@ -6086,7 +5893,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `showLoginAuthTypeSelector(providerOptions)` (`interactive-mode.ts:5545-5601`).
     fn show_login_auth_type_selector(
         &mut self,
         provider_options: Option<Vec<AuthSelectorProvider>>,
@@ -6145,7 +5951,6 @@ impl InteractiveMode {
     }
 
     /// `showLoginProviderSelector(authType, initialSearchInput)`
-    /// (`interactive-mode.ts:5603-5644`).
     fn show_login_provider_selector(
         &mut self,
         auth_type: Option<AuthType>,
@@ -6184,7 +5989,6 @@ impl InteractiveMode {
         self.show_selector(Rc::clone(&selector), selector, None);
     }
 
-    /// `showOAuthSelector("logout")` (`interactive-mode.ts:5646-5703`).
     async fn show_logout_selector(&mut self) {
         let model_runtime = Arc::clone(&self.runtime.services().model_runtime);
         let credentials = model_runtime
@@ -6279,7 +6083,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `showAmbientAuthDialog(providerOption)` (`interactive-mode.ts:5778-5799`).
     fn show_ambient_auth_dialog(&mut self, provider: AuthSelectorProvider) {
         let id = self.selector_id + 1;
         let tx = self.ui_tx.clone();
@@ -6313,15 +6116,11 @@ impl InteractiveMode {
     }
 
     /// `showLoginDialog(providerId, providerName)` and `showApiKeyLoginDialog`
-    /// (`interactive-mode.ts:5801-5847`, `5932-5966`).
-    ///
     /// Deviation (class 1): the auth flow runs wherever the runtime puts it and
     /// needs a `Send` interaction, while the dialog is `!Send`. The interaction
     /// therefore posts its prompts and events into this loop and waits on
     /// `oneshot`s, the same bridge the approval dialog uses.
-    ///
     /// The login itself runs as a side-future beside this loop, like the free
-    /// promise it is in TS: awaiting it inside a message handler starves the
     /// loop, which must keep serving that prompt/event bridge — the dialog
     /// then never got past its title and no browser opened (found 2026-08-18).
     fn show_login_dialog(&mut self, provider: AuthSelectorProvider, auth_type: AuthType) {
@@ -6383,7 +6182,6 @@ impl InteractiveMode {
         }));
     }
 
-    /// `completeProviderAuthentication(...)` (`interactive-mode.ts:5706-5776`).
     async fn complete_provider_authentication(
         &mut self,
         provider_id: &str,
@@ -6600,9 +6398,7 @@ impl InteractiveMode {
     // ------------------------------------------------------------------
 
     /// `handleBashCommand(command, excludeFromContext)`
-    /// (`interactive-mode.ts:6571-6656`), minus the `user_bash` extension event
     /// and the result it could hand back (class 2).
-    ///
     /// Deviation (class 1): the run is not awaited here but driven by the main
     /// loop, because its chunk callback is `Send` and has to cross into the
     /// loop to reach the `!Send` component — awaiting inline would collect the
@@ -6660,10 +6456,8 @@ impl InteractiveMode {
             component.borrow_mut().set_complete(
                 result.exit_code.map(i64::from),
                 result.cancelled,
-                // TypeScript casts an incomplete literal
                 // (`{ truncated: true, content } as TruncationResult`); the row
                 // reads exactly those two fields, the rest is zero here
-                // (deviation class 1).
                 result.truncated.then(|| TruncationResult {
                     content: result.output.clone(),
                     truncated: true,
@@ -6680,7 +6474,6 @@ impl InteractiveMode {
                 result.full_output_path.clone(),
             );
         }
-        // `executeBash` records the result itself in the port; TypeScript only
         // records it on the extension path.
         let _ = (command, exclude_from_context);
         // `onSubmit` resets the bash border once the command is done.
@@ -6689,7 +6482,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `flushPendingBashComponents` (`interactive-mode.ts:6600-6610`).
     fn flush_pending_bash_components(&mut self) {
         for component in std::mem::take(&mut self.pending_bash_components) {
             self.pending_messages_container
@@ -6705,7 +6497,6 @@ impl InteractiveMode {
     // Queues
     // ------------------------------------------------------------------
 
-    /// `getAllQueuedMessages` (`interactive-mode.ts:4430-4445`).
     fn all_queued_messages(&self) -> (Vec<String>, Vec<String>) {
         let session = self.session();
         let mut steering = session.get_steering_messages();
@@ -6725,7 +6516,6 @@ impl InteractiveMode {
         (steering, follow_up)
     }
 
-    /// `clearAllQueues` (`interactive-mode.ts:4447-4460`).
     fn clear_all_queues(&mut self) -> (Vec<String>, Vec<String>) {
         let (mut steering, mut follow_up) = self.session().clear_queue();
         for message in std::mem::take(&mut self.compaction_queued_messages) {
@@ -6737,7 +6527,6 @@ impl InteractiveMode {
         (steering, follow_up)
     }
 
-    /// `updatePendingMessagesDisplay` (`interactive-mode.ts:4462-4479`).
     fn update_pending_messages_display(&mut self) {
         let (steering, follow_up) = self.all_queued_messages();
         let mut container = self.pending_messages_container.borrow_mut();
@@ -6775,7 +6564,6 @@ impl InteractiveMode {
         )));
     }
 
-    /// `restoreQueuedMessagesToEditor` (`interactive-mode.ts:4481-4500`).
     fn restore_queued_messages_to_editor(&mut self, abort: bool) -> usize {
         let (steering, follow_up) = self.clear_all_queues();
         let mut all_queued = steering;
@@ -6802,7 +6590,6 @@ impl InteractiveMode {
         all_queued.len()
     }
 
-    /// `handleDequeue` (`interactive-mode.ts:4236-4243`).
     fn handle_dequeue(&mut self) {
         let restored = self.restore_queued_messages_to_editor(false);
         if restored == 0 {
@@ -6815,7 +6602,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleFollowUp` (`interactive-mode.ts:4204-4234`).
     async fn handle_follow_up(&mut self) {
         let text = self.editor.borrow().editor().get_expanded_text();
         let text = text.trim().to_owned();
@@ -6853,7 +6639,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `queueCompactionMessage` (`interactive-mode.ts:4502-4508`).
     fn queue_compaction_message(&mut self, text: &str, mode: CompactionQueueMode) {
         self.compaction_queued_messages
             .push(CompactionQueuedMessage {
@@ -6866,8 +6651,6 @@ impl InteractiveMode {
         self.show_status("Queued message for after compaction");
     }
 
-    /// `flushCompactionQueue` (`interactive-mode.ts:4520-4598`).
-    ///
     /// `isExtensionCommand` is constantly false without the extension system
     /// (class 2), which removes the pre-command branches; what stays is the
     /// first queued message as the prompt and the rest back into the queues.
@@ -6939,16 +6722,12 @@ impl InteractiveMode {
     // Slash commands
     // ------------------------------------------------------------------
 
-    /// The command table of `onSubmit` (`interactive-mode.ts:3116-3225`), in
-    /// the order TypeScript tests it. `true` means the text was a command and
     /// must not reach the model.
-    ///
     /// The commands that open a selector (`/settings`, `/model`,
     /// `/scoped-models`, `/tasks`, `/fork`, `/clone`, `/tree`, `/trust`,
     /// `/login`, `/logout`, `/resume`) are recognised here and answered with a
     /// notice until the selector slice wires them; they must never fall through
     /// to the model, which is what the fall-through of an unknown `/word` does
-    /// in TypeScript too.
     async fn handle_slash_command(&mut self, text: &str) -> bool {
         if !text.starts_with('/') {
             return false;
@@ -6984,7 +6763,6 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_index_command(index_argument.as_deref());
             }
-            // Addition over the TS original (user decision 2026-08-17,
             // v0.1.19): the command form of the reference's Atomic leases
             // setting.
             _ if text == "/leases" || text.starts_with("/leases ") => {
@@ -6992,7 +6770,6 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_leases_command(leases_argument.as_deref());
             }
-            // Addition over the TS original (user decision 2026-08-17,
             // v0.1.20): the command form of the reference's shell-output
             // filter setting.
             _ if text == "/bash-filter" || text.starts_with("/bash-filter ") => {
@@ -7000,21 +6777,18 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_bash_filter_command(filter_argument.as_deref());
             }
-            // Addition over the TS original (user decision 2026-08-17,
             // v0.1.21): goal mode.
             _ if text == "/goal" || text.starts_with("/goal ") => {
                 let goal_argument = argument("/goal ");
                 self.clear_editor_text();
                 self.handle_goal_command(goal_argument.as_deref());
             }
-            // Addition over the TS original (user decision 2026-08-18,
             // v0.1.22): the configured MCP servers.
             _ if text == "/mcp" || text.starts_with("/mcp ") => {
                 let mcp_argument = argument("/mcp ");
                 self.clear_editor_text();
                 self.handle_mcp_command(mcp_argument.as_deref()).await;
             }
-            // Addition over the TS original (user decision 2026-08-17,
             // v0.1.11): the command form of the thinking-block toggle, which
             // until now only existed as a keybinding.
             "/thinking" => {
@@ -7083,7 +6857,6 @@ impl InteractiveMode {
                 self.clear_editor_text();
             }
             "/llama" => {
-                // The one extension command of the TypeScript app reached the
                 // model layer through `session.prompt`, which is why it lands
                 // in the editor history like a prompt does; the built-in
                 // commands above return before that.
@@ -7144,9 +6917,6 @@ impl InteractiveMode {
         self.editor.borrow_mut().editor_mut().set_text("");
     }
 
-    /// The `handler` of the `llama` command (`extensions/llama/index.ts:186-228`).
-    ///
-    /// `showLlamaUi` goes through `ctx.ui.custom` in TypeScript, which is
     /// `showExtensionCustom` here: the editor's text is saved, the view takes
     /// the editor's place, and the text comes back when the flow is done.
     async fn handle_llama_command(&mut self) {
@@ -7195,7 +6965,6 @@ impl InteractiveMode {
     }
 
     /// `restoreEditor()` of `showExtensionCustom`
-    /// (`interactive-mode.ts:2691-2697`).
     fn restore_editor(&mut self, saved_text: &str) {
         {
             let mut container = self.editor_container.borrow_mut();
@@ -7208,7 +6977,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `handleExportCommand` (`interactive-mode.ts:6058-6072`).
     async fn handle_export_command(&mut self, text: &str) {
         let output_path = path_command_argument(text, "/export");
         let session = self.session();
@@ -7227,11 +6995,8 @@ impl InteractiveMode {
     }
 
     /// `session.exportToHtml(outputPath)` — the session-side half lives in
-    /// `core::export_html` (workstream B, plan task 16); the binding is here,
-    /// where the TypeScript session method binds it.
     fn export_to_html(&self, output_path: Option<&str>) -> Result<String, String> {
         let session = self.session();
-        // `exportToHtml` (`agent-session.ts:3680-3696`): the tool rows are
         // pre-rendered through the same renderers the transcript uses, so the
         // page shows what the session showed.
         let definitions = Arc::clone(&session);
@@ -7257,7 +7022,6 @@ impl InteractiveMode {
         })
     }
 
-    /// `handleImportCommand` (`interactive-mode.ts:6103-6145`).
     async fn handle_import_command(&mut self, text: &str) {
         let Some(input_path) = path_command_argument(text, "/import") else {
             self.show_error("Usage: /import <path.jsonl>");
@@ -7302,8 +7066,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleShareCommand` (`interactive-mode.ts:6147-6239`) — the two `gh`
-    /// calls live in `core::share` (interface request B-9), the loader, the
     /// editor swap and the temp file are here.
     async fn handle_share_command(&mut self) {
         let runner = crate::core::share::ProcessShareCommandRunner;
@@ -7333,7 +7095,6 @@ impl InteractiveMode {
         self.ui.request_render();
 
         // `loader.onAbort` kills the child; the cancellation token reaches the
-        // runner through the same select the TypeScript gets from `proc.kill()`.
         let result = tokio::select! {
             result = crate::core::share::create_secret_gist(&temp_file, &runner) => Some(result),
             () = signal.cancelled() => None,
@@ -7359,7 +7120,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleCopyCommand` (`interactive-mode.ts:6241-6258`).
     fn handle_copy_command(&mut self, flash_confirmation: bool) {
         let Some(text) = self.session().get_last_assistant_text() else {
             self.show_error("No agent messages to copy yet.");
@@ -7376,7 +7136,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleNameCommand` (`interactive-mode.ts:6260-6282`).
     fn handle_name_command(&mut self, text: &str) {
         let name = text
             .strip_prefix("/name")
@@ -7426,7 +7185,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `handleSessionCommand` (`interactive-mode.ts:6284-6345`).
     fn handle_session_command(&mut self) {
         let session = self.session();
         let stats = session.get_session_stats();
@@ -7553,7 +7311,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `handleChangelogCommand` (`interactive-mode.ts:6347-6369`).
     fn handle_changelog_command(&mut self) {
         let entries =
             crate::utils::changelog::parse_changelog(&crate::config::get_changelog_path());
@@ -7575,7 +7332,6 @@ impl InteractiveMode {
         self.add_bordered_block("What's New", &changelog_markdown, 1);
     }
 
-    /// `handleHotkeysCommand` (`interactive-mode.ts:6382-6497`).
     fn handle_hotkeys_command(&mut self) {
         let key = key_display_text;
         let hotkeys = format!(
@@ -7693,7 +7449,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `handleClearCommand` (`interactive-mode.ts:6499-6512`).
     async fn handle_clear_command(&mut self) {
         self.clear_status_indicator(None);
         match self.runtime.new_session(None).await {
@@ -7713,7 +7468,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleCompactCommand` (`interactive-mode.ts:6658-6664`).
     async fn handle_compact_command(&mut self, custom_instructions: Option<&str>) {
         // The result is reported through `compaction_end`; a failure here is the
         // same event with an error message.
@@ -7722,7 +7476,6 @@ impl InteractiveMode {
 
     /// `/btw <question>` — opens the side-question panel and asks the first
     /// question.
-    ///
     /// A second invocation replaces the open panel rather than stacking one:
     /// two side channels would compete for the same editor and the same
     /// attention.
@@ -7911,7 +7664,6 @@ impl InteractiveMode {
     }
 
     /// Starts the `/init` child and lets the loop carry on.
-    ///
     /// Awaiting the run here would freeze the UI for as long as the child
     /// explores, which is exactly when the user wants to watch the subagent
     /// panel — so the run goes into the side futures and reports back.
@@ -7934,8 +7686,6 @@ impl InteractiveMode {
         }));
     }
 
-    /// `handleReloadCommand` (`interactive-mode.ts:5968-6056`).
-    ///
     /// Remaining: `showLoadedResources`, which belongs to the resources slice,
     /// and `maybeSaveImplicitProjectTrustAfterReload`, which needs the trust
     /// selector of the selector slice.
@@ -8012,7 +7762,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `applyRuntimeSettings` (`interactive-mode.ts:1911-1933`).
     fn apply_runtime_settings(&mut self) {
         let settings = self.settings();
         self.ui.set_clear_on_shrink(settings.get_clear_on_shrink());
@@ -8035,7 +7784,6 @@ impl InteractiveMode {
         self.update_editor_border_color();
     }
 
-    /// `rebuildChatFromMessages` (`interactive-mode.ts:4001-4004`).
     fn rebuild_chat_from_messages(&mut self) {
         self.chat_container.borrow_mut().clear();
         let entries = self
@@ -8044,10 +7792,6 @@ impl InteractiveMode {
         self.render_session_entries(&entries, false);
     }
 
-    /// `handleDebugCommand` (`interactive-mode.ts:6514-6545`).
-    ///
-    /// Deviation (class 1): TypeScript asks the TUI for the rendered document
-    /// (`this.ui.render(width)`); the port renders the mounted children itself,
     /// because the renderer keeps that pass private to the frame it writes.
     fn handle_debug_command(&mut self) {
         let width = self.ui.columns();
@@ -8101,7 +7845,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `handleArminSaysHi` (`interactive-mode.ts:6547-6551`).
     fn handle_armin_says_hi(&mut self) {
         let mut chat = self.chat_container.borrow_mut();
         chat.add_child(component_ref(Spacer::new(1)));
@@ -8110,7 +7853,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `handleDementedDelves` (`interactive-mode.ts:6553-6557`).
     fn handle_demented_delves(&mut self) {
         let mut chat = self.chat_container.borrow_mut();
         chat.add_child(component_ref(Spacer::new(1)));
@@ -8119,9 +7861,7 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `showExtensionConfirm(title, message)` (`interactive-mode.ts:2473-2480`)
     /// over the list selector `showExtensionSelector` uses.
-    ///
     /// Deviation (class 1): the dialog blocks this loop until it answers, so the
     /// events of a run that is still going are handled after it closes. The
     /// caller's render loop keeps drawing and keeps feeding the dialog, which is
@@ -8167,7 +7907,6 @@ impl InteractiveMode {
         answer.as_deref() == Some("Yes")
     }
 
-    /// `switchTuiMode(mode)` (`interactive-mode.ts:797-846`).
     fn switch_tui_mode(&mut self, mode: TuiMode) {
         if !self.cell.switch(mode, get_agent_dir()) {
             self.show_status("Close active overlays before changing TUI mode");
@@ -8198,9 +7937,6 @@ impl InteractiveMode {
         ));
     }
 
-    /// `handleCtrlZ()` (`interactive-mode.ts:4167-4202`).
-    ///
-    /// Deviation (class 1): TypeScript keeps the event loop alive and restores
     /// the TUI from a `SIGCONT` handler; in Rust the signal stops the thread
     /// inside `kill`, so the code after it *is* the resume path.
     fn handle_ctrl_z(&mut self) {
@@ -8211,7 +7947,6 @@ impl InteractiveMode {
         #[cfg(unix)]
         {
             self.cell.stop(TuiStopOptions::default());
-            // pid 0: the whole process group, as in TypeScript.
             unsafe {
                 libc::kill(0, libc::SIGTSTP);
             }
@@ -8220,13 +7955,10 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleClipboardPaste()` (`interactive-mode.ts:3088-3111`).
-    ///
     /// An image is inserted as an `[Image #n]` marker and its bytes are held
     /// until submit, when they ride along as an image part. The path used to go
     /// into the editor instead — sixty characters of temporary directory the
     /// user had to type around and could read nothing from.
-    ///
     /// No temporary file is written any more. It only ever existed to give the
     /// editor a path to show, and nothing read it back — the bytes now travel
     /// with the message instead.
@@ -8287,7 +8019,6 @@ impl InteractiveMode {
     }
 
     /// The images a submitted line refers to, in order and without repeats.
-    ///
     /// The marker stays in the text. It is what the model reads as "the image
     /// you were given here", which is the only thing that tells two attachments
     /// apart when a message carries several.
@@ -8315,7 +8046,6 @@ impl InteractiveMode {
         self.sync_image_markers();
     }
 
-    /// `handleCtrlC` (`interactive-mode.ts:4010-4018`).
     async fn handle_ctrl_c(&mut self) {
         // The panel stacks above the transcript, so the key reaches it first —
         // in two steps, like everything else here: stop the answer that is
@@ -8336,14 +8066,11 @@ impl InteractiveMode {
         }
     }
 
-    /// `handleCtrlD` (`interactive-mode.ts:4020-4023`) — only reached on an
     /// empty editor, which `CustomEditor` enforces.
     async fn handle_ctrl_d(&mut self) {
         self.shutdown().await;
     }
 
-    /// The escape branch of `setupKeyHandlers` (`interactive-mode.ts:3006-3033`).
-    ///
     /// The double-escape action (`/tree` or `/fork`) needs the selectors and
     /// arrives with their slice.
     fn handle_escape(&mut self) {
@@ -8394,12 +8121,9 @@ impl InteractiveMode {
         }
     }
 
-    /// `shutdown({ fromSignal: true })` (`interactive-mode.ts:4038-4051`).
-    ///
     /// The session teardown runs before the terminal is touched: removing
     /// sockets and writing the session file must not be skipped because a
     /// restore write to a dead terminal failed. No resume hint is printed —
-    /// TypeScript's signal path does not reach that code either.
     async fn shutdown_from_signal(&mut self) {
         if self.is_shutting_down {
             return;
@@ -8411,8 +8135,6 @@ impl InteractiveMode {
         self.exit_code = Some(0);
     }
 
-    /// `shutdown()` (`interactive-mode.ts:4032-4071`) for the interactive quit.
-    ///
     /// Deviation (class 1): instead of `process.exit(0)` the mode records the
     /// exit code and lets [`Self::run`] return it, because the render loop
     /// belongs to the caller and has to unwind.
@@ -8433,7 +8155,6 @@ impl InteractiveMode {
         self.exit_code = Some(0);
     }
 
-    /// `formatResumeCommand` (`interactive-mode.ts:250-263`).
     fn format_resume_command(&self) -> Option<String> {
         if !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
             return None;
@@ -8458,7 +8179,6 @@ impl InteractiveMode {
         })
     }
 
-    /// `stop()` (`interactive-mode.ts:6668-6687`).
     pub fn stop(&mut self) {
         self.dispose_active_selector();
         if self.settings().get_show_terminal_progress() {
@@ -8495,7 +8215,6 @@ impl InteractiveMode {
     // Session events
     // ------------------------------------------------------------------
 
-    /// `handleEvent` (`interactive-mode.ts:3313-3652`).
     async fn handle_event(&mut self, event: AgentSessionEvent) {
         self.footer.borrow_mut().invalidate();
 
@@ -8855,7 +8574,6 @@ impl InteractiveMode {
     }
 
     fn add_tool_component(&mut self, tool_name: &str, tool_call_id: &str, args: serde_json::Value) {
-        // Deviation from the TS original (user decision 2026-08-16, like
         // notagent-main-rust): `todo_write` gets no transcript row — the dock
         // panel below the chat already shows the resulting list, and a row
         // would say the same twice. The execution-end handler feeds the panel
@@ -8965,7 +8683,6 @@ impl InteractiveMode {
     // Transcript
     // ------------------------------------------------------------------
 
-    /// `renderInitialMessages` (`interactive-mode.ts:3950-3966`).
     fn render_initial_messages(&mut self) {
         let entries = self
             .session()
@@ -8989,7 +8706,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `renderSessionEntries` (`interactive-mode.ts:3908-3925`).
     fn render_session_entries(&mut self, entries: &[SessionEntry], populate_history: bool) {
         let mut items: Vec<AgentMessage> = Vec::new();
         for entry in entries {
@@ -8998,8 +8714,6 @@ impl InteractiveMode {
         self.render_session_items(&items, populate_history);
     }
 
-    /// `renderSessionItems` (`interactive-mode.ts:3817-3906`).
-    ///
     /// The cache-miss notices and the custom session entries belong to the
     /// slices that own them.
     fn render_session_items(&mut self, items: &[AgentMessage], populate_history: bool) {
@@ -9120,7 +8834,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `addMessageToChat` (`interactive-mode.ts:3710-3815`).
     fn add_message_to_chat(&mut self, message: &AgentMessage, populate_history: bool) {
         // A new message row between searches ends the block (the streamed
         // assistant path closes it at MessageEnd instead).
@@ -9248,7 +8961,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `renderProjectTrustWarningIfNeeded` (`interactive-mode.ts:3967-3986`).
     fn render_project_trust_warning_if_needed(&mut self) {
         if self.settings().is_project_trusted()
             || !has_trust_requiring_project_resources(&self.cwd())
@@ -9275,7 +8987,6 @@ impl InteractiveMode {
     // UI helpers
     // ------------------------------------------------------------------
 
-    /// `showStatus` (`interactive-mode.ts:3668-3686`).
     fn show_status(&mut self, message: &str) {
         let styled = theme().fg(ThemeColor::Dim, message);
         {
@@ -9315,7 +9026,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `showError` (`interactive-mode.ts:4367-4371`).
     pub fn show_error(&mut self, message: &str) {
         let mut chat = self.chat_container.borrow_mut();
         chat.add_child(component_ref(Spacer::new(1)));
@@ -9328,7 +9038,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `showWarning` (`interactive-mode.ts:4373-4377`).
     pub fn show_warning(&mut self, message: &str) {
         let mut chat = self.chat_container.borrow_mut();
         chat.add_child(component_ref(Spacer::new(1)));
@@ -9341,13 +9050,11 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `clearEditor` (`interactive-mode.ts:4362-4365`).
     fn clear_editor(&mut self) {
         self.editor.borrow_mut().editor_mut().set_text("");
         self.ui.request_render();
     }
 
-    /// `updateEditorBorderColor` (`interactive-mode.ts:4245-4258`).
     fn update_editor_border_color(&mut self) {
         let color = if self.is_bash_mode {
             theme().get_bash_mode_border_color()
@@ -9358,7 +9065,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `showStatusIndicator` (`interactive-mode.ts:2062-2067`).
     fn show_status_indicator(&mut self, indicator: StatusIndicator) {
         self.clear_status_indicator(None);
         let indicator = Rc::new(RefCell::new(indicator));
@@ -9371,7 +9077,6 @@ impl InteractiveMode {
     }
 
     /// Stop the indicator but leave it on screen, reporting what the work took.
-    ///
     /// Used where an activity finished on its own. Somewhere the session is
     /// being torn down or switched, `clear_status_indicator` is still the right
     /// call: a runtime for work the user is no longer looking at is clutter.
@@ -9386,7 +9091,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `clearStatusIndicator` (`interactive-mode.ts:2069-2080`).
     fn clear_status_indicator(&mut self, kind: Option<StatusIndicatorKind>) {
         let Some(indicator) = self.active_status_indicator.clone() else {
             return;
@@ -9408,7 +9112,6 @@ impl InteractiveMode {
     }
 }
 
-/// `getPathCommandArgument(text, command)` (`interactive-mode.ts:6074-6101`).
 fn path_command_argument(text: &str, command: &str) -> Option<String> {
     if text == command {
         return None;
@@ -9469,7 +9172,6 @@ impl notagent_ai::auth::types::AuthInteraction for NoAuthInteraction {
     fn notify(&self, _event: AuthEvent) {}
 }
 
-/// `isUnknownModel(model)` (`interactive-mode.ts:239-241`).
 fn is_unknown_model(model: Option<&Model>) -> bool {
     model.is_some_and(|model| {
         model.provider == "unknown" && model.id == "unknown" && model.api == "unknown"
@@ -9630,7 +9332,6 @@ fn compact_list(items: &[String], sort: bool) -> String {
     theme().fg(ThemeColor::Dim, &format!("  {}", labels.join(", ")))
 }
 
-/// `getCompactPathLabel(resourcePath, sourceInfo)` (`interactive-mode.ts:1315-1323`),
 /// on an already shortened path.
 fn compact_path_label(short_path: &str) -> String {
     short_path
@@ -9641,7 +9342,6 @@ fn compact_path_label(short_path: &str) -> String {
         .unwrap_or_else(|| short_path.to_owned())
 }
 
-/// `getDisplaySourceInfo(sourceInfo)` (`interactive-mode.ts:1424-1451`) — the
 /// label and the optional scope note.
 fn display_source_label(source_info: &SourceInfo) -> (&'static str, Option<&'static str>) {
     let source = source_info.source.as_str();
@@ -9662,7 +9362,6 @@ fn display_source_label(source_info: &SourceInfo) -> (&'static str, Option<&'sta
     ("path", None)
 }
 
-/// `quoteIfNeeded` (`interactive-mode.ts:243-249`).
 fn quote_if_needed(value: &str) -> String {
     let needs_quotes = value
         .chars()
@@ -9673,7 +9372,6 @@ fn quote_if_needed(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// `getUserMessageText` (`interactive-mode.ts:3653-3659`).
 fn user_message_text(message: &UserMessage) -> String {
     match &message.content {
         UserContent::Text(text) => text.clone(),
@@ -9706,7 +9404,6 @@ fn result_from_message(message: &ToolResultMessage) -> ToolExecutionResult {
     }
 }
 
-/// `ANTHROPIC_SUBSCRIPTION_AUTH_WARNING` (`interactive-mode.ts:232-233`).
 const ANTHROPIC_SUBSCRIPTION_AUTH_WARNING: &str = "Anthropic subscription auth is active. Third-party harness usage draws from extra usage and is billed per token, not your Claude plan limits. Manage extra usage at https://claude.ai/settings/usage. Disable this warning in /settings.";
 
 /// The one-line error result the aborted and failed paths write into every
@@ -9723,7 +9420,6 @@ fn error_result(message: &str) -> ToolExecutionResult {
 }
 
 /// Splits an optional leading `user` off an `/mcp` argument.
-///
 /// The project file is the default because that is the one a repository shares;
 /// reaching the user's own file is the deliberate act and is spelled out.
 fn split_scope(argument: &str) -> (crate::core::mcp::McpConfigScope, &str) {
@@ -9742,7 +9438,6 @@ pub fn format_image_marker(id: u32) -> String {
 }
 
 /// The ids of the `[Image #n]` markers in `text`, in the order they appear.
-///
 /// `#0` is not a marker this ever writes, so a text containing one is the
 /// user's own and resolves to nothing.
 pub fn parse_image_markers(text: &str) -> Vec<u32> {

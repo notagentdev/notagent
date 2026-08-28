@@ -1,7 +1,3 @@
-//! Port of `packages/coding-agent/test/patch-minified-tool.test.ts`, plus the
-//! `read_minified` cases its own file states as behaviour but never exercises
-//! (the TS suite has no read_minified test file).
-
 use std::path::PathBuf;
 
 use notagent::core::tools::patch_minified::{

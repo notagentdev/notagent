@@ -1,12 +1,3 @@
-//! Tests for the port of
-//! `packages/coding-agent/src/modes/interactive/components/config-selector.ts`.
-//!
-//! The TypeScript repository has no suite for this component, so the expected
-//! values come from the component itself: `oracle-config-selector.mjs` drives
-//! the TypeScript class with these fixtures and prints the rendered lines and
-//! the settings writes (harness kept in the port notes, see
-//! `crates/notagent/PARITY.md`). Every expectation below is that output.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
@@ -125,7 +116,6 @@ fn empty() -> ResolvedResources {
     ResolvedResources::default()
 }
 
-/// `case1` of the oracle: grouping, labels, ordering and display names.
 #[test]
 fn groups_resources_by_source_and_sorts_packages_first() {
     let _guard = test_lock();
@@ -231,7 +221,6 @@ fn groups_resources_by_source_and_sorts_packages_first() {
     assert!(lines.contains(&"      [x] w.md".to_string()));
 }
 
-/// `case2` of the oracle: the two global write paths.
 #[test]
 fn writes_plus_and_minus_patterns_for_top_level_and_package_resources() {
     let _guard = test_lock();
@@ -308,8 +297,6 @@ fn writes_plus_and_minus_patterns_for_top_level_and_package_resources() {
 }
 
 /// A package entry that loses its last filter collapses back to the plain
-/// source string, and an `extensions` filter of the TypeScript app keeps it
-/// from collapsing (deviation class 2).
 #[test]
 fn collapses_a_package_entry_without_filters_but_keeps_extension_filters() {
     let _guard = test_lock();
@@ -406,7 +393,6 @@ fn collapses_a_package_entry_without_filters_but_keeps_extension_filters() {
 }
 
 /// A package the settings do not list is toggled in the display only — the
-/// TypeScript code returns before writing.
 #[test]
 fn a_package_missing_from_the_settings_only_changes_the_row() {
     let _guard = test_lock();
@@ -435,7 +421,6 @@ fn a_package_missing_from_the_settings_only_changes_the_row() {
     assert!(harness.lines().contains(&">     [ ] w.md".to_string()));
 }
 
-/// `case3` of the oracle: the project scope cycles inherit → unload → load.
 #[test]
 fn cycles_the_project_override_of_an_inherited_resource() {
     let _guard = test_lock();
@@ -547,7 +532,6 @@ fn cycles_the_project_override_of_an_inherited_resource() {
     );
 }
 
-/// `case4` of the oracle: tab switches the write scope, and only if the caller
 /// says a project scope exists.
 #[test]
 fn tab_switches_the_write_scope_when_project_mode_is_available() {
@@ -604,7 +588,6 @@ fn tab_switches_the_write_scope_when_project_mode_is_available() {
     assert_eq!(*harness.renders.borrow(), 0);
 }
 
-/// `case5` of the oracle: typing filters items and keeps their headers.
 #[test]
 fn the_search_keeps_the_headers_of_matching_items() {
     let _guard = test_lock();
@@ -674,7 +657,6 @@ fn the_search_keeps_the_headers_of_matching_items() {
     assert_eq!(lines[8], "  No resources found");
 }
 
-/// `case6` of the oracle: the viewport centres on the selection and the counter
 /// counts items, not headers.
 #[test]
 fn scrolls_the_viewport_and_counts_only_items() {
@@ -719,7 +701,6 @@ fn scrolls_the_viewport_and_counts_only_items() {
     assert_eq!(lines[24], "  (29/30)");
 }
 
-/// `case7` of the oracle: overriding a package resource in the project scope
 /// creates a project entry with `autoload: false`, and returning to inherit
 /// drops that entry again.
 #[test]
@@ -795,7 +776,6 @@ fn a_project_package_override_creates_and_removes_its_entry() {
     );
 }
 
-/// `case8` of the oracle: a relative package source resolves against the scope
 /// it came from before it is written relative to the project directory.
 #[test]
 fn a_local_package_source_is_rewritten_relative_to_the_project_directory() {

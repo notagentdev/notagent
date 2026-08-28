@@ -1,23 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/skill.ts` (tool half).
-//!
-//! The `skill` tool: loads a skill or mode body on demand.
-//!
-//! Two callers share this one path. The model invokes it to pull guidance it
-//! decides is relevant — that is the lazy load, and it is why skill bodies no
-//! longer need to sit in the system prompt. The runtime invokes it when the
-//! operating mode changes, synthesizing the call so activation is a hard
-//! trigger rather than something the model must remember to do.
-//!
-//! Both produce the same envelope, so a mode's guidance reads identically
-//! regardless of who asked for it.
-//!
-//! Modes come from `core/modes.rs` as they do in TypeScript. Deviation
-//! (class 1): skills are still resolved against the small view below rather
-//! than against `Skill` of `core/skills.ts`, which lands with plan task 11. It
-//! carries exactly the fields the TS `resolve` reads, so wiring the real type
-//! onto it is a mapping; the resolution order, the case handling, the envelope
-//! and the resource listing are unchanged.
-
 use std::path::Path;
 use std::sync::Arc;
 

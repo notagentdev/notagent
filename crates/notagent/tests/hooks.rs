@@ -1,6 +1,3 @@
-//! Port of `packages/coding-agent/test/hooks.test.ts`, `hooks-runner.test.ts`
-//! and `hooks-runtime.test.ts`.
-
 #![cfg(unix)]
 
 use std::path::PathBuf;

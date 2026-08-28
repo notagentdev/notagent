@@ -1,12 +1,9 @@
 //! MTPLX providers — a local server on loopback, plus remote instances.
-//!
 //! One factory, one config struct, two kinds of instance. The two differ only
 //! in where their config comes from and whether the address is on loopback;
 //! everything of value (session header, client header, auth handling) is
 //! identical and lives here once.
-//!
 //! Three details make this more than a base-url override:
-//!
 //! - `x-mtplx-session-id` binds a request to the server's warm-prefix session
 //!   bank. Without it the server infers the session from a prompt prefix scan
 //!   on every request, so a long agent conversation re-prefills work it
@@ -83,7 +80,6 @@ impl MtplxModelSpec {
 }
 
 /// Everything that differs between one MTPLX instance and another.
-///
 /// There is deliberately no "requires a key" field: that follows from
 /// [`base_url`](Self::base_url) via [`Self::is_loopback`]. A separate flag
 /// could be set wrong and would then wave a keyless remote instance through.
@@ -109,7 +105,6 @@ impl MtplxProviderConfig {
             .rsplit_once('@')
             .map_or(authority, |(_, host)| host);
         let host = if let Some(bracketed) = authority.strip_prefix('[') {
-            // Bracketed IPv6: the port sits outside the brackets, so the host
             // is everything up to the closing bracket — with or without a port.
             bracketed.split(']').next().unwrap_or_default()
         } else {
@@ -140,7 +135,6 @@ pub const LOCAL_PROVIDER_ID: &str = "mtplx";
 pub const LOCAL_BASE_URL: &str = "http://127.0.0.1:8000/v1";
 
 /// How we name ourselves to the server.
-///
 /// Deliberately not one of the names the server treats as its own surface:
 /// those hand it ownership of the sampler, and our temperature and top-p would
 /// then be dropped without a trace. Unset is not an option either, because the
@@ -149,7 +143,6 @@ pub const LOCAL_BASE_URL: &str = "http://127.0.0.1:8000/v1";
 pub const CLIENT_HINT: &str = "notagent";
 
 /// The built-in local instance.
-///
 /// It offers nothing until someone activates it with `/login mtplx`, and
 /// nothing again after `/logout` — see [`MtplxApiKeyAuth`]. That keeps an
 /// unused local server out of everyone else's model picker.
@@ -242,7 +235,6 @@ fn build_model(config: &MtplxProviderConfig, spec: &MtplxModelSpec) -> Model {
 }
 
 /// Key handling for an MTPLX instance.
-///
 /// `resolve` deliberately has no unconditional fallback: an instance nobody
 /// activated resolves to nothing, which keeps it out of the model list until
 /// `/login` stores a credential. The placeholder lives in `login`, so
@@ -341,7 +333,6 @@ struct MtplxRuntimeConfig {
 }
 
 /// Asks the server which model it is currently serving.
-///
 /// A server holds exactly one chat model and names it with a model-specific
 /// id, so this is the only honest source for the list. Not reachable is the
 /// normal case for a local server, and yields an empty list rather than an
@@ -392,7 +383,6 @@ async fn fetch_served_models(
 }
 
 /// Turns one `/v1/models` body into the models this provider offers.
-///
 /// Split from the request so the shape handling is exercised without a server.
 pub fn models_from_listing(
     config: &MtplxProviderConfig,

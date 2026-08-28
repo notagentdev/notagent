@@ -1,7 +1,3 @@
-//! Cloudflare endpoint placeholders.
-//!
-//! 1:1 port of `packages/ai/src/providers/cloudflare-stream.ts` (28 LOC).
-
 use std::sync::Arc;
 
 use crate::types::{
@@ -41,7 +37,6 @@ pub fn resolve_cloudflare_model(model: &Model, env: Option<&ProviderEnv>) -> Mod
 }
 
 /// `cloudflareStreams(streams)` — materializes the account/gateway placeholders from the
-/// resolved provider env before dispatch. Like the TS wrapper it exposes only
 /// `stream`/`streamSimple`, so a wrapped api never advertises deferred support.
 pub struct CloudflareStreams {
     streams: Arc<dyn ProviderStreams>,

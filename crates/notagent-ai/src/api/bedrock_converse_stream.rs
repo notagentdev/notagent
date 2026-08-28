@@ -1,10 +1,3 @@
-//! Amazon Bedrock Converse-Stream adapter.
-//!
-//! 1:1 port of `packages/ai/src/api/bedrock-converse-stream.ts`. The request is built as
-//! the `ConverseStreamCommand` input the TS code hands to the AWS SDK — that object is
-//! what `onPayload` sees, so it is the contract the fixtures pin down. The transport maps
-//! it onto `aws-sdk-bedrockruntime` (master-plan substitution class 3).
-
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -245,7 +238,6 @@ pub fn configured_credentials(env: Option<&ProviderEnv>) -> Option<BedrockCreden
     })
 }
 
-/// The client configuration the adapter derives, mirroring the TS `config` object.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BedrockClientConfig {
     pub profile: Option<String>,
@@ -335,7 +327,6 @@ pub fn build_client_config(model: &Model, options: &BedrockOptions) -> BedrockCl
         config.credentials = Some(credentials);
     }
 
-    // A malformed proxy URL is not fatal in TS either; the SDK then goes direct.
     config.proxy_url = crate::utils::node_http_proxy::resolve_http_proxy_url_for_target(
         &model.base_url,
         options.env.as_ref(),
@@ -761,7 +752,6 @@ pub fn build_additional_model_request_fields(
     Some(Value::Object(result))
 }
 
-/// The `ConverseStreamCommand` input, which is what `onPayload` receives in TS.
 pub fn build_command_input(
     model: &Model,
     context: &Context,
@@ -956,7 +946,6 @@ pub fn bedrock_failure_diagnostic_details(
 // Streaming state
 // ---------------------------------------------------------------------------
 
-/// Scratch state of one content block; TS keeps `index` and `partialJson` on the block.
 #[derive(Debug, Clone)]
 struct BlockScratch {
     /// `contentBlockIndex` of the provider, which is not the content index.
@@ -976,7 +965,6 @@ impl BedrockStreamState {
         BedrockStreamState {
             output: AssistantMessage {
                 content: Vec::new(),
-                // TS pins the api to the literal, independent of `model.api`.
                 api: "bedrock-converse-stream".to_string(),
                 provider: model.provider.clone(),
                 model: model.id.clone(),
@@ -1039,7 +1027,6 @@ impl BedrockStreamState {
         } else if let Some(event) = item.get("metadata") {
             self.handle_metadata(event);
         } else {
-            // The five modeled mid-stream exceptions are rethrown by TS.
             for key in [
                 "internalServerException",
                 "modelStreamErrorException",
@@ -1704,10 +1691,7 @@ pub fn stream_item_to_json(event: &bedrock::types::ConverseStreamOutput) -> Valu
 // Transport and stream driver
 // ---------------------------------------------------------------------------
 
-/// TS swaps the SDK's default HTTP/2 handler for a `NodeHttpHandler` in exactly two
 /// cases: a resolved proxy (with http/https proxy agents) and
-/// `AWS_BEDROCK_FORCE_HTTP1=1`. Both branches speak HTTP/1.1, so this port installs a
-/// reqwest-backed client — the crate's HTTP client — for them (substitution class 3).
 #[derive(Debug, Clone)]
 struct ReqwestHttpClient {
     client: reqwest::Client,
@@ -1778,7 +1762,6 @@ pub fn applicable_custom_headers(headers: &BTreeMap<String, String>) -> Vec<(Str
         .collect()
 }
 
-/// `addCustomHeadersMiddleware(client, headers)` — the TS middleware runs in the `build`
 /// step, after serialization and before signing; `modify_before_signing` is that point.
 #[derive(Debug)]
 struct CustomHeadersInterceptor {
@@ -1805,7 +1788,6 @@ impl aws_smithy_runtime_api::client::interceptors::Intercept for CustomHeadersIn
 }
 
 /// Records the HTTP status of the response so `onResponse` sees what
-/// `response.$metadata.httpStatusCode` carries in TS.
 #[derive(Debug, Default, Clone)]
 struct ResponseStatusInterceptor {
     status: std::sync::Arc<std::sync::Mutex<Option<u16>>>,
@@ -1842,7 +1824,6 @@ impl aws_smithy_runtime_api::client::http::HttpClient for ReqwestHttpClient {
 }
 
 /// `new BedrockRuntimeClient(config)` — the resolved [`BedrockClientConfig`] mapped onto
-/// the Rust SDK. The default credential chain applies wherever TS leaves the field unset.
 async fn build_bedrock_client(
     config: &BedrockClientConfig,
     custom_headers: Option<BTreeMap<String, String>>,
@@ -1896,7 +1877,6 @@ async fn build_bedrock_client(
 }
 
 /// The five modeled mid-stream exceptions plus the operation errors carry their shape
-/// name in TS's `error.name`; [`format_bedrock_error`] turns it into the legacy prefix.
 fn converse_stream_error_name(
     error: &bedrock::operation::converse_stream::ConverseStreamError,
 ) -> String {
@@ -1968,7 +1948,6 @@ impl BedrockFailure {
         }
     }
 
-    /// A modeled service exception: TS reads `error.name`, `error.message` and the raw
     /// `$response` (status, body) off the same object.
     fn from_service_error(
         name: String,
@@ -2079,7 +2058,6 @@ pub fn stream(
     outer
 }
 
-/// The body of the TS `try` block: build the client, send the command and drain the
 /// event stream into `state`.
 async fn run_bedrock_request(
     model: &Model,
@@ -2154,7 +2132,6 @@ async fn run_bedrock_request(
             Err(error) => {
                 return Err(match error {
                     // A modeled mid-stream exception carries no HTTP metadata of its
-                    // own, exactly as in TS, so only its name and message survive.
                     SdkError::ServiceError(context) => {
                         let name = converse_stream_output_error_name(context.err());
                         BedrockFailure {
@@ -2188,7 +2165,6 @@ async fn run_bedrock_request(
     }
     state.finish().map_err(|error| {
         // The scratch fields never leave the state machine, so only the message differs
-        // from the TS cleanup, which deletes `index`/`partialJson` off the blocks here.
         BedrockFailure::from_local(error)
     })
 }
@@ -2213,7 +2189,6 @@ pub fn stream_simple(
             profile: None,
             // `toolChoice`, `region`, `profile`, `requestMetadata`, `interleavedThinking`
             // and `thinkingDisplay` only exist on the typed `BedrockOptions`; a caller of
-            // the simple signature cannot set them, exactly as in TS.
             tool_choice: None,
             reasoning,
             thinking_budgets,

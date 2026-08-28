@@ -1,9 +1,3 @@
-//! Radius gateway catalog.
-//!
-//! 1:1 port of `packages/ai/src/providers/radius-config.ts` (96 LOC). The gateway
-//! catalog is untrusted input, so both the credential copy and the fetched document run
-//! through the same sanitizer.
-
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -13,7 +7,6 @@ use crate::types::Model;
 pub const DEFAULT_RADIUS_GATEWAY: &str = "https://radius.notagent.dev";
 
 /// `RadiusGatewayConfig { baseUrl, models }` — the models keep their raw JSON, because
-/// TS spreads the validated object as-is into the resulting `Model`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RadiusGatewayConfig {
     pub base_url: String,
@@ -89,7 +82,6 @@ pub fn get_radius_models_from_config(
                 Value::String(config.base_url.clone()),
             );
             // A validated gateway model can still miss a field the `Model` type requires
-            // (TS trusts its type assertion here); such an entry is dropped instead of
             // producing an ill-formed model.
             serde_json::from_value(Value::Object(model)).ok()
         })

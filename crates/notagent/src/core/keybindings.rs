@@ -1,9 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/core/keybindings.ts` (386 LOC).
-//!
-//! Ownership moved from workstream C to A with `plans/interface-requests.md`
-//! O-2 (request A-7): the app keybindings are the registry the interactive
-//! components resolve their hints and actions against.
-
 use std::path::{Path, PathBuf};
 
 use notagent_tui::keybindings::{
@@ -42,7 +36,6 @@ const TREE_UNFOLD_KEYS: &[&str] = if cfg!(target_os = "macos") {
     &["ctrl+right", "alt+right"]
 };
 
-/// The app-level half of [`keybindings`]; `AppKeybindings` in TypeScript.
 pub static APP_KEYBINDINGS: &[KeybindingDefinition] = &[
     ("app.interrupt", &["escape"], "Cancel or abort"),
     ("app.clear", &["ctrl+c"], "Clear editor"),
@@ -276,7 +269,6 @@ fn to_keybindings_config(value: &Map<String, Value>) -> KeybindingsConfig {
     for (key, binding) in value {
         match binding {
             // A single `KeyId` becomes a one-element list: the Rust registry
-            // stores key lists only (deviation of the tui port, class 1).
             Value::String(key_id) => {
                 config.insert(key.clone(), vec![key_id.clone()]);
             }
@@ -358,8 +350,6 @@ fn load_raw_config(path: &Path) -> Option<Map<String, Value>> {
 }
 
 /// The app's keybindings registry; `KeybindingsManager extends TuiKeybindingsManager`.
-///
-/// Rust has no inheritance, so the port composes the TUI manager and forwards
 /// its API (class 1).
 pub struct KeybindingsManager {
     inner: TuiKeybindingsManager,
@@ -412,8 +402,6 @@ impl KeybindingsManager {
     }
 
     /// The registry to install with `notagent_tui::keybindings::set_keybindings`.
-    ///
-    /// TypeScript installs the manager itself; the global registry of the port
     /// owns its manager, so the app hands it an equivalent one (class 1).
     pub fn to_tui(&self) -> TuiKeybindingsManager {
         TuiKeybindingsManager::new(keybindings(), self.inner.get_user_bindings())
@@ -456,7 +444,6 @@ impl KeybindingsManager {
 }
 
 /// Rewrite `<agentDir>/keybindings.json` in place; `migrateKeybindingsConfigFile`
-/// of `migrations.ts`, which lives here because it needs the registry order.
 pub fn migrate_keybindings_config_file(agent_dir: &Path) {
     let config_path = agent_dir.join("keybindings.json");
     if !config_path.exists() {

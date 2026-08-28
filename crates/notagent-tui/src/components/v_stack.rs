@@ -1,7 +1,3 @@
-//! Vertical stack.
-//!
-//! 1:1 port of `packages/tui/src/components/v-stack.ts` (33 LOC).
-
 use crate::components::stack::{
     Stack, StackEntryOptions, StackOptions, allocate_stack_sizes, visible_stack_entries,
 };

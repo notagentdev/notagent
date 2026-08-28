@@ -18,7 +18,6 @@ use twox_hash::XxHash64;
 pub const MAX_CHUNK_LINES: usize = 300;
 pub const MAX_CHUNK_BYTES: usize = 32 * 1024;
 /// Returns whether an error was caused by Tantivy's writer lock being busy.
-///
 /// # Arguments
 /// * `error` - Error chain produced while opening or writing the BM25 index.
 pub fn is_writer_lock_busy(error: &anyhow::Error) -> bool {

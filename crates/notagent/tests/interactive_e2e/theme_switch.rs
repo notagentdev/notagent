@@ -1,15 +1,3 @@
-//! Scenario 5 — switching the theme.
-//!
-//! There is no `/theme` command; the theme lives in the settings menu
-//! (`slash-commands.ts:20` "Open settings menu", submenu "Theme" in
-//! `settings_selector.rs:1193`). Picking a theme there does three things, and
-//! the scenario checks all three: the global theme instance changes
-//! (`theme()`), the choice is written to the settings, and the screen is
-//! repainted in the new colours.
-//!
-//! The theme registry is process-global, which is why the case reads the theme
-//! through `theme()` rather than through a handle of its own.
-
 use notagent::config::APP_NAME;
 use notagent::modes::interactive::theme::theme::theme;
 

@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/test/framing.test.ts`.
-
 use notagent_protocol::{
     DEFAULT_MAX_FRAME_LENGTH, FrameDecoder, FrameDecoderOptions, assert_complete_frame,
     encode_frame,
@@ -179,7 +177,6 @@ fn cannot_be_pushed_after_end() {
 
 #[test]
 fn rejects_invalid_maximum_frame_length() {
-    // -1, 1.5 and NaN are not representable as u64 (deviation class 1).
     let error = FrameDecoder::new(Some(FrameDecoderOptions::with_max_frame_length(
         DEFAULT_MAX_FRAME_LENGTH * 1_000,
     )))

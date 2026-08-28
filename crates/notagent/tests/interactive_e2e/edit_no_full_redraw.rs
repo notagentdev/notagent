@@ -1,22 +1,3 @@
-//! Port of `packages/coding-agent/test/edit-tool-no-full-redraw.test.ts` (235 LOC).
-//!
-//! Three cases about the `edit` row and the render loop: the diff preview of a
-//! large edit appears in the call half, the settled result does not cost a full
-//! redraw, a settled result alone reconstructs the boxed preview, and a
-//! preflight error replaces the diff instead of drawing one.
-//!
-//! It lives here rather than in `tests/tool_execution_component.rs` because the
-//! preview is not a property of the row alone: `edit`'s `render_call` only
-//! registers the work, and the render loop awaits it
-//! (`ToolExecutionComponent::pump_render`, the seam of A-23/C-17). What the TS
-//! file drives with `waitForRender` (`setTimeout(0)`) is that loop.
-//!
-//! Deviations (class 1, test infrastructure): the `FakeTerminal` of the TS file
-//! is the `VirtualTerminal` of A-2 — it records writes the same way, so
-//! `fullClearCount` is a count over `writes()`; `waitForRenderedText` becomes a
-//! loop over `pump_render` plus a settle, since the port awaits the preview on
-//! the loop instead of inside the renderer.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -46,7 +27,6 @@ const FULL_CLEAR: &str = "\x1b[2J\x1b[H\x1b[3J";
 /// `waitForRenderedText`'s budget.
 const WAIT_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// A file of `count` lines `line 0 … line n`, as the TS cases write it.
 fn write_lines(dir: &std::path::Path, name: &str, count: usize) -> String {
     let path = dir.join(name);
     let body: Vec<String> = (0..count).map(|index| format!("line {index}")).collect();
@@ -61,7 +41,6 @@ fn large_edits(count: usize) -> Vec<Edit> {
         .into_iter()
         .take_while(|target| target + 1 < count)
         .map(|target| Edit {
-            // The TS helper indexes the 1-based line number into a 0-based
             // array, so the changed line is `lines[target]` = `line {target}`.
             old_text: format!(
                 "{}\n{}\n{}",
@@ -89,7 +68,6 @@ struct EditRow {
 
 impl EditRow {
     /// `new TuiMainScreen(terminal)` plus the row, with `history` filler lines
-    /// above it (the TS case mounts 200 of them so a full redraw would show).
     fn mount(path: &str, edits: &[Edit], history: usize) -> Self {
         let cwd = std::env::current_dir()
             .expect("cwd")
@@ -284,7 +262,6 @@ async fn reconstructs_the_boxed_preview_from_a_settled_result_without_args_compl
         let diff = compute_edits_diff(&path, &edits, &cwd)
             .await
             .expect("the fixture applies cleanly");
-        // The TS case deletes the file first: the preview may only come from
         // the result, never from a second look at the disk.
         std::fs::remove_file(&path).expect("remove fixture");
 

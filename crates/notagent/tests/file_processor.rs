@@ -1,11 +1,3 @@
-//! `cli/file-processor.ts` — the `@file` arguments of the CLI.
-//!
-//! Without a TypeScript suite of its own (the file is exercised through
-//! `main.ts` there), the cases here pin the three shapes it produces: a text
-//! block, an image attachment with its empty block, and the skipped empty file.
-//! The two `process.exit(1)` paths are deliberately not driven — they end the
-//! process in both languages, so a case could only assert them by spawning one.
-
 use image::{DynamicImage, ImageFormat};
 use notagent::cli::file_processor::process_file_arguments;
 

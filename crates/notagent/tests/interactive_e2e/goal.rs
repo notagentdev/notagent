@@ -1,13 +1,3 @@
-//! `/goal` (port addition, v0.1.21) — goal mode from the user's side.
-//!
-//! The state machine and the two tools are covered by `core/goal` and
-//! `tests/goal_tools.rs`. What runs here is the path a user takes: the typed
-//! command reaches the handler, the handler answers on screen, and the session
-//! holds what it said it would.
-//!
-//! `wait_for` searches the accumulated scrollback, so each notice is awaited
-//! only on its first appearance; the later steps read the session instead.
-
 use notagent::config::APP_NAME;
 use notagent::core::goal::ThreadGoalStatus;
 

@@ -1,12 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/custom-message.ts` (113 LOC).
-//!
-//! The optional `MessageRenderer` is dropped: it is only ever supplied by
-//! `extensionRunner.getMessageRenderer` (`interactive-mode.ts:3728`), and
-//! `plans/facts/extension-boundary.md` lists message renderer overrides as
-//! dropped without replacement. Everything the default rendering path does is
-//! kept, because `CustomMessage` itself is a core message type.
-
 use std::rc::Rc;
 
 use notagent_agent::CustomMessage;
@@ -49,7 +40,6 @@ impl CustomMessageComponent {
         component
     }
 
-    /// Expand or collapse. Kept for API parity: only the dropped custom renderer
     /// ever varied its output by this flag.
     pub fn set_expanded(&mut self, expanded: bool) {
         if self.expanded != expanded {

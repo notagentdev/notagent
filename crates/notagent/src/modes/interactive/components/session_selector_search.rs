@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/session-selector-search.ts` (194 LOC).
-
 use notagent_tui::fuzzy::fuzzy_match;
 use regex::Regex;
 
@@ -163,8 +160,6 @@ pub fn parse_search_query(query: &str) -> ParsedSearchQuery {
                 error: Some("Empty regex".to_string()),
             };
         }
-        // `new RegExp(pattern, "i")` — the `regex` crate is the master plan's
-        // substitution for the JS engine (deviation class 3). Patterns it
         // rejects take the same path as a JS `SyntaxError`.
         return match Regex::new(&format!("(?i){pattern}")) {
             Ok(regex) => ParsedSearchQuery {

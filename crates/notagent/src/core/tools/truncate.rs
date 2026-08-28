@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/truncate.ts`.
-//!
-//! Truncation uses two independent limits — whichever is hit first wins:
-//! a line limit (default 2000) and a byte limit (default 50 KiB). Partial lines
-//! are never returned, except for the tail-truncation edge case.
-
 pub const DEFAULT_MAX_LINES: usize = 2000;
 pub const DEFAULT_MAX_BYTES: usize = 50 * 1024;
 /// Max chars per grep match line.
@@ -35,8 +29,6 @@ pub struct TruncationResult {
 }
 
 /// The `truncation` field of a tool result's details.
-///
-/// Deviation (class 1): `details` is typed per tool in TypeScript and is JSON
 /// here, so the renderers read the field back instead of holding a reference to
 /// the struct the tool produced.
 pub fn truncation_from_details(details: Option<&serde_json::Value>) -> Option<TruncationResult> {
@@ -162,7 +154,6 @@ pub fn truncate_head(content: &str, options: TruncationOptions) -> TruncationRes
 }
 
 /// Truncate content from the tail (keep the last N lines/bytes).
-///
 /// May return a partial first line when the last line exceeds the byte limit.
 pub fn truncate_tail(content: &str, options: TruncationOptions) -> TruncationResult {
     let (max_lines, max_bytes) = options.resolve();
@@ -238,7 +229,6 @@ pub struct TruncatedLine {
 }
 
 /// Truncate a single line to `max_chars`, adding a `[truncated]` suffix.
-///
 /// Deviation (class 1): JS counts UTF-16 code units. The cut here lands on a
 /// character boundary, so a cut that would split a surrogate pair keeps one
 /// character less instead of producing a lone surrogate.

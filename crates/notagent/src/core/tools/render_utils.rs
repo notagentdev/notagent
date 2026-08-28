@@ -1,10 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/core/tools/render-utils.ts` (85 LOC).
-//!
-//! Ownership moved from workstream C to A with `plans/interface-requests.md`
-//! O-5: the helpers only render, and their main consumer (`tool-execution.ts`)
-//! belongs to A. The `renderCall`/`renderResult` halves inside the individual
-//! tool files stay with C.
-
 use notagent_ai::types::TextOrImageContent;
 use notagent_tui::terminal_image::{
     get_capabilities, get_image_dimensions, hyperlink, image_fallback,
@@ -16,9 +9,6 @@ use crate::utils::paths::{path_to_file_url, resolve_path_default};
 use crate::utils::shell::sanitize_binary_output;
 
 /// `~`-shortened display form of a path.
-///
-/// `path: unknown` in TypeScript: a non-string argument renders as the empty
-/// string, which is why the port takes an `Option<&str>` — [`str_arg`] produces
 /// exactly that distinction.
 pub fn shorten_path(path: Option<&str>) -> String {
     let Some(path) = path else {
@@ -40,7 +30,6 @@ pub fn link_path(styled_text: &str, raw_path: &str, cwd: &str) -> String {
     if !get_capabilities().hyperlinks {
         return styled_text.to_string();
     }
-    // `resolvePath` throws on a path this port cannot represent; a render path
     // must not panic, so an unresolvable path simply stays unlinked (class 1).
     let Ok(absolute_path) = resolve_path_default(raw_path, cwd) else {
         return styled_text.to_string();
@@ -50,8 +39,6 @@ pub fn link_path(styled_text: &str, raw_path: &str, cwd: &str) -> String {
 
 /// `str(value)` — a string argument as itself, `null`/`undefined` as `""`, and
 /// anything else as `null`, which the callers render as `[invalid arg]`.
-///
-/// The `Option<Option<&str>>` mirrors the three TypeScript outcomes: `Some(text)`
 /// for a string, `Some("")` for a nullish value and `None` for a wrong type.
 pub fn str_arg(value: Option<&serde_json::Value>) -> Option<String> {
     match value {
@@ -72,8 +59,6 @@ pub fn normalize_display_text(text: &str) -> String {
 }
 
 /// The text a tool result contributes to the transcript.
-///
-/// `result: … | undefined` in TypeScript; the port takes `Option<&[…]>`.
 pub fn get_text_output(content: Option<&[TextOrImageContent]>, show_images: bool) -> String {
     let Some(content) = content else {
         return String::new();
@@ -105,7 +90,6 @@ pub fn get_text_output(content: Option<&[TextOrImageContent]>, show_images: bool
             .iter()
             .map(|block| match block {
                 TextOrImageContent::Image(image) => {
-                    // `img.mimeType ?? "image/unknown"` — the port's `ImageContent`
                     // always carries one, and an empty string takes the same path
                     // as a missing field did.
                     let mime_type = if image.mime_type.is_empty() {

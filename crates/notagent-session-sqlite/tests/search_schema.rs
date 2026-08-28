@@ -1,6 +1,3 @@
-//! Smoke test for the lazy FTS5 search schema (part of
-//! `packages/session-backends/sqlite-node/test/search.test.ts`).
-
 use notagent_session_sqlite::{RusqliteDatabase, SqlQuery, SqliteDatabase, apply_migrations};
 
 #[test]

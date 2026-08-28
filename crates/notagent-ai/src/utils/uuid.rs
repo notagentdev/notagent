@@ -1,15 +1,9 @@
-//! Time-ordered UUIDv7.
-//!
-//! 1:1 port of `packages/ai/src/utils/uuid.ts` (48 LOC) including the monotonic
-//! sequence counter and the timestamp bump on sequence overflow.
-
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rand::RngExt;
 
 struct MonotonicState {
-    /// TS: `let lastTimestamp = -Infinity`.
     last_timestamp: i64,
     sequence: u32,
     initialized: bool,
@@ -34,7 +28,6 @@ pub fn uuidv7() -> String {
 }
 
 /// The algorithm itself, with clock and randomness injected so it can be tested the
-/// same way `packages/ai/test/uuid.test.ts` stubs `Date.now` and `crypto.getRandomValues`.
 fn next_uuidv7(state: &mut MonotonicState, timestamp: i64, random: [u8; 16]) -> String {
     if !state.initialized || timestamp > state.last_timestamp {
         state.sequence = (random[6] as u32) << 24
@@ -85,7 +78,6 @@ fn next_uuidv7(state: &mut MonotonicState, timestamp: i64, random: [u8; 16]) -> 
 mod tests {
     use super::*;
 
-    /// Port of `packages/ai/test/uuid.test.ts`: the RFC 9562 layout and monotonic order,
     /// driven by the same stubbed randomness and clock value.
     #[test]
     fn uses_rfc_9562_layout_and_preserves_monotonic_order() {

@@ -1,7 +1,3 @@
-//! Cross-provider message normalization applied before every request.
-//!
-//! 1:1 port of `packages/ai/src/api/transform-messages.ts` (223 LOC).
-
 use crate::types::{
     AssistantContent, AssistantMessage, ImageContent, Message, Model, TextContent,
     TextOrImageContent, ToolCall, ToolResultMessage, UserContent,
@@ -72,7 +68,6 @@ fn downgrade_unsupported_images(messages: Vec<Message>, model: &Model) -> Vec<Me
 }
 
 /// `transformMessages(messages, model, normalizeToolCallId?)`
-///
 /// `timestamp` supplies `Date.now()` for the synthetic tool results.
 pub fn transform_messages(
     messages: &[Message],
@@ -82,7 +77,6 @@ pub fn transform_messages(
 ) -> Vec<Message> {
     let mut tool_call_id_map: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
-    // TS normalizes null/undefined content from untyped callers; the Rust types already
     // guarantee a content array, so that step has no counterpart.
     let image_aware = downgrade_unsupported_images(messages.to_vec(), model);
 

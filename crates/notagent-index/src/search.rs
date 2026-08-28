@@ -1,6 +1,5 @@
 //! High-level codebase search (`cb_search`) over the BM25 + symbol indexes.
-//!
-//! Ported from vryn-index `tools/codebase_search.rs`: BM25 chunk search first
+//! BM25 chunk search runs first
 //! with adaptive score thresholds and symbol/kind boosting, falling back to
 //! fuzzy symbol search when BM25 yields nothing. The agent-tool wiring
 //! (schema, catalog entry) lives in the tool layer, not here.

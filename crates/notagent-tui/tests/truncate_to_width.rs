@@ -1,5 +1,3 @@
-//! Port von `packages/tui/test/truncate-to-width.test.ts` (127 LOC).
-
 use notagent_tui::{
     normalize_terminal_output, truncate_to_width, truncate_to_width_opts, visible_width,
 };

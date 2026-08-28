@@ -1,9 +1,3 @@
-//! pi-messages adapter.
-//!
-//! 1:1 port of `packages/ai/src/api/pi-messages.ts` (433 LOC): the request is a single
-//! POST of `{ model, context, options }` to `<baseUrl>/messages`, the response an SSE
-//! stream of already serialized assistant-message events plus a terminal `done`/`error`.
-
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
@@ -808,7 +802,6 @@ pub fn stream_simple(
     let pi_options = PiMessagesOptions {
         reasoning: options.reasoning,
         // `toolChoice` and `debug` only exist when the caller passes a
-        // `PiMessagesOptions` through the simple signature; the typed port has no
         // such widening, so both stay unset here.
         tool_choice: None,
         debug: false,

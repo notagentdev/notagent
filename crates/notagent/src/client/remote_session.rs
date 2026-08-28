@@ -1,9 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/client/remote-session.ts` (414 LOC).
-//!
-//! A `RemoteSession` borrows a `PiClient`, holds exactly one exclusive session
-//! lease and projects streamed progress on top of the authoritative snapshot.
-//! It never disposes the client it borrowed.
-
 use std::collections::HashSet;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -39,7 +33,6 @@ pub enum RemoteSessionOperation {
 }
 
 impl RemoteSessionOperation {
-    /// The TS union members double as the words in the error texts.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Open => "open",
@@ -78,7 +71,6 @@ pub struct CreateRemoteSessionOptions {
     pub thinking_level: Option<ThinkingLevel>,
 }
 
-/// Deviation class 1: the TS error classes become one enum. `Disposed` is the
 /// plain `Error("Remote session is disposed")`; `DisposedDuringAttachment` is
 /// `RemoteSessionDisposedError`, the only class disposal filters out.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -148,8 +140,6 @@ struct Inner {
 }
 
 /// `RemoteSession`.
-///
-/// Deviation class 1: `Clone` shares the same session (Arc), the way a JS
 /// object reference is passed around.
 #[derive(Clone)]
 pub struct RemoteSession {
@@ -571,7 +561,6 @@ impl RemoteSession {
             self.assert_replaceable(operation)?;
             let this = self.clone();
             Ok(self.begin(operation, false, move || {
-                // The attach request leaves synchronously, as in TS.
                 let attaching = this.inner.client.acquire_session(
                     &session_id,
                     AcquireSessionOptions {
@@ -619,7 +608,6 @@ impl RemoteSession {
         async move { this.await_operation(prologue?).await }
     }
 
-    /// The synchronous half of TS `#replace`: a bound session that is not idle
     /// cannot be swapped out.
     fn assert_replaceable(&self, operation: RemoteSessionOperation) -> OperationResult {
         let bound = self.lock().handle.is_some();
@@ -706,7 +694,6 @@ impl RemoteSession {
     }
 
     /// The synchronous half of `#runOperation`: mark busy, notify, start the
-    /// work. TS calls `run()` only after the busy state was published.
     fn begin<F>(&self, operation: RemoteSessionOperation, preempt: bool, make: F) -> SharedOperation
     where
         F: FnOnce() -> BoxFuture<'static, OperationResult>,
@@ -740,7 +727,6 @@ impl RemoteSession {
             }
         });
         let shared = future.shared();
-        // TS starts `run()` immediately and the promise settles on its own; the
         // task keeps the work going even when nobody awaits the operation.
         tokio::spawn(shared.clone());
         shared
@@ -866,7 +852,6 @@ impl RemoteSession {
     }
 
     /// A panicking subscriber is reported and cannot stop the others, the way
-    /// TS catches a throwing listener.
     fn call_listener(&self, listener: &StateListener, state: &RemoteSessionState) {
         if let Err(payload) = catch_unwind(AssertUnwindSafe(|| listener(state))) {
             self.report_listener_error(panic_message(&payload));

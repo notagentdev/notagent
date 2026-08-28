@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/todos/reminder.ts`.
-//!
-//! The reminder that keeps a checklist from being decoration.
-//!
-//! A list the agent writes and then walks away from is worse than no list: it
-//! tells the user work is tracked while the tracking has stopped. So the moment
-//! the agent would finish with items still open, the open items go back to it
-//! and the run continues.
-//!
-//! It fires once per distinct set of open items. Repeating the same reminder
-//! every time the agent tries to stop would be a loop; changing the set — one
-//! item completed, another still open — is new information and earns a new one.
-
 use notagent_agent::types::AgentMessage;
 use notagent_ai::types::{TextContent, TextOrImageContent, UserContent};
 use serde::{Deserialize, Serialize};
@@ -30,7 +17,6 @@ fn status_label(status: TodoStatus) -> &'static str {
     match status {
         TodoStatus::Pending => "PENDING",
         TodoStatus::InProgress => "IN_PROGRESS",
-        // `STATUS_LABELS` covers only the two open states; the fallback in TS is
         // `status.toUpperCase()`, which no live reminder ever reaches because
         // completed items are filtered out first.
         TodoStatus::Completed => "COMPLETED",
@@ -93,7 +79,6 @@ pub fn build_pending_todos_reminder(
 }
 
 /// Whether the most recent reminder covered exactly these items.
-///
 /// Only the most recent one is consulted, deliberately. An older reminder for
 /// the same set is not evidence the model has seen it recently — the set having
 /// survived a further attempt to stop is what matters.

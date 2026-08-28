@@ -1,5 +1,3 @@
-//! Port of `packages/client/src/client.ts`.
-
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -43,7 +41,6 @@ struct PendingRequest {
     resolver: Arc<Resolver<CommandResult>>,
 }
 
-/// Shared, versioned entry for in-flight operations (TS compares promise
 /// identity, Rust compares the sequence number).
 struct Tracked {
     id: u64,
@@ -76,7 +73,6 @@ pub(crate) struct ClientInner {
     data: Mutex<ClientData>,
 }
 
-/// Deviation class 1: `Clone` shares the same client (Arc) so listeners and
 /// tasks can pass the client around like a JS object reference.
 #[derive(Clone)]
 pub struct PiClient {
@@ -120,7 +116,6 @@ impl PiClient {
         Ok(Self { inner })
     }
 
-    /// TS: `static async connect(options)`.
     pub async fn connect_with(options: PiClientOptions) -> Result<Self, PiError> {
         let client = Self::new(options)?;
         match client.connect().await {
@@ -268,7 +263,6 @@ impl PiClient {
     ) -> impl Future<Output = Result<SessionHandle, PiError>> + Send + use<> {
         let inner = Arc::clone(&self.inner);
         let session_id = session_id.to_owned();
-        // Synchronous prologue as in TS: `acquireSession` reserves the lease and
         // sends the attach request before the first `await`.
         let started = inner.begin_acquire_session(&session_id, options.mode);
         async move {
@@ -340,7 +334,6 @@ impl ClientInner {
         data.tracked_sequence
     }
 
-    /// Port of `#request`: sends immediately and returns the promise.
     fn request(self: &Arc<Self>, command: Command) -> SharedPromise<CommandResult> {
         if self.lock().disposed {
             return rejected(PiError::Disposed);
@@ -572,7 +565,6 @@ impl ClientInner {
         Ok(self.create_session_lease(session_id.to_owned(), token))
     }
 
-    /// Port of `#attachSession` including dedup via `#sessionAttachments`.
     fn start_attachment(self: &Arc<Self>, session_id: &str) -> (SharedPromise<()>, u64) {
         if let Some(tracked) = self.lock().session_attachments.get(session_id) {
             return (tracked.promise.clone(), tracked.id);
@@ -616,7 +608,6 @@ impl ClientInner {
         }
     }
 
-    /// Port of `#reconcileSessionCleanup`.
     fn reconcile_session_cleanup(self: &Arc<Self>, session_id: &str) -> SharedPromise<()> {
         if let Some(tracked) = self.lock().session_reconciliations.get(session_id) {
             return tracked.promise.clone();

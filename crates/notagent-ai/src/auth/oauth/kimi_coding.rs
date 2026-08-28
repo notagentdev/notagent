@@ -1,9 +1,3 @@
-//! Kimi Code (subscription) OAuth flow.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/kimi-coding.ts` (310 LOC): RFC 8628 device
-//! authorization against auth.kimi.com with JSON responses. The access token
-//! authenticates as `Authorization: Bearer`, not as an api key.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -350,7 +344,6 @@ impl OAuthAuth for KimiCodingOAuth {
     }
 }
 
-/// The shared instance, matching the TS export.
 pub fn kimi_coding_oauth() -> Arc<dyn OAuthAuth> {
     Arc::new(KimiCodingOAuth)
 }

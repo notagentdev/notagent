@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/`.
-
 pub mod branch_entries;
 pub mod branch_tips;
 pub mod entries;

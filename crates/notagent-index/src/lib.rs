@@ -1,6 +1,5 @@
 //! Notagent Index - Code symbol indexing using tree-sitter
-//!
-//! Ported from vryn-index (../vryn-main). This crate provides:
+//! This crate provides:
 //! - Tree-sitter based parsing for multiple languages
 //! - Symbol extraction (functions, structs, traits, etc.)
 //! - In-memory symbol index with fuzzy search

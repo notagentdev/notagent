@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/hooks/payload.ts`.
-//!
-//! The JSON a hook receives on standard input.
-//!
-//! Field names are the reference's, in snake_case, because they are read by
-//! shell one-liners rather than by a typed client. NotMux greps its payloads for
-//! `"tool_name"` and `"notification_type"` verbatim, so these spellings are as
-//! much of an interface as the event names are — a rename here breaks a consumer
-//! that never sees our types.
-//!
-//! Every payload carries the same four fields, so a hook can identify the
-//! session and the event without knowing which one it was declared for.
-
 use serde_json::{Map, Value, json};
 
 use super::events::HookEvent;
@@ -49,7 +36,6 @@ pub fn build_payload(
 }
 
 /// Trims a tool result to what a hook can act on.
-///
 /// A hook decides from the outcome, not from the bytes: a formatter reruns on
 /// the path it was given, and a supervisor updates a badge. Passing whole file
 /// contents on a pipe would cost more than every hook run put together, so the

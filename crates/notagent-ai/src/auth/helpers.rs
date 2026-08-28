@@ -1,9 +1,3 @@
-//! Standard auth building blocks.
-//!
-//! 1:1 port of `packages/ai/src/auth/helpers.ts` (59 LOC). `lazyOAuth` has no
-//! counterpart: it defers a dynamic `import()` so bundlers keep Node-only flow code out
-//! of browser builds (deviation class 4, distribution mechanics — Rust links statically).
-
 use crate::auth::types::{
     ApiKeyAuth, ApiKeyAuthInput, ApiKeyCredential, AuthError, AuthPrompt, AuthPromptKind,
     AuthResult, BoxFuture, ModelAuth, ProviderAuthInteraction,

@@ -1,8 +1,3 @@
-//! Transport-neutral protocol client with a lease system.
-//!
-//! 1:1 port of `packages/client` (see crates/notagent-client/PARITY.md).
-//! Port of `packages/client/src/index.ts`.
-
 mod client;
 mod connection;
 mod errors;

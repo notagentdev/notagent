@@ -1,5 +1,3 @@
-//! Port of `packages/client/src/types.ts`.
-
 use std::sync::Arc;
 
 use notagent_protocol::{ModelRef, ThinkingLevel};
@@ -20,7 +18,6 @@ pub struct ConnectionStateChange {
     pub error: Option<PiError>,
 }
 
-/// TS: `type Unsubscribe = () => void`.
 pub type Unsubscribe = Box<dyn FnOnce() + Send + Sync>;
 
 /// Reports subscriber failures without allowing them to corrupt client state.

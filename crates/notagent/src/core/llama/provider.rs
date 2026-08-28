@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/src/extensions/llama/provider.ts` (150 LOC).
-//!
-//! The llama.cpp server as a notagent provider: its loaded router models become
-//! `openai-completions` models pointed at the server's `/v1` base.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::auth::resolve::now_ms;
@@ -376,10 +371,7 @@ impl Provider for LlamaProvider {
         Some(Box::pin(self.refresh(context)))
     }
 
-    /// TS routes through `stream()` of `@notagent/ai/compat`, which for a model
     /// of a non-builtin provider resolves the API registry entry of `model.api`
-    /// — for llama models always `openai-completions` (deviation class 3:
-    /// `compat.ts` is excluded, the dispatch it would perform is inlined).
     fn stream(
         &self,
         model: &Model,

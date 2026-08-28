@@ -1,8 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/bash-execution.ts` (220 LOC).
-//!
-//! Component for displaying bash command execution with streaming output.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -34,7 +29,6 @@ enum Status {
 }
 
 /// Caches the truncated preview per render width, like the inline component
-/// literal in TypeScript.
 struct PreviewLines {
     styled_input: String,
     cached_width: Option<usize>,
@@ -218,7 +212,6 @@ impl BashExecutionComponent {
         let mut content_container = self.content_container.borrow_mut();
         content_container.clear();
 
-        // Command header. TypeScript always uses `bashMode` here, even when the
         // constructor drew the borders in `dim` for a `!!` command (bug-compat).
         let theme_instance = theme();
         let header = Text::new(

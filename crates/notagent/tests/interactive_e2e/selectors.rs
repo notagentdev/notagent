@@ -1,20 +1,3 @@
-//! Scenario 4 — operating a selector.
-//!
-//! `/model` opens the model selector (`slash-commands.ts:21`, handled in
-//! `interactive-mode.ts:5025 showModelSelector`), the arrow keys move its
-//! marker, Return picks the row and Escape closes the overlay without a
-//! change. The component itself is ported and tested (`tests/model_selector.rs`);
-//! what runs here is the path from a typed slash command to the overlay and
-//! back.
-//!
-//! `"Model Name: "` is the marker for "the overlay is open": the selector
-//! writes that line under its list for the highlighted row, and nothing else
-//! on this screen does. The bare model name would not do — the footer shows it
-//! too. Neither would the scope line: `"Scope: "` only exists when the
-//! settings hold scoped models (`model-selector.ts:86-95` builds it in that
-//! branch and the warning "Only showing models from configured providers." in
-//! the other), and the app runtime of this suite has none.
-
 use notagent::config::APP_NAME;
 
 use super::harness::{InteractiveE2e, KEY_ESCAPE, run_local};
@@ -74,7 +57,6 @@ async fn picking_a_row_closes_the_selector_and_keeps_the_session_on_that_model()
 
         driver.submit("/model").await;
         driver.wait_for(SELECTOR_MARKER).await;
-        // A row carries the model *id*, not its name (`model-selector.ts:266-277`:
         // `${id} [${provider}]` plus the check mark on the current one); the name
         // only stands in the detail line under the list.
         driver.choose(&before.id).await;

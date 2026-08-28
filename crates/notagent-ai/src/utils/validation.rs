@@ -1,26 +1,7 @@
-//! Tool-argument validation and coercion.
-//!
-//! 1:1 port of `packages/ai/src/utils/validation.ts` (350 LOC). The TypeBox pieces the
-//! TS module delegates to are ported with it (master-plan substitution: TypeBox schemas
-//! become static `serde_json` JSON Schema values):
-//!
-//! * `Compile(schema).Check/.Errors` -> [`check`] / [`errors`], including the AJV-style
-//!   messages TypeBox emits (`must be number`, `must have required properties a, b`, ...),
-//!   which reach the model inside tool-error results.
-//! * `Value.Convert(schema, value)` -> [`convert`], a port of
-//!   `typebox/build/value/convert` including its `Try*` primitives.
-//!
-//! TypeBox marks its schemas with a runtime symbol that has no JSON representation.
-//! `validateToolArguments` uses it to run the extra plain-schema coercion
-//! (`coerceWithJsonSchema`) only for schemas that did *not* come from TypeBox. Rust
-//! cannot see that marker, so the origin is passed explicitly; [`SchemaOrigin::TypeBox`]
-//! is the default because every tool of the app is defined that way in TS.
-
 use serde_json::{Map, Value};
 
 use crate::types::{Tool, ToolCall};
 
-/// A single validation error (`TLocalizedValidationError` in TS).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationError {
     pub keyword: String,
@@ -33,14 +14,12 @@ pub struct ValidationError {
 /// Where a schema came from — see the module docs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SchemaOrigin {
-    /// Built through TypeBox in TS: only `Value.Convert` runs before checking.
     #[default]
     TypeBox,
     /// A serialized plain JSON schema: `coerceWithJsonSchema` runs as well.
     PlainJsonSchema,
 }
 
-/// Error of [`validate_tool_arguments`] (TS throws an `Error`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct ToolValidationError(pub String);
@@ -891,7 +870,6 @@ pub fn normalize_optional_nulls(value: &mut Value, schema: &Value, root: &Value)
             continue;
         }
         let is_null = entries[key].is_null();
-        // TS skips `$ref` properties here: their target may well be nullable.
         let is_reference = property_schema
             .get("$ref")
             .and_then(Value::as_str)
@@ -973,14 +951,12 @@ pub fn validate_tool_arguments_with(
 
     // `Value.Convert` dispatches on TypeBox's runtime type guards, so it is a no-op for
     // serialized plain schemas; those go through `coerceWithJsonSchema` instead. The two
-    // paths are mutually exclusive in TS as well (`validation.ts:307-325`).
     match origin {
         SchemaOrigin::TypeBox => args = convert(schema, &args),
         SchemaOrigin::PlainJsonSchema => {
             let coerced = coerce_with_json_schema(&args, schema, schema);
             if coerced != args {
                 match (&args, &coerced) {
-                    // TS mutates the object in place, so the identity check never fires.
                     (Value::Object(_), Value::Object(_)) => args = coerced,
                     _ => {
                         return Ok(if check(schema, &coerced) {

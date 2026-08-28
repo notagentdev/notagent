@@ -1,8 +1,3 @@
-//! Port of `packages/tui/test/terminal-image.test.ts` (632 LOC).
-//!
-//! The environment-dependent `detectCapabilities` cases run in this binary
-//! only, serialized through a lock, because they mutate process globals.
-
 use notagent_tui::components::image::{Image, ImageOptions, ImageTheme};
 use notagent_tui::terminal_image::{
     CellDimensions, EncodeITerm2Options, EncodeKittyOptions, ImageDimensions, ImageProtocol,
@@ -127,9 +122,6 @@ fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// `withEnv()` of the TS suite.
-///
-/// Deviation class 1: `std::env::set_var` is `unsafe` in edition 2024; the
 /// cases hold [`lock_environment`], which is the safety condition.
 fn with_env<T>(overrides: &[(&str, &str)], body: impl FnOnce() -> T) -> T {
     let saved: Vec<(&str, Option<String>)> = ENV_KEYS

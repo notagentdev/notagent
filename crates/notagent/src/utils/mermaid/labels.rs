@@ -1,5 +1,3 @@
-//! Port of `grok-mermaid/src/labels.ts` (326 LOC).
-
 use super::width::{measured, string_width};
 
 /// Node labels wrap to at most this many display columns per line ...
@@ -246,7 +244,6 @@ fn last_break(value: &str) -> Option<usize> {
 
 /// Wrap a label to `width` columns over at most `max_lines` lines, truncating
 /// the last line with an ellipsis if it overflows.
-///
 /// A word too wide to fit is broken after the last identifier boundary
 /// (`_-./`) that fits, falling back to a per-character break when it has none.
 pub fn wrap_label(label: &str, width: usize, max_lines: usize) -> Vec<String> {

@@ -186,8 +186,8 @@ percentage in the footer reflects what the server actually processed.
 
 ## Acknowledgements
 
-notagent began as a Rust port of [pi](https://github.com/earendil-works/pi)
-and has grown well beyond it. Thanks to the pi authors for the foundation.
+notagent builds on work from [pi](https://github.com/earendil-works/pi).
+Thanks to the pi authors for the foundation.
 
 ## License
 

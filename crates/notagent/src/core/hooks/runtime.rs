@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/hooks/runtime.ts`.
-//!
-//! The runtime that turns agent activity into hook runs.
-//!
-//! One object owns the loaded declarations, the session context every payload
-//! needs, and the channel failures are reported on. Everything that emits a hook
-//! event goes through it, so there is one place where a hook can fail and one
-//! place that decides what happens then.
-//!
-//! A failing hook never aborts the turn. The exception is a PreToolUse hook that
-//! deliberately refused, which is not a failure but a decision, and is carried
-//! by the permission chain rather than by this type.
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -130,7 +117,6 @@ impl HookRuntime {
     /// Runs everything declared for an event. Failures are reported and then
     /// dropped: a formatter that broke must be visible, but it must not take the
     /// turn down with it.
-    ///
     /// Returns what the hooks wrote to standard output, which the caller may
     /// hand to the model as context. That is what makes an event like
     /// `UserPromptSubmit` worth declaring at all — a hook that can only act on
@@ -146,7 +132,6 @@ impl HookRuntime {
             return Vec::new();
         }
         let payload = Value::Object(build_payload(event, &(self.context)(), fields));
-        // The TypeScript wraps this in a try/catch for the case where something
         // outside the hook itself breaks; `run_hooks` cannot fail here.
         let results = run_hooks(&selected, &payload, self.signal().as_ref()).await;
 
@@ -169,7 +154,6 @@ impl HookRuntime {
     }
 
     /// Runs the PreToolUse hooks and returns what they decided.
-    ///
     /// A refusal is not reported here — the permission chain reports it as the
     /// decision it is. A fault is: a hook that could not run has stopped
     /// enforcing whatever it was written to enforce, and the author believes it

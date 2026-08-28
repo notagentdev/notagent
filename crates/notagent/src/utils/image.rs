@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/image-process.ts`,
-//! `image-convert.ts` and `image-resize-core.ts`.
-//!
-//! Tech substitution (class 3): Photon/WASM and its worker thread are replaced by
-//! the `image` crate, which decodes, resizes and encodes in process. EXIF
-//! orientation comes from the decoder instead of the hand-rolled parser in
-//! `exif-orientation.ts`.
-
 use base64::Engine;
 use image::{DynamicImage, ImageFormat, ImageReader};
 
@@ -114,9 +106,7 @@ pub fn convert_image_bytes_to_png(bytes: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// `convertToPng(base64Data, mimeType)` — the base64 shell around it.
-///
 /// The kitty graphics protocol only takes PNG (`f=100`), so the tool row
-/// converts an inline image before it shows one (`components/tool-execution.ts:191`).
 /// Returns the data and its mime type, or `None` when the bytes cannot be
 /// decoded.
 pub fn convert_to_png(base64_data: &str, mime_type: &str) -> Option<(String, String)> {
@@ -146,7 +136,6 @@ fn encode_candidate(bytes: &[u8], mime_type: &'static str) -> EncodedCandidate {
 }
 
 /// Resize an image to fit the dimension and encoded-size limits.
-///
 /// Strategy: fit the max dimensions, try PNG and JPEG and pick the first that
 /// fits, then lower the JPEG quality, then shrink by 25 % until 1×1.
 pub fn resize_image(

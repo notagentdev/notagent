@@ -1,7 +1,3 @@
-//! Provider authentication: credentials, stores and resolution.
-//!
-//! 1:1 port of `packages/ai/src/auth/`.
-
 pub mod context;
 pub mod credential_store;
 pub mod helpers;

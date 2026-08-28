@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/file-processor.ts`.
-//!
-//! `@file` arguments become one text blob of `<file name="…">` blocks plus the
-//! image attachments. An unreadable or missing file ends the run right here, as
-//! it does in TypeScript: the prompt the user asked for cannot be built, and
-//! sending a truncated one would be worse than not sending it.
-
 use std::path::Path;
 
 use notagent_ai::types::ImageContent;

@@ -1,8 +1,3 @@
-//! Shared HTTP helpers of the OAuth flows.
-//!
-//! The TS flows call `fetch` directly with form or JSON bodies; this module keeps the
-//! response shape (`ok`, `status`, parsed body) they branch on.
-
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 

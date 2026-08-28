@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/test/subagent-panel.test.ts` (165 LOC).
-//!
-//! The subagent rows below the footer.
-//!
-//! A delegated run produces nothing until it answers, so these two numbers —
-//! how long it has been going and what it has spent — are the only evidence it
-//! is alive. The cases below pin that they appear, that finished children
-//! linger briefly with their outcome and then leave, and that the rows do not
-//! reshuffle underneath the eye.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::core::tasks::types::{

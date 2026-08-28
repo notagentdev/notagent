@@ -1,25 +1,3 @@
-//! Compact source view used by the `read_minified` tool.
-//!
-//! Adapted from the Rust reference implementation
-//! `notagent-main-rust/crates/notagent_services/src/tool_services/minify.rs`
-//! (user directive in `plans/facts/rust-minify-reference.md`: native
-//! tree-sitter, byte-exact `src_map`). The TypeScript side
-//! (`packages/coding-agent/src/core/mini-read/`) is itself a port of that
-//! reference into UTF-16 space; taking the reference keeps the offsets in
-//! bytes, which is where a Rust `str` indexes.
-//!
-//! Produces a token-efficient rendering of a source file: comments are
-//! removed, blank lines are dropped, indentation is collapsed to one space
-//! per nesting depth, and runs of whitespace between tokens shrink to a
-//! single space. The transformation is span-based: tree-sitter only tells us
-//! where comments and literal tokens live, and everything else is
-//! language-agnostic text surgery. Because the line structure is preserved
-//! (no statements are merged), the output stays syntactically valid for
-//! every supported language, including indentation-sensitive Python.
-//!
-//! Multiline literal tokens (raw strings, heredocs, template literals,
-//! docstrings) are preserved byte-for-byte so their contents never change.
-
 use std::collections::BTreeSet;
 use std::ops::Range;
 use std::path::Path;

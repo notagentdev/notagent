@@ -1,11 +1,3 @@
-//! Multi-line editor with autocomplete, kill ring, undo and paste markers.
-//!
-//! Port of `packages/tui/src/components/editor.ts` (2363 LOC).
-//!
-//! Deviation class 1: `cursorCol` and all string indices are byte offsets
-//! instead of UTF-16 code units; every slice happens on grapheme boundaries, so
-//! only the numeric values of the accessors differ.
-
 use std::rc::Rc;
 
 use crate::autocomplete::{
@@ -86,7 +78,6 @@ pub struct Segment {
 }
 
 /// Byte spans of every occurrence of an atomic marker, in order.
-///
 /// Unlike a paste marker these are matched literally: the caller registered the
 /// exact string, so there is nothing to parse and nothing that could be half
 /// valid. Used for markers that stand for something the editor does not hold —
@@ -205,7 +196,6 @@ pub struct TextChunk {
 }
 
 /// Split a line into word-wrapped chunks.
-///
 /// Wraps at word boundaries where possible and falls back to grapheme-level
 /// wrapping for words wider than `max_width`.
 pub fn word_wrap_line(
@@ -537,7 +527,6 @@ impl Editor {
 
     /// Registers strings the editor should treat as single units for cursor
     /// movement and deletion.
-    ///
     /// For markers that stand for content the editor does not hold — a pasted
     /// image lives with the caller, and only the caller can turn the marker
     /// back into it. A marker the user can take apart a character at a time is
@@ -844,7 +833,6 @@ impl Editor {
     }
 }
 
-/// Normalize line endings and expand tabs, as the TS editor does on input.
 fn normalize_text(text: &str) -> String {
     text.replace("\r\n", "\n")
         .replace('\r', "\n")
@@ -1000,7 +988,6 @@ impl Editor {
         self.snapped_from_cursor_col = None;
     }
 
-    /// Sticky-column decision table of the TS version.
     fn compute_vertical_move_column(
         &mut self,
         current_visual_col: usize,
@@ -1952,9 +1939,6 @@ impl Editor {
     }
 
     /// When the pending autocomplete request becomes due, if any.
-    ///
-    /// Deviation class 1: the TS version schedules the debounce with
-    /// `setTimeout` and resolves the request in a promise chain; the port
     /// reports the deadline and runs the request in [`Self::pump_autocomplete`],
     /// because a callback would need `&mut` access to the editor.
     pub fn autocomplete_deadline(&self) -> Option<std::time::Instant> {
@@ -2165,7 +2149,6 @@ impl Editor {
         layout_lines
     }
 
-    /// Run the pending autocomplete request (the TS promise chain).
     pub async fn pump_autocomplete(&mut self) {
         let Some(pending) = self.pending_autocomplete.clone() else {
             return;

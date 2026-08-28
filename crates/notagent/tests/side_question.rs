@@ -1,6 +1,5 @@
 //! A side question must cost the main conversation nothing — not context, and
 //! not its cached prefix.
-//!
 //! Each case here guards one way the cache is lost. They are separate
 //! assertions on purpose: a single "the child looks right" test would go green
 //! again after a refactor that quietly filtered the tools.

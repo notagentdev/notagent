@@ -1,9 +1,3 @@
-//! OpenAI Responses API.
-//!
-//! 1:1 port of `packages/ai/src/api/openai-responses.ts`. The message, tool and stream
-//! handling live in [`crate::api::openai_responses_shared`]; this module builds the
-//! request, resolves the compat matrix and runs the transport.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 

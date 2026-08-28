@@ -1,18 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tasks/output.ts`.
-//!
-//! What a task's output is kept in, and what is thrown away.
-//!
-//! Three readers want different things from the same stream and cannot share
-//! one buffer. The panel and the completion note want the last few kilobytes,
-//! now, without touching the disk. The model wants the whole log, occasionally,
-//! and can afford a file read. And a runaway command wants neither — it wants
-//! to be stopped before it fills memory or the disk.
-//!
-//! So the tail is bounded and lives in memory, the complete stream goes to a
-//! file, and a shell task that crosses a hard ceiling is terminated with a
-//! reason that says so. The one subtlety is that a *foreground* task writes no
-//! file at all until it either detaches or outgrows the buffer.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::types::BoxFuture;
@@ -23,7 +8,6 @@ use crate::core::tasks::serial_queue::SerialQueue;
 pub const OUTPUT_RING_BYTES: usize = 1024 * 1024;
 
 /// Bytes a shell task may produce before it is terminated.
-///
 /// Only shell tasks are capped. A subagent appends one bounded answer and must
 /// always keep it; a command can emit without bound, and has.
 pub const SHELL_OUTPUT_CEILING_BYTES: usize = 16 * 1024 * 1024;
@@ -83,7 +67,6 @@ struct RetentionState {
 }
 
 /// Per-task output retention.
-///
 /// Appends stay cheap: the ring is maintained with a running byte total rather
 /// than by re-measuring, and disk writes are queued rather than awaited.
 pub struct OutputRetention {

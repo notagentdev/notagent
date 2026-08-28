@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/modes/rpc/jsonl.ts`.
-//!
-//! Strict JSONL framing: records are separated by LF and by nothing else.
-//! U+2028 and U+2029 are legal inside a JSON string, and a reader that treats
-//! them as line breaks would split a record in half — which is why this does not
-//! use a general-purpose line reader.
-//!
-//! Deviation (class 3): TypeScript attaches to a Node stream and returns a
-//! detach function. Rust has no such stream, so the splitter is a value the
-//! caller feeds chunks to; the caller owns the read loop and therefore its own
-//! detaching. The decoding of a UTF-8 sequence split across two chunks is the
-//! job Node's `StringDecoder` did.
-
 use serde_json::Value;
 
 /// One record, LF-terminated.

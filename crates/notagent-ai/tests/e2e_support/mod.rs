@@ -1,22 +1,3 @@
-//! Shared harness of the key-gated end-to-end suites.
-//!
-//! Port of `packages/ai/test/oauth.ts` (85 LOC), `bedrock-utils.ts`, `azure-utils.ts` and
-//! `cloudflare-utils.ts`, plus the scenario helpers `stream.test.ts` shares across its
-//! provider matrix.
-//!
-//! Gating: TS uses `describe.skipIf(...)`/`it.skipIf(...)`. Rust's harness has no skip, so
-//! every gated test starts with [`skip_unless`], which prints the same reason and returns.
-//! Without credentials the suites therefore pass without making a request, exactly like the
-//! skipped TS suites.
-//!
-//! The credential lookup itself is gated a second time, by `NOTAGENT_AI_E2E`. That is the
-//! port of the outer gate `test.sh` applies in the TS repo: the canonical run is
-//! `env -i` with an allowlist that carries no provider key and an isolated `HOME`, so
-//! `~/.notagent/agent/auth.json` does not exist and every e2e suite skips. `cargo test
-//! --workspace` inherits the real environment instead, so the opt-in reproduces that
-//! isolation: `NOTAGENT_AI_E2E=1 cargo test -p notagent-ai` is the counterpart of running
-//! vitest directly with keys in the environment.
-
 #![allow(dead_code)]
 
 use std::path::PathBuf;
@@ -55,7 +36,6 @@ macro_rules! skip_unless_some {
 }
 
 // ---------------------------------------------------------------------------
-// oauth.ts
 // ---------------------------------------------------------------------------
 
 fn auth_path() -> PathBuf {
@@ -89,7 +69,6 @@ fn save_auth_storage(storage: &Map<String, Value>) {
 }
 
 /// `resolveApiKey(provider)` — reads `~/.notagent/agent/auth.json`, refreshing and
-/// persisting an expired OAuth credential like the TS helper does.
 pub async fn resolve_api_key(provider: &str) -> Option<String> {
     if !e2e_enabled() {
         return None;
@@ -130,7 +109,6 @@ pub async fn resolve_api_key(provider: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// bedrock-utils.ts / azure-utils.ts / cloudflare-utils.ts
 // ---------------------------------------------------------------------------
 
 /// Whether the e2e suites may look at credentials at all — see the module docs.
@@ -264,7 +242,6 @@ pub fn calculator_tool() -> Tool {
 }
 
 /// Dispatches through the provider that owns `model`, without the `Models` auth
-/// resolution: TS goes through `compat.stream()`, which picks the api implementation by
 /// `model.api` and injects `getEnvApiKey(model.provider)` when the caller passed no key.
 /// `BuiltProvider::stream*` is that same dispatch.
 pub fn provider_for(model: &Model) -> Arc<dyn Provider> {
@@ -348,7 +325,6 @@ pub async fn complete_simple(
         .await
 }
 
-/// Installs the `onPayload` hook the TS suites use to read the request body, and returns
 /// the handle the captured payloads land in.
 pub fn capture_payloads(options: &mut SimpleStreamOptions) -> CapturedPayloads {
     let captured = CapturedPayloads::default();

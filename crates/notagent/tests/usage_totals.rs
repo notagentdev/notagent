@@ -1,9 +1,3 @@
-//! Port of the `getUsageCostBreakdown` case of
-//! `packages/coding-agent/test/agent-session-stats.test.ts` ("groups tool and
-//! summary usage separately from model-attributed usage"). The remaining cases
-//! of that file exercise `AgentSession.getSessionStats` and belong to workstream
-//! C's agent-session suites.
-
 use notagent::core::session_manager::SessionManager;
 use notagent::core::usage_totals::{UsageCostBreakdownEntry, get_usage_cost_breakdown};
 use notagent_agent::types::AgentMessage;

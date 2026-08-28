@@ -1,9 +1,3 @@
-//! Schema helpers.
-//!
-//! 1:1 port of `packages/ai/src/utils/typebox-helpers.ts` (24 LOC). TypeBox schemas are
-//! `serde_json::Value` here (master-plan substitution class 3), so `StringEnum` builds
-//! the same JSON Schema object without the TypeBox `TUnsafe` wrapper.
-
 use serde_json::{Map, Value, json};
 
 /// `StringEnum(values, options?)` — a string enum schema for providers that reject
@@ -24,7 +18,6 @@ pub fn string_enum(
                 .collect(),
         ),
     );
-    // TS spreads the fields conditionally, so an empty string is left out as well.
     if let Some(description) = description.filter(|value| !value.is_empty()) {
         schema.insert("description".to_string(), json!(description));
     }

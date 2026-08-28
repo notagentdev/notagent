@@ -1,9 +1,3 @@
-//! Port of `packages/ai/test/cloudflare-gateway-binding.test.ts` (332 LOC).
-//!
-//! The cases that reconcile a `Request` input with `RequestInit` (headers replacement,
-//! `body: null`, `signal: null`, one-shot stream bodies) have no counterpart: the port's
-//! `FetchRequest` always carries a concrete method, URL, header list and byte body.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::cloudflare_gateway_binding::{

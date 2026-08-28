@@ -1,15 +1,12 @@
 //! Star names for delegated children.
-//!
 //! A subagent is identified by a uuid, which is the right thing for continuing
 //! one and the wrong thing for showing one: with three children running, three
 //! uuids in an approval dialog tell the user nothing about which request
 //! belongs to which piece of work.
-//!
 //! Every name in the pool is a real astronomical object, in its English
 //! spelling. That is deliberate rather than incidental: invented Star Trek
 //! worlds are trademarked, and a real star name is just as memorable. Several of
 //! the entries are the stars those worlds were hung on anyway.
-//!
 //! The registry is session-scoped, so a name means one child for as long as the
 //! user can see it and is free again afterwards. It is never written into a
 //! transcript as an identifier — `session_id` remains the thing that names a
@@ -35,7 +32,6 @@ pub fn star_names() -> Vec<&'static str> {
 }
 
 /// Suffix for the nth pass over an exhausted pool: nothing, then `II`, `III`.
-///
 /// A numeral rather than prose ("the second Vega"): a name in a status line has
 /// to stay a label, since the row is narrow and the user is scanning it.
 fn roman_numeral(value: usize) -> String {
@@ -81,7 +77,6 @@ struct AliasState {
 }
 
 /// Hands out star names and takes them back.
-///
 /// Owned by the session rather than by the task tool: a mode switch rebuilds the
 /// tool, and a child that outlived the rebuild would otherwise have its name
 /// handed to someone else while it was still running.
@@ -97,7 +92,6 @@ impl AliasRegistry {
 
     /// Reserves a name. `preferred` skips the draw, which is how a continued
     /// child keeps the name the user already saw.
-    ///
     /// Draws at random rather than in order. A sequential pool would make
     /// `Wolf 359` the first subagent of every session, and a label that is
     /// always the same is one the user stops reading.

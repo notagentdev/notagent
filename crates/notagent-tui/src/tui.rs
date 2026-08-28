@@ -1,20 +1,3 @@
-//! Core abstractions of the component model.
-//!
-//! 1:1 port of `packages/tui/src/tui.ts` (1257 LOC): `Component`, `Container`,
-//! `TuiBase` (here `TuiCore`), the overlay stack with its focus restore state
-//! machine, render scheduling, input dispatch and `compositeTuiLine`.
-//!
-//! Shape changes against the TS original (deviation class 1, behaviour
-//! identical):
-//! - Components are shared through [`ComponentRef`], mirroring the shared
-//!   object references of TS; identity comparisons use `Rc::ptr_eq`.
-//! - `TuiBase` is an abstract class; Rust splits it into [`TuiCore`] (shared
-//!   state, cloneable handle) plus the concrete renderers that own one and
-//!   implement `do_render`.
-//! - Timers do not call back into the TUI. [`TuiCore::render_deadline`] reports
-//!   when the next frame is due and the renderer's loop performs it, so all
-//!   component access stays on one thread like the Node event loop.
-
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -32,11 +15,8 @@ use crate::utils::{
 };
 
 /// Shared reference to a component.
-///
-/// In TS both the container and the caller hold the same component instance and
 /// mutate it (`editor.setText(...)` after `tui.addChild(editor)`).
 /// `Rc<RefCell<…>>` mirrors that reference semantics; the TUI core is
-/// single-threaded like the TS original.
 pub type ComponentRef = Rc<RefCell<dyn Component>>;
 
 /// Wrap a component into a [`ComponentRef`].
@@ -45,10 +25,7 @@ pub fn component_ref<C: Component + 'static>(component: C) -> ComponentRef {
 }
 
 /// Renderer a terminal loop can drive: the main screen or the alternate screen.
-///
-/// Deviation class 1: TS needs no such abstraction because `scheduleRender()`
 /// hands the frame to `setTimeout` and the Node event loop calls back into the
-/// renderer (`packages/tui/src/tui.ts:243-258`). Rust has no ambient loop, so
 /// the loop is written once against this trait.
 pub trait RenderLoop {
     /// Shared state of this renderer.
@@ -59,12 +36,8 @@ pub trait RenderLoop {
 
 /// Drive rendering and terminal input until `until` resolves, then return its
 /// output.
-///
-/// This is the Rust stand-in for what Node does while a TS dialog awaits its
 /// promise: `startStartupTui` starts the TUI and returns, and the event loop
 /// keeps delivering stdin and rendering until the dialog resolves
-/// (`packages/coding-agent/src/cli/startup-ui.ts:86-90`,
-/// `packages/coding-agent/src/cli/session-picker.ts:20-55`). After stdin hits
 /// EOF the loop keeps rendering, exactly as Node does once the `data` handler
 /// stops firing.
 pub async fn run_until<R, F>(
@@ -106,8 +79,6 @@ where
 }
 
 /// A rendered line, shared instead of copied.
-///
-/// Deliberate deviation from the TS original, where strings are immutable and
 /// shared by the runtime, so returning a cached line costs nothing. Shared
 /// rather than borrowed because a container flattens its children's lines into
 /// one list (`Container::render`) and cannot hold a borrow into every child it
@@ -121,7 +92,6 @@ where
 pub type Line = std::sync::Arc<str>;
 
 /// Convert freshly built owned lines into shared ones at the return edge.
-///
 /// For components that assemble their lines as owned strings and do not cache;
 /// components with a cache store `Line`s directly so a hit is a refcount bump.
 pub fn shared_lines(lines: Vec<String>) -> Vec<Line> {
@@ -130,7 +100,6 @@ pub fn shared_lines(lines: Vec<String>) -> Vec<Line> {
 
 /// Normalize `line` and terminate it with the segment reset — exactly the
 /// transformation `apply_line_resets` applies to a non-image line.
-///
 /// Factored out so a caching component can store finished lines
 /// (`components/markdown.rs`): the paint pass then skips them, which keeps
 /// their pointer identity across frames for the screen diff.
@@ -150,17 +119,12 @@ pub(crate) fn finish_line(line: &str) -> String {
 }
 
 /// Component interface — every component implements it.
-///
-/// Corresponds to `interface Component` (`packages/tui/src/tui.ts:23-46`).
 pub trait Component {
     /// Render the component for the given viewport width.
-    ///
     /// Returns one shared string per line (with embedded ANSI sequences).
     fn render(&mut self, width: usize) -> Vec<Line>;
 
     /// Optional handler for keyboard input while the component has focus.
-    ///
-    /// `handleInput` is optional in TS; the default implementation here behaves
     /// like the missing method.
     fn handle_input(&mut self, data: &str) {
         let _ = data;
@@ -175,32 +139,25 @@ pub trait Component {
     /// Drop cached render state.
     fn invalidate(&mut self);
 
-    /// Replaces the TS type guard `isFocusable()` (`"focused" in component`).
     fn as_focusable(&mut self) -> Option<&mut dyn Focusable> {
         None
     }
 
-    /// Replaces the TS check `root instanceof Container` used when walking the
     /// mounted component tree.
     fn as_container(&self) -> Option<&Container> {
         None
     }
 
     /// Layout node of this component, if it participates in the layout engine.
-    ///
-    /// Replaces the `[LAYOUT_NODE]()` symbol method of the TS version.
     fn layout_node(&self) -> Option<crate::layout_node::LayoutNode> {
         None
     }
 }
 
 /// Components that can take focus and show a hardware cursor.
-///
 /// While focused the component emits [`CURSOR_MARKER`] at the cursor position;
 /// the TUI finds the marker, strips it and places the hardware cursor there
 /// (which matters for IME candidate windows).
-///
-/// Corresponds to `interface Focusable` (`packages/tui/src/tui.ts:57-63`).
 pub trait Focusable {
     /// Whether the component currently has focus.
     fn focused(&self) -> bool;
@@ -209,7 +166,6 @@ pub trait Focusable {
 }
 
 /// Cursor position marker — an APC (Application Program Command) sequence.
-///
 /// A zero-width escape sequence terminals ignore. Components emit it at the
 /// cursor position while focused; the TUI strips it before output.
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
@@ -237,7 +193,6 @@ pub type TuiInputListener = Box<dyn FnMut(&str) -> Option<TuiInputListenerResult
 /// Listener for terminal color scheme changes.
 pub type ColorSchemeListener = Box<dyn FnMut(TerminalColorScheme)>;
 
-/// Identifies a registered input listener (TS returns an unsubscribe closure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListenerId(u64);
 
@@ -394,7 +349,6 @@ pub struct OverlayMargin {
 }
 
 impl OverlayMargin {
-    /// Same margin on all sides (TS: `margin: number`).
     pub fn all(value: i64) -> Self {
         Self {
             top: value,
@@ -554,10 +508,7 @@ struct TuiState {
     pending_invalidate: bool,
 }
 
-/// Shared TUI state — the port of `TuiBase`.
-///
 /// Cloning yields another handle to the same state, which is how overlay
-/// handles mutate the TUI the way the TS closures capture `this`.
 #[derive(Clone)]
 pub struct TuiCore(Rc<RefCell<TuiState>>);
 
@@ -567,7 +518,6 @@ impl TuiCore {
         Self::with_options(terminal, None, None)
     }
 
-    /// New core with the optional constructor arguments of the TS version
     /// (`showHardwareCursor`, `logDirectory`).
     pub fn with_options(
         terminal: Box<dyn Terminal>,
@@ -694,7 +644,6 @@ impl TuiCore {
     }
 
     /// Set whether shrinking content triggers a full redraw.
-    ///
     /// When true, empty rows are cleared when content shrinks; when false they
     /// remain (fewer redraws on slow terminals).
     pub fn set_clear_on_shrink(&self, enabled: bool) {
@@ -810,10 +759,7 @@ impl TuiCore {
     }
 
     /// Write a component's focus flag.
-    ///
     /// A component can call `set_focus` from inside its own `handle_input`; it
-    /// is then mutably borrowed and the flag is queued instead (deviation class
-    /// 1 — TS has no borrow rules, so the write is applied as soon as the
     /// component returns, before anything can observe it).
     fn write_focus_flag(&self, component: &ComponentRef, focused: bool) {
         match component.try_borrow_mut() {
@@ -976,7 +922,6 @@ impl TuiCore {
     }
 
     /// Root components the focus machine considers mounted.
-    ///
     /// The alternate screen renderer overrides this with its layout root; the
     /// main screen uses the children.
     fn is_component_mounted(&self, component: &ComponentRef) -> bool {
@@ -1142,13 +1087,9 @@ impl TuiCore {
     }
 
     /// Invalidate all mounted components and overlays.
-    ///
     /// A component can reach this from inside its own `handle_input` — the
     /// theme preview of the settings menu does, through the theme controller
-    /// (`theme-controller.ts:82-88`). It is then mutably borrowed and the walk
     /// below would borrow it a second time, so the call is queued and runs the
-    /// moment the dispatch returns (deviation class 1, the same treatment as
-    /// [`Self::write_focus_flag`]: TS has no borrow rules, and nothing renders
     /// between the two points).
     pub fn invalidate(&self) {
         if self.0.borrow().dispatching_input {
@@ -1293,11 +1234,9 @@ impl TuiCore {
     }
 
     /// Wait until the next frame is due.
-    ///
     /// The render loop's counterpart to [`Self::render_deadline`]: it stays
     /// pending while nothing is requested and wakes as soon as a request comes
     /// in, which is what `scheduleRender()`'s `setTimeout` does on the Node
-    /// event loop (`packages/tui/src/tui.ts:243-258`). Cancel-safe: dropping the
     /// future keeps the request, the next call recomputes the deadline.
     pub async fn wait_until_render_due(&self) {
         loop {
@@ -1324,7 +1263,6 @@ impl TuiCore {
     }
 
     /// When the next frame is due, or `None` if none is pending.
-    ///
     /// Replaces `scheduleRender()`: `MIN_RENDER_INTERVAL_MS` after the previous
     /// frame, or immediately after keyboard input.
     pub fn render_deadline(&self) -> Option<Instant> {
@@ -1351,7 +1289,6 @@ impl TuiCore {
     }
 
     /// Dispatch terminal input (`TuiBase.handleTerminalInput`).
-    ///
     /// Order: OSC 11 reply → color scheme report → input listeners → cell size →
     /// debug key → overlay focus repair → focused component.
     pub fn handle_terminal_input(&self, data: &str) {
@@ -1571,7 +1508,6 @@ impl TuiCore {
     }
 
     /// Query the terminal's color-scheme preference with DSR (`CSI ? 996 n`).
-    ///
     /// Terminals supporting the color palette notification protocol reply with
     /// `CSI ? 997 ; 1 n` for dark or `CSI ? 997 ; 2 n` for light.
     pub async fn query_terminal_color_scheme(
@@ -1690,11 +1626,9 @@ impl TuiCore {
     }
 
     /// Normalize every non-image line and append the segment reset.
-    ///
     /// Idempotent: a line that already ends in the reset is left untouched, so
     /// a component may finish its lines while filling its cache
     /// ([`finish_line`]) and this pass stays a no-op for them. Image lines are
-    /// exempt via `is_image_line`, same as the TS original (`tui.ts:1157`).
     pub fn apply_line_resets(&self, lines: &mut [Line]) {
         for line in lines.iter_mut() {
             if line.ends_with(SEGMENT_RESET) || is_image_line(line) {
@@ -1705,7 +1639,6 @@ impl TuiCore {
     }
 
     /// Find the cursor marker, compute its position and strip it.
-    ///
     /// Only the bottom `height` lines (the visible viewport) are scanned.
     pub fn extract_cursor_position(
         &self,

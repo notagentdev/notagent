@@ -1,7 +1,3 @@
-//! Ports of `packages/ai/test/provider-retry.test.ts` (81 LOC) plus the behaviour of
-//! `EventStream` from `packages/ai/src/utils/event-stream.ts`, which the TS suites cover
-//! indirectly through every provider stream test.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;

@@ -1,15 +1,8 @@
-//! Port of `packages/ai/test/empty.test.ts` (822 LOC).
-//!
-//! Four scenarios (`testEmptyMessage`, `testEmptyStringMessage`,
-//! `testWhitespaceOnlyMessage`, `testEmptyAssistantMessage`) across the provider matrix;
-//! one test per TS `describe` block, gated as in TS.
-
 mod e2e_support;
 
 use e2e_support::*;
 use notagent_ai::types::*;
 
-/// Every scenario accepts an error as long as it carries a message, exactly like TS.
 fn assert_handled(response: &AssistantMessage) {
     if response.stop_reason == StopReason::Error {
         assert!(response.error_message.is_some());

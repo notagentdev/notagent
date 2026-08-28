@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/transports/unix/listener.ts`.
-
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -273,7 +271,6 @@ pub struct UnixByteConnection {
 }
 
 impl UnixByteConnection {
-    /// Exported only for transport-level verification (TS: `@internal`).
     pub fn from_stream(
         stream: UnixStream,
         graceful_close_timeout_ms: u64,
@@ -349,7 +346,6 @@ impl ByteConnection for UnixByteConnection {
             }
             *pending += chunk.len() as u64;
         }
-        // The fair tokio mutex serializes writes in call order (TS: `writeTail`).
         let result = {
             let mut writer = self.writer.lock().await;
             match writer.as_mut() {

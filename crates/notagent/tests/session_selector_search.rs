@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/session-selector-search.test.ts` (195 LOC).
-
 use notagent::core::session_manager::SessionInfo;
 use notagent::modes::interactive::components::session_selector_search::{
     NameFilter, SortMode, filter_and_sort_sessions,

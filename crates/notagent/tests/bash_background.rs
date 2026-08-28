@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/test/bash-background.test.ts`, the half that
-//! needs a real task manager.
-//!
-//! The gate cases of the same suite are in `bash_tool.rs`, where a recording
-//! stub records what the tool registers; these run the tool against the real
-//! [`TaskManager`], as the TS harness does, and assert what the manager then
-//! knows about the command.
-//!
-//! The gate is the part that matters. A model that can start a detached command
-//! but cannot list, read or stop one has been handed a way to lose work, so the
-//! flag is absent from the schema rather than present and refused — a parameter
-//! a model can see is a parameter it will eventually use.
-
 use std::sync::Arc;
 
 use notagent::core::tasks::manager::{TaskManager, TaskManagerOptions};

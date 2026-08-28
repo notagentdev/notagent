@@ -1,18 +1,15 @@
 //! The transcript lines that report what background work did.
-//!
 //! A panel shows what is running; it cannot show what happened, because the
 //! moment a task settles it drops off the list. So the outcome goes into the
 //! transcript, as its own line — never as a correction to the block that
 //! launched the work, which by then may sit in rows the terminal has scrolled
 //! away and cannot repaint.
-//!
 //! What gets a line differs by kind, and the difference is deliberate. A
 //! subagent gets two, because nothing else in the transcript marks that it
 //! started: the `task` call returns immediately and its answer arrives much
 //! later. A detached shell command gets one, because the tool block that
 //! launched it already recorded the launch — what that block cannot say is how
 //! it ended.
-//!
 //! Only work this session watched running is reported. A task that was already
 //! over when the registry was first read belongs to a previous session, and
 //! announcing it now would tell the user about something they did not start.
@@ -41,7 +38,6 @@ impl TaskAnnouncer {
     }
 
     /// The lines this snapshot is due, in the order they should be appended.
-    ///
     /// Takes the whole snapshot rather than a single task because a settled
     /// task is only visible in a listing that includes settled work — the
     /// caller has to pass one, and passing one task at a time would hide that

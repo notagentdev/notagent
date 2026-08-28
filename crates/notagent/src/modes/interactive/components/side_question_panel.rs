@@ -1,9 +1,7 @@
 //! The panel a side question is asked and answered in.
-//!
 //! It sits directly above the editor and frames the exchange, so the question
 //! and its answer are visibly not part of the transcript — which is the whole
 //! claim the feature makes about them.
-//!
 //! The box is closed on all four sides here. Where the editor below carries a
 //! frame of its own, a panel would leave its bottom edge to that frame; ours
 //! draws plain rules with no sides, so the panel closes itself rather than

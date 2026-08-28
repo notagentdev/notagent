@@ -1,9 +1,3 @@
-//! Minimal one-route HTTP server for OAuth redirects.
-//!
-//! Substitution class 3 of the master plan: `node:http.createServer` becomes a small
-//! tokio listener. It accepts exactly the redirect route, answers with the success or
-//! error page and hands the authorization code back to the flow.
-
 use std::collections::BTreeMap;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -160,7 +154,6 @@ pub async fn start_callback_server(
     })
 }
 
-/// Percent-decoding query parser; the TS side uses `URL.searchParams`.
 fn parse_query(query: &str) -> BTreeMap<String, String> {
     query
         .split('&')

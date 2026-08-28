@@ -1,14 +1,3 @@
-//! `/mcp` (port addition, v0.1.22) — the servers, a reconnect and a login.
-//!
-//! The protocol itself is covered against a real server in `tests/mcp_client.rs`
-//! and the OAuth path against a real HTTP server in `tests/mcp_auth.rs`. What
-//! runs here is the path a user takes: the typed command reaches the handler,
-//! and every branch of it answers on screen rather than leaving the session
-//! looking as if nothing happened.
-//!
-//! The session under test has no `.mcp.json`, so this pins the empty case and
-//! the argument handling. A server that exists is the other suites' subject.
-
 use notagent::config::APP_NAME;
 
 use super::harness::{InteractiveE2e, run_local};

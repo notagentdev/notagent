@@ -1,15 +1,3 @@
-//! Ports of the key-gated Anthropic-family suites:
-//! `anthropic-opus-4-8-smoke.test.ts` (71), `anthropic-thinking-disable.test.ts` (172,
-//! e2e half), `anthropic-tool-name-normalization.test.ts` (204),
-//! `anthropic-eager-tool-input-e2e.test.ts` (155),
-//! `anthropic-long-cache-retention-e2e.test.ts` (127),
-//! `interleaved-thinking.test.ts` (144),
-//! `xiaomi-token-plan-ams-anthropic-empty-signature-smoke.test.ts` (114) and
-//! `xhigh.test.ts` (70).
-//!
-//! Gating follows `e2e_support`; the payload halves of these files are offline and live in
-//! `anthropic_params.rs`.
-
 mod e2e_support;
 
 use e2e_support::*;
@@ -30,7 +18,6 @@ fn tool(name: &str, description: &str, property: &str, property_description: &st
 }
 
 // ---------------------------------------------------------------------------
-// anthropic-opus-4-8-smoke.test.ts
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
@@ -93,7 +80,6 @@ async fn streams_claude_opus_4_8_with_reasoning_enabled() {
 }
 
 // ---------------------------------------------------------------------------
-// anthropic-thinking-disable.test.ts (E2E half)
 // ---------------------------------------------------------------------------
 
 fn count_pongs(text: &str) -> usize {
@@ -138,7 +124,6 @@ async fn disables_thinking_for_claude_reasoning_models() {
 }
 
 // ---------------------------------------------------------------------------
-// anthropic-tool-name-normalization.test.ts
 // ---------------------------------------------------------------------------
 
 /// The name the tool call carries when it comes back out of the stream.
@@ -228,7 +213,6 @@ async fn handles_custom_tools_that_match_no_claude_code_name() {
 }
 
 // ---------------------------------------------------------------------------
-// anthropic-eager-tool-input-e2e.test.ts / anthropic-long-cache-retention-e2e.test.ts
 // ---------------------------------------------------------------------------
 
 /// `getAnthropicMessagesModels(provider)` over every builtin provider.
@@ -316,7 +300,6 @@ async fn expect_tool_enabled_request_accepted(model: &Model, api_key: &str) {
 
 #[test]
 fn eager_tool_input_covers_every_generated_anthropic_messages_model() {
-    // The TS case list is built from the same catalog read, so this asserts the port sees
     // the same models rather than a stale copy.
     let cases = anthropic_messages_cases();
     assert!(!cases.is_empty());
@@ -406,7 +389,6 @@ async fn every_provider_accepts_long_cache_retention() {
 }
 
 // ---------------------------------------------------------------------------
-// interleaved-thinking.test.ts
 // ---------------------------------------------------------------------------
 
 fn interleaved_calculator_tool() -> Tool {
@@ -541,7 +523,6 @@ async fn anthropic_interleaved_thinking() {
 }
 
 // ---------------------------------------------------------------------------
-// xiaomi-token-plan-ams-anthropic-empty-signature-smoke.test.ts
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
@@ -620,7 +601,6 @@ async fn xiaomi_reproduces_empty_thinking_signatures_and_preserves_them_for_repl
 }
 
 // ---------------------------------------------------------------------------
-// xhigh.test.ts
 // ---------------------------------------------------------------------------
 
 fn xhigh_context() -> Context {

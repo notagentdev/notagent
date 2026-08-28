@@ -1,12 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/markdown-transform.ts` (29 LOC).
-//!
-//! `MarkdownTransformer` and `MarkdownTransformContext` are declared in
-//! `core/extensions/types.ts:1146-1153`, which the port drops with the extension
-//! system. They live here because the mermaid renderer — a core feature, not an
-//! extension — is a markdown transformer
-//! (`interactive-mode.ts:471,1991`).
-
 use std::rc::Rc;
 
 /// Context handed to every transformer.
@@ -63,9 +54,7 @@ fn apply_markdown_transformers(
 ) -> String {
     let mut transformed_markdown = markdown.to_string();
     for transformer in transformers {
-        // TypeScript guards against a transformer throwing or returning a
         // non-string; both were only reachable from untyped extension code,
-        // which the port drops.
         transformed_markdown = transformer(&transformed_markdown, context);
     }
     transformed_markdown

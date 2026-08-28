@@ -1,16 +1,3 @@
-//! Anthropic Messages protocol.
-//!
-//! 1:1 port of `packages/ai/src/api/anthropic-messages.ts` (1 352 LOC). This module
-//! holds the response side: the stream state machine that turns Anthropic's SSE events
-//! into `AssistantMessageEvent`s and the final `AssistantMessage`. Request building and
-//! the HTTP transport follow in the same task.
-//!
-//! Architecture note (master plan): TypeScript mutates one `partial` object in place and
-//! keeps streaming scratch fields (`index`, `partialJson`) on the content blocks until
-//! `content_block_stop`. Here the scratch lives in [`AnthropicStreamState`] and never
-//! reaches the content types; snapshots are cloned per event. Reading old session files
-//! that still contain `partialJson` stays lossless through `ToolCall::extra`.
-
 use serde_json::Value;
 
 use crate::models::calculate_cost;
@@ -23,7 +10,6 @@ use crate::utils::provider_retry::{
     ProviderErrorInfo, ProviderRetryError, ProviderRetryOptions, retry_provider_request,
 };
 
-/// The six event names the TS implementation processes; everything else is ignored.
 pub const ANTHROPIC_MESSAGE_EVENTS: [&str; 6] = [
     "message_start",
     "message_delta",
@@ -42,7 +28,6 @@ struct BlockScratch {
 
 /// Streaming state of one Anthropic response.
 pub struct AnthropicStreamState {
-    /// The message being assembled; `partial` in TS.
     pub output: AssistantMessage,
     scratch: Vec<BlockScratch>,
     model: Model,
@@ -83,7 +68,6 @@ impl ProviderErrorInfo for RetryableRequestError {
 pub struct AnthropicStreamError(pub String);
 
 impl AnthropicStreamState {
-    /// Creates the pending output message, matching the TS initializer.
     pub fn new(model: &Model, is_oauth: bool, tool_names: Vec<String>, timestamp: i64) -> Self {
         AnthropicStreamState {
             output: AssistantMessage {
@@ -111,7 +95,6 @@ impl AnthropicStreamState {
         }
     }
 
-    /// A snapshot of the message as the TS code would have handed it out as `partial`.
     fn snapshot(&self) -> AssistantMessage {
         self.output.clone()
     }
@@ -209,7 +192,6 @@ impl AnthropicStreamState {
                                     .and_then(Value::as_str)
                                     .unwrap_or_default()
                                     .to_string(),
-                                // TS defaults the signature to "" here, not to undefined.
                                 thinking_signature: Some(
                                     block
                                         .and_then(|block| block.get("signature"))
@@ -375,7 +357,6 @@ impl AnthropicStreamState {
                 let Some(position) = self.block_position(index) else {
                     return Ok(emitted);
                 };
-                // TS deletes the scratch fields from the block here; ours live outside it.
                 let partial_json = std::mem::take(&mut self.scratch[position].partial_json);
                 self.scratch[position].index = i64::MIN;
 
@@ -473,7 +454,6 @@ impl AnthropicStreamState {
         });
     }
 
-    /// Anthropic sends no total; TS computes it and recalculates the cost.
     fn recompute_usage(&mut self) {
         self.output.usage.total_tokens = Some(
             self.output.usage.input
@@ -486,7 +466,6 @@ impl AnthropicStreamState {
         self.output.usage = usage;
     }
 
-    /// The terminal checks of the TS stream body, after the event loop.
     pub fn finish(&self) -> Result<DoneReason, AnthropicStreamError> {
         match self.output.stop_reason {
             StopReason::Pending => Err(AnthropicStreamError(
@@ -513,7 +492,6 @@ fn number(value: Option<&Value>, field: &str) -> u64 {
         .unwrap_or(0)
 }
 
-/// `mapStopReason(reason, stopDetails)` — unknown values fail loudly, as in TS.
 pub fn map_stop_reason(
     reason: &str,
     stop_details: Option<&Value>,
@@ -593,7 +571,6 @@ fn assert_request_auth(
 }
 
 /// `stream(model, context, options)` — the full request path.
-///
 /// Nothing is thrown after the call: every failure ends the returned stream with an
 /// `error` event, as the stream contract requires.
 pub fn stream(
@@ -720,7 +697,6 @@ async fn run_request(
     let body =
         serde_json::to_vec(&params).map_err(|error| AnthropicStreamError(error.to_string()))?;
 
-    // The SDK is called with `maxRetries: 0` in TS and wrapped here, so the backoff can
     // honour the abort signal.
     let response = retry_provider_request(
         || {

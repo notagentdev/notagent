@@ -1,21 +1,3 @@
-//! The task list above the editor.
-//!
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/todo-list.ts` (216 LOC).
-//!
-//! Two behaviours here are worth stating because both were chosen against the
-//! obvious alternative.
-//!
-//! The window is anchored on the task being worked on, as the *last* visible
-//! row. A list longer than the screen otherwise shows its beginning, which is
-//! finished work — the one part nobody needs. Anchoring on the active task puts
-//! what is happening now at the bottom edge, with its immediate history above
-//! it, which is how a person reads a checklist they are working through.
-//!
-//! And a list that has just gone all-green stays up for five seconds before it
-//! disappears. Vanishing at the instant of completion denies the user the one
-//! moment the list existed for.
-
 use std::time::{Duration, Instant};
 
 use notagent_tui::tui::{Component, Line};
@@ -50,7 +32,6 @@ pub struct TodoDisplay {
 }
 
 /// How many rows the list may occupy.
-///
 /// Nothing at all below eleven rows: on a terminal that small the list would
 /// crowd out the conversation it is describing. Above that it grows to ten,
 /// always leaving fourteen rows for everything else.
@@ -149,7 +130,6 @@ fn panel_icon(status: TodoStatus) -> &'static str {
 const ROW_INDENT: &str = " ";
 
 /// One rendered row.
-///
 /// The shape carries the status; the icon takes no colour at all. A coloured
 /// dot beside struck-through text or bold text says the same thing twice, and
 /// the second telling is the one that pulls the eye away from the task the
@@ -187,7 +167,6 @@ pub struct TodoListComponent {
 }
 
 impl TodoListComponent {
-    /// New panel; the TypeScript defaults are `("status", 24)`.
     pub fn new(mode: TodoListMode, terminal_rows: usize) -> Self {
         Self {
             todos: Vec::new(),
@@ -242,14 +221,10 @@ impl Component for TodoListComponent {
 }
 
 /// Decides whether the panel is up, and hides a finished list on a delay.
-///
 /// The delay is guarded by an epoch rather than a cancellable timer: every
 /// update bumps it, and a timer that fires against a stale epoch does nothing.
 /// A list that changed while the timer ran therefore cannot be hidden by it.
-///
-/// Timers never call back in this port (see `plans/interface-requests.md` A-4),
 /// so the scheduled hide is exposed as [`TodoVisibility::hide_deadline`] plus
-/// [`TodoVisibility::tick`]; the body of `tick` is the TypeScript timer body,
 /// epoch check included.
 pub struct TodoVisibility {
     todos: Vec<Todo>,
@@ -262,7 +237,6 @@ pub struct TodoVisibility {
 }
 
 impl TodoVisibility {
-    /// New visibility gate; the TypeScript default delay is
     /// [`TODO_COMPLETED_HIDE_DELAY_MS`].
     pub fn new(on_change: Box<dyn FnMut()>, delay_ms: u64) -> Self {
         Self {
@@ -286,7 +260,6 @@ impl TodoVisibility {
     }
 
     /// Feeds a new list.
-    ///
     /// `force_visible` is what a fresh tool call passes: an all-completed list
     /// arriving from a call should be seen once, while the same list arriving
     /// from a replay should not raise a panel the user had already dismissed.

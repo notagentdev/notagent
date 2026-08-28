@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/auth-check.ts`.
-//!
-//! `notagent auth check` answers in three states, and the difference matters to
-//! the scripts that call it: `ready`, `not_ready` (nothing is configured) and
-//! `invalid` (something is configured but unusable). Only the last one is a
-//! reason to look at the machine.
-
 use std::sync::Arc;
 
 use notagent_ai::auth::types::{AuthOperationOptions, AuthType, CredentialStore};
@@ -64,7 +57,6 @@ pub struct AuthCheckResult {
 }
 
 /// The JSON form of `--json`, with the optional fields omitted like the
-/// TypeScript object spread does.
 pub fn auth_check_result_to_json(
     result: &AuthCheckResult,
     credential: Option<&str>,
@@ -222,5 +214,4 @@ pub async fn create_auth_check_model_runtime(
 }
 
 /// Keeps the auth override type in the public surface of this module, matching
-/// the TypeScript import list.
 pub type AuthOverrides = ModelRuntimeAuthOverrides;

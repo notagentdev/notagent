@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/test/task-tool.test.ts`.
-//!
-//! The delegation tool.
-//!
-//! The gates are what is asserted: a type that does not exist, a type a
-//! read-only session may not reach, a repeat refused inside one call, a
-//! continuation that must stay with the child it belongs to, the star name every
-//! child is shown under, and the background flag that is absent from the schema
-//! unless the session can observe a task.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

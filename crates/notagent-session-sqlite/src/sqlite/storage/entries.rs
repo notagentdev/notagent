@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/entries.ts`.
-
 use serde_json::{Map, Value};
 
 use crate::session_types::{Entry, EntryOrder, EntryType, SessionError};
@@ -53,7 +51,6 @@ pub(crate) fn integer_column(row: &Row, name: &str) -> i64 {
     row.get(name).and_then(Value::as_i64).unwrap_or_default()
 }
 
-/// Port of `entryPayload`: the entry without its storage-assigned columns.
 pub fn entry_payload(entry: &Entry) -> Result<Map<String, Value>, SessionError> {
     let value = serde_json::to_value(entry).map_err(|error| {
         SessionError::new(

@@ -1,10 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/test/adapter.test.ts`.
-//!
-//! TS wraps `node:sqlite`; Rust wraps rusqlite (tech substitution). The
-//! "rejects asynchronous transaction callbacks" case has no equivalent:
-//! `with_transaction` takes a synchronous closure, so an async body cannot be
-//! passed at all (deviation class 1).
-
 use notagent_session_sqlite::{
     RusqliteDatabase, SqlQuery, SqlValue, SqliteDatabase, with_transaction,
 };

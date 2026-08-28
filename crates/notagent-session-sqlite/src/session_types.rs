@@ -1,10 +1,3 @@
-//! Port of `packages/agent/src/harness/session/types.ts`.
-//!
-//! The harness submodules of the agent package are excluded from the port
-//! (master plan, exclusion table) because the coding agent does not consume
-//! them — but the SQLite backend implements `SessionRepo`/`SessionStorage`, so
-//! WS-C task 4 ports the type surface here (WS-C plan, task 4).
-
 use std::collections::BTreeMap;
 
 use notagent_agent::AgentMessage;
@@ -119,7 +112,6 @@ entry_struct!(CustomEntry {
     data: Option<Value>,
 });
 
-// Boxing the variants would hide the 1:1 shape of the TS union
 // (CONVENTIONS.md §9); entries are constructed and matched directly.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

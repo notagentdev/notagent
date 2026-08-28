@@ -1,11 +1,3 @@
-//! Ports of `packages/ai/test/env-api-keys.test.ts` (116 LOC) plus tests for the auth
-//! resolution rules of `packages/ai/src/auth/resolve.ts` (stored credential wins, no
-//! silent env fallback, OAuth refresh under the store lock).
-//!
-//! The TS env tests mutate `process.env`. Rust's `set_var` is unsafe and racy across
-//! test threads, so the same code path is exercised through the scoped `ProviderEnv`,
-//! which `getProviderEnvValue` consults first (deviation class 1).
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -26,7 +18,6 @@ fn env(pairs: &[(&str, &str)]) -> ProviderEnv {
 }
 
 // ---------------------------------------------------------------------------
-// env-api-keys.test.ts
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -145,7 +136,6 @@ fn reports_bedrock_ambient_credential_chain() {
 }
 
 // ---------------------------------------------------------------------------
-// resolve.ts
 // ---------------------------------------------------------------------------
 
 struct TestAuthContext {

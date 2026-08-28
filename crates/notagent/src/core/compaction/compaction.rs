@@ -1,13 +1,11 @@
 //! Context compaction for long sessions. Pure functions: the session manager
 //! does the I/O and rebuilds its context afterwards.
-//!
 //! A compaction keeps the user's own messages verbatim and replaces everything
 //! else with one note the agent writes to itself. That split follows from what
 //! a session is actually made of: measured over a 377k-token session, tool
 //! results were 57% of it and the user's messages were 0.7%. Keeping the cheap
 //! part is nearly free, and it is the part that cannot be reconstructed — a
 //! paraphrase of a request is not a request.
-//!
 //! The note is written fresh each time from what the agent can still see, which
 //! after an earlier compaction is the retained messages plus that earlier note.
 //! Nothing folds an old summary into a new one behind the model's back, so a
@@ -54,7 +52,6 @@ pub struct CompactionDetails {
 }
 
 /// Builds the outline from the messages plus the previous compaction's record.
-///
 /// The carry-forward is what makes the outline cumulative. It has to be
 /// explicit: after a compaction the assistant turns that performed the earlier
 /// work are gone from the context, so extracting from the messages alone would
@@ -295,7 +292,6 @@ pub fn estimate_tokens(message: &AgentMessage) -> u64 {
 // ============================================================================
 
 /// The instruction that turns the conversation into a handoff note.
-///
 /// It asks for a note rather than a form on purpose. A fixed set of headings
 /// gets filled in even when a section has nothing behind it, and what fills it
 /// is invention — that was the single largest source of wrong statements in
@@ -377,7 +373,6 @@ fn create_summarization_options(
 }
 
 /// The single choke point every summarization call goes through.
-///
 /// Wrapping the one call in `retry_assistant_call` means a dropped stream
 /// retries under the configured policy instead of failing the whole
 /// compaction; deterministic errors and aborts return immediately.
@@ -424,8 +419,6 @@ pub async fn complete_summarization(
     .await
 }
 
-/// The shape a failed request takes: TypeScript's `completeSimple` reaches the
-/// global provider registry, and this port's stream function is handed in. When
 /// neither is configured the call cannot be made, and the caller reads that as
 /// an errored response — the same path a provider failure takes.
 fn error_message(model: &Model, message: &str) -> AssistantMessage {
@@ -485,7 +478,6 @@ pub struct GeneratedSummary {
 }
 
 /// Writes the handoff note for a conversation, and reports what it cost.
-///
 /// `request_budget` caps the serialized conversation; zero means no cap. The
 /// size is worked out here rather than discovered from a provider rejection,
 /// so the call is made once with a request that fits.
@@ -585,7 +577,6 @@ pub async fn generate_summary(
 pub struct CompactionPreparation {
     /// The oldest retained entry, or the oldest context entry when the session
     /// has no user messages at all.
-    ///
     /// A build that predates the retained selection reads only this field and
     /// keeps everything from it onward, which is a superset of what the
     /// selection keeps — a degraded session rather than a broken one.
@@ -689,7 +680,6 @@ pub fn prepare_compaction(
 // ============================================================================
 
 /// The share of the model's window a summarization request may occupy.
-///
 /// The rest is headroom for the note itself and for whatever the estimate got
 /// wrong; the estimate rounds up per message and charges a flat rate per image,
 /// so it errs high, and this only has to cover the cases where it does not.

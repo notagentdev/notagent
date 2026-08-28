@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/lanes.ts`.
-
 use crate::session_types::{SessionError, SessionErrorCode};
 use crate::sql;
 use crate::sqlite::sql::{SqlQuery, fragment, param, text};

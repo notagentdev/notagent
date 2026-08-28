@@ -1,10 +1,3 @@
-//! Vendor-neutrale Telemetrie-Contracts (Spans, Events, Attribute).
-//!
-//! 1:1-Port von `packages/telemetry/src/index.ts` (357 LOC). Kein Exporter, kein
-//! globaler Current-Span: Parent-Kontexte werden explizit weitergereicht.
-//!
-//! Siehe `crates/notagent-telemetry/PARITY.md`.
-
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::Arc;
@@ -67,9 +60,6 @@ impl From<bool> for AttributeValue {
 }
 
 /// `SpanAttributes { [name: string]: AttributeValue | undefined }`.
-///
-/// Abweichung Klasse 1: `undefined`-Werte existieren in Rust nicht — in TS werden sie
-/// beim Kopieren/Mergen übersprungen, hier fehlt der Schlüssel schlicht. Beobachtbares
 /// Verhalten identisch (siehe `memory.rs::copy_attributes`).
 pub type SpanAttributes = BTreeMap<String, AttributeValue>;
 
@@ -130,27 +120,14 @@ impl SpanStatus {
     }
 }
 
-/// Ergebnis eines Span-Callbacks; ersetzt die TS-Unterscheidung „Callback wirft" (error)
-/// gegenüber „Callback liefert einen Fehlerwert zurück" (ok).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpanOutcome {
-    /// Callback ist normal zurückgekehrt (`Ok`) — Status bleibt beim Default bzw. beim
-    /// zuletzt explizit gesetzten Wert.
     Completed,
-    /// Callback ist fehlgeschlagen (TS: throw/reject) — ohne expliziten Status wird
-    /// automatisch ein Error-Status gesetzt.
     Failed(Option<SpanStatusError>),
 }
 
 /// `TelemetryContext { startSpan(options, callback) }`.
-///
-/// Abweichung Klasse 1 (Sprachidiomatik): TS bindet die Span-Lebensdauer an einen
-/// generischen Callback. Ein generischer Callback macht das Trait in Rust nicht
-/// objekt-sicher, deshalb ist `begin_span` das objekt-sichere Primitiv und
-/// [`start_span`] der generische Wrapper, der die Callback-Semantik (Settlement bei
-/// Rückkehr, Auto-Error bei Fehler) exakt nachbildet.
 pub trait TelemetryContext: Send + Sync {
-    /// Startet einen Span mit diesem Kontext als explizitem Parent.
     fn begin_span(&self, options: SpanOptions) -> Arc<dyn TelemetrySpan>;
 }
 
@@ -159,14 +136,9 @@ pub trait TelemetrySpan: TelemetryContext {
     fn add_event(&self, name: &str, attributes: Option<SpanAttributes>);
     fn set_attributes(&self, attributes: SpanAttributes);
     fn set_status(&self, status: SpanStatus);
-    /// Schließt den Span ab. Aufrufe nach dem Settlement sind wirkungslos.
     fn settle(&self, outcome: SpanOutcome);
 }
 
-/// `context.startSpan(options, callback)` für Callbacks, die nicht fehlschlagen.
-///
-/// Der Span wird abgeschlossen, sobald der Callback zurückkehrt — wie in TS, wo das
-/// zurückgegebene Promise das Settlement auslöst.
 pub async fn start_span<C, F, Fut, T>(context: &C, options: SpanOptions, callback: F) -> T
 where
     C: TelemetryContext + ?Sized,
@@ -179,8 +151,6 @@ where
     result
 }
 
-/// Wie [`start_span`], aber für fehlbare Callbacks: `Err` entspricht dem geworfenen
-/// Fehler in TS und setzt ohne expliziten Status automatisch einen Error-Status.
 pub async fn try_start_span<C, F, Fut, T, E>(
     context: &C,
     options: SpanOptions,
@@ -208,8 +178,6 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// Schema-Definitionen (reine Datenstrukturen; die TS-Typinferenz-Maschinerie
-// entfällt laut Master-Plan, Faktenbericht §5: „TS-Typmaschinerie entfällt").
 // ---------------------------------------------------------------------------
 
 /// `TelemetryAttributeType = "string" | "number" | "boolean" | "string[]" | "number[]" | "boolean[]"`
@@ -237,7 +205,7 @@ pub enum TelemetryCardinality {
     High,
 }
 
-/// Typabhängiger Teil von `TelemetryAttributeDefinition`.
+/// Type-specific part of `TelemetryAttributeDefinition`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum TelemetryAttributeValues {
@@ -297,7 +265,7 @@ pub enum TelemetryAttributeValues {
     },
 }
 
-/// `TelemetryAttributeDefinition = TelemetryAttributeMetadata & (typabhängiger Teil)`
+/// Complete telemetry attribute definition with metadata and a typed value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TelemetryAttributeDefinition {
     pub description: String,
@@ -340,7 +308,6 @@ pub enum TelemetryParentDefinition {
 /// `status: { default: "ok"; errorWhen: string }`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TelemetrySpanStatusDefinition {
-    /// In TS als Literaltyp `"ok"` festgelegt.
     pub default: String,
     #[serde(rename = "errorWhen")]
     pub error_when: String,
@@ -367,7 +334,6 @@ pub struct TelemetrySchemaDefinition {
     pub spans: BTreeMap<String, TelemetrySpanDefinition>,
 }
 
-/// `defineTelemetrySchema` — in TS ein typisierter Identitätshelfer.
 pub fn define_telemetry_schema(schema: TelemetrySchemaDefinition) -> TelemetrySchemaDefinition {
     schema
 }

@@ -1,14 +1,3 @@
-//! A washed box over a child that finishes its lines.
-//!
-//! Markdown bakes the segment reset into its cached lines (step 8 of the
-//! line-sharing plan). A `BoxComponent` with a background function embeds
-//! child lines into its own styling; an embedded full SGR reset would cut the
-//! wash off before the box's right padding column. The box therefore strips
-//! the child's line terminator before painting — this pins that property,
-//! which no byte oracle covers (the TS original never has resets inside
-//! component output). The reference `../notagent-main-rust` washes straight
-//! over the reset and shows exactly this artifact; we deliberately do not.
-
 use std::rc::Rc;
 
 use notagent_tui::components::box_component::BoxComponent;

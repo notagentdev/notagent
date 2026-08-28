@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/todo-write.ts` (tool half).
-//!
-//! The `todo_write` tool: the session's task list.
-//!
-//! Every call carries the complete list. That is the whole protocol, and the
-//! reason for it is that the list belongs to the model rather than to the user:
-//! a model allowed to append will append, and a list nobody prunes stops being
-//! read. Restating everything on each call forces a decision about each item,
-//! and omission is how something leaves.
-//!
-//! The description is long because it is doing two jobs — teaching the protocol
-//! and teaching when the list is worth keeping at all. Both come from the
-//! reference implementation, which had them tuned against real sessions.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::types::{
@@ -163,8 +149,6 @@ fn parse_todo(value: &Value) -> Result<Todo, String> {
 }
 
 /// The `before`/`after` lists of the tool details.
-///
-/// Deviation (class 1): `details` is typed in TypeScript and JSON here, so the
 /// renderer reads the lists back out of the value the tool produced.
 fn todos_from_details(details: &Value, key: &str) -> Vec<Todo> {
     details

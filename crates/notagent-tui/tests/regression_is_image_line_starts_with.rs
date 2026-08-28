@@ -1,10 +1,3 @@
-//! Port of `packages/tui/test/bug-regression-isimageline-startswith-bug.test.ts`
-//! (237 LOC).
-//!
-//! The bug: `isImageLine()` used `startsWith()` and returned `false` for lines
-//! that merely contain an image escape sequence, so the renderer ran its width
-//! check on a 300 KB line and aborted.
-
 use notagent_tui::terminal_image::is_image_line;
 
 /// The buggy implementation, kept to document the regression.

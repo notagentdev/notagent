@@ -1,7 +1,3 @@
-//! Text helpers for message content.
-//!
-//! 1:1 port of `packages/ai/src/utils/text.ts` (12 LOC).
-
 use crate::types::{AssistantContent, TextOrImageContent, UserContent};
 
 /// Content shapes `contentText` accepts.

@@ -1,18 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tasks/shell-task.ts`.
-//!
-//! A shell command as a piece of managed work.
-//!
-//! The command runs through the same operations the shell tool has always used,
-//! so a caller that redirects execution somewhere else — an SSH backend, a
-//! sandbox — keeps working when the command is backgrounded. What this adds is
-//! only the lifecycle: reporting output to the manager, settling once with a
-//! status the exit code decides, and offering a forced stop for a process that
-//! ignored the polite one.
-//!
-//! The foreground callback exists because a running command still has a reader:
-//! the tool call that started it streams output into the transcript. It stops
-//! being called the moment the task detaches.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -150,9 +135,7 @@ impl BackgroundTask for ShellTask {
     }
 
     /// Kills the whole process group rather than the shell we spawned.
-    ///
     /// A dev server or a watcher starts children of its own, and killing only
-    /// the shell leaves them holding the port that made the command worth
     /// stopping.
     fn force_stop<'a>(&'a self) -> Option<BoxFuture<'a, ()>> {
         Some(Box::pin(async move {

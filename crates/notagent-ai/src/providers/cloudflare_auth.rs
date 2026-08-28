@@ -1,9 +1,3 @@
-//! Cloudflare api-key auth for Workers AI and the AI Gateway.
-//!
-//! 1:1 port of `packages/ai/src/providers/cloudflare-auth.ts` (103 LOC). Both flows
-//! merge per field: a stored credential value wins, ambient env fills the rest, so a
-//! credential carrying only the API key still picks up the account and gateway id.
-
 use crate::auth::types::{
     ApiKeyAuth, ApiKeyAuthInput, ApiKeyCredential, AuthContext, AuthError, AuthPrompt,
     AuthPromptKind, AuthResult, BoxFuture, ModelAuth, ProviderAuthInteraction,
@@ -75,7 +69,6 @@ async fn resolve_cloudflare_env(
         CloudflareAuthKind::WorkersAi => None,
     };
 
-    // Empty strings are falsy in TS, so they count as missing here too.
     let api_key = api_key.filter(|value| !value.is_empty());
     let account_id = account_id.filter(|value| !value.is_empty());
     let gateway_id = gateway_id.filter(|value| !value.is_empty());

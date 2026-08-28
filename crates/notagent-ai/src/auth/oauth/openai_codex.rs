@@ -1,9 +1,3 @@
-//! OpenAI Codex (ChatGPT Plus/Pro) OAuth.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/openai-codex.ts` (544 LOC): a PKCE browser
-//! flow with a local callback server and a headless device-code flow, selected through a
-//! prompt. The account id is read out of the access token's JWT claim.
-
 use std::sync::Arc;
 
 use base64::Engine;
@@ -65,7 +59,6 @@ fn create_state() -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// `decodeJwt(token)` — payload only, no signature check (TS does the same).
 pub fn decode_jwt(token: &str) -> Option<Map<String, Value>> {
     let payload = token.split('.').nth(1)?;
     if token.split('.').count() != 3 {
@@ -459,7 +452,6 @@ async fn login_device_code(
     .await
 }
 
-/// The shared instance, matching the TS export.
 pub fn openai_codex_oauth() -> Arc<dyn OAuthAuth> {
     Arc::new(OpenAICodexOAuth)
 }

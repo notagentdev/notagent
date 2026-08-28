@@ -1,9 +1,3 @@
-//! `googleProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/google.ts` (15 LOC). The generated
-//! `google.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::GoogleGenerativeAIApi;

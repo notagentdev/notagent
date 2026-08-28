@@ -1,9 +1,3 @@
-//! Differential terminal rendering engine and components.
-//!
-//! 1:1 port of `packages/tui` (see crates/notagent-tui/PARITY.md). The export
-//! set mirrors `packages/tui/src/index.ts`; `marked` is replaced by the own
-//! lexer in [`markdown_lexer`] (see the ledger for the decision and its proof).
-
 pub mod alt_screen_search;
 pub mod autocomplete;
 pub mod components;

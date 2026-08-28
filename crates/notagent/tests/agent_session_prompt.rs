@@ -1,11 +1,3 @@
-//! Ported from `packages/coding-agent/test/suite/agent-session-prompt.test.ts`.
-//!
-//! Not ported: the six cases that drive extension commands, extension input
-//! handlers, or `sendUserMessage` opting into extension dispatch
-//! (`plans/facts/extension-boundary.md`). "throws when prompted during manual
-//! compaction" needs a compaction that stays in flight, so it lives in
-//! `agent_session_compaction.rs` with the slow faux provider.
-
 mod suite;
 
 use std::sync::Arc;
@@ -229,7 +221,6 @@ async fn preserves_image_attachments_in_the_provider_context() {
 #[tokio::test]
 async fn refuses_a_prompt_during_streaming_without_a_queue_behaviour() {
     // Slow enough that the first run is still going when the second prompt
-    // arrives (interface request B-16).
     let harness = create_harness(HarnessOptions {
         tokens_per_second: Some(5.0),
         ..HarnessOptions::default()

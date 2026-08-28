@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/theme/theme-controller.ts` (139 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -18,7 +15,6 @@ use super::theme::{
     set_theme, set_theme_instance,
 };
 
-// TypeScript passes the `TUI` object itself as the detector (structural
 // typing). Rust needs the adapter to be spelled out; the two helpers below keep
 // the inherent `TuiCore` methods unambiguous.
 async fn query_background_color(ui: &TuiCore, timeout: Duration) -> Option<RgbColor> {
@@ -65,8 +61,6 @@ struct ControllerState {
 }
 
 /// Drives theme selection for the interactive mode.
-///
-/// Cloning yields another handle to the same controller, the way the TypeScript
 /// closures capture `this`.
 #[derive(Clone)]
 pub struct InteractiveThemeController(Rc<RefCell<ControllerState>>);

@@ -1,21 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/tool-execution.ts` (377 LOC).
-//!
-//! One row of the transcript: the tool call, its result and any images it
-//! returned. What the row looks like is the tool's business — the component
-//! only decides which shell it draws into and what to fall back to when a tool
-//! brings no renderer.
-//!
-//! Deviations (class 1):
-//! - TS takes the `TUI` to call `requestRender()`; the port takes that one
-//!   callback, because nothing else of the TUI is used.
-//! - `ToolRenderContext::invalidate` cannot call back into the row: the closure
-//!   would need `&mut` on the component while the renderer holds it. It sets a
-//!   dirty flag instead, which the next `render` consumes — observably the same,
-//!   since an invalidation only ever shows up in the following frame anyway.
-//! - The TS renderers are wrapped in try/catch; a Rust renderer reports failure
-//!   by returning `None`, which takes the same fallback path.
-
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -29,6 +11,7 @@ use notagent_tui::components::text::Text;
 use notagent_tui::terminal_image::{ImageProtocol, get_capabilities};
 use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref};
 use serde_json::Value;
+use similar::{ChangeTag, TextDiff};
 
 use crate::core::tools::render_utils::get_text_output;
 use crate::core::tools::tool_definition::{
@@ -49,7 +32,6 @@ use crate::utils::image::convert_to_png;
 /// fragment does not move needlessly to the next row. Empty content, or a
 /// badge that consumes the full width, falls back to the badge on its own
 /// row.
-///
 /// The hoisted line is the call when the tool renders one — `BASH ($ ls -la)`
 /// — and otherwise the result, which is set without the parentheses because
 /// it is a statement rather than an argument.
@@ -61,7 +43,6 @@ struct BadgeCallHeader {
 }
 
 /// A line below the badge row, moved under the badge's first character.
-///
 /// The badge pill carries one space of padding on each side, and every block
 /// that stacks content under a badge keeps that column (the explore block
 /// prefixes its rows, the thinking block renders at `output_pad`). Continuation
@@ -173,6 +154,35 @@ pub struct ToolExecutionComponent {
     built_style: BlockStyle,
 }
 
+fn patch_old_new(args: &Value) -> (String, String) {
+    let string_field = |value: &Value, key: &str, alias: &str| {
+        value
+            .get(key)
+            .or_else(|| value.get(alias))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    if let Some(edits) = args.get("edits").and_then(Value::as_array) {
+        let old = edits
+            .iter()
+            .map(|edit| string_field(edit, "old_string", "search"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let new = edits
+            .iter()
+            .map(|edit| string_field(edit, "new_string", "content"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        (old, new)
+    } else {
+        (
+            string_field(args, "old_string", "search"),
+            string_field(args, "new_string", "content"),
+        )
+    }
+}
+
 impl ToolExecutionComponent {
     /// `new ToolExecutionComponent(toolName, toolCallId, args, options, toolDefinition, ui, cwd)`.
     pub fn new(
@@ -254,9 +264,51 @@ impl ToolExecutionComponent {
     }
 
     /// The state badge of this block: the tool's name, uppercased, on the
-    /// fill the standard style would wash the whole block with.
+    /// fill the standard style would wash the whole block with. File-changing
+    /// tools append their line counts in the same colours as the diff rows.
     fn badge_for(&self, state: ThemeBg) -> String {
-        badge(&theme(), state, &self.tool_name)
+        let theme = theme();
+        let mut rendered = badge(&theme, state, &self.tool_name);
+        let Some((added, removed)) = self.diff_stats() else {
+            return rendered;
+        };
+        if added > 0 {
+            rendered.push(' ');
+            rendered.push_str(&theme.fg(ThemeColor::ToolDiffAdded, &format!("+{added}")));
+        }
+        if removed > 0 {
+            rendered.push(' ');
+            rendered.push_str(&theme.fg(ThemeColor::ToolDiffRemoved, &format!("-{removed}")));
+        }
+        rendered
+    }
+
+    fn diff_stats(&self) -> Option<(usize, usize)> {
+        let (old, new) = match self.tool_name.as_str() {
+            "write" => (
+                String::new(),
+                self.args
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+            "patch" | "patch_minified" | "multi_patch" | "multi_patch_minified" => {
+                patch_old_new(&self.args)
+            }
+            _ => return None,
+        };
+
+        let mut added = 0;
+        let mut removed = 0;
+        for change in TextDiff::from_lines(&old, &new).iter_all_changes() {
+            match change.tag() {
+                ChangeTag::Insert => added += 1,
+                ChangeTag::Delete => removed += 1,
+                ChangeTag::Equal => {}
+            }
+        }
+        Some((added, removed))
     }
 
     /// Whether the result holds output the expand toggle controls.
@@ -281,8 +333,6 @@ impl ToolExecutionComponent {
     }
 
     /// Ask the custom definition first, the built-in one second.
-    ///
-    /// Deviation (class 1): TS picks the *function*
     /// (`toolDefinition.renderCall ?? builtIn.renderCall`) and falls back to the
     /// plain header when the picked one throws. A `dyn ToolDefinition` cannot be
     /// asked whether it overrides a renderer — not implementing it and declining
@@ -364,8 +414,6 @@ impl ToolExecutionComponent {
     }
 
     /// Kitty's graphics protocol only takes PNG, so anything else is converted.
-    ///
-    /// Deviation (class 1): TS converts in a promise because its converter is a
     /// WASM worker; here the `image` crate decodes in process, and the row is
     /// redrawn right after, so the conversion runs inline.
     fn maybe_convert_images_for_kitty(&mut self) {
@@ -395,7 +443,6 @@ impl ToolExecutionComponent {
 
     /// When the row has render work of its own that is due later
     /// (`ToolDefinition::render_deadline`).
-    ///
     /// The renderers of a row cannot drive their own timers — a callback would
     /// need `&mut` on the row while the renderer holds it — so they report the
     /// moment and the render loop comes back for it, exactly as
@@ -409,7 +456,6 @@ impl ToolExecutionComponent {
 
     /// The render-side work this row's renderers handed back, detached from
     /// the row.
-    ///
     /// The component cannot lend out a future that borrows it: the loop would
     /// have to hold the row's `RefCell` borrow across the await, while the work
     /// invalidates that very row when it finishes. `ToolDef` is an `Arc` and the
@@ -459,7 +505,6 @@ impl ToolExecutionComponent {
         self.container.clear();
         self.container.add_child(component_ref(Spacer::new(1)));
 
-        // TS starts at `false`, and both branches below always set it — the
         // `hide_component` case is therefore as unreachable here as it is there
         // (bug-compat, not a simplification).
         #[allow(unused_assignments)]
@@ -738,10 +783,7 @@ impl ToolExecutionComponent {
 }
 
 /// The render work of one tool row, ready to be awaited by the render loop.
-///
 /// This is the other half of the seam described on
-/// [`ToolDefinition::pump_render`]: where TS continues a promise inside
-/// `renderCall` (`edit` computes its diff preview that way), the port hands the
 /// future to the loop, which awaits it on the TUI thread. The renderer
 /// invalidates the row itself when it is done.
 pub struct RowRenderWork {

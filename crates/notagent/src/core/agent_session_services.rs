@@ -1,23 +1,3 @@
-//! Port of `packages/coding-agent/src/core/agent-session-services.ts`.
-//!
-//! The services bound to one working directory: the model runtime, the settings
-//! and the resource loader. They are rebuilt whenever the effective cwd changes,
-//! which is why they are separate from the session — the session's own options
-//! (model, tools) have to be resolved against them first.
-//!
-//! Non-fatal problems are returned as diagnostics rather than printed or fatal:
-//! the app layer decides whether a warning is shown and whether an error should
-//! stop startup.
-//!
-//! Deviation (class 2): the extension flag values and the pending provider
-//! registrations of the TypeScript are gone with the extension system
-//! (`plans/facts/extension-boundary.md` §3). The one registration that was
-//! productive — the native llama.cpp provider of the built-in llama extension
-//! (`main.ts:641`, `extensions/index.ts:4`) — happens natively here, at the
-//! point where `agent-session-services.ts:170-181` drains
-//! `pendingNativeProviderRegistrations`: after the resources are loaded and
-//! before the first refresh.
-
 use std::sync::Arc;
 
 use crate::config::get_agent_dir;
@@ -172,7 +152,6 @@ pub struct CreateAgentSessionFromServicesOptions {
 }
 
 /// Creates a session from services that already exist.
-///
 /// Keeping the two apart is what lets a caller resolve model, thinking level and
 /// tools against the target directory before the session is constructed.
 pub async fn create_agent_session_from_services(

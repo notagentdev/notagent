@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/core/permissions/policies.ts`.
-//!
-//! The self-contained policies: those that decide from the tool call and the
-//! filesystem alone, without user configuration or session state.
-//!
-//! The user-authored allow/ask/deny rules and the session approval history are
-//! deliberately not here. They need a settings shape and a per-session store,
-//! and inventing either would fix decisions that belong to the user.
-
 use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
@@ -15,7 +6,6 @@ use super::policy::{FnPolicy, PermissionContext, PermissionDecision, PermissionP
 use crate::utils::paths::{is_absolute_path, main_separator, node_relative, node_resolve};
 
 /// Tools that only read. They never need confirmation.
-///
 /// `task` is here because delegating changes nothing by itself: the subagent's
 /// own tool calls come back through this same chain, so what it does is decided
 /// where every other call is. Asking about the delegation as well would be a
@@ -144,13 +134,11 @@ pub fn git_control_path_access_ask() -> Arc<dyn PermissionPolicy> {
 }
 
 /// Taking a change back never needs confirmation.
-///
 /// The only state undo can produce is one the workspace already had, on a path
 /// this agent already changed — so a prompt here asks about the remedy rather
 /// than about the damage, and the damage was already confirmed when it was
 /// done. The reference draws the same line, listing undo among the tools that
 /// skip permission checks entirely (`catalog.rs:1500`).
-///
 /// It sits *after* the sensitive-file and git-directory guards in the chain, so
 /// the two cases where even a restore deserves a question still reach one.
 pub fn undo_approve() -> Arc<dyn PermissionPolicy> {
@@ -188,7 +176,6 @@ pub fn git_cwd_write_approve() -> Arc<dyn PermissionPolicy> {
 
 /// Commands whose effect cannot be taken back, or that reach outside the
 /// workspace in a way no amount of reading beforehand would reveal.
-///
 /// A regular expression rather than a parse, because the alternative is a shell
 /// grammar and the answer only has to be "worth a second look". A false
 /// positive costs one prompt; a false negative costs the thing the pattern was
@@ -245,13 +232,11 @@ fn evaluate_destructive(context: &PermissionContext) -> Option<PermissionDecisio
 }
 
 /// Irreversible commands ask in every mode, including yolo.
-///
 /// This sits ahead of every approving policy on purpose. Without it the guards
 /// are blind exactly where the damage is: they all read a path argument, and a
 /// shell command has none — so `rm -rf` reached auto-approval untouched while
 /// a write to the same directory would have been stopped. The mode gradient is
 /// about supervision, not about whether a mistake can be undone.
-///
 /// A destructive command is also never remembered for the session: "allow this
 /// once" is the most it can ever mean.
 pub fn destructive_command_ask() -> Arc<dyn PermissionPolicy> {

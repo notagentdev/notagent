@@ -1,15 +1,3 @@
-//! Markdown component with terminal styling.
-//!
-//! Port of `packages/tui/src/components/markdown.ts` (1010 LOC). The token
-//! stream comes from [`crate::markdown_lexer`], which reproduces marked's
-//! output (verified in `tests/markdown_oracle.rs`).
-//!
-//! Deviation (class 1): the cache stores finished lines — normalized and
-//! segment-reset-terminated, what `apply_line_resets` would produce — so the
-//! paint pass skips them and an unchanged transcript line keeps its pointer
-//! identity for the screen diff. TS resets only in the paint path; the byte
-//! oracle in `tests/markdown.rs` strips the suffix before comparing.
-
 use std::rc::Rc;
 
 use crate::latex::{RenderLatexOptions, render_latex};
@@ -985,7 +973,6 @@ impl Component for Markdown {
         // Shared and finished from here on: every non-image line is stored the
         // way `apply_line_resets` would leave it (normalized, reset at the
         // end), so the paint pass skips it and a cache hit keeps its pointer
-        // identity across frames. Deliberate deviation from the TS original,
         // which resets only in the paint path; the reference moved exactly
         // this one component (`../notagent-main-rust/.../markdown.rs:351`).
         let result: Vec<Line> = result

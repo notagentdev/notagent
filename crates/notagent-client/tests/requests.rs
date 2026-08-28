@@ -1,5 +1,3 @@
-//! Port of `packages/client/test/requests.test.ts`.
-
 mod support;
 
 use notagent_protocol::{CommandResult, ListResult, ListTag, ProtocolErrorCode};

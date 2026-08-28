@@ -1,9 +1,3 @@
-//! `kimi_codingProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/kimi-coding.ts` (24 LOC). The generated
-//! `kimi-coding.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::AnthropicMessagesApi;

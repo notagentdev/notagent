@@ -1,26 +1,9 @@
-//! Calling an MCP tool, and what to do when the call fails (v0.1.22).
+//! MCP tool calls and transport recovery.
 //!
-//! The recovery decision is taken from `../kimi-code-main`, which is the one
-//! part of MCP both references disagree about and only one of them gets right.
-//! The reference this port is otherwise built on retries any transport error
-//! five times with backoff, which is wrong in both directions: it retries where
-//! the server already gave an answer, and it never reconnects a transport that
-//! is gone, which is the only case retrying could fix.
-//!
-//! Three outcomes, three answers:
-//!
-//! - The server answered — a protocol error, or a reply that could not be read.
-//!   Reconnecting cannot change what it said, so the error stands.
-//! - The failure is ambiguous — a send that did not land, a socket that
-//!   complained. Probe the connection: alive means a blip and the call is
-//!   retried in place, dead means the transport is gone.
-//! - The transport is provably gone. Reconnect once and call again on the fresh
-//!   connection, so a dropped connection costs a slow call rather than a turn.
-//!
-//! Retries are at-least-once. A transport that died after the server processed
-//! the call but before the answer arrived is indistinguishable from one that
-//! died before, and MCP has no deduplication across reconnects, so a retried
-//! call may repeat a side effect.
+//! Protocol errors stand as returned. Ambiguous transport failures probe the
+//! existing connection and retry once in place when it is still alive. A
+//! confirmed dead transport reconnects once before retrying. Retries are
+//! at-least-once because MCP cannot deduplicate calls across reconnects.
 
 use std::sync::Arc;
 
@@ -117,7 +100,6 @@ pub async fn call_tool(
 }
 
 /// Retries once on the same connection when a probe says it is still there.
-///
 /// Returns the failure to escalate with when it is not, which is either the
 /// original one or the retry's.
 async fn retry_in_place(

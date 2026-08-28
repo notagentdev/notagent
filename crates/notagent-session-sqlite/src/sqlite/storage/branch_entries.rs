@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/branch-entries.ts`.
-
 use serde_json::Value;
 
 use crate::session_types::{EntryType, SessionError, SessionErrorCode};
@@ -141,7 +139,6 @@ pub fn query_cached_branch_rows(
     Ok(rows.iter().map(cached_entry_row).collect())
 }
 
-/// TS reuses the row shape with `entry_seq` instead of `seq`.
 fn cached_entry_row(row: &Row) -> EntryRow {
     EntryRow {
         session_id: string_column(row, "session_id"),

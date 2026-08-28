@@ -1,20 +1,3 @@
-//! Port of `packages/coding-agent/src/modes/rpc/rpc-types.ts`.
-//!
-//! The stdin/stdout protocol: commands in, responses and events out, one JSON
-//! record per line. A command may carry an `id`, and the response repeats it —
-//! that is the only correlation the protocol has, because events of an ongoing
-//! run interleave with responses.
-//!
-//! Deviation (class 2): the extension UI request and response types are gone
-//! with the extension system (`plans/facts/extension-boundary.md` §3); nothing
-//! in the port raises such a request, so a client would wait forever for one.
-//!
-//! Deviation (class 1): TypeScript declares the commands as a union and casts
-//! the parsed JSON to it, so a malformed payload only fails where a field is
-//! read. Here the payload of each command is a typed struct, and a payload that
-//! does not fit becomes the same error response the TypeScript produces when the
-//! handler throws.
-
 use serde::{Deserialize, Serialize};
 
 use notagent_agent::types::ThinkingLevel;

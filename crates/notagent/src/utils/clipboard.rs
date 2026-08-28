@@ -1,21 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/clipboard.ts` (175 LOC) together
-//! with `clipboard-native.ts` (33 LOC).
-//!
-//! **Deviation (class 3): the native addon is gone.** TypeScript loads
-//! `@mariozechner/clipboard` when it can and falls back to the platform tools
-//! otherwise; the port always uses the platform tools. Two reasons, both from
-//! the TypeScript file itself: on Linux it skips the addon deliberately
-//! ("`clipboard-rs` […] does not retain selection ownership"), and on macOS and
-//! Windows the addon writes the same clipboard `pbcopy`/`clip` write. The
-//! observable result — the system clipboard holds the text — is identical, and
-//! no new dependency joins the workspace for it.
-//!
-//! Consequence for the ported tests: `test/clipboard.test.ts` and
-//! `test/clipboard-native.test.ts` mock the addon module and the whole of
-//! `child_process`; they test the resolution order rather than the behaviour.
-//! The port keeps that order testable through [`ClipboardOperations`], which the
-//! suite below swaps out the way `BashOperations` is swapped in `tools/bash.rs`.
-
 use base64::Engine;
 
 /// The largest OSC 52 payload that still goes out, in encoded characters.
@@ -103,7 +85,6 @@ pub struct SystemClipboard;
 
 impl ClipboardOperations for SystemClipboard {}
 
-/// `isWaylandSession(env)` (`utils/clipboard-image.ts:22-24`).
 pub fn is_wayland_session(operations: &dyn ClipboardOperations) -> bool {
     operations
         .env("WAYLAND_DISPLAY")
@@ -168,7 +149,6 @@ pub fn copy_to_clipboard_with(
                 let has_wayland_display = has_env(operations, "WAYLAND_DISPLAY");
                 let has_x11_display = has_env(operations, "DISPLAY");
                 if is_wayland_session(operations) && has_wayland_display {
-                    // TypeScript verifies wl-copy exists first, because a spawn
                     // error would arrive asynchronously and escape the `catch`.
                     if operations.has_program("wl-copy") && operations.write("wl-copy", &[], text) {
                         copied = true;

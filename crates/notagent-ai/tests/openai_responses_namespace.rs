@@ -1,9 +1,3 @@
-//! Port of `packages/ai/test/openai-responses-namespace.test.ts` (224 LOC) and
-//! `packages/ai/test/openai-responses-partial-json-cleanup.test.ts` (106 LOC).
-//!
-//! Both drive `processResponsesStream` over a scripted event sequence and then replay the
-//! resulting message through `convertResponsesMessages`.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use notagent_ai::api::openai_responses_shared::{
@@ -57,7 +51,6 @@ fn create_output(model: &Model) -> AssistantMessage {
 }
 
 /// Runs the events through the state machine and returns the final message plus every
-/// event the TS implementation would have pushed onto the stream.
 fn run(
     model: &Model,
     events: Vec<Value>,
@@ -315,7 +308,6 @@ fn does_not_add_a_namespace_to_ordinary_function_calls() {
 }
 
 // ---------------------------------------------------------------------------
-// openai-responses-partial-json-cleanup.test.ts
 // ---------------------------------------------------------------------------
 
 #[test]

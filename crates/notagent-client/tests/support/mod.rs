@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-//! Port of `packages/client/test/support.ts`.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_client::{
@@ -155,7 +153,6 @@ struct MemoryTransport {
 
 impl ByteTransport for MemoryTransport {
     fn send(&self, chunk: Vec<u8>) -> BoxFuture<Result<(), PiError>> {
-        // As in TS the body runs synchronously: the server sees the message
         // before the caller awaits the promise.
         if *self.closed.lock().expect("closed mutex") {
             return Box::pin(async { Err(PiError::Other("Transport is closed".to_owned())) });
@@ -215,7 +212,6 @@ pub async fn connect_client(server: &MemoryByteServer) -> PiClient {
     client
 }
 
-/// Port of `collectRequests`.
 #[derive(Clone, Default)]
 pub struct RequestLog {
     requests: Arc<Mutex<Vec<RequestEnvelope>>>,
@@ -336,7 +332,6 @@ pub fn session_event(snapshot: SessionSnapshot) -> ServerMessage {
     })
 }
 
-/// Port of `attachSession`.
 pub async fn attach_session(
     client: &PiClient,
     server: &MemoryByteServer,

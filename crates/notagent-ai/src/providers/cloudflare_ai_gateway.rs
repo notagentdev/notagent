@@ -1,7 +1,3 @@
-//! `cloudflareAIGatewayProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/cloudflare-ai-gateway.ts` (23 LOC).
-
 use std::sync::Arc;
 
 use crate::api::streams::{AnthropicMessagesApi, OpenAICompletionsApi, OpenAIResponsesApi};

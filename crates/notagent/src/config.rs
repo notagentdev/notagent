@@ -1,15 +1,3 @@
-//! Port of `packages/coding-agent/src/config.ts`.
-//!
-//! Deviation class 4 (distribution mechanics): the TS build ships as an npm
-//! package and a Bun single binary and reads `package.json` at runtime; the
-//! Rust build is a single binary and takes its identity from Cargo. The install
-//! detection and the self-update command builder keep their shape because a
-//! Rust binary can still be installed through a package manager wrapper.
-//!
-//! Deviation class 1: the detection functions read their inputs from an
-//! explicit [`InstallEnv`] instead of `process.execPath`/`process.argv`, which
-//! makes them testable without mutating global process state.
-
 use std::path::{Path, PathBuf};
 
 // =============================================================================
@@ -22,7 +10,6 @@ pub const APP_TITLE: &str = APP_NAME;
 pub const CONFIG_DIR_NAME: &str = ".notagent";
 /// User-level state only. Kept apart from [`CONFIG_DIR_NAME`] so this build
 /// does not share `~/.notagent/agent` (sessions, settings, auth, trust) with
-/// the TypeScript original while both are in use.
 pub const USER_CONFIG_DIR_NAME: &str = ".notagent-v2";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -45,7 +32,6 @@ pub fn get_share_viewer_url(gist_id: &str) -> String {
     format!("{base_url}#{gist_id}")
 }
 
-/// Port of `expandTildePath`/`normalizePath`: expands a leading `~`.
 pub fn expand_tilde_path(path: &str) -> PathBuf {
     if path == "~" {
         return home_dir();
@@ -88,7 +74,6 @@ pub fn get_auth_path() -> PathBuf {
 }
 
 /// Get path to the MCP OAuth credential file.
-///
 /// Kept apart from auth.json: those are the model providers' credentials, these
 /// are third-party servers', and a session that reads one has no business
 /// holding the other.
@@ -122,7 +107,6 @@ pub fn get_sessions_dir() -> PathBuf {
 }
 
 /// Get path to the background-task directory for one session.
-///
 /// Beside the sessions rather than inside them: a session is a single file, and
 /// a task owns a record plus a growing log, which needs a directory of its own.
 pub fn get_session_tasks_dir(session_id: &str) -> PathBuf {
@@ -139,7 +123,6 @@ pub fn get_debug_log_path() -> PathBuf {
 // =============================================================================
 
 /// Get the base directory for resolving package assets.
-///
 /// The Rust binary embeds its assets, so this is the executable's directory
 /// unless `NOTAGENT_PACKAGE_DIR` overrides it (kept for Nix/Guix, where store
 /// paths tokenize poorly).
@@ -193,7 +176,6 @@ pub fn get_bundled_interactive_asset_path(name: &str) -> PathBuf {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InstallMethod {
-    /// TS: `bun-binary` — a standalone executable, updated from the releases page.
     Binary,
     Npm,
     Pnpm,
@@ -215,14 +197,12 @@ impl InstallMethod {
     }
 }
 
-/// The process facts the detection reads (TS: `__dirname`, `process.execPath`,
 /// `process.argv[1]`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallEnv {
     pub package_dir: PathBuf,
     pub exec_path: PathBuf,
     pub entrypoint: Option<PathBuf>,
-    /// True when the executable is a standalone binary (TS: `isBunBinary`).
     pub standalone_binary: bool,
 }
 
@@ -379,7 +359,6 @@ fn dir_name(path: &str, windows: bool) -> &str {
     }
 }
 
-/// Port of `getInferredNpmInstall`: recognize `<prefix>/lib/node_modules/[@scope/]pkg`.
 fn get_inferred_npm_install(package_dir: &Path) -> Option<InferredNpmInstall> {
     let package_dir = package_dir.to_string_lossy();
     let windows = cfg!(windows) || package_dir.contains('\\');
@@ -406,7 +385,6 @@ fn get_inferred_npm_install(package_dir: &Path) -> Option<InferredNpmInstall> {
     })
 }
 
-/// Port of `readCommandOutput`.
 fn read_command_output(
     command: &str,
     args: &[String],
@@ -564,7 +542,6 @@ pub fn get_self_update_command_for_method(
     }
 }
 
-/// Port of `getGlobalPackageRoots`.
 fn get_global_package_roots(
     env: &InstallEnv,
     method: InstallMethod,
@@ -651,7 +628,6 @@ fn get_global_package_roots(
     }
 }
 
-/// Port of `normalizeExistingPathForComparison`.
 fn normalize_existing_path_for_comparison(path: &Path, resolve_symlinks: bool) -> Option<String> {
     let resolved = crate::utils::paths::resolve_path_default(
         &path.to_string_lossy(),
@@ -691,7 +667,6 @@ fn path_comparison_candidates(path: &Path) -> Vec<String> {
     candidates
 }
 
-/// Port of `getEntrypointPackageDir`: the nearest ancestor with a package.json.
 fn get_entrypoint_package_dir(entrypoint: Option<&Path>) -> Option<PathBuf> {
     let entrypoint = entrypoint?;
     let mut directory = entrypoint.parent()?.to_path_buf();
@@ -707,7 +682,6 @@ fn get_entrypoint_package_dir(entrypoint: Option<&Path>) -> Option<PathBuf> {
     }
 }
 
-/// Port of `isManagedByGlobalPackageManager`.
 fn is_managed_by_global_package_manager(
     env: &InstallEnv,
     method: InstallMethod,

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/`.
-
 pub mod bash;
 pub mod edit;
 pub mod edit_diff;
@@ -32,8 +30,6 @@ pub mod write;
 use serde::{Deserialize, Serialize};
 
 /// The built-in tools, as named on the wire.
-///
-/// The `ToolName` union of `packages/coding-agent/src/core/tools/index.ts`. The
 /// registry functions that build the tools themselves follow with the task
 /// tools (task 10); the names are needed earlier, because a shell is a tool
 /// allowlist and modes are validated against it.
@@ -55,7 +51,6 @@ pub enum ToolName {
     CreateGoal,
     UpdateGoal,
     Write,
-    /// Port addition (v0.1.24): writes a plan into `plans/`. Read-only shells
     /// get it too — see `core/tools/plan_create.rs` for why that is not a hole.
     PlanCreate,
     /// Takes back the last change to one file, from the snapshot every mutating
@@ -140,7 +135,6 @@ impl std::fmt::Display for ToolName {
 
 // ── the registry ─────────────────────────────────────────────────────
 //
-// The second half of `tools/index.ts`: one factory per tool name, the two
 // presets, and the map of everything. It closes here because the last two tools
 // it names — `task` and the three observation tools — arrive with plan task 10.
 
@@ -196,8 +190,6 @@ pub type ToolDef = Arc<dyn ToolDefinition>;
 /// `Tool` — the same tool as the agent loop takes it.
 pub type Tool = Arc<dyn AgentTool>;
 
-/// Deviation (class 1): TS keeps the per-tool option objects in one interface of
-/// optional fields; the port does the same with `Option` fields, and the two
 /// sources-only tools (`skill`, `todo_write`) carry their sources directly
 /// rather than through a one-field wrapper object.
 #[derive(Clone, Default)]
@@ -211,7 +203,6 @@ pub struct ToolsOptions {
     /// Shared by the three observation tools, which read one manager.
     pub tasks: Option<TaskToolsSources>,
     pub todo_write: Option<TodoWriteToolSources>,
-    /// Port addition (v0.1.21): absent inside a subagent, which is what makes
     /// the two goal tools refuse there.
     pub goal: Option<GoalToolSources>,
     pub bash: Option<BashToolOptions>,
@@ -408,9 +399,7 @@ pub fn create_read_only_tool_definitions(
 }
 
 /// `createAllToolDefinitions` — every tool, keyed by name.
-///
 /// Deviation (class 1): a `BTreeMap` rather than a record. `ToolName` orders by
-/// declaration, so iterating it yields the same sequence as the TS object
 /// literal, which is the order the system prompt lists tools in.
 pub fn create_all_tool_definitions(
     cwd: &str,

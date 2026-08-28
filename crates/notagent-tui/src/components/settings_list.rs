@@ -1,7 +1,3 @@
-//! Settings list with value cycling, submenus and optional fuzzy search.
-//!
-//! 1:1 port of `packages/tui/src/components/settings-list.ts` (249 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -11,17 +7,12 @@ use crate::keybindings::keybindings_match;
 use crate::tui::{Component, ComponentRef, Line, shared_lines};
 use crate::utils::{truncate_to_width, truncate_to_width_opts, visible_width, wrap_text_with_ansi};
 
-/// The `done(selectedValue?)` continuation TS hands to a submenu
-/// (`settings-list.ts:19`): `Some(Some(value))` is `done(value)`, `Some(None)`
 /// is the bare `done()` of a cancel, `None` means the submenu is still open.
-///
-/// Deviation class 1: TS calls the continuation directly, which would re-enter
 /// the list while it is mutably borrowed for the very input that reaches the
 /// submenu. The submenu therefore writes into the slot and the list reads it
 /// the moment that input returns — before anything can observe the difference.
 pub type SubmenuDone = Rc<RefCell<Option<Option<String>>>>;
 
-/// Factory opening a submenu for an item; the port of
 /// `submenu?: (currentValue, done) => Component`.
 pub type SubmenuFactory = Rc<dyn Fn(&str, SubmenuDone) -> ComponentRef>;
 
@@ -320,7 +311,6 @@ impl Component for SettingsList {
 
     fn handle_input(&mut self, data: &str) {
         // While a submenu is open all input goes to it. Its `done` lands in the
-        // slot; TS closes the submenu from inside the call itself.
         if let Some(submenu) = self.submenu_component.clone() {
             submenu.borrow_mut().handle_input(data);
             let done = self.submenu_done.borrow_mut().take();

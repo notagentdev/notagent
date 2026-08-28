@@ -1,9 +1,3 @@
-//! Port of `packages/ai/test/openrouter-images.test.ts` (140 LOC) and
-//! `packages/ai/test/images-models.test.ts` (209 LOC).
-//!
-//! The TS suite mocks the `openai` SDK; the port injects a canned `fetch`, because the
-//! adapter speaks the same REST call directly (substitution class 3).
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::auth::types::{AuthContext, BoxFuture};
@@ -266,7 +260,6 @@ async fn rejects_an_unregistered_api() {
 
 // === ImagesModels ===
 
-/// The `calls` array of the TS `testProvider`.
 type GenerateCalls = Arc<Mutex<Vec<(ImagesModel, Option<ImagesOptions>)>>>;
 
 struct RecordingImagesApi {

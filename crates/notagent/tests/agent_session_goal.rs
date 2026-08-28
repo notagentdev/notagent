@@ -1,9 +1,3 @@
-//! The goal continuation loop as the session drives it (port addition, v0.1.21).
-//!
-//! `core/goal` proves the state machine and `tests/goal_tools.rs` proves the
-//! tools. What runs here is the only thing neither can: that the loop actually
-//! turns, and that it actually stops.
-
 mod suite;
 
 use notagent::core::agent_session::PromptOptions;
@@ -150,7 +144,6 @@ async fn an_abort_does_not_drive_an_active_goal_or_open_todos() {
 }
 
 /// The stop that holds when the user gave no budget at all.
-///
 /// A model that keeps answering is continued until the cap and then control
 /// returns to the user — without this, an unbudgeted goal would never end.
 #[tokio::test]

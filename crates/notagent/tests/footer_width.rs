@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/test/footer-width.test.ts` (252 LOC, 9 cases).
-//!
-//! The TS suite hands the component duck-typed stubs for the session and the
-//! data provider; here they implement the two traits the component reads
-//! through (class-1 deviation documented in `components/footer.rs`).
-
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use notagent::core::agent_session::ContextUsage;
@@ -50,7 +44,6 @@ fn usage_json((input, output, cache_read, cache_write, cost): Usage) -> Value {
         "output": output,
         "cacheRead": cache_read,
         "cacheWrite": cache_write,
-        // The TS fake only sets `cost.total`; `UsageCost` is a struct here, so
         // the fixture fills the whole breakdown (class-1 harness deviation).
         "cost": {
             "input": 0.0,

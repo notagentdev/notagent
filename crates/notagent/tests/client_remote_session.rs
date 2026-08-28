@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/client/remote-session.test.ts` (196 LOC).
-
 mod client_support;
 
 use std::sync::{Arc, Mutex};
@@ -300,7 +298,6 @@ async fn reports_subscriber_failures_without_interrupting_other_subscribers() {
     let remote_session =
         open_remote_session(&client, &server, session_snapshot("session-1"), options).await;
 
-    // The panic below is the port of a throwing listener; keep it off stderr.
     let previous_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let _failing = remote_session

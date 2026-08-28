@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/runtime-credentials.test.ts` (86 LOC).
-
 use std::sync::{Arc, Mutex};
 
 use notagent::core::auth_storage::AuthStorage;

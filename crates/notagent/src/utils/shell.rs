@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/shell.ts`.
-
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
@@ -85,7 +83,6 @@ fn find_bash_on_path() -> Option<String> {
 }
 
 /// Resolve shell configuration based on platform and an optional explicit shell path.
-///
 /// Resolution order: user-specified `shellPath`, then on Windows Git Bash in
 /// known locations followed by bash on PATH, on Unix `/bin/bash`, bash on PATH
 /// and finally `sh`.
@@ -165,7 +162,6 @@ pub fn get_shell_env() -> BTreeMap<String, String> {
 }
 
 /// Sanitize binary output for display and storage.
-///
 /// Removes control characters (except tab, newline and carriage return) and the
 /// Unicode format characters that crash width measurement. Lone surrogates
 /// cannot occur in a Rust `str`.
@@ -218,7 +214,6 @@ pub fn kill_tracked_detached_children() {
 }
 
 /// Ask a process and all its children to stop (cross-platform).
-///
 /// The polite half of stopping: a shell that is told to terminate closes its
 /// files, a dev server drops its socket, and a test runner writes its report.
 /// Callers pair this with [`kill_process_tree`] after a grace window.

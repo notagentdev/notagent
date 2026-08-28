@@ -1,8 +1,3 @@
-//! Differential test of the openai-responses stream state machine.
-//!
-//! `fixtures/openai-responses-stream.jsonl` holds the event sequence the TS
-//! implementation emits for each scripted SSE body (see `fixtures/generators`).
-
 use std::sync::Arc;
 
 use notagent_ai::api::openai_responses::{OpenAIResponsesOptions, stream};

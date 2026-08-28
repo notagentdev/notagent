@@ -1,9 +1,3 @@
-//! Port of `packages/tui/test/input.test.ts` (647 LOC).
-//!
-//! The two Unicode word boundary cases record the documented segmentation
-//! difference (ICU dictionary versus UAX #29, see PARITY.md); everything else
-//! matches the TS expectations exactly.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -533,10 +527,8 @@ fn keeps_the_cursor_visible_when_horizontally_scrolling_wide_text() {
     assert!(visible_width(line) <= width);
 }
 
-/// The TS case expects ICU's dictionary segmentation (你好 and 世界 as single
 /// words). `unicode-segmentation` implements UAX #29 and breaks between Han
 /// characters — the documented residual difference of the sanctioned
-/// `Intl.Segmenter` substitution (see PARITY.md). The stops at the fullwidth
 /// punctuation, which the case is about, are identical.
 #[test]
 fn alt_d_handles_unicode_word_boundaries() {

@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/test/sql.test.ts`.
-
 use notagent_session_sqlite::sql;
 use notagent_session_sqlite::{
     RusqliteDatabase, SqlQuery, SqliteDatabase, join_sql_fragments, param, text,

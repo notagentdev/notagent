@@ -181,6 +181,14 @@
 					"$ref": "#/$defs/colorValue",
 					"description": "Tool execution box (error state)"
 				},
+				"toolDiffAddedBg": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Added line background in tool diffs (optional; defaults to toolSuccessBg)"
+				},
+				"toolDiffRemovedBg": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Removed line background in tool diffs (optional; defaults to toolErrorBg)"
+				},
 				"toolTitle": {
 					"$ref": "#/$defs/colorValue",
 					"description": "Tool execution box title color"

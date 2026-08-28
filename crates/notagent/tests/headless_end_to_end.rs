@@ -1,12 +1,3 @@
-//! End-to-end evidence for gate G2 (master plan, section Gates): the headless
-//! modes drive a real session against the faux provider, from the prompt through
-//! a tool call to the answer.
-//!
-//! Nothing below the mode is a stand-in. The model runtime is the real one with
-//! the faux provider registered as a native provider, the services are the ones
-//! `main.ts` builds, the session comes out of `create_agent_session_from_services`
-//! and the tools are the built-in ones — only the provider is scripted.
-
 mod app_runtime;
 
 use std::sync::Arc;

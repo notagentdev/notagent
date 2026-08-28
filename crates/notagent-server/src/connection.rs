@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/connection.ts`.
-
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
@@ -24,7 +22,6 @@ pub trait ByteConnectionHandler: Send + Sync {
     fn on_error(&self, error: ServerError);
 }
 
-/// Deviation class 1: the acceptor is a shared closure instead of a function value.
 pub type ByteConnectionAcceptor =
     Arc<dyn Fn(Arc<dyn ByteConnection>) -> Arc<dyn ByteConnectionHandler> + Send + Sync>;
 
@@ -72,7 +69,6 @@ impl ConnectionState {
         self.lock().disconnected
     }
 
-    /// Port of `isTerminalConnection`.
     pub(crate) fn is_terminal(&self) -> bool {
         let data = self.lock();
         data.disconnected

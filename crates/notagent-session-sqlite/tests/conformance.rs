@@ -1,12 +1,3 @@
-//! Port of the session backend conformance suite
-//! `packages/agent/src/harness/session/testing/conformance.ts`, driven by the
-//! SQLite backend as in
-//! `packages/session-backends/sqlite-node/test/conformance.test.ts`.
-//!
-//! Deviation class 1: TS generates the cases from a fixture factory so several
-//! backends can share them; the port has one backend, so the cases are plain
-//! tests against `SqliteSessionRepository`. Group and case names are kept.
-
 use notagent_agent::AgentMessage;
 use notagent_ai::{TextContent, TextOrImageContent, UserContent, UserMessage};
 use notagent_session_sqlite::session_types::{
@@ -1027,7 +1018,6 @@ async fn scopes_open_operations_by_lane_and_limit() {
     fixture.repo.close().await;
 }
 
-/// TS mutates the returned record to prove the storage keeps its own copy;
 /// Rust returns owned values, so mutation cannot reach the storage at all.
 #[tokio::test]
 async fn returns_immutable_open_operation_records() {
@@ -1048,11 +1038,8 @@ async fn returns_immutable_open_operation_records() {
     fixture.repo.close().await;
 }
 
-/// The TS case feeds a negative adjustment (`input: -2`, `totalTokens: -2`).
 /// `notagent_ai::Usage` counts tokens as `u64` (B's contract), so negative
 /// token counts are not representable — only the negative cost survives. The
-/// expectations below therefore differ from TS in the token totals; see
-/// interface request C-2.
 fn usage(
     input: i64,
     output: i64,
@@ -1253,7 +1240,6 @@ async fn clears_session_names_durably() {
     fixture.repo.close().await;
 }
 
-/// TS mutates the values it read to prove the storage keeps its own copies;
 /// Rust returns owned values, so a mutation cannot reach the storage.
 #[tokio::test]
 async fn returns_immutable_copies_from_reads() {
@@ -1465,7 +1451,6 @@ async fn persists_tool_result_termination_decisions() {
     fixture.repo.close().await;
 }
 
-/// TS feeds `undefined` and `bigint` payloads; neither is representable in
 /// `serde_json::Value`, so the case checks the surviving invariant: a rejected
 /// record leaves no trace and the next valid record still gets sequence 1.
 #[tokio::test]

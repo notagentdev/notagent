@@ -1,14 +1,3 @@
-//! Normalization of provider error bodies.
-//!
-//! Port of `packages/ai/test/error-body.test.ts` (226). The TS normalizer probes the
-//! field names of four SDK error shapes (Mistral `statusCode`/`body`, openai
-//! `status`/`error`, `@google/genai` message-carried body, Bedrock
-//! `$metadata`/`$response`) and defends against serializing SDK internals. The Rust port
-//! gets the same three pieces of information from its own HTTP layer as an explicit
-//! struct (substitution class 3), so each SDK shape becomes the `RawProviderError` the
-//! layer would build from it; the defensive cases collapse into "the layer passes no
-//! body", which is exactly what they assert.
-
 use notagent_ai::utils::error_body::{
     MAX_PROVIDER_ERROR_BODY_CHARS, RawProviderError, format_provider_error,
     normalize_provider_error,

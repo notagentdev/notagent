@@ -1,5 +1,3 @@
-//! Port of `packages/server/test/listener.test.ts`.
-
 mod support;
 
 use std::sync::atomic::{AtomicUsize, Ordering};

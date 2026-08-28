@@ -1,8 +1,3 @@
-//! Loader that can be cancelled with Escape.
-//!
-//! 1:1 port of `packages/tui/src/components/cancellable-loader.ts` (40 LOC).
-//! `AbortController` becomes a `CancellationToken` (master plan substitution).
-
 use tokio_util::sync::CancellationToken;
 
 use crate::components::loader::{ColorFn, Loader, LoaderIndicatorOptions};

@@ -1,7 +1,3 @@
-//! RFC 8628 device-code polling.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/device-code.ts` (98 LOC).
-
 use std::future::Future;
 use std::time::Duration;
 

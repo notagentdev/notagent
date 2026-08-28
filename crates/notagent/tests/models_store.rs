@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/test/models-store.test.ts` (139 LOC).
-//!
-//! `vi.spyOn(lockfile, "lock")` becomes a counting/gating backend wrapper passed to
-//! `FileModelsStore::with_backend` (deviation class 3): the assertion "how often was
-//! the file locked" survives, the mocking mechanism does not.
-//!
-//! The four TS `it()` blocks run as one sequential test (deviation class 1): they
-//! share the process-wide read state that `FileModelsStore` claims for the first
-//! path it sees, and Rust runs test functions in parallel threads.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

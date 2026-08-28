@@ -1,26 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/syntax-highlight.ts`.
-//!
-//! Syntax coloring for the terminal. The TypeScript runs highlight.js, takes
-//! the HTML it produces and walks it, replacing every `<span class="hljs-…">`
-//! with the terminal escape the theme has for that scope. The master plan
-//! substitutes highlight.js with tree-sitter (`tree-sitter-highlight`), so this
-//! module keeps the second half verbatim — the HTML walker, the scope stack and
-//! the theme lookup are the port of `renderHighlightedHtml` — and puts a
-//! tree-sitter front end where the highlight.js call was: the highlighter emits
-//! the same `<span class="hljs-…">` markup, with capture names translated to
-//! highlight.js scope names by `HIGHLIGHT_SCOPES` below.
-//!
-//! Two consequences of the substitution, both visible to users:
-//!
-//!   * only the languages with a bundled grammar are highlighted (see
-//!     `LANGUAGES`); for everything else `supports_language` reports `false`,
-//!     which is the path `highlightCode` already takes for unknown languages —
-//!     the code block is drawn in the flat `mdCodeBlock` color.
-//!   * `highlight` without a language does not auto-detect. highlight.js guesses
-//!     from a language subset; tree-sitter has nothing equivalent, and no caller
-//!     in the app asks for it (`theme.rs` always passes a validated language,
-//!     deliberately, because the guessing was unreliable).
-
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
@@ -39,7 +16,6 @@ pub type HighlightTheme = HashMap<String, HighlightFormatter>;
 #[derive(Default, Clone)]
 pub struct HighlightOptions {
     pub language: Option<String>,
-    /// Kept for signature parity: highlight.js aborts on an `illegal` match
     /// unless this is set, and every caller in the app sets it. tree-sitter has
     /// no such concept — an unparsable region becomes an ERROR node and the
     /// surrounding code is still highlighted.
@@ -209,14 +185,11 @@ pub fn supports_language(name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// tree-sitter capture name → highlight.js scope name.
-///
 /// The theme (`modes/interactive/theme/theme.rs`, `buildCliHighlightTheme` in
-/// TypeScript) is keyed by highlight.js scopes, so the capture names of the
 /// bundled queries are translated here instead of duplicating the theme. Names
 /// that map to a scope the theme has no entry for (`subst`, `symbol`) inherit
 /// the enclosing scope, exactly as they do under highlight.js — a `${…}` inside
 /// a template literal stays string-colored.
-///
 /// `HighlightConfiguration::configure` matches a capture against the entry with
 /// the most dot-separated parts, so the specific names below win over their
 /// prefixes. Every name that the bundled `highlights.scm`/`injections.scm`/
@@ -343,10 +316,8 @@ fn canonical_language(name: &str) -> Option<&'static str> {
 }
 
 fn build_configuration(canonical: &'static str) -> Result<HighlightConfiguration, HighlightError> {
-    // The typescript and tsx grammars extend javascript, so their queries only
     // carry the additions; the javascript patterns have to come first because a
     // later pattern wins for the same node. The JSX patterns are left out of
-    // plain typescript — that grammar has no `jsx_opening_element` node and the
     // query would not compile.
     let javascript_highlights = tree_sitter_javascript::HIGHLIGHT_QUERY;
     let jsx_highlights = tree_sitter_javascript::JSX_HIGHLIGHT_QUERY;
@@ -495,7 +466,6 @@ fn escape_html(text: &str) -> String {
 
 /// The one language highlight.js does not describe with a grammar: `diff` is a
 /// list of line-prefix rules (`highlight.js/lib/languages/diff.js`), and there
-/// is no tree-sitter diff grammar to substitute for it. The rules are ported
 /// directly, including their order — highlight.js takes the leftmost match and,
 /// where two rules start at the same place, the one declared first. That is
 /// what keeps `+++ b/file` a header instead of an addition.
@@ -677,8 +647,6 @@ mod tests {
             .collect()
     }
 
-    // Ported from `packages/coding-agent/test/syntax-highlight.test.ts`.
-
     #[test]
     fn renders_highlighted_spans_with_the_provided_theme() {
         let rendered = render_highlighted_html(
@@ -738,8 +706,6 @@ mod tests {
         assert!(rendered.contains("[number:1]"), "{rendered}");
     }
 
-    // Beyond the TypeScript suite: the substitution's own surface.
-
     #[test]
     fn resolves_language_names_case_insensitively_and_through_aliases() {
         assert_eq!(canonical_language("TypeScript"), Some("typescript"));
@@ -765,7 +731,6 @@ mod tests {
 
     #[test]
     fn colors_diff_additions_and_deletions() {
-        // `test/syntax-highlight.test.ts` pins this through the theme: the
         // whole line, prefix included, carries the addition/deletion color.
         assert_eq!(
             highlight_to_html("-old\n+new\n", "diff").unwrap(),
@@ -813,8 +778,7 @@ mod tests {
     }
 
     #[test]
-    fn pins_the_scopes_the_typescript_theme_suite_checks() {
-        // Two of the three cases in `test/syntax-highlight.test.ts` land on the
+    fn pins_required_theme_scopes() {
         // same theme slot as under highlight.js: a JavaScript regex literal is
         // string-colored, an HTML tag name keyword-colored (`name`).
         assert!(

@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/test/config.test.ts`.
-//!
-//! The TS suite patches `process.execPath`/`__dirname`; the Rust port reads the
-//! same facts from an explicit [`InstallEnv`], so the tests build one instead.
-//! Package managers are stubbed with scripts on PATH exactly as in the TS suite.
-
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -52,7 +46,6 @@ impl TempDir {
         path
     }
 
-    /// Put a stub package-manager script first on PATH, like the TS helpers.
     fn stub_command(&self, bin_dir: &Path, name: &str, script: &str) {
         std::fs::create_dir_all(bin_dir).expect("creates");
         let path = bin_dir.join(name);

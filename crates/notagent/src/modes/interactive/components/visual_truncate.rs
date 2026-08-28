@@ -1,9 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/visual-truncate.ts` (50 LOC).
-//!
-//! Shared utility for truncating text to visual lines (accounting for line wrapping).
-//! Used by both tool-execution.rs and bash-execution.rs for consistent behavior.
-
 use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Line};
 
@@ -18,7 +12,6 @@ pub struct VisualTruncateResult {
 
 /// Truncate text to a maximum number of visual lines (from the end).
 /// This accounts for line wrapping based on terminal width.
-///
 /// * `text` — The text content (may contain newlines)
 /// * `max_visual_lines` — Maximum number of visual lines to show
 /// * `width` — Terminal/render width

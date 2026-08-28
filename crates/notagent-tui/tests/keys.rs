@@ -1,9 +1,3 @@
-//! Port of `packages/tui/test/keys.test.ts` (633 LOC).
-//!
-//! The Kitty protocol flag and the environment are process-global in TS as well
-//! as here, but Rust runs tests in parallel threads — every test therefore takes
-//! the same guard and restores the previous state.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent_tui::keys::{

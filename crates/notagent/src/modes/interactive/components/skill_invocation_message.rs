@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/skill-invocation-message.ts` (55 LOC).
-
 use std::rc::Rc;
 
 use notagent_tui::components::box_component::BoxComponent;

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/read.ts` (tool half).
-
 use std::sync::Arc;
 
 use notagent_agent::types::{
@@ -55,7 +53,6 @@ fn read_schema() -> Value {
 /// Pluggable operations, so reading can be delegated to a remote system.
 pub trait ReadOperations: Send + Sync {
     fn read_file<'a>(&'a self, absolute_path: &'a str) -> BoxFuture<'a, Result<Vec<u8>, String>>;
-    /// `access(path, R_OK)`; the error message is what TS reports.
     fn access<'a>(&'a self, absolute_path: &'a str) -> BoxFuture<'a, Result<(), String>>;
     fn detect_image_mime_type<'a>(
         &'a self,
@@ -207,8 +204,6 @@ fn format_read_line_range(args: &Value, theme: &Theme) -> String {
     let start_number = offset.map_or(Some(1.0), Value::as_f64);
     // `startLine + limit - 1`, then `endLine ? … : ""` — 0 and NaN are falsy, so
     // a limit that is not a number leaves the range open-ended. Deviation
-    // (class 1): TypeScript would concatenate a string operand first; the port
-    // treats every non-numeric value the way TS treats the rest, as NaN.
     let end_line = match (start_number, limit) {
         (Some(start), Some(limit)) => limit
             .as_f64()

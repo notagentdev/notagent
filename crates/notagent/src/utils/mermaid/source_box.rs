@@ -1,11 +1,3 @@
-//! The raw source in a framed box.
-//!
-//! Port of `grok-mermaid/src/source-box.ts` (89 LOC). What to show when
-//! [`super::render`] returns `None`, or returns art too wide for the space at
-//! hand. Both are the caller's call, so this is theirs to invoke — and theirs
-//! to caption, since only they know whether some other view of the diagram
-//! exists to point the reader at.
-
 use super::labels::{src_lines, strip_controls};
 use super::types::{Cls, MermaidArt, Span};
 use super::width::{measured, string_width};
@@ -15,7 +7,6 @@ fn sat(a: usize, b: usize) -> usize {
 }
 
 /// Frame `src` in a titled box, hard-wrapping its lines to `max_width` columns.
-///
 /// The result can still exceed `max_width`: the body wraps to
 /// `max(8, max_width - 4)` and the ` mermaid: <kind> ` title is never
 /// truncated, so a long first token sets a floor. Check `width` if it matters.

@@ -1,14 +1,10 @@
 //! The wiring of the interactive mode, slice by slice.
-//!
 //! Evidence for the parts of plan task 13 that are on main. It is deliberately
-//! narrow: workstream A owns the G3 end-to-end scenarios
 //! (`tests/g3_interactive_e2e.rs`), which drive the same entry point through the
 //! virtual terminal with the full app runtime. What is checked here is that the
-//! seam of interface request A-23 does what it promises — the mode takes a
 //! terminal and its pump from outside, hands back a renderer the caller drives,
 //! and resolves with an exit code — and that the paths of the current slice
 //! reach the screen.
-//!
 //! Everything below the mode is the production path: the app runtime of the
 //! headless G2 suites with only the provider scripted.
 
@@ -918,7 +914,6 @@ async fn a_reload_that_finds_project_resources_writes_the_implicit_trust_decisio
         let app = HeadlessApp::create().await;
         let terminal = VirtualTerminal::new(COLUMNS, ROWS);
         // The session started in a folder without trust-requiring resources, so
-        // it was trusted implicitly; `main.ts` hands that cwd to the mode.
         let mut driver = Driver::start_with_options(
             &app,
             terminal,
@@ -1060,7 +1055,6 @@ async fn the_tree_offers_a_custom_summary_prompt() {
         driver.send_keys(KEY_ENTER).await;
         driver.wait_for("Custom summarization instructions").await;
 
-        // Escape goes back to the question, as in TypeScript.
         driver.send_keys(KEY_ESCAPE).await;
         driver.wait_for("Summarize branch?").await;
         driver.send_keys(KEY_ESCAPE).await;

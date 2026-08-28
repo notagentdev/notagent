@@ -1,7 +1,3 @@
-//! Retry policy and classification of transient assistant errors.
-//!
-//! 1:1 port of `packages/ai/src/utils/retry.ts` (228 LOC).
-
 use std::future::Future;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -23,7 +19,6 @@ const NON_RETRYABLE_PROVIDER_LIMIT_PATTERNS: [&str; 8] = [
     "billing",
 ];
 
-/// Transient provider, transport and stream failures (`retry.ts:27-88`).
 const RETRYABLE_PROVIDER_PATTERNS: [&str; 38] = [
     "overloaded",
     "rate.?limit",
@@ -182,7 +177,6 @@ where
             .unwrap_or_else(|| "Unknown error".to_string());
         last_retry = Some((attempt, error_message.clone()));
         let policy = policy.expect("max_attempts > 0 implies a policy");
-        // Saturating on purpose: with `retry.n` ≥ 65 the TS float just grows
         // while `u64::pow` would panic in debug and wrap in release.
         let delay_ms = policy
             .base_delay_ms

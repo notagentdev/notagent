@@ -1,8 +1,3 @@
-//! Port of `grok-mermaid/src/graph.ts` (142 LOC).
-//!
-//! The shared diagram model. Flowchart, state, class and ER sources all parse
-//! into a `Graph`; only sequence diagrams have their own model.
-
 use std::collections::HashMap;
 
 use super::labels::ascii_upper;

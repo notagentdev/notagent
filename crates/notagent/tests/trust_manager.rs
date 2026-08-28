@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/test/trust-manager.test.ts`, plus the
-//! decision path of `core/project-trust.ts`, which the TypeScript suite covers
-//! only through the interactive selector.
-//!
-//! The resource-detection case lives in `trust_manager_home.rs`: it replaces
-//! `$HOME`, and an integration test file is the smallest unit that gets a
-//! process of its own to do that in.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

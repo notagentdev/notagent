@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/write.ts` (tool half).
-
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -129,7 +127,6 @@ pub fn create_write_tool_definition(
 // ============================================================================
 
 /// The highlighted form of the content being written, kept across renders.
-///
 /// While the model streams the `content` argument, every render would otherwise
 /// re-highlight the whole file. The cache highlights the appended text only and
 /// refreshes the first [`WRITE_PARTIAL_FULL_HIGHLIGHT_LINES`] lines, which are
@@ -143,19 +140,12 @@ struct WriteHighlightCache {
 }
 
 /// The row state of a `write` call: its component and its highlight cache.
-///
-/// TypeScript hangs the cache off the component (`WriteCallRenderComponent`);
-/// both live for exactly one row, so the port keeps them together in the row
-/// state (deviation class 1).
 #[derive(Default)]
 struct WriteRenderState {
     call: Option<Rc<RefCell<Text>>>,
     cache: Option<WriteHighlightCache>,
     /// The result is a `Text` when there is output and an empty `Container`
-    /// otherwise. TypeScript reuses one slot for both and would throw if the
-    /// kind ever changed within a row (`Text` has no `clear`); the port keeps
     /// one slot per kind, which is unreachable for `write` because a result is
-    /// set once (deviation class 1).
     result_text: Option<Rc<RefCell<Text>>>,
     result_container: Option<Rc<RefCell<Container>>>,
 }
@@ -204,7 +194,6 @@ fn rebuild_write_highlight_cache_full(
 }
 
 /// `rawPath ? getLanguageFromPath(rawPath) : undefined` — an empty path has no
-/// language either, because `""` is falsy in TypeScript.
 fn write_language(raw_path: Option<&str>) -> Option<String> {
     let raw_path = raw_path.filter(|path| !path.is_empty())?;
     get_language_from_path(raw_path)
@@ -329,7 +318,6 @@ fn format_write_call(
         // every line is new, so each preview row is a washed added row with
         // its line number, directly under the badge line (no blank row), and
         // the summary line closes the block. The standard style below is the
-        // TS original, which the render oracle pins.
         let num_width = total_lines.to_string().len();
         for (index, line) in display_lines.iter().enumerate() {
             let content = match &lang {
@@ -733,8 +721,6 @@ mod tests {
         assert_eq!(error.message, "Operation aborted");
         assert!(!directory.path.join("file.txt").exists());
     }
-
-    // ---- atomic leases (port addition, v0.1.19) ---------------------------
 
     use crate::core::tools::file_lease::{FileLease, FileLeaseStore};
 

@@ -1,8 +1,3 @@
-//! Transcript search for the alternate screen.
-//!
-//! 1:1 port of `packages/tui/src/alt-screen-search.ts` (157 LOC): the corpus
-//! with its row/column mapping, the match search and the overlay component.
-
 use crate::components::input::Input;
 use crate::tui::{Component, Focusable, Line};
 use crate::utils::{graphemes, strip_terminal_sequences, truncate_to_width_opts, visible_width};
@@ -34,7 +29,6 @@ pub struct AltScreenSearchMatch {
 
 #[derive(Default)]
 struct SearchCorpus {
-    /// Corpus text as characters (TS indexes UTF-16 units; the mapping is
     /// per character here, which keeps corpus and source aligned).
     text: Vec<char>,
     source: Vec<Option<SearchSourceSpan>>,
@@ -217,8 +211,6 @@ impl AltScreenSearchComponent {
     }
 
     /// Whether the query changed since the last check.
-    ///
-    /// The TS version calls an `onQueryChange` callback; the renderer polls this
     /// instead because the callback would need `&mut` access to the renderer.
     pub fn take_query_changed(&mut self) -> bool {
         std::mem::take(&mut self.query_changed)

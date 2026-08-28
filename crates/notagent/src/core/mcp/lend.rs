@@ -1,27 +1,22 @@
 //! Lending this agent's own tools to an external one (v0.1.22).
-//!
 //! Taken from `../notagent-main-rust`'s `mcp_lend.rs`, and the transport choice
 //! is the load-bearing part of it. MCP's stdio flavour makes the client *spawn*
 //! a server, and a freshly spawned process knows nothing of the session the user
 //! is sitting in — no permission chain, no leases, no file tracking. Serving
 //! over HTTP from inside the live process instead means a borrowed call lands
 //! exactly where one of ours does, through the same registry.
-//!
 //! The endpoint binds to loopback on a port the operating system picks, and
 //! every request must carry a token. Both matter: loopback is not a boundary —
 //! every process on the machine shares it — and this socket runs our tools with
 //! our permissions.
-//!
 //! One server for the process, one token per session. A server per session dies
 //! with its session, and an external agent outliving the endpoint it was started
 //! with is exactly the failure that reads as "cannot connect" on every call.
-//!
 //! What may be lent is not decided here, and neither is whether a borrowed call
 //! may run. The session's active tool list decides the first and its permission
 //! chain decides the second, both the same ones a turn of ours meets. A second
 //! list or a second gate beside them would be a rule to keep in step, and it
 //! would drift.
-//!
 //! That is not a detail. The permission chain is installed on the agent loop
 //! (`crate::core::sdk`), not on the tool, so an endpoint that reaches straight
 //! for a tool definition meets no gate at all — which is what this module did
@@ -52,10 +47,8 @@ struct Scope {
 }
 
 /// Where the lent tools come from and how they run.
-///
 /// A trait rather than the session itself, so this module does not reach back
 /// into the session's internals — and so the tests can lend something small.
-///
 /// Running a borrowed tool is the source's job, not this module's. The
 /// reference is explicit that a borrowed call goes through the same door a turn
 /// of ours uses, "so the permission gate, file tracking and hooks apply
@@ -69,7 +62,6 @@ pub trait LentToolSource: Send + Sync {
     fn lendable(&self) -> Vec<Arc<dyn ToolDefinition>>;
 
     /// Runs one of them, through everything a turn's call goes through.
-    ///
     /// `signal` is the borrowing client's own cancellation, so an agent that
     /// gives up stops the work it started — and so a permission prompt raised
     /// for this call is settled when the asker goes away, rather than waiting
@@ -264,7 +256,6 @@ impl ServerHandler for LentTools {
     }
 
     /// The tools this session may run, and only those.
-    ///
     /// Advertising more would invite a call that can only be refused, and a
     /// borrowing agent believes the schema it was given over the error it gets.
     async fn list_tools(
@@ -286,7 +277,6 @@ impl ServerHandler for LentTools {
     }
 
     /// Runs one tool in this session.
-    ///
     /// A tool that fails reports it inside the result rather than as a protocol
     /// error: the borrowing agent should read the message and adapt, not lose
     /// the connection over it.

@@ -1,26 +1,3 @@
-//! MCP server configuration and the trust decision that gates it.
-//!
-//! Port addition (user decision 2026-08-18, v0.1.22), taken from
-//! `../notagent-main-rust`'s `notagent_domain/src/mcp.rs` and following the
-//! `.mcp.json` shape Claude Code established.
-//!
-//! Two files are read: a project-local `.mcp.json` beside the workspace and a
-//! user-level one under the agent directory. On a name collision the project's
-//! entry wins, because that is the one the person opening the repository chose
-//! to see.
-//!
-//! A project-local file is not honoured until the user accepts it. It names
-//! programs to run on their machine with their environment, and the acceptance
-//! is bound to a hash of the file's contents, so editing an accepted file asks
-//! again rather than inheriting the old answer.
-//!
-//! Scope: this is a client and nothing else. It connects to servers, discovers
-//! their tools and calls them. MCP's prompts, resources, sampling and
-//! elicitation are not implemented — a server offering them is used for its
-//! tools and the rest is ignored, which is what both references do. Lending
-//! this agent's own tools out over MCP is the opposite direction and a separate
-//! feature; nothing here serves anything.
-
 pub mod auth;
 pub mod call;
 pub mod client;
@@ -45,7 +22,6 @@ pub const DEFAULT_MCP_TIMEOUT_SECS: u64 = 300;
 
 /// How long getting a server up and its tools listed may take when its config
 /// says nothing.
-///
 /// Far shorter than the call deadline on purpose: a server that has not
 /// finished its handshake in half a minute is not slow, it is broken, and the
 /// session waits for this before the first turn.
@@ -84,7 +60,6 @@ impl From<String> for ServerName {
 }
 
 /// A configured server: a program to spawn, or a URL to reach.
-///
 /// Untagged, because `.mcp.json` distinguishes the two by which keys are
 /// present rather than by a discriminator.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -160,7 +135,6 @@ impl McpServerConfig {
     }
 
     /// The deadline for coming up and listing tools.
-    ///
     /// Falls back to `startupTimeout`, then to `timeout`, then to
     /// [`DEFAULT_MCP_STARTUP_TIMEOUT_SECS`] — so a file that only sets
     /// `timeout` keeps behaving exactly as it did.
@@ -190,7 +164,6 @@ pub struct McpStdioServer {
     pub env: BTreeMap<String, String>,
 
     /// The directory the program is started in; absent means this session's.
-    ///
     /// A server that resolves paths relative to where it runs needs this, and
     /// inheriting the agent's directory silently is the kind of thing that
     /// works until someone starts the agent from somewhere else.
@@ -203,7 +176,6 @@ pub struct McpStdioServer {
     pub timeout: Option<u64>,
 
     /// Deadline in seconds for getting the server up and its tools listed.
-    ///
     /// Separate from `timeout` because the two are different waits: a server
     /// that has not answered its handshake in ten seconds is broken, while a
     /// tool doing real work may legitimately take minutes. One number for both
@@ -222,7 +194,6 @@ pub struct McpStdioServer {
 
     /// Only these tools are offered, when given. Taken from
     /// `../kimi-code-main`'s `enabledTools`.
-    ///
     /// A server with sixty tools costs its whole manifest on every turn, and
     /// most configurations want three of them. The names are the server's own,
     /// before qualification, because that is what its documentation lists.
@@ -274,7 +245,6 @@ pub struct McpHttpServer {
 
     /// Only these tools are offered, when given. Taken from
     /// `../kimi-code-main`'s `enabledTools`.
-    ///
     /// A server with sixty tools costs its whole manifest on every turn, and
     /// most configurations want three of them. The names are the server's own,
     /// before qualification, because that is what its documentation lists.
@@ -435,7 +405,6 @@ impl McpConfig {
     }
 
     /// A stable identifier for these contents.
-    ///
     /// Stable across restarts, which the trust store depends on: a hasher with
     /// a per-process seed would make every remembered decision expire on
     /// restart. The `BTreeMap` gives the serialization a fixed order.
@@ -477,7 +446,6 @@ pub enum McpConfigError {
 }
 
 /// Reads one configuration file, or `None` when it does not exist.
-///
 /// A file that exists and does not parse is an error rather than an empty
 /// config: a typo that silently switches off every server is worse than being
 /// told about it.
@@ -507,12 +475,9 @@ pub fn read_mcp_config(
 }
 
 /// Writes one scope's file, replacing it whole.
-///
-/// Through a temporary file and a rename, like every other config this port
 /// writes: a crash mid-write must not leave a `.mcp.json` that no longer
 /// parses, because the next start would then refuse to configure anything and
 /// say only that the file is broken.
-///
 /// A config with no servers left still writes `{"mcpServers": {}}` rather than
 /// deleting the file. Removing it would also remove the trust decision attached
 /// to its path, so re-adding a server would ask again for a file the user
@@ -555,7 +520,6 @@ pub fn read_all_mcp_configs(cwd: &Path) -> Result<Vec<McpConfigFile>, McpConfigE
 }
 
 /// Resolves `{{.env.NAME}}` in a header value against the given variables.
-///
 /// An unknown variable leaves its reference in place rather than producing an
 /// empty header: a request that goes out with a literal placeholder fails
 /// visibly, where one with an empty credential fails as an authorization error
@@ -660,7 +624,6 @@ pub fn mcp_trust_store_path() -> PathBuf {
 }
 
 /// Reads the trust store, treating an unreadable or unparsable one as empty.
-///
 /// Empty means every project-local file is asked about again, which is the safe
 /// direction to fail in.
 pub fn load_mcp_trust_store() -> McpTrustStore {

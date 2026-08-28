@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/auth-guidance.ts` (25 LOC).
-
 use crate::config::get_docs_path;
 
 const UNKNOWN_PROVIDER: &str = "unknown";

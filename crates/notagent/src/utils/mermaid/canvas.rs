@@ -1,5 +1,3 @@
-//! Port of `grok-mermaid/src/canvas.ts` (373 LOC).
-
 use super::types::{Cls, Span};
 use super::width::measured;
 
@@ -29,7 +27,6 @@ pub struct CanvasLines {
 /// A grid of cells. Edges accumulate as direction bits rather than glyphs so
 /// that crossings and junctions resolve correctly whatever order they are drawn
 /// in; `finalize_mask` turns the accumulated bits into characters at the end.
-///
 /// `occupied` marks cells claimed by a box, which edge bits must not overwrite.
 pub struct Canvas {
     pub w: usize,
@@ -71,7 +68,6 @@ impl Canvas {
     }
 
     /// Accumulate direction bits on a free cell.
-    ///
     /// `cls` is the class to claim the cell for; `border` cells are never
     /// reclassified, so a connector meeting a box keeps the box's styling.
     pub fn add_bits(&mut self, x: usize, y: usize, bits: u8, cls: Cls) {
@@ -285,7 +281,6 @@ impl Canvas {
 }
 
 /// Paint `text` at `x, y`, one grapheme cluster per cell.
-///
 /// A wide cluster claims a second cell, marked with `CONT` so the line builder
 /// emits one character for it rather than a stray space.
 pub fn draw_text(canvas: &mut Canvas, text: &str, x: usize, y: usize, cls: Cls) {

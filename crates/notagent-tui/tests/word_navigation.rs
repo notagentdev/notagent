@@ -1,8 +1,3 @@
-//! Port of `packages/tui/test/word-navigation.test.ts` (191 LOC).
-//!
-//! TS cursor positions count UTF-16 code units, the Rust API uses byte offsets;
-//! for the ASCII fixtures both agree, the CJK case translates the positions.
-
 use std::collections::HashMap;
 
 use notagent_tui::word_navigation::{WordNavigationOptions, find_word_backward, find_word_forward};
@@ -50,8 +45,6 @@ fn backward_path() {
 fn backward_cjk_mixed() {
     // Documented deviation (class 3): ICU segments Chinese with a dictionary
     // ("你好" / "世界"), UAX #29 in `unicode-segmentation` splits per character.
-    // The TS expectations 5 and 2 (UTF-16) therefore become 9 and 6 in bytes,
-    // one character further right per step. See PARITY.md.
     let text = "你好世界 test";
     assert_eq!(find_word_backward(text, text.len(), &plain()), 13);
     assert_eq!(find_word_backward(text, 13, &plain()), 9);
@@ -163,7 +156,6 @@ fn atomic_segments_are_skipped_as_one_unit() {
     let is_atomic = |segment: &str| segment == marker;
 
     // The functions slice the text before segmenting, so each expected slice is
-    // mapped to its pre-split segments — exactly like the TS fixture.
     let mut segment_map: HashMap<String, Vec<(usize, String)>> = HashMap::new();
     segment_map.insert(
         text.clone(),

@@ -1,14 +1,7 @@
-//! Cancellation helpers.
-//!
-//! 1:1 port of `packages/ai/src/utils/abort.ts` (50 LOC) and `abort-signals.ts` (41 LOC).
-//! Substitution class 3 of the master plan: `AbortController`/`AbortSignal` become
-//! `tokio_util::sync::CancellationToken`.
-
 use std::future::Future;
 
 use tokio_util::sync::CancellationToken;
 
-/// The abort reason; `AbortError` in TS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("The operation was aborted")]
 pub struct Aborted;
@@ -19,9 +12,7 @@ pub fn operation_signal(signal: Option<CancellationToken>) -> CancellationToken 
 }
 
 /// `raceWithAbortSignal(operation, signal)` — stops waiting once the signal fires.
-///
 /// The abandoned future is dropped instead of being observed further; Rust futures do
-/// not produce unhandled rejections, so the TS `void operation.catch(() => {})` guard
 /// has no counterpart.
 pub async fn race_with_abort_signal<T>(
     operation: impl Future<Output = T>,
@@ -74,7 +65,6 @@ pub fn combine_abort_signals(signals: &[Option<CancellationToken>]) -> CombinedA
     }
 
     let combined = CancellationToken::new();
-    // An already cancelled source cancels immediately, as in TS.
     if let Some(cancelled) = active.iter().find(|signal| signal.is_cancelled()) {
         let _ = cancelled;
         combined.cancel();

@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/transports/unix/types.ts`.
-
 use crate::types::ErrorObserver;
 
 #[derive(Clone, Default)]

@@ -1,8 +1,3 @@
-//! Port of `packages/ai/test/abort.test.ts` (351 LOC).
-//!
-//! Three scenarios (`testAbortSignal`, `testImmediateAbort`, `testAbortThenNewMessage`)
-//! across the provider matrix; one test per TS `describe` block, gated as in TS.
-
 mod e2e_support;
 
 use e2e_support::*;

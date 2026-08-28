@@ -1,9 +1,3 @@
-//! OAuth login flows.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/`. `load.ts` has no counterpart: it defers a
-//! dynamic `import()` so bundlers can split the flows out (deviation class 4 —
-//! distribution mechanics; Rust links statically).
-
 pub mod anthropic;
 pub mod callback_server;
 pub mod device_code;

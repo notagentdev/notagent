@@ -1,9 +1,3 @@
-//! Differential test of the openai-responses request builder.
-//!
-//! Every case in `fixtures/openai-responses-payloads.jsonl` was captured from the TS
-//! implementation through its `onPayload` hook (see `fixtures/generators`). The Rust
-//! payload has to match byte for byte, key order included.
-
 use std::collections::BTreeMap;
 
 use notagent_ai::api::constrained_sampling::create_grammar_tool_input_properties;

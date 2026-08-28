@@ -1,9 +1,3 @@
-//! Differential test of the openai-completions request builder.
-//!
-//! Every case in `fixtures/openai-completions-payloads.jsonl` was captured from the TS
-//! implementation through its `onPayload` hook (see `fixtures/generators`). The Rust
-//! payload has to match byte for byte, key order included.
-
 use std::collections::BTreeMap;
 
 use notagent_ai::api::constrained_sampling::create_grammar_tool_input_properties;
@@ -470,7 +464,6 @@ fn routing_preferences_are_copied_through_verbatim() {
         payload_of("openrouter-routing")["provider"]["order"][0],
         "anthropic"
     );
-    // Deviation class 1: TS copies the config object, so its key order is whatever the
     // model file declared. The typed struct emits the interface order instead — the two
     // agree for every catalog and generated config, which all follow the interface.
     // An empty object is truthy in JS, so the key still appears.

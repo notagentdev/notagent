@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/credential-print.ts`.
-//!
-//! `auth print-api-key` and `auth print-bearer-token` resolve exactly one
-//! credential. Ambiguity is refused rather than guessed: if several configured
-//! providers match the pattern, the caller has to name one.
-//!
-//! Resolution goes through the normal request-auth path, which is what refreshes
-//! and persists an OAuth token that is about to expire.
-
 use notagent_ai::auth::types::{AuthOperationOptions, AuthType};
 use notagent_ai::types::Model;
 use tokio_util::sync::CancellationToken;

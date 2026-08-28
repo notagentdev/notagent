@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/user-message-selector.ts` (155 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -159,7 +156,6 @@ impl Component for UserMessageList {
 pub struct UserMessageSelectorComponent {
     container: Container,
     message_list: Rc<RefCell<UserMessageList>>,
-    /// `true` when the constructor found no messages; TypeScript schedules an
     /// auto-cancel with `setTimeout(..., 100)`, which the caller drives here.
     empty: bool,
 }

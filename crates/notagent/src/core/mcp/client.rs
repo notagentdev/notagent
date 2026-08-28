@@ -1,16 +1,3 @@
-//! One connection to one MCP server (port addition, v0.1.22).
-//!
-//! Adapted from `../notagent-main-rust`'s `notagent_infra/src/mcp_client.rs`,
-//! with the deadlines it documents but never applies.
-//!
-//! Every request goes out through the SDK's cancellable path with the server's
-//! configured deadline attached, so an expiry both frees this side and tells the
-//! server the call is gone. The reference uses the plain path throughout and has
-//! neither.
-//!
-//! The connection surface kept here is deliberately narrow — connect, list,
-//! call, cancel, close — so an SDK upgrade lands in one file.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,7 +21,6 @@ use crate::core::mcp::{McpHttpServer, McpServerConfig, McpStdioServer, resolve_h
 type Running = RunningService<RoleClient, rmcp::model::InitializeRequestParam>;
 
 /// What went wrong, in the three shapes the caller has to tell apart.
-///
 /// The distinction is the whole basis of the recovery decision: a server that
 /// answered will answer the same way again, an ambiguous failure may be a blip,
 /// and a closed transport can only be fixed by reconnecting.
@@ -81,7 +67,6 @@ impl McpCallError {
 }
 
 /// How many stderr lines are kept, and how much of each.
-///
 /// Enough for a stack trace's first frames or a missing-module message; not so
 /// much that a chatty server's output becomes the error.
 const STDERR_TAIL_LINES: usize = 10;
@@ -91,7 +76,6 @@ const STDERR_LINE_CHARS: usize = 200;
 const STDERR_SETTLE: Duration = Duration::from_millis(250);
 
 /// The last few things a stdio server said before it went wrong.
-///
 /// Shared with the draining task, which is the only writer; the connect path
 /// reads it once, if it has to explain a failure.
 #[derive(Clone, Default)]
@@ -166,7 +150,6 @@ pub struct McpConnection {
 
 impl McpConnection {
     /// Connects, bounded by the server's deadline.
-    ///
     /// The handshake is inside the deadline because it runs before any tool
     /// call: a server that hangs here would otherwise hang tool discovery for
     /// every later call in the session.
@@ -178,7 +161,6 @@ impl McpConnection {
     }
 
     /// Connects with a bearer token attached to every HTTP request.
-    ///
     /// The token goes on the streamable transport only. SSE carries no
     /// authorization header of its own here, so a server that needs a token and
     /// speaks only SSE answers 401 and is reported as needing a login rather
@@ -325,7 +307,6 @@ impl McpConnection {
     }
 
     /// Sends one request, giving up when the deadline expires or the turn ends.
-    ///
     /// Both endings tell the server, so a call nobody is waiting for stops
     /// rather than running to completion against a client that has moved on.
     /// The deadline is applied here rather than through the SDK's own timeout
@@ -388,7 +369,6 @@ impl McpConnection {
     }
 
     /// Every tool the server offers, following pagination.
-    ///
     /// Bounded by the startup deadline rather than the call one: discovery runs
     /// before the session can do anything, so a server that is slow to answer
     /// it holds up the whole start.
@@ -486,7 +466,6 @@ impl McpConnection {
 }
 
 /// Whether a failure reads as "log in first".
-///
 /// The SDK folds the HTTP status into a message rather than surfacing it, so
 /// this is a text match. It is deliberately narrow: a false positive would send
 /// a user to a login that fixes nothing.

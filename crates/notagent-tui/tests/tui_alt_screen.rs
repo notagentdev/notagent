@@ -1,9 +1,3 @@
-//! Port of `packages/tui/test/tui-alt-screen.test.ts` (1267 LOC).
-//!
-//! Covers the renderer core, wheel routing, mouse selection, the scrollbar
-//! drag and the transcript search. `RecordingTerminal` of the TS suite is
-//! `VirtualTerminal`, which records its events itself.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -62,7 +56,6 @@ fn writes_since(terminal: &VirtualTerminal, event_index: usize) -> String {
         .collect()
 }
 
-/// `const editor = { focused, render, handleInput }` of the TS suite.
 #[derive(Clone, Default)]
 struct EditorProbe {
     focused: Rc<RefCell<bool>>,
@@ -641,8 +634,6 @@ async fn retains_a_completed_visible_selection_across_focus_changes() {
 }
 
 /// Wait `ms` and then apply an elapsed scrollbar hide deadline.
-///
-/// Deviation class 1: the TS `ScrollView` hides the transient scrollbar from a
 /// `setTimeout`; here the deadline is reported and fired by the driver.
 async fn settle_scrollbar(state: &Rc<RefCell<ScrollViewState>>, ms: u64) {
     tokio::time::sleep(std::time::Duration::from_millis(ms)).await;

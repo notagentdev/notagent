@@ -1,7 +1,3 @@
-//! Auth contracts.
-//!
-//! 1:1 port of `packages/ai/src/auth/types.ts` (240 LOC).
-
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -34,8 +30,6 @@ pub struct ApiKeyCredential {
 }
 
 /// `OAuthCredential { type: "oauth", refresh, access, expires, ... }`
-///
-/// The TS interface has an index signature, so flows attach provider-specific fields
 /// (for example `accountId`); `extra` keeps them for a lossless round-trip.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OAuthCredential {
@@ -120,7 +114,6 @@ pub type ModifyFn<'a> = Box<
 >;
 
 /// `CredentialStore` — app-owned credential storage keyed by `Provider.id`.
-///
 /// `modify` is the only write path, so every mutation is a serialized
 /// read-modify-write; OAuth refresh runs inside it so concurrent requests cannot
 /// double-refresh a rotated token.
@@ -237,7 +230,6 @@ pub enum AuthEvent {
     },
 }
 
-/// Failure of a login flow (TS rejects the prompt promise).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct AuthError(pub String);

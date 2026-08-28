@@ -1,10 +1,3 @@
-//! Port of `packages/ai/test/validation.test.ts` (210 LOC).
-//!
-//! The TS suite exercises both coercion paths of `validateToolArguments`: TypeBox
-//! schemas (only `Value.Convert`) and serialized plain JSON schemas (additionally
-//! `coerceWithJsonSchema`). Rust cannot see TypeBox's runtime marker, so the origin is
-//! passed explicitly — see `SchemaOrigin`.
-
 use notagent_ai::types::{Tool, ToolCall};
 use notagent_ai::utils::validation::{
     SchemaOrigin, validate_tool_arguments, validate_tool_arguments_with,
@@ -41,7 +34,6 @@ fn plain_schema_call(schema: Value, value: Value) -> (Tool, ToolCall) {
 
 #[test]
 fn converts_string_arguments_for_typebox_schemas() {
-    // TS: "still validates when Function constructor is unavailable" — the interpreted
     // TypeBox fallback must coerce "42" to 42 just like the generated validator.
     let tool = tool(
         json!({"type": "object", "properties": {"count": {"type": "number"}}, "required": ["count"]}),
@@ -200,7 +192,7 @@ fn accepts_null_for_nullable_array_schemas_with_items() {
 }
 
 #[test]
-fn error_message_matches_the_typescript_format() {
+fn error_message_matches_the_public_format() {
     let tool = tool(json!({
         "type": "object",
         "properties": {"count": {"type": "number"}, "name": {"type": "string"}},

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/client/remote-session-lifecycle.test.ts` (190 LOC).
-
 mod client_support;
 
 use std::sync::{Arc, Mutex};

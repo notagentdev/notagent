@@ -1,14 +1,11 @@
 //! Edge-case bench for the minified file-editing tools.
-//!
 //! This file is deliberately packed with constructs that stress
 //! `read_minified`, `patch_minified` and `multi_patch_minified`: doc/line/
 //! block/inline comments, comments at every nesting depth, multi-line and raw
 //! string literals, strings that look like code, macros, match arms,
 //! attributes, generics and deeply nested closures.
-//!
 //! It is valid Rust and compiles as a library:
 //!     rustc --crate-type lib --edition 2021 edge_cases.rs
-//!
 //! Drive edits with PROMPT.md, then re-run the compile and diff to confirm the
 //! tools kept the 4-space indentation, preserved comments and left string
 //! literals byte-identical.

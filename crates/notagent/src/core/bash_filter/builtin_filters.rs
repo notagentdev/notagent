@@ -1,6 +1,4 @@
 //! The built-in filter documents, embedded at compile time.
-//!
-//! The reference concatenates the directory in a build script. This port has
 //! no build script anywhere and embeds data files with an explicit
 //! `include_str!` list instead, the way `core/modes.rs` embeds the built-in
 //! modes. The guarantees the build script asserted — the expected file count,

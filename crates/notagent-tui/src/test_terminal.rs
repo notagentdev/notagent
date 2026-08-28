@@ -1,15 +1,3 @@
-//! Virtuelles Terminal für Tests.
-//!
-//! Port von `packages/tui/test/virtual-terminal.ts` (218 LOC). Die TS-Vorlage
-//! implementiert `Terminal` auf `@xterm/headless`; hier übernimmt das
-//! [`vt100`]-Crate die Emulation (Master-Tabelle: „@xterm/headless →
-//! Rust-VT-Emulator-Crate"; Auswahlbegründung in `PARITY.md`).
-//!
-//! Das Modul liegt hinter dem Feature `test-terminal`, damit `vt100` nicht in
-//! Produktivbuilds landet. Workstream C aktiviert es für die
-//! Interactive-Mode-E2E-Szenarien aus Gate G3:
-//! `notagent-tui = { workspace = true, features = ["test-terminal"] }`.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -18,17 +6,10 @@ use async_trait::async_trait;
 use crate::terminal::{InputHandler, PumpResult, ResizeHandler, Terminal, TerminalPump};
 
 /// Aufgezeichnetes Terminal-Ereignis.
-///
-/// Ersetzt die Unterklassen der TS-Suite (`RecordingTerminal`,
-/// `LoggingVirtualTerminal`, `CapturingVirtualTerminal`), die in Rust mangels
-/// Vererbung zu einer eingebauten Aufzeichnung zusammenfallen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalEvent {
-    /// `start()` wurde aufgerufen.
     Start,
-    /// `write(data)` wurde aufgerufen.
     Write(String),
-    /// `stop()` wurde aufgerufen.
     Stop,
 }
 
@@ -46,18 +27,12 @@ struct VirtualTerminalState {
     pump_notify: Rc<tokio::sync::Notify>,
 }
 
-/// Virtuelles Terminal auf Basis von `vt100`.
-///
-/// Wie in TS teilen Test und TUI **dieselbe** Instanz: [`Clone`] liefert einen
-/// weiteren Griff auf denselben Zustand.
 #[derive(Clone)]
 pub struct VirtualTerminal(Rc<RefCell<VirtualTerminalState>>);
 
-/// Scrollback-Tiefe des Emulators (xterm.js nutzt ebenfalls einen begrenzten Puffer).
 const SCROLLBACK_LEN: usize = 1000;
 
 impl VirtualTerminal {
-    /// Neues virtuelles Terminal mit `columns` × `rows` Zellen.
     pub fn new(columns: usize, rows: usize) -> Self {
         Self(Rc::new(RefCell::new(VirtualTerminalState {
             parser: vt100::Parser::new(
@@ -91,13 +66,6 @@ impl VirtualTerminal {
         self.push_pump_event(PumpResult::Input);
     }
 
-    /// Ändert die Terminalgröße und ruft den Resize-Handler.
-    ///
-    /// `@xterm/headless` verankert beim Resize unten: beim Verkleinern wandern
-    /// obere Zeilen in den Scrollback, beim Vergrößern kommen sie zurück (siehe
-    /// PARITY.md). `vt100` kennt das nicht, deshalb wird der Puffer hier mit dem
-    /// bisherigen Text neu aufgebaut. Attribute gehen dabei verloren; der
-    /// Harness liest ohnehin nur Text.
     pub fn resize(&self, columns: usize, rows: usize) {
         let content = {
             let mut lines = self.get_scroll_buffer();
@@ -128,22 +96,15 @@ impl VirtualTerminal {
         self.push_pump_event(PumpResult::Resize);
     }
 
-    /// Wartet, bis alle Schreibvorgänge verarbeitet sind.
-    ///
-    /// `vt100` verarbeitet synchron; die Methode existiert für die
-    /// Strukturgleichheit zur TS-Vorlage.
     pub fn flush(&self) {}
 
-    /// Sichtbarer Viewport — wie `line.translateToString(true)` in xterm.js:
-    /// geschriebene Leerzeichen bleiben erhalten, nie beschriebene oder
-    /// gelöschte Zellen am Zeilenende fallen weg.
+    /// Deleted cells at the end of a line are omitted.
     pub fn get_viewport(&self) -> Vec<String> {
         let state = self.0.borrow();
         let cols = u16::try_from(state.columns).expect("columns fit u16");
         state.parser.screen().rows(0, cols).collect()
     }
 
-    /// Wie [`Self::get_viewport`], als Convenience nach einem Schreibvorgang.
     pub fn flush_and_get_viewport(&self) -> Vec<String> {
         self.flush();
         self.get_viewport()
@@ -172,7 +133,6 @@ impl VirtualTerminal {
         out
     }
 
-    /// Ob die Zelle kursiv gesetzt ist (TS-Tests lesen `cell.isItalic()`).
     pub fn get_cell_italic(&self, row: usize, col: usize) -> bool {
         let state = self.0.borrow();
         state
@@ -185,19 +145,16 @@ impl VirtualTerminal {
             .is_some_and(vt100::Cell::italic)
     }
 
-    /// Cursorposition als `(x, y)` — Spalte und Zeile im Viewport.
     pub fn get_cursor_position(&self) -> (usize, usize) {
         let state = self.0.borrow();
         let (row, col) = state.parser.screen().cursor_position();
         (usize::from(col), usize::from(row))
     }
 
-    /// Leert den sichtbaren Bereich (entspricht `xterm.clear()`).
     pub fn clear(&self) {
         self.reset();
     }
 
-    /// Setzt den Emulator vollständig zurück (entspricht `xterm.reset()`).
     pub fn reset(&self) {
         let mut state = self.0.borrow_mut();
         let (columns, rows) = (state.columns, state.rows);
@@ -213,7 +170,7 @@ impl VirtualTerminal {
         self.0.borrow().events.clone()
     }
 
-    /// Alle Schreibvorgänge aneinandergehängt
+    /// Returns all writes concatenated.
     /// (`LoggingVirtualTerminal.getWrites()`, `CapturingVirtualTerminal.getOutput()`).
     pub fn get_writes(&self) -> String {
         self.0
@@ -227,13 +184,11 @@ impl VirtualTerminal {
             .collect()
     }
 
-    /// Verwirft die aufgezeichneten Ereignisse (`clearWrites()`).
     pub fn clear_writes(&self) {
         self.0.borrow_mut().events.clear();
     }
 
     /// Pump for the render loop of [`crate::tui::run_until`].
-    ///
     /// The virtual terminal dispatches input synchronously in
     /// [`Self::send_input`], so its pump only reports that something happened
     /// and wakes the loop for the next frame.
@@ -250,8 +205,6 @@ impl VirtualTerminal {
         notify.notify_waiters();
     }
 
-    /// Wartet, bis die gedrosselte Render-Pipeline der TUI durchgelaufen ist
-    /// (16-ms-Throttle; die TS-Vorlage wartet nextTick + 20 ms + flush).
     pub async fn wait_for_render(&self) {
         tokio::task::yield_now().await;
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -268,7 +221,6 @@ impl Terminal for VirtualTerminal {
             state.input_handler = Some(on_input);
             state.resize_handler = Some(on_resize);
         }
-        // Bracketed Paste aktivieren — wie ProcessTerminal.
         self.write("\x1b[?2004h");
     }
 
@@ -283,18 +235,11 @@ impl Terminal for VirtualTerminal {
         self.push_pump_event(PumpResult::Eof);
     }
 
-    async fn drain_input(&mut self, _max_ms: Option<u64>, _idle_ms: Option<u64>) {
-        // Kein stdin im virtuellen Terminal.
-    }
+    async fn drain_input(&mut self, _max_ms: Option<u64>, _idle_ms: Option<u64>) {}
 
     fn write(&mut self, data: &str) {
         let mut state = self.0.borrow_mut();
         state.events.push(TerminalEvent::Write(data.to_string()));
-        // `vt100` kennt CSI 3J (Scrollback löschen) nicht. Der Renderer emittiert
-        // die Sequenz ausschließlich in `fullRender(clear)` unmittelbar nach
-        // CSI 2J + CSI H, der Schirm ist an der Stelle also bereits leer — ein
-        // frischer Parser ist dort semantisch exakt. Die Vorbedingung wird
-        // geprüft, damit die Abweichung nicht stillschweigend greift.
         let mut rest = data;
         while let Some(index) = rest.find("\x1b[3J") {
             let (head, tail) = rest.split_at(index);
@@ -307,8 +252,8 @@ impl Terminal for VirtualTerminal {
                 .any(|row| !row.is_empty());
             assert!(
                 !non_empty,
-                "CSI 3J mit nicht leerem Schirm: das virtuelle Terminal bildet nur \
-                 die Renderer-Sequenz 2J+H+3J ab (siehe PARITY.md)"
+                "CSI 3J requires an empty screen because the virtual terminal only \
+                 models the renderer sequence 2J+H+3J"
             );
             let rows = u16::try_from(state.rows).expect("rows fit u16");
             state.parser = vt100::Parser::new(rows, cols, SCROLLBACK_LEN);
@@ -326,7 +271,6 @@ impl Terminal for VirtualTerminal {
     }
 
     fn kitty_protocol_active(&self) -> bool {
-        // Das virtuelle Terminal meldet das Kitty-Protokoll immer als aktiv.
         true
     }
 
@@ -376,7 +320,6 @@ impl TerminalPump for VirtualTerminalPump {
             let notified = notify.notified();
             tokio::pin!(notified);
             // Register before looking into the queue, otherwise an event
-            // arriving in between is lost (see interface request C-15).
             notified.as_mut().enable();
             let event = self.0.borrow_mut().pump_events.pop_front();
             match event {

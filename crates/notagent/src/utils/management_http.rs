@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/management-http.ts`.
-//!
-//! Transport-level retry for idempotent management requests (version checks,
-//! catalogs, downloads). It must not be used for agent or model operations:
-//! those can fail after the request started and are retried by their caller.
-
 use std::time::Duration;
 
 const RETRYABLE_STATUS_CODES: [u16; 7] = [408, 425, 429, 500, 502, 503, 504];
@@ -29,7 +23,6 @@ impl Default for FetchRetryOptions {
 }
 
 /// Send `request` with a bounded immediate retry.
-///
 /// Deviation (class 3): `fetch` + `AbortSignal.timeout` become `reqwest` with a
 /// deadline; the request is rebuilt per attempt because a `reqwest::Request`
 /// cannot be cloned when it carries a streaming body.
@@ -76,7 +69,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_match_the_typescript_options() {
+    fn defaults_match_the_public_options() {
         let options = FetchRetryOptions::default();
         assert_eq!(options.max_retries, 2);
         assert!(options.retry_on_status);

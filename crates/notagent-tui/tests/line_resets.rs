@@ -1,10 +1,8 @@
 //! The segment reset on rendered lines.
-//!
 //! Until v0.1.22 `apply_line_resets` appended the reset unconditionally, so
 //! nothing could go wrong and nothing was asserted. Once components prepend it
 //! while filling their caches the responsibility moves, and then this assertion
 //! is the boundary: a line without the reset bleeds colour into the next one.
-//!
 //! The pass sits at three call sites here — the main screen
 //! (`tui_main_screen.rs:435`) and the alternate screen twice
 //! (`tui_alt_screen.rs:1865`, `:2005`) — where `../notagent-main-rust` has one.

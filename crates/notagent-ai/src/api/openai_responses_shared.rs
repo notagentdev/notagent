@@ -1,9 +1,3 @@
-//! Shared building blocks of the three OpenAI Responses APIs.
-//!
-//! 1:1 port of `packages/ai/src/api/openai-responses-shared.ts`: message and tool
-//! conversion plus the stream state machine that `openai-responses.ts`,
-//! `azure-openai-responses.ts` and `openai-codex-responses.ts` all drive.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
@@ -124,7 +118,6 @@ fn convert_tool_result_output(model: &Model, content: &[TextOrImageContent]) -> 
 /// `ConvertResponsesToolsOptions`
 #[derive(Debug, Clone, Default)]
 pub struct ConvertResponsesToolsOptions {
-    /// `strict?: boolean | null` — `None` is TS `undefined`, which defaults to `false`.
     pub strict: Option<Option<bool>>,
     pub supports_strict_mode: Option<bool>,
     pub supports_openai_grammar_tools: Option<bool>,
@@ -617,7 +610,6 @@ pub struct ResponsesStreamOptions<'a> {
 pub struct ResponsesStreamState {
     pub output: AssistantMessage,
     model: Model,
-    /// TS keys `outputSlots` with `event.output_index`; a payload that omits the
     /// field keys on `undefined`, so the key is optional here too.
     slots: BTreeMap<Option<i64>, OutputSlot>,
     /// Reasoning blocks by item id, for the Azure signature backfill.
@@ -1428,8 +1420,6 @@ pub fn map_stop_reason(
         Some("failed") | Some("cancelled") => (StopReason::Error, None),
         // These two are wonky ...
         Some("in_progress") | Some("queued") => (StopReason::Stop, None),
-        // TS throws on an unknown status; the never-check cannot fire on well-formed
-        // provider output, so the port keeps the same error.
         Some(status) => (
             StopReason::Error,
             Some(format!("Unhandled stop reason: {status}")),

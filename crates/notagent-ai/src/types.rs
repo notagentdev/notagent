@@ -1,9 +1,3 @@
-//! Kerntypen des LLM-Layers.
-//!
-//! 1:1-Port von `packages/ai/src/types.ts` (830 LOC). Die JSON-Repräsentation ist
-//! identisch zum TS-Original: camelCase, optionale Felder werden weggelassen statt
-//! auf `null` gesetzt (Session-Dateien und Wire-Formate hängen daran).
-
 use std::collections::BTreeMap;
 use std::fmt;
 use std::future::Future;
@@ -21,11 +15,7 @@ use crate::utils::fetch::FetchFunction;
 use crate::utils::js_number;
 
 // ---------------------------------------------------------------------------
-// API- und Provider-Kennungen
 //
-// Abweichung Klasse 1: TS modelliert `Api = KnownApi | (string & {})` — zur Laufzeit
-// ein String mit Autovervollständigung. In Rust bleibt der String die Repräsentation;
-// die bekannten Werte stehen als Konstanten daneben.
 // ---------------------------------------------------------------------------
 
 pub type Api = String;
@@ -33,7 +23,6 @@ pub type ImagesApi = String;
 pub type ProviderId = String;
 pub type ImagesProviderId = String;
 
-/// Die zehn `KnownApi`-Werte aus `types.ts:19-28`.
 pub const KNOWN_APIS: [&str; 10] = [
     "openai-completions",
     "mistral-conversations",
@@ -50,7 +39,6 @@ pub const KNOWN_APIS: [&str; 10] = [
 /// `KnownImagesApi`.
 pub const KNOWN_IMAGES_APIS: [&str; 1] = ["openrouter-images"];
 
-/// Die 40 `KnownProvider`-Werte aus `types.ts:35-74`.
 pub const KNOWN_PROVIDERS: [&str; 41] = [
     "amazon-bedrock",
     "ant-ling",
@@ -141,7 +129,6 @@ impl From<ThinkingLevel> for ModelThinkingLevel {
 }
 
 impl ModelThinkingLevel {
-    /// `"off"` hat kein Gegenstück in [`ThinkingLevel`].
     pub fn to_thinking_level(self) -> Option<ThinkingLevel> {
         match self {
             ModelThinkingLevel::Off => None,
@@ -156,9 +143,6 @@ impl ModelThinkingLevel {
 }
 
 /// `ThinkingLevelMap = Partial<Record<ModelThinkingLevel, string | null>>`
-///
-/// `null` markiert eine Stufe explizit als nicht unterstützt und wird — anders als
-/// weggelassene Schlüssel — serialisiert.
 pub type ThinkingLevelMap = BTreeMap<ModelThinkingLevel, Option<String>>;
 
 /// `$var`-Platzhalter in `chat_template_kwargs`/`chat_template_args`.
@@ -208,7 +192,6 @@ pub struct ThinkingBudgets {
 }
 
 // ---------------------------------------------------------------------------
-// Transport- und Request-Optionen
 // ---------------------------------------------------------------------------
 
 /// `CacheRetention = "none" | "short" | "long"`
@@ -230,15 +213,11 @@ pub enum Transport {
     Auto,
 }
 
-/// `ProviderEnv = Record<string, string>` — hat Vorrang vor `process.env`.
 pub type ProviderEnv = BTreeMap<String, String>;
 
-/// `ProviderHeaders = Record<string, string | null>` — `null` löscht einen Default-Header.
 pub type ProviderHeaders = BTreeMap<String, Option<String>>;
 
 /// `SessionAffinityFormat = "openai" | "openai-nosession" | "openrouter"`
-///
-/// `Mtplx` has no TypeScript counterpart: MTPLX keys its warm-prefix session
 /// bank on a header of its own, and without it the server falls back to
 /// inferring the session from a prompt prefix scan on every request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -271,24 +250,17 @@ pub type OnResponse<M> = Arc<
         + Sync,
 >;
 
-/// `ProviderRequestOptions<TModel>` — Auth, HTTP-Transport und Lifecycle-Callbacks.
 pub struct ProviderRequestOptions<M = Model> {
-    /// TS `signal?: AbortSignal` (Master-Substitution: `CancellationToken`).
     pub signal: Option<CancellationToken>,
-    /// Expliziter Parent-Kontext für die Telemetrie dieses Requests.
     pub telemetry_context: Option<Arc<dyn TelemetryContext>>,
     pub api_key: Option<String>,
-    /// Optionale HTTP-Implementierung; Default ist der reqwest-basierte Client.
     pub fetch: Option<FetchFunction>,
-    /// Provider-bezogene Umgebungswerte; haben Vorrang vor `process.env`.
     pub env: Option<ProviderEnv>,
     pub on_payload: Option<OnPayload<M>>,
     pub on_response: Option<OnResponse<M>>,
-    /// Zusammengeführt mit den Provider-Defaults; `None`-Werte unterdrücken einen Default.
     pub headers: Option<ProviderHeaders>,
     pub timeout_ms: Option<u64>,
     pub max_retries: Option<u32>,
-    /// Default 60 000 ms; `0` deaktiviert die Obergrenze.
     pub max_retry_delay_ms: Option<u64>,
 }
 
@@ -352,8 +324,6 @@ impl<M> fmt::Debug for ProviderRequestOptions<M> {
 pub struct StreamOptions {
     pub base: ProviderRequestOptions<Model>,
     pub temperature: Option<f64>,
-    /// Wird nach den benannten Feldern in den Request-Body gemischt und überschreibt sie
-    /// dadurch; nur OpenAI-kompatible Adapter werten sie aus.
     pub sampling_params: Option<Map<String, Value>>,
     /// Token counts share one width across model, context and request options.
     pub max_tokens: Option<u64>,
@@ -392,9 +362,7 @@ pub enum DeferredWindow {
 pub struct SimpleStreamOptions {
     pub base: StreamOptions,
     pub reasoning: Option<ThinkingLevel>,
-    /// Bittet fähige Provider um ein dauerhaftes Handle und asynchrone Fortsetzung.
     pub deferred: Option<DeferredRequest>,
-    /// Eigene Token-Budgets je Thinking-Stufe (nur token-basierte Provider).
     pub thinking_budgets: Option<ThinkingBudgets>,
 }
 
@@ -402,7 +370,6 @@ pub struct SimpleStreamOptions {
 #[derive(Debug, Clone, Default)]
 pub struct DeferredFetchOptions {
     pub base: ProviderRequestOptions<Model>,
-    /// Maximale Long-Poll-Dauer in ms; Default 0 = eine Statusabfrage.
     pub wait: Option<u64>,
 }
 
@@ -416,7 +383,6 @@ pub struct ImagesOptions {
     pub metadata: Option<Map<String, Value>>,
 }
 
-/// `ProviderStreams` — einheitlicher Vertrag jedes API-Moduls unter `src/api/`.
 pub trait ProviderStreams: Send + Sync {
     fn stream(
         &self,
@@ -448,7 +414,6 @@ pub trait ProviderStreams: Send + Sync {
     }
 
     /// Whether [`ProviderStreams::fetch_deferred`] is implemented. `createProvider`
-    /// probes `entry.fetchDeferred !== undefined` in TS; Rust cannot inspect a default
     /// method, and calling it to find out would run its side effects, so the
     /// implementation declares it.
     fn supports_fetch_deferred(&self) -> bool {
@@ -461,7 +426,6 @@ pub trait ProviderStreams: Send + Sync {
     }
 }
 
-/// `ProviderImages` — Vertrag der Bild-API-Module.
 pub trait ProviderImages: Send + Sync {
     fn generate_images(
         &self,
@@ -471,8 +435,6 @@ pub trait ProviderImages: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = AssistantImages> + Send>>;
 }
 
-/// `StreamFunction` — Vertrag: nach dem Aufruf wird nicht mehr geworfen; Fehler
-/// erscheinen als `error`-Event mit `stopReason` `error`/`aborted` im Strom.
 pub type StreamFunction = Arc<
     dyn Fn(&Model, &Context, Option<StreamOptions>) -> AssistantMessageEventStream + Send + Sync,
 >;
@@ -489,7 +451,7 @@ pub type ImagesFunction = Arc<
 >;
 
 // ---------------------------------------------------------------------------
-// Content-Blöcke
+// Content blocks.
 // ---------------------------------------------------------------------------
 
 /// `TextSignatureV1 { v: 1, id, phase? }`
@@ -514,13 +476,8 @@ pub enum TextSignaturePhase {
 #[serde(rename_all = "camelCase")]
 pub struct TextContent {
     pub text: String,
-    /// z. B. bei OpenAI Responses: Message-Metadaten (Legacy-ID-String oder `TextSignatureV1`-JSON).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_signature: Option<String>,
-    /// JS-Objekte sind offen: bricht ein Stream vor `content_block_stop` ab, bleiben
-    /// Scratch-Felder (`partialJson`, `index`) am Block hängen und landen so in der
-    /// Session-Datei (bug-compat, belegt in `packages/coding-agent/test/fixtures`).
-    /// Neu erzeugte Blöcke haben diese Felder nicht — der Scratch-Zustand lebt im
     /// Streaming-State (Master-Plan, Architektur).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -543,14 +500,8 @@ pub struct ThinkingContent {
     pub thinking: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_signature: Option<String>,
-    /// True, wenn Sicherheitsfilter den Inhalt redigiert haben; die verschlüsselte
-    /// Nutzlast liegt dann in `thinking_signature`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redacted: Option<bool>,
-    /// JS-Objekte sind offen: bricht ein Stream vor `content_block_stop` ab, bleiben
-    /// Scratch-Felder (`partialJson`, `index`) am Block hängen und landen so in der
-    /// Session-Datei (bug-compat, belegt in `packages/coding-agent/test/fixtures`).
-    /// Neu erzeugte Blöcke haben diese Felder nicht — der Scratch-Zustand lebt im
     /// Streaming-State (Master-Plan, Architektur).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -573,24 +524,15 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: Map<String, Value>,
-    /// Google-spezifisch: opake Signatur zum Wiederverwenden des Thought-Kontexts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thought_signature: Option<String>,
-    /// OpenAI-Responses-Namespace für dynamisch geladene bzw. genamespacete Tools.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace: Option<String>,
-    /// JS-Objekte sind offen: bricht ein Stream vor `content_block_stop` ab, bleiben
-    /// Scratch-Felder (`partialJson`, `index`) am Block hängen und landen so in der
-    /// Session-Datei (bug-compat, belegt in `packages/coding-agent/test/fixtures`).
-    /// Neu erzeugte Blöcke haben diese Felder nicht — der Scratch-Zustand lebt im
     /// Streaming-State (Master-Plan, Architektur).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
 
-/// Serialisiert eine [`ToolCall`] eigenständig — also mit dem Diskriminator
-/// `"type": "toolCall"`, den sie in TS als Teil des Interface trägt. Innerhalb von
-/// [`AssistantContent`] liefert bereits die Enum-Auszeichnung dieses Feld.
 pub mod tagged_tool_call {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -616,12 +558,10 @@ pub mod tagged_tool_call {
     }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<ToolCall, D::Error> {
-        // Der Diskriminator wird als unbekanntes Feld ignoriert.
         ToolCall::deserialize(deserializer)
     }
 }
 
-/// Inhalt einer `AssistantMessage`: `TextContent | ThinkingContent | ToolCall`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AssistantContent {
@@ -633,7 +573,6 @@ pub enum AssistantContent {
     ToolCall(ToolCall),
 }
 
-/// Inhalt von User- und ToolResult-Nachrichten: `TextContent | ImageContent`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum TextOrImageContent {
@@ -643,7 +582,6 @@ pub enum TextOrImageContent {
     Image(ImageContent),
 }
 
-/// `content: string | (TextContent | ImageContent)[]` einer `UserMessage`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum UserContent {
@@ -685,23 +623,16 @@ pub struct Usage {
     pub output: u64,
     pub cache_read: u64,
     pub cache_write: u64,
-    /// Teilmenge von `cache_write` mit 1h-Retention. Nur Anthropic meldet diese Aufteilung.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write1h: Option<u64>,
-    /// Reasoning-Tokens, sofern der Provider sie meldet — Teilmenge von `output`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<u64>,
-    /// TS deklariert das Feld als Pflicht, historische Session-Dateien der TS-App
-    /// enthalten es aber nicht (abgebrochene Streams älterer Versionen). Es bleibt
-    /// optional, damit ein Roundtrip solcher Dateien verlustfrei ist; `estimate.ts`
-    /// behandelt `undefined` und `0` ohnehin gleich (`usage.totalTokens || summe`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
     pub cost: UsageCost,
 }
 
 impl Default for Usage {
-    /// Entspricht `EMPTY_USAGE` aus `packages/agent/src/agent.ts:39-46`.
     fn default() -> Self {
         Usage {
             input: 0,
@@ -729,7 +660,6 @@ pub enum StopReason {
     Deferred,
 }
 
-/// `JsonValue` aus `types.ts:392`.
 pub type JsonValue = Value;
 
 /// `DeferredHandle { provider, modelId, api, id, expiresAt?, pollAfterMs?, data? }`
@@ -739,26 +669,22 @@ pub struct DeferredHandle {
     pub provider: String,
     pub model_id: String,
     pub api: String,
-    /// Provider-Token, etwa eine Response- oder Batch-ID plus Zeilen-ID.
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poll_after_ms: Option<u64>,
-    /// Provider-Konvertierungsdaten zum Rekonstruieren der finalen Assistant-Nachricht.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<JsonValue>,
 }
 
 // ---------------------------------------------------------------------------
-// Nachrichten
 // ---------------------------------------------------------------------------
 
 /// `transformMessages` normalizes `null`/missing `content` to an empty array before every
 /// provider request, because hand-built histories, custom tools and old session files
 /// violate the type (issues #6259, #6276). The Rust types make that state
 /// unrepresentable, so the same leniency lives at deserialization: the message ends up in
-/// exactly the state TS reaches at the choke point (bug-compat).
 fn lax_content<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -776,7 +702,6 @@ pub struct UserMessage {
     pub timestamp: i64,
 }
 
-/// `AssistantMessage` — alle Felder aus `types.ts:409-435`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistantMessage {
@@ -785,13 +710,10 @@ pub struct AssistantMessage {
     pub api: Api,
     pub provider: ProviderId,
     pub model: String,
-    /// Konkretes `chunk.model`, wenn es vom angefragten `model` abweicht.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_model: Option<String>,
-    /// Provider-spezifische Response-/Message-ID, sofern die API eine liefert.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
-    /// Redigierte Provider-/Laufzeit-Diagnosen zu Fehlern und Recoveries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diagnostics: Option<Vec<AssistantMessageDiagnostic>>,
     pub usage: Usage,
@@ -802,14 +724,12 @@ pub struct AssistantMessage {
     pub error_message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_stop_reason: Option<String>,
-    /// Provider-Hinweis, ob das Modell den Zug bewusst beendet hat. Nur für Debugging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_turn: Option<bool>,
     /// Unix-Zeitstempel in Millisekunden.
     pub timestamp: i64,
 }
 
-/// `ToolResultMessage<TDetails>` — `details` bleibt als JSON erhalten.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResultMessage {
@@ -819,10 +739,8 @@ pub struct ToolResultMessage {
     pub content: Vec<TextOrImageContent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
-    /// Usage der Tool-Ausführung selbst; zählt nicht zum LLM-Kontext.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
-    /// Namen aus `Context.tools`, die nach diesem Ergebnis verfügbar wurden.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub added_tool_names: Option<Vec<String>>,
     pub is_error: bool,
@@ -831,8 +749,6 @@ pub struct ToolResultMessage {
 }
 
 /// `Message = UserMessage | AssistantMessage | ToolResultMessage`
-// Boxen der Varianten würde die öffentliche Form gegenüber dem TS-Original ändern
-// (CONVENTIONS.md §9): Nachrichten werden überall direkt konstruiert und gematcht.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "camelCase")]
@@ -843,7 +759,6 @@ pub enum Message {
 }
 
 impl Message {
-    /// TS: `message.timestamp` — auf allen drei Varianten vorhanden.
     pub fn timestamp(&self) -> i64 {
         match self {
             Message::User(message) => message.timestamp,
@@ -895,7 +810,6 @@ pub struct AssistantImages {
 }
 
 // ---------------------------------------------------------------------------
-// Tools und Kontext
 // ---------------------------------------------------------------------------
 
 /// `GrammarFormat = "openai_lark" | "openai_regex"`
@@ -929,14 +843,11 @@ pub enum ConstrainedSamplingConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ConstrainedSampling {
-    /// TS: das Literal `false` deaktiviert Constrained Sampling für dieses Tool.
     Disabled(bool),
     Config(ConstrainedSamplingConfig),
 }
 
 /// `Tool { name, description, parameters, constrainedSampling? }`
-///
-/// Substitution Klasse 3: TypeBox-`TSchema` → statischer `serde_json`-JSON-Schema-Wert.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tool {
@@ -962,7 +873,6 @@ pub struct Context {
 // Stream-Events
 // ---------------------------------------------------------------------------
 
-/// `reason` eines `done`-Events: `Extract<StopReason, "stop" | "length" | "toolUse" | "deferred">`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DoneReason {
@@ -972,7 +882,6 @@ pub enum DoneReason {
     Deferred,
 }
 
-/// `reason` eines `error`-Events: `Extract<StopReason, "aborted" | "error">`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ErrorReason {
@@ -980,11 +889,6 @@ pub enum ErrorReason {
     Error,
 }
 
-/// `AssistantMessageEvent` — 12 Varianten (`types.ts:523-539`).
-///
-/// In TS ist `partial` über den gesamten Strom dieselbe, in-place mutierte Objektreferenz.
-/// In Rust trägt jedes Event einen Snapshot (Master-Plan, Architektur-Entscheidung).
-// Jedes Event trägt den `partial`-Snapshot direkt, wie im TS-Original (CONVENTIONS.md §9).
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all_fields = "camelCase")]
@@ -1067,7 +971,6 @@ pub enum MaxTokensField {
     MaxTokens,
 }
 
-/// Die elf `thinkingFormat`-Varianten aus `types.ts:566-578`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ThinkingFormat {
@@ -1098,11 +1001,6 @@ pub enum DeferredToolsMode {
     Kimi,
 }
 
-/// `OpenAICompletionsCompat` — Kompatibilitätsschalter für OpenAI-kompatible Completions-APIs.
-///
-/// `chat_template_kwargs`/`chat_template_args` bleiben als `serde_json::Map`, damit die
-/// Schlüsselreihenfolge des Katalogs im Request-Body erhalten bleibt (byte-identische
-/// Payloads); die Werte entsprechen [`ChatTemplateKwargValue`].
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenAICompletionsCompat {
@@ -1162,15 +1060,12 @@ pub struct OpenAICompletionsCompat {
     pub session_affinity_format: Option<SessionAffinityFormat>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_long_cache_retention: Option<bool>,
-    /// JS objects are open: the generated catalog carries compat keys that the TS
     /// interface does not declare (for example `supportsReasoningEffort` on an
-    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
     /// preserved here instead of being dropped.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
 
-/// `OpenAIResponsesCompat` — für die drei Responses-APIs.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenAIResponsesCompat {
@@ -1194,9 +1089,7 @@ pub struct OpenAIResponsesCompat {
     pub supports_tool_search: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_explicit_prompt_cache_mode: Option<bool>,
-    /// JS objects are open: the generated catalog carries compat keys that the TS
     /// interface does not declare (for example `supportsReasoningEffort` on an
-    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
     /// preserved here instead of being dropped.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -1224,9 +1117,7 @@ pub struct AnthropicMessagesCompat {
     pub supports_strict_tools: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_tool_references: Option<bool>,
-    /// JS objects are open: the generated catalog carries compat keys that the TS
     /// interface does not declare (for example `supportsReasoningEffort` on an
-    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
     /// preserved here instead of being dropped.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -1238,15 +1129,12 @@ pub struct AnthropicMessagesCompat {
 pub struct BedrockCompat {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_strict_mode: Option<bool>,
-    /// JS objects are open: the generated catalog carries compat keys that the TS
     /// interface does not declare (for example `supportsReasoningEffort` on an
-    /// `openai-responses` model). TypeScript keeps them at runtime, so they are
     /// preserved here instead of being dropped.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
 
-/// `number | string` in den OpenRouter-Preisgrenzen.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NumberOrString {
@@ -1254,7 +1142,6 @@ pub enum NumberOrString {
     String(String),
 }
 
-/// Perzentil-Schwellen für Durchsatz bzw. Latenz.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct OpenRouterPercentiles {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1283,7 +1170,6 @@ pub enum OpenRouterSort {
     Object {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         by: Option<String>,
-        /// TS: `string | null` — fehlender Schlüssel und `null` sind unterscheidbar.
         #[serde(
             default,
             deserialize_with = "deserialize_some",
@@ -1293,7 +1179,6 @@ pub enum OpenRouterSort {
     },
 }
 
-/// Unterscheidet einen fehlenden Schlüssel (`None`) von explizitem `null` (`Some(None)`).
 fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     T: Deserialize<'de>,
@@ -1325,8 +1210,6 @@ pub enum OpenRouterDataCollection {
     Allow,
 }
 
-/// `OpenRouterRouting` — wird als `provider`-Feld im Request-Body gesendet.
-/// Die Feldnamen sind bereits im TS-Original snake_case und bleiben unverändert.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct OpenRouterRouting {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1396,7 +1279,6 @@ pub struct ModelCostTier {
     pub cache_read: f64,
     #[serde(with = "js_number")]
     pub cache_write: f64,
-    /// Diese Stufe gilt für Anfragen, deren Gesamt-Input diese Tokenzahl übersteigt.
     pub input_tokens_above: u64,
 }
 
@@ -1412,12 +1294,10 @@ pub struct ModelCost {
     pub cache_read: f64,
     #[serde(with = "js_number")]
     pub cache_write: f64,
-    /// Request-weite Preisstufen; die höchste passende Schwelle gilt für die ganze Anfrage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiers: Option<Vec<ModelCostTier>>,
 }
 
-/// `input: ("text" | "image")[]` bzw. `output` bei Bildmodellen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Modality {
@@ -1425,8 +1305,6 @@ pub enum Modality {
     Image,
 }
 
-/// `compat` von [`Model`] — die konkrete Variante folgt aus `api` (TS: bedingter Typ).
-// Wie bei `Message`: Boxen würde die 1:1-Form der Compat-Objekte verstecken.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -1435,13 +1313,10 @@ pub enum ModelCompat {
     OpenAIResponses(OpenAIResponsesCompat),
     AnthropicMessages(AnthropicMessagesCompat),
     Bedrock(BedrockCompat),
-    /// APIs ohne Compat-Zuordnung (TS-Typ `never`): der Rohwert bleibt erhalten,
-    /// damit ein Roundtrip verlustfrei ist.
     Other(Value),
 }
 
 impl ModelCompat {
-    /// Parst den `compat`-Wert passend zur `api` des Modells.
     pub fn from_api_value(api: &str, value: Value) -> Result<Self, serde_json::Error> {
         Ok(match api {
             "openai-completions" => ModelCompat::OpenAICompletions(serde_json::from_value(value)?),
@@ -1483,7 +1358,6 @@ impl ModelCompat {
     }
 }
 
-/// `Model<TApi>` — Eintrag des Modellkatalogs.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Model {
@@ -1493,25 +1367,20 @@ pub struct Model {
     pub provider: ProviderId,
     pub base_url: String,
     pub reasoning: bool,
-    /// Bildet notagent-Thinking-Stufen auf provider-spezifische Werte ab;
-    /// `null` markiert eine Stufe als nicht unterstützt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level_map: Option<ThinkingLevelMap>,
     pub input: Vec<Modality>,
     pub cost: ModelCost,
     pub context_window: u64,
     pub max_tokens: u64,
-    /// Default-Sampling-Parameter; Werte aus `StreamOptions.sampling_params` überschreiben sie.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sampling_params: Option<Map<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub headers: Option<BTreeMap<String, String>>,
-    /// Kompatibilitäts-Overrides; ohne Angabe wird aus `base_url` abgeleitet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compat: Option<ModelCompat>,
 }
 
-/// Rohform für die api-abhängige Deserialisierung von `compat`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ModelRaw {
@@ -1563,8 +1432,6 @@ impl<'de> Deserialize<'de> for Model {
     }
 }
 
-/// `ImagesModel<TApi>` — `Model` ohne `api`/`provider`/`reasoning`/`contextWindow`/
-/// `maxTokens`/`compat`, dafür mit `output`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImagesModel {
@@ -1584,8 +1451,6 @@ pub struct ImagesModel {
     pub headers: Option<BTreeMap<String, String>>,
 }
 
-/// Serialisierungshelfer: `ThinkingLevelMap`-Schlüssel sind Enum-Werte und damit
-/// als JSON-Objektschlüssel darstellbar.
 fn _assert_thinking_level_map_is_serializable(map: &ThinkingLevelMap) -> String {
     serde_json::to_string(map).unwrap_or_default()
 }

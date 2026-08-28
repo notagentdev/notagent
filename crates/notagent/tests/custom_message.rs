@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/test/custom-message.test.ts` (44 LOC).
-//!
-//! The TypeScript case drives the component through a custom `MessageRenderer`,
-//! which only extensions can supply and which the port drops
-//! (`plans/facts/extension-boundary.md`). What remains observable is that the
-//! output padding reaches the default rendering and that changing it rebuilds
-//! the component, which is what this test asserts.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::modes::interactive::components::custom_message::CustomMessageComponent;
@@ -21,7 +13,6 @@ fn theme_lock() -> MutexGuard<'static, ()> {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    // The block style is a process global (default: badge); the TS-parity
     // tests pin the standard layout, the badge tests set Badge themselves.
     set_block_style(BlockStyle::Standard);
     guard
@@ -61,7 +52,6 @@ fn keeps_the_default_rendering_when_the_output_padding_changes() {
         "{padded:?}"
     );
 
-    // The default rendering hard-codes the box padding to 1 in TypeScript too;
     // `outputPad` only ever reached the dropped custom renderer.
     component.set_output_pad(0);
     let unpadded: Vec<String> = component.render(40).iter().map(|l| strip_ansi(l)).collect();

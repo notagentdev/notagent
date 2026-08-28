@@ -1,9 +1,3 @@
-//! Differential test of the OpenAI Codex Responses adapter.
-//!
-//! `fixtures/openai-codex-responses.jsonl` records, for each case, the request body the
-//! TS implementation builds, the URL and headers it sends, and the event sequence it
-//! emits for the scripted SSE body (see `fixtures/generators`).
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -452,7 +446,6 @@ async fn the_request_body_is_zstd_compressed() {
             .iter()
             .any(|(key, value)| key == "content-encoding" && value == "zstd")
     );
-    // The TS implementation compresses too.
     assert_eq!(case.request_body_encoding.as_deref(), Some("zstd"));
     // The compressed bytes decode back to the JSON body.
     let body = request.body.expect("body");
@@ -865,7 +858,6 @@ async fn the_websocket_transport_streams_a_full_response() {
     let beta = headers
         .iter()
         .find(|(name, _)| name.eq_ignore_ascii_case("openai-beta"));
-    // TS deletes OpenAI-Beta from the socket's connect headers.
     assert_eq!(beta, None, "{headers:?}");
     assert!(headers.iter().any(
         |(name, value)| name.eq_ignore_ascii_case("chatgpt-account-id") && value == "acct_123"
@@ -875,7 +867,6 @@ async fn the_websocket_transport_streams_a_full_response() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_websocket_that_closes_early_falls_back_to_sse() {
     // The server closes before any event: nothing was emitted, so the adapter records
-    // the failure and falls back to SSE. Had an event already gone out, TS would rethrow
     // instead of falling back.
     let (base_url, _, _) = spawn_codex_websocket_server(Vec::new(), true).await;
 

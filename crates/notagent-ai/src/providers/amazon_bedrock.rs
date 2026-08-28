@@ -1,9 +1,3 @@
-//! `amazonBedrockProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/amazon-bedrock.ts` (90 LOC). Bedrock accepts a
-//! bearer token or the AWS SDK's default credential chain; `resolve` detects ambient AWS
-//! credentials without copying them into notagent's credential store.
-
 use std::sync::Arc;
 
 use crate::api::streams::BedrockConverseStreamApi;

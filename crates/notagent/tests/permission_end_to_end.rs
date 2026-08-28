@@ -1,19 +1,3 @@
-//! Port of `packages/coding-agent/test/permission-end-to-end.test.ts` and of
-//! `permission-extension.test.ts`.
-//!
-//! End to end over the permission decision: a real write tool, a real policy
-//! chain, and the file system as the witness.
-//!
-//! The assertions read the file rather than the transcript. A tool that reports
-//! a refusal while having already written is exactly the failure this layer
-//! exists to prevent, and only the file system can tell the two apart.
-//!
-//! The extension suite becomes the gate suite: what TypeScript registers as a
-//! hidden `tool_call` handler is `PermissionGate::before_tool_call` here. Its
-//! one case without an equivalent is "decides even when reading the signal
-//! throws" — a stale extension context whose `signal` getter throws; a
-//! `CancellationToken` reference cannot fail that way.
-
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -491,7 +475,6 @@ async fn a_hook_leaves_the_ordinary_path_alone_when_it_abstains() {
 async fn refuses_a_call_whose_approval_was_pending_when_the_session_aborted() {
     let workspace = Workspace::new();
     let target = workspace.join(".env");
-    // The TypeScript presenter answers immediately and the abort still wins,
     // because the handler is suspended at its first `await` when `abort()`
     // runs. A Rust future polls straight through that point, so "the approval
     // was still pending" is spelled out with a presenter that has not answered.
@@ -605,7 +588,6 @@ async fn leaves_the_next_turn_free_to_ask_again() {
 }
 
 // ---------------------------------------------------------------------------
-// the gate (test/permission-extension.test.ts)
 // ---------------------------------------------------------------------------
 
 fn gate(cwd: &str, approval: ApprovalLevel, presenter: ApprovalPresenter) -> PermissionGate {

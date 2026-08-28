@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/test/initial-message.test.ts`.
-//!
-//! Piped stdin, `@file` text and the first CLI message become one prompt, and
-//! the first message leaves the list so the caller does not send it twice.
-
 use notagent::cli::args::Args;
 use notagent::cli::initial_message::{InitialMessageInput, build_initial_message};
 

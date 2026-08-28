@@ -1,6 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/read-minified.ts` (tool half).
-//!
-
 use std::sync::Arc;
 
 use notagent_agent::types::{
@@ -160,7 +157,6 @@ fn minified_path_arg(args: &Value) -> Option<String> {
 }
 
 /// `:12-40` after the path, when the call asks for a line range.
-///
 /// Identical to the `read` tool's; both files carry their own copy.
 fn format_line_range(args: &Value, theme: &Theme) -> String {
     let offset = args.get("offset");

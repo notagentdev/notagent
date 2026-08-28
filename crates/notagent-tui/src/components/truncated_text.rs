@@ -1,7 +1,3 @@
-//! Single line text truncated to the viewport width.
-//!
-//! 1:1 port of `packages/tui/src/components/truncated-text.ts` (65 LOC).
-
 use crate::tui::{Component, Line, shared_lines};
 use crate::utils::{truncate_to_width, visible_width};
 
@@ -13,7 +9,6 @@ pub struct TruncatedText {
 }
 
 impl TruncatedText {
-    /// New truncated text (TS defaults: no padding).
     pub fn new(text: impl Into<String>, padding_x: usize, padding_y: usize) -> Self {
         Self {
             text: text.into(),

@@ -1,8 +1,3 @@
-//! PKCE verifier and challenge.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/pkce.ts` (34 LOC). Substitution class 3:
-//! WebCrypto becomes sha2 plus a random source.
-
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::RngExt;

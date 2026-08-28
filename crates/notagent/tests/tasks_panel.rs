@@ -1,15 +1,3 @@
-//! Port of `packages/coding-agent/test/tasks-panel.test.ts` (115 LOC).
-//!
-//! The panel below the footer, restyled after the roster of
-//! `notagent-main-rust` (user decision 2026-08-16): blank separator, bulleted
-//! head line, `○` markers, elapsed time flush right. The behavioural tests of
-//! the TS suite (cost, scope ring, ordering) carry over unchanged; only the
-//! row-count bound and the styling test know the new look.
-//!
-//! The property worth protecting is that it costs nothing when there is nothing
-//! to say: a row spent telling every user "no background tasks" is a row taken
-//! from the transcript of everyone who never starts one.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::core::tasks::types::{ShellTaskInfo, TaskInfo, TaskInfoBase, TaskStatus};

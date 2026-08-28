@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/list-models.ts`.
-//!
-//! The `--list-models` table. Column widths come from the widest cell, the rows
-//! are sorted by provider then model id, and an optional search argument runs
-//! through the same fuzzy filter the model selector uses.
-
 use notagent_ai::auth::types::AuthOperationOptions;
 use notagent_ai::types::Model;
 use notagent_tui::fuzzy::fuzzy_filter;
@@ -69,7 +63,6 @@ pub async fn list_models(
         );
     }
 
-    // Deviation (class 1): the TypeScript lets a refresh failure escape and end
     // the process; here it degrades to the empty list, which prints the same
     // "no models" guidance the empty catalog prints.
     let models: Vec<Model> = model_runtime

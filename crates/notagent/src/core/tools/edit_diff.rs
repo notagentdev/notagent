@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/edit-diff.ts` (text matching and
-//! replacement half).
-//!
-//! Deviation (class 1): JS string indices count UTF-16 units, Rust indices count
-//! bytes. Every offset here is produced and consumed inside this module, so the
-//! results are identical; only the numbers differ.
-
 use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -337,7 +330,6 @@ fn no_change_error(path: &str, total_edits: usize) -> String {
 }
 
 /// Apply one or more exact-text replacements to LF-normalized content.
-///
 /// All edits match against the same original content; replacements are applied
 /// back to front so offsets stay stable. If any edit needs fuzzy matching, the
 /// whole operation runs in fuzzy-normalized space and the touched lines are
@@ -630,13 +622,9 @@ pub fn generate_diff_string(
 }
 
 /// The diff of one or more edits, without applying them.
-///
 /// The TUI shows it as a preview while the model is still streaming the call,
 /// which is why it reads the file itself instead of going through the tool's
-/// operations: `edit-diff.ts` imports `fs/promises` directly for the same
 /// reason. A failure is not an error of the render path — it is the preview,
-/// and it is shown in place of the diff (`EditDiffError` in TypeScript).
-///
 /// Deviation (class 1): the wording of a filesystem failure is Rust's rather
 /// than Node's; the `Could not edit file: …` sentence around it is verbatim.
 pub async fn compute_edits_diff(
@@ -930,7 +918,6 @@ mod tests {
         assert_eq!(apply_patch(&old_content, &patch), Some(new_content));
     }
 
-    /// Minimal unified-patch applier, matching what the TS suite checks with
     /// `applyPatch` from the `diff` package.
     fn apply_patch(original: &str, patch: &str) -> Option<String> {
         let original_lines: Vec<&str> = original.split('\n').collect();

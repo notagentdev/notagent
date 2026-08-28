@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/session-stats.ts`.
-
 use notagent_ai::Usage;
 
 use crate::session_types::{SessionError, SessionStats};

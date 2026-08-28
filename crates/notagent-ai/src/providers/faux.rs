@@ -1,10 +1,3 @@
-//! Faux provider for tests.
-//!
-//! 1:1 port of `packages/ai/src/providers/faux.ts` (708 LOC). It scripts assistant
-//! responses, streams them as deltas, estimates usage with a prompt cache and is the
-//! only provider that implements deferred responses. Workstream C's headless test
-//! harness runs against it.
-
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -119,7 +112,6 @@ pub struct FauxProviderState {
 pub type FauxResponseFactory = Arc<dyn Fn(&Context, &Model) -> AssistantMessage + Send + Sync>;
 
 /// `FauxResponseStep` — a fixed message or a factory evaluated per call.
-// Boxing the message variant would obscure the 1:1 shape of the TS union.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
 pub enum FauxResponseStep {
@@ -520,7 +512,6 @@ impl FauxCore {
                         Some(message) => message,
                         None => {
                             // The submission options are dropped except for the context,
-                            // as in TS (`deferred`, `signal` and `onResponse` are removed).
                             let resolved = core.resolve_response(&step, &context, &model);
                             if let Some(entry) = core
                                 .deferred_responses

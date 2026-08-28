@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/keybindings-migration.test.ts` (88 LOC).
-
 use std::fs;
 
 use notagent::core::keybindings::{KeybindingsManager, migrate_keybindings_config_file};
@@ -27,7 +25,6 @@ fn rewrites_old_key_names_to_namespaced_ids() {
         "expandTools": "ctrl+x",
     }));
 
-    // The TypeScript test drives `runMigrations(agentDir)`; the port calls the
     // directory-scoped step directly (`run_migrations` resolves the agent dir
     // from the environment).
     migrate_keybindings_config_file(dir.path());
@@ -62,8 +59,6 @@ fn loads_old_key_names_in_memory_before_the_file_is_rewritten() {
 
     let keybindings = KeybindingsManager::create(Some(dir.path()));
 
-    // The TypeScript config keeps a single `KeyId` as a string; the Rust
-    // registry stores key lists only (deviation of the tui port).
     let user_bindings = keybindings.get_user_bindings();
     assert_eq!(user_bindings.len(), 2);
     assert_eq!(user_bindings["tui.select.confirm"], vec!["enter"]);

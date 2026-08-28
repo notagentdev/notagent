@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/test/task-manager.test.ts`.
-//!
-//! The task manager's lifecycle, exercised with real timers and a real store.
-//!
-//! The assertions favour observable outcomes over internals: what a listener was
-//! told, what is on disk, and what a waiting caller received. A manager that
-//! reports a task as settled while its record still says running is exactly the
-//! failure a restart cannot recover from, and only the file can tell them apart.
-
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

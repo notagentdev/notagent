@@ -1,16 +1,13 @@
 //! Turning an MCP result into what the model reads (v0.1.22).
-//!
 //! Text passes through and images become attachments where the session takes
 //! them. An embedded text resource is text and is carried as text; a blob
 //! resource that holds an image is carried as one. What is genuinely
 //! uncarryable — audio, and binary the session has no slot for — is named with
 //! its type and its address rather than dropped, because a content block that
 //! vanishes silently is a wrong answer the model cannot see is wrong.
-//!
 //! `structuredContent` travels too. It is the half of a result a server means
 //! to be parsed, and a tool that keeps only the prose beside it hands the model
 //! a summary where it asked for data.
-//!
 //! The same truncation the bash tool applies applies here, so a server
 //! returning a megabyte costs what a command returning a megabyte costs.
 
@@ -28,7 +25,6 @@ pub struct McpOutput {
     pub truncated: bool,
 }
 
-/// Converts a result, keeping what this port can carry and naming what it
 /// cannot.
 pub fn convert_result(result: &rmcp::model::CallToolResult, accepts_images: bool) -> McpOutput {
     let mut text = String::new();
@@ -100,7 +96,6 @@ pub fn convert_result(result: &rmcp::model::CallToolResult, accepts_images: bool
             append(&mut text, &format!("[{}{mime}: {}]", link.name, link.uri));
             continue;
         }
-        // Audio is the one shape with nowhere to go: this port's result carries
         // text and images. Naming it is the difference between the model
         // knowing the answer is incomplete and not.
         remember(&mut refused, "an audio clip");
@@ -385,7 +380,6 @@ mod tests {
 
     #[test]
     fn audio_is_still_named_rather_than_dropped() {
-        // The one shape with nowhere to go: this port's result carries text and
         // images, and silence about it would be a wrong answer.
         let result = CallToolResult::success(vec![Content::new(
             rmcp::model::RawContent::Audio(rmcp::model::RawAudioContent {

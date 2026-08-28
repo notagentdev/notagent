@@ -1,18 +1,3 @@
-//! Port of `packages/coding-agent/src/core/todos/todos.ts`.
-//!
-//! The task list. One decision shapes everything here: a call carries the
-//! **complete** desired list, and it replaces what was stored. There are no ids
-//! and no partial updates. That is not a simplification — it was tried the
-//! other way. Stable ids invite appending: the model adds items and rarely
-//! removes them, and the list silts up until nobody reads it. Whole-list
-//! replacement forces a decision about every item on every call, and what is
-//! not restated is gone.
-//!
-//! The same reasoning produces the automatic cleanup: a list whose items are
-//! all completed has done its job, and leaving it standing would carry finished
-//! work into the next thing the user asks for.
-//!
-
 pub mod reminder;
 pub mod render;
 
@@ -57,7 +42,6 @@ impl TodoStatus {
 pub const MAX_TODO_LENGTH: usize = 1000;
 
 /// One task.
-///
 /// Two wordings are required rather than derived. "Run tests" and "Running
 /// tests" are what the list and the status line respectively need, and asking
 /// the model for both is cheaper and more accurate than conjugating English.
@@ -75,11 +59,9 @@ pub fn is_todo_active(todo: &Todo) -> bool {
 }
 
 /// Checks one replacement list.
-///
 /// Rejects rather than repairs: a task with an empty description is a bug in
 /// the call, and silently dropping it would leave the model believing it
 /// tracked something it did not.
-///
 /// Deviation (class 1): the ceiling counts characters where JS counts UTF-16
 /// code units; the two differ only for astral characters.
 pub fn validate_todo_items(items: &[Todo]) -> Result<(), String> {
@@ -105,7 +87,6 @@ pub fn validate_todo_items(items: &[Todo]) -> Result<(), String> {
 }
 
 /// The stored list for one session.
-///
 /// Held here rather than derived from the transcript. Deriving it would mean
 /// the list depends on a particular message surviving compaction, and
 /// compaction is exactly when a long session most needs to still know what it
@@ -135,7 +116,6 @@ impl TodoStore {
     }
 
     /// Replaces the stored list.
-    ///
     /// Returns the replacement as it stands *before* the completed-list
     /// cleanup, so the caller can render the moment everything turned green.
     /// What is stored afterwards may be empty.
@@ -161,7 +141,6 @@ impl TodoStore {
 }
 
 /// Pairs the entries of two lists by their text, in order.
-///
 /// Repeated descriptions are separate entries and must stay separate, so the
 /// first "Run tests" in the new list pairs with the first in the old one rather
 /// than with an arbitrary match. Returns, per position in `after`, the index it

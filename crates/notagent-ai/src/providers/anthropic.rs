@@ -1,9 +1,3 @@
-//! `anthropicProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/anthropic.ts` (59 LOC). Anthropic resolves
-//! non-standard: an `ANTHROPIC_AUTH_TOKEN` becomes a bearer header, and only then do the
-//! OAuth token and the API key env vars apply.
-
 use std::sync::Arc;
 
 use crate::api::streams::AnthropicMessagesApi;

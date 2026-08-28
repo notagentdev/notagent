@@ -1,14 +1,9 @@
-//! Inerter Telemetrie-Kontext.
-//!
-//! 1:1-Port von `packages/telemetry/src/noop.ts` (20 LOC).
-
 use std::sync::{Arc, OnceLock};
 
 use crate::{
     SpanAttributes, SpanOptions, SpanOutcome, SpanStatus, TelemetryContext, TelemetrySpan,
 };
 
-/// Der eine, wiederverwendete inerte Span (TS: `Object.freeze`).
 struct NoopTelemetrySpan;
 
 impl TelemetryContext for NoopTelemetrySpan {
@@ -31,7 +26,6 @@ fn noop_span() -> Arc<dyn TelemetrySpan> {
         .clone()
 }
 
-/// `NOOP_TELEMETRY_CONTEXT` — genutzt, wenn eine Anwendung keinen Kontext bereitstellt.
 pub fn noop_telemetry_context() -> Arc<dyn TelemetryContext> {
     static NOOP_CONTEXT: OnceLock<Arc<NoopTelemetrySpan>> = OnceLock::new();
     NOOP_CONTEXT

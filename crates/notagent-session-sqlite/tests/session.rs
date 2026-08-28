@@ -1,7 +1,3 @@
-//! Port of the `Session` validation cases from
-//! `packages/agent/src/harness/session/session.ts` as exercised by the SQLite
-//! backend tests.
-
 use notagent_agent::AgentMessage;
 use notagent_ai::{TextContent, TextOrImageContent, UserContent, UserMessage};
 use notagent_session_sqlite::session_types::{

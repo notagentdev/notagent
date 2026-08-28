@@ -1,7 +1,3 @@
-//! Discovery of API keys in environment variables.
-//!
-//! 1:1 port of `packages/ai/src/env-api-keys.ts` (188 LOC).
-
 use std::sync::{Mutex, OnceLock};
 
 use crate::types::ProviderEnv;
@@ -107,7 +103,6 @@ fn api_key_env_vars(provider: &str) -> Option<Vec<&'static str>> {
 }
 
 /// `findEnvKeys(provider, env)` — configured env vars that can provide an API key.
-///
 /// Reports only actual API-key variables; ambient sources (AWS profiles, IAM, ADC) are
 /// deliberately excluded.
 pub fn find_env_keys(provider: &str, env: Option<&ProviderEnv>) -> Option<Vec<String>> {

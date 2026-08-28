@@ -1,7 +1,3 @@
-//! ANSI colouring of finished art.
-//!
-//! Port of `grok-mermaid/src/ansi.ts` (34 LOC).
-
 use super::types::{Cls, MermaidArt};
 
 const ESC: char = '\x1b';
@@ -44,7 +40,6 @@ pub fn default_theme() -> AnsiTheme {
 }
 
 /// Render art to ANSI-coloured lines.
-///
 /// A convenience over mapping `art.styled` yourself — reach for that directly
 /// when your TUI has its own styling model.
 pub fn to_ansi(art: &MermaidArt, theme: &AnsiTheme) -> Vec<String> {

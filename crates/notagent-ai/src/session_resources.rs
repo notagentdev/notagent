@@ -1,8 +1,3 @@
-//! 1:1 port of `packages/ai/src/session-resources.ts`.
-//!
-//! Providers register a cleanup here that the application calls when a session ends;
-//! the Codex WebSocket cache is the only registrant in the TS code.
-
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// `SessionResourceCleanup = (sessionId?: string) => void`
@@ -15,8 +10,6 @@ fn cleanups() -> &'static Mutex<Vec<(u64, SessionResourceCleanup)>> {
 
 /// Handle returned by [`register_session_resource_cleanup`]; dropping it does nothing,
 /// calling [`SessionResourceCleanupHandle::unregister`] removes the cleanup.
-///
-/// TS returns a closure for this; a handle keeps the same lifetime without boxing.
 #[derive(Debug, Clone, Copy)]
 pub struct SessionResourceCleanupHandle(u64);
 
@@ -38,8 +31,6 @@ pub fn register_session_resource_cleanup(
 }
 
 /// `cleanupSessionResources(sessionId?)`
-///
-/// TS collects thrown errors into an `AggregateError`; the registered cleanups here
 /// cannot fail, so every one of them runs and nothing is collected.
 pub fn cleanup_session_resources(session_id: Option<&str>) {
     let registered: Vec<SessionResourceCleanup> = cleanups()

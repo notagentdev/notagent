@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/modes.test.ts` and of the mode-block
-//! cases of `packages/coding-agent/test/mode-block.test.ts`.
-//!
-//! The two remaining describes of `mode-block.test.ts` belong elsewhere: the
-//! supersession rule is a `core/system-prompt.ts` property (plan task 11) and
-//! the `--auto`/`--yolo` flags are `cli/args.ts` (plan task 12).
-
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -437,7 +430,6 @@ fn cycles_the_full_ring_and_wraps_back_to_plan() {
 }
 
 // ---------------------------------------------------------------------------
-// mode block (test/mode-block.test.ts)
 // ---------------------------------------------------------------------------
 
 /// Mirrors the wrapper the session builds, so a change to the tag shape is

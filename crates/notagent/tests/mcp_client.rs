@@ -1,14 +1,3 @@
-//! The MCP client against a real server (port addition, v0.1.22).
-//!
-//! Every case here spawns `mcp_test_server` as a separate process and speaks
-//! the protocol to it. The server is written to misbehave on demand, so the
-//! recovery paths are exercised rather than asserted: a handshake that never
-//! answers, a call that never returns, a server that dies mid-call, one that
-//! answers with a JSON-RPC error.
-//!
-//! Mocking these would test what this port believes about MCP, which is the
-//! thing under test.
-
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 

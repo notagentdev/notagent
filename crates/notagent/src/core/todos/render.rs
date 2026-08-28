@@ -1,21 +1,6 @@
-//! Port of `packages/coding-agent/src/core/todos/render.ts`.
-//!
-//! What a task-list update looks like to the model.
-//!
-//! Two things are reported, not one. The **changes** say what moved — added,
-//! updated with both statuses, removed — because that is what the model needs
-//! to confirm its own call landed. The **current** list says what now stands, so
-//! a model reading only the last tool result still knows the whole state and
-//! does not have to reconstruct it from a chain of diffs.
-//!
-//! The XML shape is the reference's, verbatim down to the attribute layout: a
-//! supervisor or a transcript reader built against the Rust version recognises
-//! this output unchanged.
-
 use super::{Todo, TodoStatus, pair_todos_by_content};
 
 /// Renders one element the way the reference's `Element` does.
-///
 /// Attributes each go on their own indented line and the closing bracket gets a
 /// line of its own; an element with neither attributes nor children closes
 /// inline. This is copied rather than improved on purpose — the output is a
@@ -141,7 +126,6 @@ pub fn render_todos_updated(before: &[Todo], after: &[Todo]) -> String {
 }
 
 /// The icons the transcript uses.
-///
 /// Deliberately different from the panel's: a transcript line is a record of a
 /// moment and reads better with checkbox glyphs, while the live panel uses
 /// filled shapes that carry at a glance.
@@ -171,7 +155,6 @@ pub struct TodoDiffLine {
 }
 
 /// The lines a transcript shows for one replacement.
-///
 /// Walks the previous list in its own order so surviving items keep their
 /// place, then appends what is new. An item that was dropped is still shown,
 /// struck through — a task disappearing without a trace is the one case where

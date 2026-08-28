@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/core/modes/indicator.ts`.
-//!
-//! Visual presentation of the active mode.
-//!
-//! The one thing a user must be able to read off the screen at a glance is
-//! whether the agent can currently modify their workspace. That is a property
-//! of the shell, not of the mode name, so the colour is driven by the shell and
-//! a user-authored mode inherits the right signal for free.
-
 use super::shells::ShellId;
 
 /// Theme colour key per shell: read-only is calm, worker is active.
@@ -59,6 +50,5 @@ pub fn estimate_injected_tokens(text: &str) -> usize {
     if text.is_empty() {
         return 0;
     }
-    // `Math.ceil(text.length / 4)` counts UTF-16 units in TypeScript.
     text.encode_utf16().count().div_ceil(4)
 }

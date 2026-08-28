@@ -1,12 +1,10 @@
 //! How an MCP tool's call and result are drawn (v0.1.22).
-//!
 //! A server's tools are not known at build time, so there is no hand-written
 //! renderer for any of them, and the shape of both the arguments and the result
 //! is whatever that server chose. The fallback of printing the raw JSON on both
 //! sides is what this module exists to avoid: a call header that is one long
 //! brace-heavy line reads as noise, and a result that is a minified document
 //! fills the transcript with something nobody can scan.
-//!
 //! So the call becomes a header in the same shape every built-in tool uses —
 //! the server as the block title, the tool name, then its arguments as
 //! `key: value` with each value cut to a length that still fits a line. And the
@@ -30,7 +28,6 @@ const MAX_VALUE_CHARS: usize = 48;
 const MAX_ARGUMENTS: usize = 4;
 
 /// The call header: the tool's name and a readable digest of its arguments.
-///
 /// While the model is still streaming the arguments there is nothing worth
 /// showing — a half-written object would print as a value that changes shape on
 /// every frame — so the name stands alone until they are complete.
@@ -70,7 +67,6 @@ pub fn format_mcp_call(tool: &str, args: &Value, args_complete: bool, theme: &Th
 }
 
 /// One argument value, short enough to sit on a header line.
-///
 /// Containers are counted rather than printed: a header is for recognising the
 /// call, and a nested object spelled out in full stops being a header.
 fn summarize(value: &Value) -> String {
@@ -168,7 +164,6 @@ pub fn format_mcp_result(
 }
 
 /// Re-indents a JSON document, and leaves everything else alone.
-///
 /// Servers commonly answer with a single minified line. Expanding it is the
 /// difference between a result that can be read down the page and one that
 /// wraps into a paragraph.

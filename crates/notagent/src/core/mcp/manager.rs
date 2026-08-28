@@ -1,18 +1,3 @@
-//! The configured servers and their live connections (port addition, v0.1.22).
-//!
-//! Servers connect on first need rather than at startup, so a session that asks
-//! nothing of them pays for nothing, and a server that is broken costs only the
-//! calls that reach it.
-//!
-//! Six states, after `../kimi-code-main`'s connection manager. Two of them do
-//! real work: `NeedsAuth` is what makes a server contribute an `authenticate`
-//! tool instead of its own, and `Removed` is a tombstone, so a tool the model
-//! still holds fails with "that server is gone" rather than with a transport
-//! error that reads like a bug.
-//!
-//! Each server has its own lock. Connecting one never blocks a call to another,
-//! and two callers racing to first-use the same server produce one connection.
-
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -62,7 +47,6 @@ impl McpServerStatus {
     }
 }
 
-/// One tool a server offers, as this port names it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct McpToolInfo {
     /// The name the model sees: `mcp__<server>__<tool>`.
@@ -120,7 +104,6 @@ impl Server {
 }
 
 /// What a provider accepts as a tool name.
-///
 /// Anthropic's is `^[a-zA-Z0-9_-]{1,128}$` and the others are no wider in
 /// practice. This matters more than it looks: the tool list goes out whole, so
 /// one name a provider will not take fails the entire request, not the one tool
@@ -128,11 +111,9 @@ impl Server {
 pub const MAX_QUALIFIED_NAME_CHARS: usize = 128;
 
 /// Qualifies a server's tool name, in an alphabet a provider will accept.
-///
 /// A server names its tools for people — `Add comment`, `read.channel`,
 /// `search:web` are all ordinary — and none of those survive the round trip.
 /// Every character outside the alphabet becomes an underscore.
-///
 /// Unlike `../notagent-main-rust`, which lowercases as well, case is kept:
 /// the providers accept it, and folding it would collide two tools that a
 /// server deliberately told apart.
@@ -146,7 +127,6 @@ pub fn qualify_tool_name(server: &ServerName, tool: &str) -> String {
 }
 
 /// Replaces everything a provider will not take, and tidies what is left.
-///
 /// The result can be empty — a tool named entirely in characters that do not
 /// survive has no usable name, and the caller drops it.
 fn sanitize_name(value: &str) -> String {
@@ -172,7 +152,6 @@ fn sanitize_name(value: &str) -> String {
 }
 
 /// Cuts an over-long name down, keeping it unique.
-///
 /// The tail is what distinguishes two tools of the same server, so it is the
 /// tail that is kept along with a digest of the whole: truncating alone would
 /// map two long names onto one.
@@ -201,7 +180,6 @@ fn shorten_to_limit(qualified: &str) -> String {
 }
 
 /// The server and tool a qualified name refers to.
-///
 /// The tool half keeps any further separators, so a server whose tool is itself
 /// called `a__b` round-trips; a server whose *name* contains the separator is
 /// rejected at configuration time instead.
@@ -212,7 +190,6 @@ pub fn split_qualified_name(qualified: &str) -> Option<(ServerName, String)> {
 }
 
 /// Whether a server may be configured under this name.
-///
 /// A name that sanitizes to nothing has no tool names to give, and one
 /// containing the separator would make the ones it gives ambiguous. Anything
 /// else is accepted and cleaned up at qualification time — a server called
@@ -280,7 +257,6 @@ impl McpManager {
     }
 
     /// Every configured server, with each connection checked before reporting.
-    ///
     /// A server that died while nobody was calling it still reads as
     /// `connected` on the entry: `rmcp` gives a running service no way to say it
     /// ended without consuming the handle the calls need. A tool call finds out
@@ -314,7 +290,6 @@ impl McpManager {
     }
 
     /// Every configured server, without waiting for a lock.
-    ///
     /// For callers that must not block — the footer renders on the UI thread,
     /// and a summary one render out of date costs nothing next to a stalled
     /// frame. `None` means someone else held a lock, not that anything is wrong.
@@ -329,7 +304,6 @@ impl McpManager {
     }
 
     /// Connects a server if it is not connected yet and returns its tools.
-    ///
     /// A failure is recorded on the entry and returned; it never propagates
     /// past the server it belongs to.
     pub async fn ensure_connected(&self, name: &ServerName) -> Vec<McpToolInfo> {
@@ -454,7 +428,6 @@ impl McpManager {
     }
 
     /// Logs into a server and reconnects it on the new token.
-    ///
     /// The per-server lock is deliberately not held across the browser flow:
     /// that wait is measured in minutes, and holding it would stall `/mcp`, the
     /// footer and every call to every other server for its duration. What the
@@ -494,7 +467,6 @@ impl McpManager {
     }
 
     /// What is stored for a server, without touching the network.
-    ///
     /// `None` means the question does not apply: a local process, a server with
     /// OAuth switched off, or a session that keeps no credentials.
     pub async fn auth_status(&self, name: &ServerName) -> Option<McpAuthStatus> {
@@ -511,7 +483,6 @@ impl McpManager {
     }
 
     /// Forgets one server's stored credentials and drops its connection.
-    ///
     /// The connection goes with them: leaving it up would keep answering on a
     /// token the user just asked to be rid of.
     pub async fn sign_out(&self, name: &ServerName) -> Result<(), String> {
@@ -547,7 +518,6 @@ impl McpManager {
     }
 
     /// Drops every connection that was made on a stored token.
-    ///
     /// The credential file is the user's rather than the project's, so emptying
     /// it belongs to the command that owns that file; what belongs here is that
     /// no connection keeps answering on a sign-in that was just discarded.
@@ -583,7 +553,6 @@ impl McpManager {
     }
 
     /// Whether a login is possible at all for this server.
-    ///
     /// The synthetic `authenticate` tool is only offered where the answer is
     /// yes; a tool that can only ever report "this cannot be done" is worse than
     /// no tool, because the model will spend a turn finding out.
@@ -645,7 +614,6 @@ fn describe(error: &McpCallError, phase: &str) -> String {
 }
 
 /// Keeps the tools that can be offered and drops the rest.
-///
 /// A server is remote input. An unnamed tool has nothing to call, a duplicate
 /// would shadow its twin, and a manifest without a ceiling is a cost paid on
 /// every turn for as long as the server is connected.
@@ -655,9 +623,7 @@ fn accept_tools(name: &ServerName, tools: Vec<rmcp::model::Tool>) -> Vec<McpTool
 }
 
 /// The same, with the server's own allow and deny lists applied.
-///
 /// The lists name tools the way the server does, because that is how its
-/// documentation lists them; the qualified name is this port's business and
 /// nobody writing a config should have to know it.
 fn accept_tools_filtered(
     name: &ServerName,
@@ -790,7 +756,6 @@ mod tests {
 
     #[test]
     fn the_lists_use_the_server_s_own_naming() {
-        // Nobody writing a config should have to know this port's qualified
         // form, so the filter matches the name the server's documentation uses.
         let tools = accept_tools_filtered(
             &ServerName::from("s"),

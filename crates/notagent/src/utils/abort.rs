@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/abort.ts`.
-
 use std::future::Future;
 
 use tokio_util::sync::CancellationToken;
@@ -16,10 +14,8 @@ pub fn operation_signal(signal: Option<CancellationToken>) -> CancellationToken 
 
 /// Stop waiting on abort while observing the abandoned operation through
 /// settlement.
-///
 /// Dropping a Rust future cancels it, so callers that must keep the abandoned
 /// operation running pass a handle to work owned elsewhere (a spawned task or a
-/// shared future), exactly as the TS version races an already-started promise.
 pub async fn race_with_abort_signal<T>(
     operation: impl Future<Output = T>,
     signal: Option<&CancellationToken>,
@@ -38,7 +34,6 @@ pub async fn race_with_abort_signal<T>(
 }
 
 /// `AbortSignal.timeout(ms)` — a token that cancels itself after `ms`.
-///
 /// Deviation (class 3): Node's static factory has no counterpart on
 /// `CancellationToken`, so the deadline is a task that cancels the token.
 pub fn timeout_signal(milliseconds: u64) -> CancellationToken {

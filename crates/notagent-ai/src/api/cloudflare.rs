@@ -1,7 +1,3 @@
-//! Cloudflare base URLs.
-//!
-//! 1:1 port of `packages/ai/src/api/cloudflare.ts` (15 LOC).
-
 /// Workers AI direct endpoint.
 pub const CLOUDFLARE_WORKERS_AI_BASE_URL: &str =
     "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1";

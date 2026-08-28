@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/overlay-short-content.test.ts` (62 LOC).
-
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{Component, Line, TuiStopOptions, component_ref, shared_lines};
 use notagent_tui::tui_main_screen::TuiMainScreen;

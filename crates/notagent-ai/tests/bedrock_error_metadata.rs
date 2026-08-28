@@ -1,13 +1,3 @@
-//! Port of `packages/ai/test/bedrock-error-metadata.test.ts` (212 LOC).
-//!
-//! TS mocks `@aws-sdk/client-bedrock-runtime` and drives the whole `stream()` for each
-//! failure shape. The port asserts on the two functions that decide what a failure turns
-//! into — `bedrock_failure_diagnostic_details` (the `bedrock_response_failure` payload)
-//! and `format_bedrock_error` (`errorMessage`) — because the SDK values the mock injects
-//! are exactly their inputs. The aborted case is covered by the stream test in
-//! `bedrock_converse_stream.rs`, which asserts `stopReason` `aborted` carries no
-//! diagnostic.
-
 use notagent_ai::api::bedrock_converse_stream::{
     bedrock_failure_diagnostic_details, format_bedrock_error,
 };

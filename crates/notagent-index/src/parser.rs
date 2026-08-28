@@ -1,8 +1,3 @@
-//! Multi-language parser using tree-sitter
-//!
-//! Supports multiple programming languages:
-//! Rust, TypeScript, JavaScript, Python, Go, C, C++, Java, Ruby, JSON, TOML, CSS, HTML, Bash, Markdown
-
 use anyhow::{Result, anyhow};
 use std::path::Path;
 use tree_sitter::{Language, Parser, Tree};

@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/test/bash-execution-width.test.ts` (80 LOC).
-//!
-//! Test that BashExecutionComponent's collapsed output respects the render-time
-//! width, not a stale captured width. Regression test for #2569.
-//!
-//! The TypeScript test builds a TUI stub because its `Loader` needs one; the
-//! ported components are polled, so no stub is required.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::modes::interactive::components::bash_execution::BashExecutionComponent;

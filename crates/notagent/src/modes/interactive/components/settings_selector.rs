@@ -1,27 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/settings-selector.ts` (881 LOC).
-//!
-//! The `/settings` dialog: one `SettingsList` over roughly thirty rows, three
-//! submenus (warnings, thinking level, theme) and the two-mode theme submenu
-//! with its own nested light/dark selects.
-//!
-//! Deviations:
-//!   * Class 1: TypeScript hands every submenu a `done(value?)` continuation
-//!     it may call from inside the input it is handling. A submenu cannot hold
-//!     a callback into the list that owns it, so the ported `SettingsList`
-//!     hands out a [`SubmenuDone`] slot instead and reads it the moment that
-//!     input returns (`settings_list.rs`).
-//!   * Class 1: for the same reason `ThemeSubmenu` cannot rebuild itself from
-//!     inside a select callback — the callbacks record the requested change in
-//!     a shared cell and the submenu applies it after the dispatch.
-//!   * Class 1: the string unions of the settings become the crate enums, and
-//!     the wire spelling comes from their serde renames (`wire`/`from_wire`),
-//!     so a value can never drift from what `settings.json` stores.
-//!   * Class 1: `SettingsCallbacks` is a struct of boxed closures shared as
-//!     `Rc<RefCell<…>>` (TypeScript passes one object by reference); it has a
-//!     `Default` with no-op callbacks, which is what the TS suite builds with
-//!     its partial cast.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -99,7 +75,6 @@ fn default_project_trust_by_label(label: &str) -> Option<DefaultProjectTrust> {
 }
 
 /// The wire spelling of a settings value — its serde rename, which is what
-/// `settings.json` carries and what the TypeScript string union spells out.
 fn wire<T: Serialize>(value: &T) -> String {
     serde_json::to_value(value)
         .ok()
@@ -176,13 +151,10 @@ pub struct SettingsConfig {
     pub fullscreen_exit_output: FullscreenExitOutput,
     pub fullscreen_scrollbar: ScrollViewScrollbar,
     pub warnings: WarningSettings,
-    /// Chat-block style (port addition, v0.1.9): true = badge (the default,
     /// user decision 2026-08-17), false = standard filled surface.
     pub block_style_badge: bool,
-    /// Atomic file leases (port addition, v0.1.19): off by default, also
     /// reachable as `/leases on|off`.
     pub atomic_leases: bool,
-    /// Bash filter (port addition, v0.1.20): off by default, also reachable as
     /// `/bash-filter on|off`.
     pub bash_filter: bool,
 }

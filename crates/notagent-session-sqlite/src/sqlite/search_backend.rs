@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/search-backend.ts`.
-
 use std::path::Path;
 use std::sync::Arc;
 
@@ -15,8 +13,6 @@ use crate::sqlite::types::{
     SqliteDatabase, SqliteDatabaseFactory, SqliteSessionMetadata, with_transaction,
 };
 
-/// Deviation class 1: the TS `env` (agent-core `FileSystem`) is replaced by
-/// `std::fs`; the harness file-system abstraction is not part of the port.
 pub struct SqliteSessionSearchOptions {
     pub sqlite: Arc<dyn SqliteDatabaseFactory>,
     pub database_path: String,
@@ -132,8 +128,6 @@ impl SqliteSessionSearch {
         }
     }
 
-    /// TS yields an async iterable; Rust materializes the hits because the
-    /// database is closed when the search finishes either way (deviation class 1).
     pub async fn search(
         &self,
         text_query: &str,

@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/branch-summary-message.ts` (58 LOC).
-
 use std::rc::Rc;
 
 use notagent_agent::BranchSummaryMessage;

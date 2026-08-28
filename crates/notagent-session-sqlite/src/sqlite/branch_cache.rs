@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/branch-cache.ts`.
-
 use notagent_agent::uuidv7;
 
 use crate::session_types::{SessionError, SessionErrorCode};
@@ -58,7 +56,6 @@ pub fn build_cached_branch(
     }
 }
 
-// Mirrors the TS parameter list one to one (CONVENTIONS.md §9).
 #[allow(clippy::too_many_arguments)]
 fn extend_branch(
     db: &dyn SqliteDatabase,
@@ -88,7 +85,6 @@ fn extend_branch(
     Ok(())
 }
 
-// Mirrors the TS parameter list one to one (CONVENTIONS.md §9).
 #[allow(clippy::too_many_arguments)]
 pub fn append_entry_to_branch_cache(
     db: &dyn SqliteDatabase,

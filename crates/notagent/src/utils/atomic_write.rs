@@ -1,18 +1,8 @@
-//! Atomic writes for credential files.
-//!
-//! Deviation from the TS original (user decision 2026-08-16, v0.1.4): the TS
-//! code writes auth.json with a plain `writeFileSync`, so a crash or a full
-//! disk mid-write leaves an empty or truncated credential file. Here the bytes
-//! land in a sibling temp file — created with the final permissions so secrets
-//! are never readable in between — get fsynced, and replace the destination
-//! with one `rename`.
-
 use std::io::Write;
 use std::path::Path;
 
 /// Write `contents` to `path` atomically. `mode` is applied on Unix before any
 /// bytes are written.
-///
 /// The temp file name is fixed (`<name>.tmp`), so concurrent writers must be
 /// excluded by the caller — auth.json writes hold the inter-process lock.
 pub fn write_secret_file_atomic(path: &Path, contents: &str, mode: u32) -> std::io::Result<()> {

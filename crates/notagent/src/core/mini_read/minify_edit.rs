@@ -1,9 +1,7 @@
 //! Applies edits expressed in minified space onto the original source.
-//!
 //! Adapted from the Rust reference implementation
 //! `notagent-main-rust/crates/notagent_services/src/tool_services/minify_edit.rs`
 //! (see [`super::minify`] for why the reference is the source here).
-//!
 //! Counterpart of the `read_minified` tool: the agent matches and replaces
 //! text in the minified rendering, and this module maps the match back onto
 //! the original file via the byte-level source map, re-indents the
@@ -478,7 +476,6 @@ fn normalize_line_endings(content: &str, target: &str) -> String {
 /// Restores blank lines lost when the replacement was minified (the minified
 /// view drops blank lines). `expanded` is the blank-less replacement; `expanded`
 /// has one line per non-blank source line.
-///
 /// Blank lines are keyed by the number of non-blank lines that precede them.
 /// The original replaced text's blank structure is tried first (the model edits
 /// from a blank-less view, so it reflects intent better than the model's typed

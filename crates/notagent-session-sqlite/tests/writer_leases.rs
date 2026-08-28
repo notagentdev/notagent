@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/test/writer-leases.test.ts`.
-
 use notagent_agent::AgentMessage;
 use notagent_ai::{TextContent, TextOrImageContent, UserContent, UserMessage};
 use notagent_session_sqlite::session_types::{Entry, EntryOrder, EntryQuery, SessionErrorCode};
@@ -337,7 +335,6 @@ async fn renews_an_idle_writer_lease_with_a_heartbeat() {
         .join("sessions.sqlite")
         .to_string_lossy()
         .into_owned();
-    // TS advances fake timers; Rust uses a short real interval instead.
     let repo = repository(
         &database_path,
         Some(SqliteWriterLeaseOptions {

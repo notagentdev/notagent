@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/test/version-check.test.ts` (131 LOC).
-//!
-//! `vi.stubGlobal("fetch", …)` has no counterpart, so the checks run against a
-//! loopback server (deviation class 3). The two transport-failure cases of the
-//! TypeScript become transient `503` responses, which `fetch_with_retry` treats
-//! the same way; `formatVersionCheckError` has no port (see the module note in
-//! `utils/version_check.rs`).
-
 mod support;
 
 use std::sync::{Mutex, MutexGuard};

@@ -1,23 +1,3 @@
-//! Port of `packages/coding-agent/src/core/footer-data-provider.ts`.
-//!
-//! The git branch shown in the footer, and the machinery that keeps it honest.
-//!
-//! Two things here are less obvious than they look. The first is that the
-//! branch is read from `.git/HEAD` rather than by running git: the footer
-//! repaints on every keystroke, and a subprocess per repaint is not affordable.
-//! git is only consulted for the one case the file cannot answer — a HEAD
-//! pointing at `refs/heads/.invalid`, which is what a repository mid-rebase
-//! looks like.
-//!
-//! The second is that the watcher is installed on the *directory* holding HEAD,
-//! not on HEAD itself. Git writes HEAD by renaming a temporary file over it,
-//! which changes the inode, and a watch on the old inode goes quiet forever.
-//!
-//! Deviation (class 2): the extension status map (`setExtensionStatus`,
-//! `getExtensionStatuses`, `clearExtensionStatuses`) is gone. Its only producer
-//! was `ctx.ui.setStatus`, which is extension API — see
-//! `plans/facts/extension-boundary.md` §6, "Custom Footer/Header/Widgets".
-
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -43,7 +23,6 @@ fn to_string(path: &Path) -> String {
 }
 
 /// Walks up from `cwd` looking for git metadata.
-///
 /// Handles both layouts: a `.git` directory (ordinary clone) and a `.git` file
 /// holding a `gitdir:` pointer (linked worktree or submodule).
 pub fn find_git_paths(cwd: &str) -> Option<GitPaths> {
@@ -204,7 +183,6 @@ struct Inner {
     /// runtime, so the debounce and retry timers need a handle to spawn onto.
     runtime: Option<tokio::runtime::Handle>,
     cwd: Mutex<String>,
-    /// `None` = not read yet (TS `undefined`); `Some(None)` = not in a repo.
     cached_branch: Mutex<Option<Option<String>>>,
     git_paths: Mutex<Option<GitPaths>>,
     watchers: Mutex<Watchers>,
@@ -572,7 +550,6 @@ impl Inner {
 
     /// `fs.watchFile`: polls the file and reports a change when its metadata
     /// moved.
-    ///
     /// Deviation (class 1): the comparison is modification time plus size. Node
     /// also compares the inode change time, which Rust exposes only per
     /// platform; every write that changes ctime here also changes mtime.

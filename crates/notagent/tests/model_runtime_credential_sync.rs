@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/model-runtime-credential-sync.test.ts` (375 LOC).
-
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;

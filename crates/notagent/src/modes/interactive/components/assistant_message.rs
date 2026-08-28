@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/assistant-message.ts` (197 LOC).
-
 use std::rc::Rc;
 
 use notagent_ai::types::{AssistantContent, AssistantMessage, StopReason};
@@ -27,7 +24,6 @@ const OSC133_ZONE_FINAL: &str = "\x1b]133;C\x07";
 
 /// Component that renders a complete assistant message
 pub struct AssistantMessageComponent {
-    /// TypeScript adds this as the only child of the component itself; the port
     /// renders it directly instead of holding it twice.
     content_container: Container,
     hide_thinking_block: bool,
@@ -52,7 +48,6 @@ pub struct AssistantMessageComponent {
 }
 
 impl AssistantMessageComponent {
-    /// The TypeScript defaults are `hideThinkingBlock = false`,
     /// `markdownTheme = getMarkdownTheme()`, `hiddenThinkingLabel = "Thinking..."`,
     /// `outputPad = 1` and no transformers.
     pub fn new(
@@ -151,8 +146,6 @@ impl AssistantMessageComponent {
 
     /// The thinking timer runs from the first streamed thinking content until
     /// visible text or a tool call follows it (or streaming ends). Derived
-    /// here because the port receives whole messages instead of deltas
-    /// (deviation class 1 from the reference's `append_delta`).
     fn derive_thinking_timer(&mut self, message: &AssistantMessage) {
         let has_thinking = message.content.iter().any(|content| {
             matches!(content, AssistantContent::Thinking(thinking) if !thinking.thinking.trim().is_empty())

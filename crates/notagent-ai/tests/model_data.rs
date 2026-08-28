@@ -1,14 +1,3 @@
-//! Catalog assertions of the generated model data.
-//!
-//! Ports `packages/ai/test/xiaomi-models.test.ts` (17), `together-models.test.ts` (86),
-//! `openrouter-cache-control-models.test.ts` (15), the offline part of
-//! `bedrock-models.test.ts` (70), `baseten-models.test.ts` (141),
-//! `qwen-token-plan-models.test.ts` (283) and the catalog part of
-//! `fireworks-models.test.ts` (343). The TS suites read through `compat.ts`
-//! (`getModel`/`getModels`), which is excluded; the port reads the same data through
-//! `model_catalog`. Payload assertions capture the serialized request body with an
-//! injected `fetch` instead of the `onPayload` hook — the body is what the hook sees.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::streams::{AnthropicMessagesApi, OpenAICompletionsApi};
@@ -24,7 +13,6 @@ use serde_json::{Value, json};
 // ---------------------------------------------------------------------------
 
 /// Captures the request and answers with an empty SSE body, which ends the stream
-/// without an assistant message — the TS tests throw inside `onPayload` for the same
 /// effect.
 struct CapturingFetch {
     seen: Arc<Mutex<Option<FetchRequest>>>,
@@ -865,7 +853,6 @@ async fn native_anthropic_models_keep_cache_control_and_eager_tool_input() {
 // ---------------------------------------------------------------------------
 // Thinking levels
 //
-// Port of the catalog half of `packages/ai/test/max-thinking.test.ts` (89): `max` stays
 // opt-in, and the Codex models that support it advertise both `xhigh` and `max`.
 // ---------------------------------------------------------------------------
 

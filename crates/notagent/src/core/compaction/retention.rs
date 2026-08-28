@@ -1,12 +1,10 @@
 //! Which of the user's own messages survive a compaction, and how much of each.
-//!
 //! Everything else in a session — assistant turns, tool results, bash output —
 //! is reconstructible from the summary, in the sense that a paraphrase of it is
 //! good enough to carry on. A request is not: paraphrasing "do not touch the
 //! database" into "the user had reservations about the database" loses the
 //! instruction. So the requests are kept verbatim and everything else is
 //! summarized.
-//!
 //! Keeping them is close to free. On a 377k-token session the user's messages
 //! were 2,609 tokens — seven tenths of one percent — while tool results alone
 //! were 216k. The budget below therefore rarely binds; it exists for the
@@ -22,14 +20,12 @@ use crate::core::compaction::compaction::estimate_tokens;
 pub const RETAINED_USER_TOKENS: u64 = 20_000;
 
 /// The part of that budget reserved for the oldest messages.
-///
 /// A pure tail would lose the opening of the session, which is usually where
 /// the goal is stated — and it would lose it precisely in the long sessions
 /// where a compaction happens at all.
 pub const RETAINED_HEAD_TOKENS: u64 = 2_000;
 
 /// One retained message, and how much of it survived.
-///
 /// Both token fields absent means the message was kept whole. The counts are
 /// stored rather than the truncated text so that the session file keeps a
 /// single copy of every message; the text is derived again on load.
@@ -100,7 +96,6 @@ impl RetainedSelection {
 }
 
 /// Whether a message is something the user actually typed.
-///
 /// Injected content — todo reminders, hook output, tool feedback — travels as
 /// [`AgentMessage::Custom`] and is re-injected by whatever produced it on the
 /// next turn, so carrying it through a compaction would duplicate it.
@@ -109,7 +104,6 @@ pub fn is_user_input(message: &AgentMessage) -> bool {
 }
 
 /// The plain text of a user message, when all of its content is text.
-///
 /// A message carrying an image has no sensible truncation — half an image is
 /// not half a message — so it is kept whole or not at all.
 fn truncatable_text(message: &AgentMessage) -> Option<String> {
@@ -130,7 +124,6 @@ fn truncatable_text(message: &AgentMessage) -> Option<String> {
 }
 
 /// Keeps the first `tokens` worth of text, cutting on a character boundary.
-///
 /// Sized in UTF-16 units to agree with [`estimate_tokens`], which is what the
 /// budget is measured in.
 fn keep_prefix(text: &str, tokens: u64) -> String {
@@ -196,7 +189,6 @@ pub fn apply_retention(message: &AgentMessage, retained: &RetainedEntry) -> Agen
 }
 
 /// The note that stands where messages were dropped.
-///
 /// Without it the model sees the session's opening followed immediately by
 /// recent work and reads the two as adjacent, inventing a continuity that never
 /// existed.
@@ -214,7 +206,6 @@ pub fn elision_message(omitted_tokens: u64, timestamp: i64) -> AgentMessage {
 }
 
 /// Picks the messages to carry forward, oldest and newest, within `budget`.
-///
 /// Candidates are given oldest first. The tail is filled backwards from the
 /// newest, then the head forwards from the oldest with what the head reservation
 /// allows; a message that only partly fits is truncated so the budget is met

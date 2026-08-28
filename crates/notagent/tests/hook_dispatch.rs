@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/test/hooks-extension.test.ts`.
-//!
-//! The mapping from what the agent does to the sixteen hook names.
-//!
-//! Names and payload fields are asserted literally. They are read by shell
-//! one-liners in an external supervisor rather than through our types, so a
-//! rename that a typechecker would wave through is exactly the break worth
-//! catching here.
-//!
-//! The TypeScript spies on `runtime.emit`; here the assertions run against
-//! declared hooks that append their payload to a log, which pins the same names
-//! and fields one layer further out — at the process boundary a supervisor
-//! actually reads.
-
 #![cfg(unix)]
 
 use std::path::PathBuf;
@@ -122,7 +108,6 @@ impl Wire {
     }
 
     /// The payload of the first run of `name`, without the four fields every
-    /// payload carries — what the TypeScript passes to `emit` as `fields`.
     fn fields_of(&self, name: &str) -> Map<String, Value> {
         let mut payload = self
             .payloads()

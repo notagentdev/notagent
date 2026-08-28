@@ -1,9 +1,3 @@
-//! Generic undo stack.
-//!
-//! 1:1 port of `packages/tui/src/undo-stack.ts` (28 LOC). TS deep-clones on
-//! push via `structuredClone`; Rust takes the snapshot by value, which is the
-//! same thing for the plain state structs used here.
-
 /// Stack of state snapshots.
 #[derive(Debug, Clone)]
 pub struct UndoStack<S> {

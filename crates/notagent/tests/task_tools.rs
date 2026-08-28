@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/test/task-tools.test.ts`.
-//!
-//! The three tools that observe background work, and the note a settled task
-//! sends into the conversation.
-//!
-//! What matters here is what a model is told. A snapshot that quietly omitted
-//! the truncation, or a completion delivered twice, both read as ordinary text
-//! and both make the model act on something untrue — so those are the cases
-//! asserted rather than the mechanics behind them.
-
 use std::sync::{Arc, Mutex};
 
 use notagent::core::tasks::manager::{RegisterTaskOptions, TaskManager, TaskManagerOptions};
@@ -236,7 +226,6 @@ async fn reports_a_running_task_as_not_final_with_what_it_has_produced() {
         .register(running("a server"), RegisterTaskOptions::default())
         .expect("registered");
     // The task appends from its own tokio task; the tool reads whatever is
-    // there, so give it the moment TS's microtask queue gives it.
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let result = text_of(
         &run(

@@ -1,9 +1,3 @@
-//! `generateImages` dispatcher.
-//!
-//! 1:1 port of `packages/ai/src/images.ts` (21 LOC) and
-//! `packages/ai/src/providers/images/register-builtins.ts` (50 LOC). Deviation class 4:
-//! the lazy `import()` of the built-in provider module falls away — Rust links statically.
-
 use std::sync::{Arc, Once};
 
 use crate::api::openrouter_images::OpenRouterImages;
@@ -13,7 +7,6 @@ use crate::images_api_registry::{
 };
 use crate::types::{AssistantImages, ImagesContext, ImagesModel, ImagesOptions};
 
-/// `registerBuiltInImagesApiProviders()` — runs once, as the TS module side effect does.
 pub fn register_built_in_images_api_providers() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
@@ -38,9 +31,6 @@ pub async fn generate_images(
 }
 
 /// The catalog of built-in image models, keyed by provider id.
-///
-/// The data is the snapshot of `packages/ai/src/image-models.generated.ts`; per the
-/// workstream plan the generator (`scripts/generate-image-models.ts`) is not ported.
 pub fn image_models() -> &'static serde_json::Map<String, serde_json::Value> {
     static CELL: std::sync::OnceLock<serde_json::Map<String, serde_json::Value>> =
         std::sync::OnceLock::new();

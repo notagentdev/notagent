@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/test/cbor/cbor.test.ts`.
-
 use notagent_protocol::{
     CborOptions, CborValue, DEFAULT_MAX_CBOR_BYTE_LENGTH, DEFAULT_MAX_CBOR_CONTAINER_LENGTH,
     DEFAULT_MAX_CBOR_DEPTH, decode_cbor, encode_cbor,
@@ -108,7 +106,6 @@ fn encodes_and_decodes_rfc_8949_vectors() {
     }
 }
 
-// The TS case "omits undefined object properties without omitting falsey values"
 // has no Rust equivalent (there is no `undefined`); omitting optional fields is
 // covered by `tests/protocol.rs` at the codec level.
 
@@ -125,7 +122,6 @@ fn preserves_a_leading_unicode_bom_and_treats_proto_as_data() {
 #[test]
 fn rejects_unsupported_encoder_values() {
     // Not representable in Rust: undefined, array holes, bigint, symbol,
-    // function, Date, Map, symbol keys (deviation class 1).
     for (label, value) in [
         ("NaN", CborValue::Number(f64::NAN)),
         ("positive infinity", CborValue::Number(f64::INFINITY)),

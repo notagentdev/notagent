@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/edit.ts` (tool half).
-
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -123,7 +121,6 @@ impl EditOperations for LocalEditOperations {
     }
 }
 
-/// TS reports `Error code: ${error.code}` for Node errors.
 fn error_code(error: &std::io::Error) -> String {
     let code = match error.kind() {
         std::io::ErrorKind::NotFound => "ENOENT",
@@ -251,10 +248,6 @@ fn validate_edit_input(input: &Value) -> Result<(String, Vec<Edit>), ToolExecuti
 type EditPreview = Result<DiffString, String>;
 
 /// The header of an `edit` call, with the live preview of its diff.
-///
-/// TypeScript hangs the four preview fields off a `Box` instance
-/// (`EditCallRenderComponent`); the port makes that a component of its own
-/// (deviation class 1).
 struct EditCallComponent {
     header: BoxComponent,
     preview: Option<EditPreview>,
@@ -685,9 +678,6 @@ impl ToolDefinition for EditToolDefinition {
     }
 
     /// Compute the preview the last `render_call` asked for.
-    ///
-    /// Deviation (class 1): TypeScript continues a promise inside the renderer
-    /// and calls `context.invalidate()` from it; the port hands the work to the
     /// render loop, which awaits it on the TUI thread. The result is dropped if
     /// the arguments moved on in the meantime, exactly as the `previewArgsKey`
     /// check does there.
@@ -769,8 +759,6 @@ impl ToolDefinition for EditToolDefinition {
                         .read_file(&absolute_path)
                         .await
                         .map_err(ToolExecutionError::new)?;
-                    // Deviation from the TS original (user decision 2026-08-16,
-                    // v0.1.4): Node decodes invalid UTF-8 lossily and the TS tool
                     // writes the U+FFFD replacements back, permanently corrupting
                     // bytes the edit never touched. Refusing is the only safe
                     // answer a byte-exact port can give.
@@ -1172,8 +1160,6 @@ mod tests {
         assert_eq!(error.message, "Operation aborted");
         assert_eq!(directory.read("file.txt"), "content");
     }
-
-    // ---- atomic leases (port addition, v0.1.19) ---------------------------
 
     use crate::core::tools::file_lease::{FileLease, FileLeaseStore};
 

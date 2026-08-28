@@ -1,6 +1,3 @@
-//! End-to-end test of the Anthropic request path against an injected fetch, mirroring
-//! how `packages/ai/test/anthropic-sse-parsing.test.ts` injects a fake SDK client.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::anthropic_messages::stream;
@@ -435,7 +432,6 @@ async fn stream_simple_uses_effort_for_adaptive_thinking_models() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retryable_status_is_retried_and_the_response_hook_only_sees_the_final_one() {
-    // TS calls the SDK with `maxRetries: 0` and wraps it in `retryProviderRequest`, so
     // `onResponse` runs after the retries, never for the failed attempts.
     let attempts = Arc::new(Mutex::new(0usize));
     let seen_statuses = Arc::new(Mutex::new(Vec::new()));

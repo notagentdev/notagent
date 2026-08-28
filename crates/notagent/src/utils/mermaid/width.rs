@@ -1,14 +1,3 @@
-//! Port of `grok-mermaid/src/width.ts` (74 LOC).
-//!
-//! Display width, measured in grapheme clusters. A cluster is the unit both of
-//! measuring and of painting, so a box is always sized for exactly what gets
-//! drawn into it.
-//!
-//! Class 3 deviation: the TypeScript file binary-searches `WIDTHS`, a table its
-//! own header describes as generated from the Rust `unicode-width` crate, and
-//! clusters with `Intl.Segmenter`. The port calls `unicode-width` and
-//! `unicode-segmentation` directly.
-
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 
@@ -24,11 +13,9 @@ fn code_point_width(character: char) -> usize {
 }
 
 /// Columns occupied by one grapheme cluster.
-///
 /// The widest code point wins, so a base plus its combining marks measures as
 /// the base. Two adjustments: a variation selector requesting emoji
 /// presentation forces two columns, as does a regional indicator pair (a flag).
-///
 /// Zero is a real answer — a soft hyphen or zero-width space occupies nothing.
 pub fn cluster_width(cluster: &str) -> usize {
     let mut width = 0;

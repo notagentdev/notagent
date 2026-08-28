@@ -1,27 +1,17 @@
-//! Injizierbare HTTP-Schicht (`ProviderRequestOptions.fetch`).
-//!
-//! Substitution Klasse 3 (Master-Plan: Provider-SDKs → reqwest): In TS ist `fetch`
-//! die WHATWG-`fetch`-Funktion, die Tests durch eigene Implementierungen ersetzen.
-//! In Rust tritt an ihre Stelle dieses Trait-Objekt; die Default-Implementierung
-//! benutzt reqwest (siehe Task 8).
-
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use tokio::sync::mpsc::Receiver;
 
-/// HTTP-Anfrage, wie sie an [`FetchFn`] übergeben wird.
 #[derive(Debug, Clone, Default)]
 pub struct FetchRequest {
     pub method: String,
     pub url: String,
-    /// Reihenfolge-erhaltend wie `Headers` in JS.
     pub headers: Vec<(String, String)>,
     pub body: Option<Vec<u8>>,
 }
 
-/// Antwort-Körper: entweder vollständig gepuffert oder als Chunk-Strom (SSE).
 pub enum FetchBody {
     Bytes(Vec<u8>),
     Stream(Receiver<Result<Vec<u8>, FetchError>>),
@@ -45,7 +35,6 @@ pub struct FetchResponse {
     pub body: FetchBody,
 }
 
-/// Transportfehler (TS: geworfene `TypeError`/Netzwerkfehler aus `fetch`).
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct FetchError {
@@ -60,10 +49,9 @@ impl FetchError {
     }
 }
 
-/// Rückgabetyp von [`FetchFn::fetch`].
+/// Return type of [`FetchFn::fetch`].
 pub type FetchFuture = Pin<Box<dyn Future<Output = Result<FetchResponse, FetchError>> + Send>>;
 
-/// Ersatz für `FetchFunction = typeof globalThis.fetch`.
 pub trait FetchFn: Send + Sync {
     fn fetch(&self, request: FetchRequest) -> FetchFuture;
 }
@@ -72,9 +60,6 @@ pub trait FetchFn: Send + Sync {
 pub type FetchFunction = Arc<dyn FetchFn>;
 
 /// The default [`FetchFn`], backed by reqwest.
-///
-/// Substitution class 3 of the master plan: the provider SDKs are replaced by reqwest
-/// plus the ported SSE parser. Streaming responses are handed on as a chunk stream so
 /// the SSE decoder can consume them incrementally.
 pub struct ReqwestFetch {
     client: reqwest::Client,

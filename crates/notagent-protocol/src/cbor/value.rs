@@ -1,28 +1,16 @@
-//! Dynamic CBOR value.
-//!
-//! Deviation class 1 (language idiom): TS works with `unknown` and the native
-//! JS types (null, boolean, number, string, Uint8Array, Array, plain object).
-//! Rust needs an explicit value type for that. `Number` is always an f64 just
-//! like in JavaScript — the integer/float distinction is made by the encoder at
-//! runtime, exactly like `Number.isInteger` in
-//! `packages/protocol/src/cbor/encoder.ts`.
-
 use serde_json::Value as JsonValue;
 
 /// Largest integer JavaScript can represent safely (`Number.MAX_SAFE_INTEGER`).
 pub(crate) const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
-/// Port of `Number.isSafeInteger`.
 pub(crate) fn is_safe_integer(value: f64) -> bool {
     is_integer(value) && value.abs() <= MAX_SAFE_INTEGER
 }
 
-/// Port of `Number.isInteger`.
 pub(crate) fn is_integer(value: f64) -> bool {
     value.is_finite() && value.fract() == 0.0
 }
 
-/// Port of `Object.is(value, -0)`.
 pub(crate) fn is_negative_zero(value: f64) -> bool {
     value == 0.0 && value.is_sign_negative()
 }
@@ -64,7 +52,6 @@ impl CborValue {
         }
     }
 
-    /// Port of `isProtocolValue` from `codec.ts`: only JSON values are allowed.
     /// Byte strings (JS: `Uint8Array`) are not protocol values. Cycles,
     /// `undefined` and non-plain objects cannot be represented by `CborValue`
     /// and therefore cannot occur.

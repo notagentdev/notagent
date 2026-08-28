@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/modes/interactive/model-search.ts`.
-//!
-//! The two haystacks the fuzzy matcher searches when the user types into a
-//! model list. Both repeat the provider so that a provider-prefixed query
-//! outweighs a bare model id — see `get_model_selector_search_text` for why the
-//! `/model` selector drops the leading id entirely.
-
 /// The subset of a model entry the search text is built from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelSearchItem {

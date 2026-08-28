@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/snapshots.ts`.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_protocol::{
@@ -12,7 +10,6 @@ use crate::connection::{ConnectionStage, ConnectionState};
 pub(crate) struct ServerSnapshotPublisher {
     server_id: String,
     revision: Mutex<u64>,
-    /// TS serializes broadcasts through a promise queue; Rust uses a fair async mutex.
     broadcast_queue: tokio::sync::Mutex<()>,
 }
 
@@ -29,7 +26,6 @@ impl ServerSnapshotPublisher {
         *self.revision.lock().expect("revision mutex")
     }
 
-    /// TS builds the snapshot as an object literal: `revision: this.revision` is
     /// evaluated *before* the awaited `listSessions()`/`listModels()` calls, so a
     /// concurrent broadcast during those awaits cannot change it. Callers
     /// therefore capture the revision first and pass it in.

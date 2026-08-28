@@ -1,9 +1,3 @@
-//! OpenRouter OAuth PKCE flow.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/openrouter.ts` (311 LOC). OpenRouter hands
-//! back a permanent, user-controlled API key instead of an access/refresh pair, so the
-//! credential never expires and `refresh` returns it unchanged.
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -20,7 +14,6 @@ use crate::utils::provider_env::get_provider_env_value;
 const AUTHORIZE_URL: &str = "https://openrouter.ai/auth";
 const TOKEN_URL: &str = "https://openrouter.ai/api/v1/auth/keys";
 const TOKEN_EXCHANGE_TIMEOUT_MS: u64 = 30_000;
-/// A permanent key: the TS flow stores it with `Number.MAX_SAFE_INTEGER`.
 const PERMANENT_EXPIRY: i64 = 9_007_199_254_740_991;
 
 fn callback_host() -> String {
@@ -166,7 +159,6 @@ impl OAuthAuth for OpenRouterOAuth {
     ) -> BoxFuture<'a, Result<OAuthCredential, AuthError>> {
         Box::pin(async move {
             let pkce = generate_pkce();
-            // TS uses an ephemeral port plus a random path; port 0 lets the OS choose.
             let callback_path = format!("/oauth/callback/{}", crate::utils::uuid::uuidv7());
             let host = callback_host();
             let listener = tokio::net::TcpListener::bind((host.as_str(), 0))
@@ -243,7 +235,6 @@ impl OAuthAuth for OpenRouterOAuth {
         credential: OAuthCredential,
         _signal: CancellationToken,
     ) -> BoxFuture<'a, Result<OAuthCredential, AuthError>> {
-        // The key is permanent; TS returns the same credential object.
         Box::pin(async move { Ok(credential) })
     }
 
@@ -260,7 +251,6 @@ impl OAuthAuth for OpenRouterOAuth {
     }
 }
 
-/// The shared instance, matching the TS export.
 pub fn open_router_oauth() -> Arc<dyn OAuthAuth> {
     Arc::new(OpenRouterOAuth)
 }

@@ -1,10 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/extension-selector.ts` (112 LOC).
-//!
-//! Renamed to `list_selector` per interface request C-5: despite its name the
-//! component is a generic list selector that four core call sites use
-//! (`interactive-mode.ts:2434,5579,5862`, `cli/startup-ui.ts:152`).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 

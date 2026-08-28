@@ -1,13 +1,3 @@
-//! The `/llama` command and its manager UI — the half of
-//! `packages/coding-agent/src/extensions/llama/` that stayed with the app
-//! workstream (`ui.ts`, `index.ts`), plus the first case of
-//! `packages/coding-agent/test/llama-extension.test.ts` ("registers a native
-//! provider and /llama command"), which `tests/llama_extension.rs` leaves out
-//! because it drives the extension loader.
-//!
-//! The dialogs answer over a channel instead of resolving promises, so the
-//! cases below install a dialog, feed keys to the view and read the answer.
-
 #[path = "support/llama_server.rs"]
 mod llama_server;
 
@@ -400,12 +390,11 @@ async fn the_view_hands_the_focus_to_the_dialog_that_takes_input() {
 }
 
 #[test]
-fn the_command_keeps_the_description_of_the_typescript_registration() {
+fn the_command_keeps_its_registered_description() {
     assert_eq!(LLAMA_COMMAND_DESCRIPTION, "Manage llama.cpp router models");
 }
 
 // ============================================================================
-// The flow of `index.ts` against a llama.cpp server
 // ============================================================================
 
 use std::sync::Mutex;
@@ -426,7 +415,6 @@ async fn local<F: std::future::Future>(body: F) -> F::Output {
     tokio::task::LocalSet::new().run_until(body).await
 }
 
-/// What `main.ts` builds for the llama provider, reduced to one provider: the
 /// credential with its `LLAMA_BASE_URL`, and the natively registered provider.
 async fn llama_command(
     base_url: &str,
@@ -466,7 +454,6 @@ async fn llama_command(
 }
 
 /// Run the flow until the screen shows `needle`, then send `keys` to it.
-///
 /// The needle has to be text only the awaited dialog shows: consecutive dialogs
 /// of the manager share model ids and titles, and a key that reaches the
 /// previous dialog answers a sequence number the flow no longer waits for —

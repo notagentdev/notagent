@@ -1,6 +1,4 @@
 //! Verifies the embedded model-catalog snapshot against its manifest.
-//!
-//! The workstream plan requires the snapshot to be taken over byte-identically and the
 //! manifest validation (SHA-256 per file, structureHash, required fields per model) to
 //! be reproduced as a test.
 
@@ -112,7 +110,6 @@ fn models_carry_the_provider_of_their_file() {
 
 #[test]
 fn parsed_models_round_trip_back_to_the_snapshot_json() {
-    // Proves the ported types read the snapshot without losing fields.
     for (provider, raw) in MODEL_DATA {
         let groups: Value = serde_json::from_str(raw).expect("valid JSON");
         for (_api, entries) in groups.as_object().expect("api groups") {

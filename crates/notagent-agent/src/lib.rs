@@ -1,7 +1,3 @@
-//! Agent-Kern: Agent-Loop, Tools, Queues, CustomMessages.
-//!
-//! 1:1-Port von `packages/agent` (siehe `crates/notagent-agent/PARITY.md`).
-
 pub mod agent;
 pub mod agent_loop;
 pub mod harness;
@@ -14,11 +10,7 @@ pub use harness::messages::{
     bash_execution_to_text, convert_to_llm, create_branch_summary_message,
     create_compaction_summary_message, create_custom_message,
 };
-// `index.ts` re-exports the agent surface flat, plus `uuidv7` from `@notagent/ai` and
 // the telemetry types; the latter are re-exported from `notagent_telemetry` here rather
-// than duplicated. The harness re-exports of `index.ts` (agent-harness, compaction,
-// prompt-templates, result, session, tools, skills) are excluded per the master plan —
-// see PARITY.md.
 pub use agent::*;
 pub use agent_loop::*;
 pub use notagent_ai::uuidv7;

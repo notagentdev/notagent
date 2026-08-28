@@ -1,9 +1,3 @@
-//! Port of `packages/agent/src/harness/session/session.ts`.
-//!
-//! Like `session_types.rs`, this lives in the SQLite crate: the agent harness
-//! is excluded from the port, but `SessionRepo` returns a `Session` and the
-//! backend's tests drive it (master plan exclusion table; WS-C plan task 4).
-
 use std::sync::Arc;
 
 use notagent_agent::{AgentMessage, uuidv7};
@@ -17,7 +11,6 @@ use crate::session_types::{
 use crate::sqlite::repo::SqliteSessionStorage;
 use crate::sqlite::types::SqliteSessionMetadata;
 
-/// TS: `{ next: () => uuidv7() }`.
 pub struct Uuidv7IdGenerator;
 
 impl IdGenerator for Uuidv7IdGenerator {
@@ -44,9 +37,7 @@ fn assert_valid_cursor(after_seq: Option<i64>) -> Result<(), SessionError> {
     }
 }
 
-/// Port of `assertJsonSerializable`. `serde_json::Value` cannot hold cycles,
 /// accessors, symbols or sparse arrays; only non-finite numbers are checked
-/// (deviation class 1).
 pub fn assert_json_serializable(value: &Value) -> Result<(), SessionError> {
     match value {
         Value::Number(number) if number.as_f64().is_some_and(|value| !value.is_finite()) => {
@@ -61,7 +52,6 @@ pub fn assert_json_serializable(value: &Value) -> Result<(), SessionError> {
     }
 }
 
-/// Port of `class Session` — the validating view over a `SessionStorage`.
 pub struct Session {
     storage: Arc<SqliteSessionStorage>,
     pub id_generator: Box<dyn IdGenerator>,
@@ -97,12 +87,10 @@ impl Session {
         self.leaf_id_for_lane("main")
     }
 
-    /// TS: `session.view(lane).getLeafId()`.
     pub fn get_leaf_id_in_lane(&self, lane: &str) -> Result<Option<String>, SessionError> {
         self.leaf_id_for_lane(lane)
     }
 
-    /// TS: `session.view(lane).findEntriesOnBranch(query)`.
     pub fn find_entries_on_branch_in_lane(
         &self,
         lane: &str,
@@ -112,7 +100,6 @@ impl Session {
         self.query_branch_entries(lane, query, bounds, query.limit)
     }
 
-    /// TS: `session.view(lane).findEntryOnBranch(query)`.
     pub fn find_entry_on_branch_in_lane(
         &self,
         lane: &str,
@@ -125,7 +112,6 @@ impl Session {
             .next())
     }
 
-    /// TS: `session.view(lane).appendMessage(message)`.
     pub async fn append_message_in_lane(
         &self,
         lane: &str,
@@ -134,7 +120,6 @@ impl Session {
         self.append_message_to_lane(lane, message).await
     }
 
-    /// TS: `session.view(lane).appendCustomEntry(customType, data)`.
     pub async fn append_custom_entry_in_lane(
         &self,
         lane: &str,

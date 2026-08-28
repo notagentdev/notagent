@@ -1,7 +1,3 @@
-//! Selection list with a two column layout.
-//!
-//! 1:1 port of `packages/tui/src/components/select-list.ts` (229 LOC).
-
 use std::rc::Rc;
 
 use crate::keybindings::keybindings_match;

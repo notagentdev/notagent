@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/modes/modes.ts`.
-//!
-//! Mode discovery and loading.
-//!
-//! A mode is a directory of skill files. The directory name is the mode id; the
-//! files inside supply the behaviour that gets injected when the mode becomes
-//! active. Frontmatter carries the hard attributes the runtime enforces (shell,
-//! tool delta); the body is guidance for the model.
-//!
-//! Two levels are searched, matching the precedence compaction settings already
-//! use: the user agent directory, then the project directory. A project mode of
-//! the same name replaces the user one entirely, so a project can fully own a
-//! mode rather than partially merging with it.
-
 pub mod cycle;
 pub mod indicator;
 pub mod shells;
@@ -30,8 +16,6 @@ use shells::{ApprovalLevel, DEFAULT_APPROVAL_LEVEL, ShellId, apply_tool_delta};
 pub const MODES_DIR_NAME: &str = "modes";
 
 /// The four shipped modes, embedded in the binary.
-///
-/// Deviation (class 4, distribution): TypeScript ships them as `.md` files next
 /// to the compiled sources and reads them from disk; a Rust binary carries its
 /// assets inside. They still travel the same loader — same frontmatter rules,
 /// same diagnostics, same reported paths — so the defaults remain worked
@@ -84,7 +68,6 @@ pub struct Mode {
     /// Effective tool allowlist after applying the mode's tool delta.
     pub tools: Vec<ToolName>,
     /// Modes this one may delegate to. `None` means any of them.
-    ///
     /// A separate axis from the shell, and a narrower one. The shell already
     /// stops a read-only mode from delegating work that writes; this is for the
     /// case where every candidate is permitted but only some are appropriate — a
@@ -108,9 +91,7 @@ pub struct LoadModesResult {
 }
 
 /// Frontmatter that cannot be parsed stops mode loading.
-///
 /// Deviation (class 1): `parseFrontmatter` throws and `loadModeDir` does not
-/// catch, so a malformed mode file fails the load in TypeScript as well. The
 /// throw becomes a `Result` rather than a panic, and it names the file.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{path}: {source}")]
@@ -145,8 +126,6 @@ fn read_optional_string_array(value: Option<&Value>) -> Option<Vec<String>> {
 }
 
 /// What a frontmatter value looked like, for the diagnostics that quote it.
-///
-/// `String(value)` in TypeScript: a string prints as itself, everything else in
 /// its JavaScript spelling.
 fn describe_value(value: &Value) -> String {
     match value {
@@ -433,12 +412,10 @@ pub fn render_mode_injection(mode: &Mode) -> String {
 }
 
 /// The delimited block that activates a mode.
-///
 /// One function for both callers: the main agent prepends it to the next user
 /// message on a switch, and a delegated child receives it ahead of its task.
 /// Two renderings would mean a child could be told something subtly different
 /// from what the same mode tells the agent that spawned it.
-///
 /// `note` carries anything that has to be said about the transition rather than
 /// about the mode itself. Returns `None` when there would be nothing inside
 /// the wrapper, since an empty block is noise the model has to parse for no

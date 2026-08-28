@@ -14,7 +14,6 @@ pub struct SymbolIndex {
     files: DashMap<PathBuf, FileIndex>,
     /// All symbols for quick search (flattened), keyed by the file the symbol
     /// lives in plus its qualified path.
-    ///
     /// The qualified path alone is not an identity. Two files that both define
     /// `fn same()` produce the same `full_path`, so one used to overwrite the
     /// other, `symbol_count()` reported one instead of two, and removing
@@ -142,7 +141,6 @@ impl SymbolIndex {
 
     /// Restores one file's symbols from the cache, rebuilding its per-file
     /// entry alongside the flat map.
-    ///
     /// Loading symbol by symbol left `files` empty, so a cache-loaded index
     /// looked complete to a search but `remove_file` found nothing to remove
     /// — a deleted file's symbols stayed findable for the rest of the run.

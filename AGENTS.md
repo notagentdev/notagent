@@ -25,12 +25,9 @@ to the root manifest.
 | `notagent-telemetry` | Telemetry contracts |
 | `notagent-index` | tree-sitter symbol indexing |
 
-Module paths mirror the upstream TypeScript tree the port came from, which is
-what the `//! Port of packages/…` headers refer to. `core/tools/edit.rs` exists
-because `core/tools/edit.ts` did. Directory modules use the `mod.rs`-free form
-(`core/tools.rs` beside `core/tools/`) so the path keeps matching. Do not rename
-a module, type, or constant for taste — the correspondence is load-bearing when
-behaviour has to be checked against the source.
+Directory modules use the `mod.rs`-free form (`core/tools.rs` beside
+`core/tools/`). Module, type, and constant names are established public and
+internal interfaces; do not rename them merely for taste.
 
 ## Build and test
 
@@ -73,8 +70,8 @@ Toolchain is pinned in `rust-toolchain.toml` (1.95.0 with rustfmt and clippy).
   real error path. Tests may unwrap.
 - One `thiserror` type per crate; `anyhow` only at the binary edges, never in a
   library API.
-- Cancellation is `tokio_util::sync::CancellationToken`, checked at the same
-  points the original checked its `AbortController`. Never `block_on` in
+- Cancellation is `tokio_util::sync::CancellationToken`, checked at loop
+  boundaries, around awaits, and between tool calls. Never `block_on` in
   library code.
 - Dependency versions live only in `[workspace.dependencies]`; crates write
   `dep = { workspace = true }`.
@@ -91,9 +88,8 @@ rejected, the failure that motivated the shape. Not what the next line does.
 - Never write emoji, anywhere: not in code, comments, commit messages, or
   output. In a terminal an emoji is one column wide in some emulators and two
   in others, so a line carrying one cannot be laid out reliably.
-- Do not annotate a change with its provenance — no "port addition", no "TS
-  original", no naming of other projects. A reader six months from now needs
-  the reason, not the history.
+- Do not annotate a change with provenance or implementation history. A reader
+  six months from now needs the reason, not where the code once came from.
 
 ## Commits
 

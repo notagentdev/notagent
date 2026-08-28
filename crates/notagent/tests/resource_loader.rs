@@ -1,15 +1,3 @@
-//! Ported from `packages/coding-agent/test/resource-loader.test.ts`.
-//!
-//! Not ported: everything about extensions — discovery, inline factories,
-//! pre-trust reuse, and conflict detection (`plans/facts/extension-boundary.md`).
-//!
-//! Deviation (class 1): the auto-discovery of the two default resource
-//! directories lives in the package manager, which is workstream B's
-//! (interface request C-11). Where the TypeScript relies on it, the cases below
-//! supply a [`PackageResources`] that enumerates the same directories with the
-//! same `source: "auto"` metadata the package manager produces, so the loader's
-//! own half — merging, precedence, source info, diagnostics — is still pinned.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

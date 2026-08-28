@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/core/export-html/index.ts` (316 LOC).
-//!
-//! `template.html`, `template.css`, `template.js` and the two vendored browser
-//! libraries are adopted verbatim; they run client-side in the exported file and
-//! are not code this port owns. Deviation (class 4): they are compiled into the
-//! binary with `include_str!` instead of being read from `getExportTemplateDir()`
-//! at runtime — a Rust binary ships one file, and the TypeScript path juggling
-//! between `src/`, `dist/` and the bun bundle has no counterpart.
-
 pub mod ansi_to_html;
 pub mod tool_renderer;
 
@@ -28,14 +19,12 @@ pub use tool_renderer::{RenderedToolResult, ToolHtmlRenderer};
 
 /// The verbatim assets of `src/core/export-html/`. Public so the suites that
 /// pin the client-side sanitization can assert on them, exactly as the
-/// TypeScript tests read the files from disk.
 pub const TEMPLATE_HTML: &str = include_str!("export_html/assets/template.html");
 pub const TEMPLATE_CSS: &str = include_str!("export_html/assets/template.css");
 pub const TEMPLATE_JS: &str = include_str!("export_html/assets/template.js");
 pub const MARKED_JS: &str = include_str!("export_html/assets/vendor/marked.min.js");
 pub const HIGHLIGHT_JS: &str = include_str!("export_html/assets/vendor/highlight.min.js");
 
-/// The export failures the TypeScript raises as `Error`.
 #[derive(Debug, thiserror::Error)]
 pub enum ExportHtmlError {
     #[error("Cannot export in-memory session to HTML")]
@@ -54,7 +43,6 @@ pub enum ExportHtmlError {
 
 /// The pre-rendered tools of a session, in the order they were rendered.
 /// `serde_json` keeps the insertion order of a map, so this serializes exactly
-/// like the TypeScript `Record`.
 pub type RenderedTools = Vec<(String, RenderedToolHtml)>;
 
 /// Pre-rendered HTML for a custom tool call and result.
@@ -210,7 +198,6 @@ fn generate_theme_vars(colors: &[(String, String)], export_colors: &ExportColors
 }
 
 /// `String.prototype.replace(searchString, replaceString)`.
-///
 /// Replaces the first occurrence, and expands the `$` patterns of
 /// `GetSubstitution` in the replacement — `$$` for a literal `$`, `` $` `` and
 /// `$'` for the text around the match, `$&` for the match itself. The vendored

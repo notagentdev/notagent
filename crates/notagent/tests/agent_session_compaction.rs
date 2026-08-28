@@ -1,10 +1,3 @@
-//! Ported from `packages/coding-agent/test/suite/agent-session-compaction.test.ts`,
-//! `test/agent-session-compaction.test.ts`, `test/agent-session-stats.test.ts`
-//! and `test/agent-session-tree-navigation.test.ts`.
-//!
-//! Not ported: the cases where an extension supplies the summary or cancels the
-//! compaction (`plans/facts/extension-boundary.md`).
-
 mod suite;
 
 use std::sync::Arc;

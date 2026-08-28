@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/grep.ts` (tool half).
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;

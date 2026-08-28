@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/project-trust.ts`.
-//!
-//! Whether the project directory may contribute settings and resources at all.
-//! The question is asked once per folder and the answer is inherited downwards,
-//! so a trusted workspace root covers the repositories inside it.
-//!
-//! Deviation (class 2): the TypeScript first offers the decision to extensions
-//! through a `project_trust` event, and remembers what they answered. Extensions
-//! are gone (`plans/facts/extension-boundary.md`), so the override path with
-//! them goes too; everything else — the explicit override, the "no project
-//! resources" shortcut, the store lookup, the `defaultProjectTrust` setting and
-//! the prompt — is unchanged.
-
 use std::sync::Arc;
 
 use futures::future::BoxFuture;

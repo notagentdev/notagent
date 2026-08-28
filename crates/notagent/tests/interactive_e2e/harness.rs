@@ -1,20 +1,16 @@
 //! The harness the G3 scenarios drive: the app against the virtual terminal.
-//!
 //! Two halves that already exist meet here. [`crate::app_runtime::HeadlessApp`]
 //! is the whole app runtime of the G2 suites — real model runtime with the faux
 //! provider registered natively, real services, a session out of
 //! `create_agent_session_from_services`; only the provider is scripted. The
 //! other half is `notagent_tui::test_terminal::VirtualTerminal` behind feature
-//! `test-terminal` (interface request A-2) together with the pump seam of A-20:
 //! `run_until(ui, pump, until)` drives rendering and input while a scenario
 //! waits for something to appear on screen.
-//!
 //! The third piece is the entry point of the interactive mode, on main since
 //! C's task 13: [`InteractiveE2e::start`] hands the terminal and its pump to
 //! `create_interactive_mode` (the seam of A-23) and drives the mode's future on
 //! this loop. A scenario whose wiring is not in C's current slice still carries
 //! `#[ignore]` with the piece it waits for.
-//!
 //! [`InteractiveDriver::from_parts`] takes the same three pieces from anywhere,
 //! so `harness_check` exercises every driver method today against a plain
 //! `TuiMainScreen` — the harness itself is under test even while the scenarios
@@ -42,7 +38,6 @@ use crate::app_runtime::HeadlessApp;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The default terminal of a scenario. 80×24 is what `ProcessTerminal` falls
-/// back to without a size (`packages/tui/src/terminal.ts`).
 pub const DEFAULT_COLUMNS: usize = 80;
 pub const DEFAULT_ROWS: usize = 24;
 
@@ -56,14 +51,10 @@ pub const KEY_UP: &str = "\x1b[A";
 pub const KEY_CTRL_C: &str = "\x03";
 
 /// The marker in front of the selected row. Both list components draw it:
-/// `SelectList` writes `"→ "` itself (`packages/tui/src/components/select-list.ts`,
-/// ported in `select_list.rs:201`) and `SettingsList` takes it from the theme
 /// (`get_settings_list_theme().cursor`).
 pub const LIST_CURSOR: &str = "→ ";
 
 /// Run a scenario body on a `LocalSet`.
-///
-/// Everything in the TUI is `!Send` (interface request A-2), so a scenario that
 /// starts background work reaches for `spawn_local`, and that needs a
 /// `LocalSet` in scope. `#[tokio::test(flavor = "current_thread")]` alone does
 /// not provide one.
@@ -111,11 +102,8 @@ impl InteractiveE2e {
     }
 
     /// Hand the terminal to the interactive mode and return the driver.
-    ///
     /// The seam of A-23, delivered with C's task 13: `create_interactive_mode`
     /// takes the terminal and its pump instead of building a `ProcessTerminal`
-    /// (`InteractiveTerminal`, the port of the optional `terminal` of
-    /// `createInteractiveTui`, `interactive-mode.ts:344-354`), and hands back
     /// the renderer, the pump and the mode's future — the three pieces
     /// [`InteractiveDriver`] needs.
     pub async fn start(self) -> InteractiveDriver {
@@ -137,10 +125,8 @@ impl InteractiveE2e {
 }
 
 /// Drives a running interactive screen: send keys, wait for output, resize.
-///
 /// The renderer is a trait object because the mode picks it
 /// (`TuiMainScreen` for `tuiMode: "regular"`, `TuiAltScreen` for
-/// `"fullscreen"` — `interactive-mode.ts:352-365`), and both implement
 /// `RenderLoop`.
 pub struct InteractiveDriver {
     ui: Box<dyn RenderLoop>,
@@ -178,7 +164,6 @@ impl InteractiveDriver {
     }
 
     /// Start the mode beside the loop.
-    ///
     /// It runs as a local task rather than something the driver awaits itself:
     /// a scenario spends its time in [`Self::settle`], and the mode has to keep
     /// running there — it is what puts the header on screen, hands input to the
@@ -237,7 +222,6 @@ impl InteractiveDriver {
     }
 
     /// Let the throttled render pipeline run out, so the screen shows
-    /// everything that is due (the TS suites' `await terminal.waitForRender()`).
     pub async fn settle(&mut self) {
         let terminal = self.terminal.clone();
         self.run_until(async move { terminal.wait_for_render().await })
@@ -259,7 +243,6 @@ impl InteractiveDriver {
 
     /// Move the selection of an open list onto the row that holds `label` and
     /// confirm it with Return.
-    ///
     /// Both lists wrap around at the end, so walking down reaches every row.
     pub async fn choose(&mut self, label: &str) {
         const MAX_STEPS: usize = 64;
@@ -318,7 +301,6 @@ impl InteractiveDriver {
     }
 
     /// Keep the loop running until `needle` is on screen (scrollback included).
-    ///
     /// Returns the buffer it matched in. Panics with the screen dump on
     /// timeout, which is the failure mode that tells a scenario what actually
     /// happened.
@@ -344,7 +326,6 @@ impl InteractiveDriver {
 
     /// Keep the loop running until `needle` is on screen, across the
     /// renderer's hard wraps.
-    ///
     /// A long absolute path does not fit into 80 columns, and the main screen
     /// breaks it over two rows (`…/does-not-e` + `xist.txt`), so the literal
     /// needle is nowhere in the buffer although the user plainly reads it. This

@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/test/rpc-prompt-response-semantics.test.ts`.
-//!
-//! Exactly one `prompt` response per command, and it says what preflight
-//! decided: a rejected prompt fails, an accepted one succeeds even though its
-//! run is still going, and a prompt queued during streaming also succeeds.
-//!
-//! Deviation (class 3): TypeScript mocks the output guard and the JSONL reader
-//! to observe the wire; here the RPC run takes an output sink and the lines are
-//! fed to `handle_input_line` directly, which is the same seam without module
-//! mocking.
-
 mod app_runtime;
 
 use std::sync::{Arc, Mutex};

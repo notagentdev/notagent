@@ -1,9 +1,3 @@
-//! Port of `packages/tui/test/editor.test.ts` (4152 LOC).
-//!
-//! Deviation class 1: cursor columns are byte offsets instead of UTF-16 code
-//! units (see `PARITY.md`); the ASCII cases keep the TS numbers, the Unicode
-//! cases carry the byte values.
-
 use std::rc::Rc;
 
 use notagent_tui::autocomplete::{
@@ -18,7 +12,6 @@ use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{Component, TuiCore};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
-/// `defaultSelectListTheme` of `test/test-themes.ts` (chalk level 3).
 fn default_select_list_theme() -> SelectListTheme {
     SelectListTheme {
         selected_prefix: Rc::new(|text| format!("\x1b[34m{text}\x1b[39m")),
@@ -29,7 +22,6 @@ fn default_select_list_theme() -> SelectListTheme {
     }
 }
 
-/// `defaultEditorTheme` of `test/test-themes.ts`.
 fn default_editor_theme() -> EditorTheme {
     EditorTheme {
         border_color: Rc::new(|text| format!("\x1b[2m{text}\x1b[22m")),
@@ -532,10 +524,8 @@ fn navigates_words_with_ctrl_left_and_ctrl_right() {
     assert_eq!(editor.get_cursor(), (0, 7));
 }
 
-/// The TS case expects ICU's dictionary segmentation, which treats 你好 and
 /// 世界 as one word each. `unicode-segmentation` implements UAX#29, which
 /// breaks between Han characters — the documented residual difference of the
-/// sanctioned `Intl.Segmenter` substitution (see PARITY.md). The stops at the
 /// fullwidth comma, which the case is about, are identical.
 #[test]
 fn stops_at_fullwidth_chinese_punctuation() {
@@ -560,7 +550,6 @@ fn stops_at_fullwidth_chinese_punctuation() {
 
 /// Same residual difference as
 /// [`stops_at_fullwidth_chinese_punctuation`]: the ASCII words move exactly as
-/// in TS, the Han runs step per character.
 #[test]
 fn handles_mixed_cjk_and_ascii_word_movement() {
     let (_tui, mut editor) = editor();
@@ -857,7 +846,6 @@ fn chunk_texts(chunks: &[TextChunk]) -> Vec<String> {
     chunks.iter().map(|chunk| chunk.text.clone()).collect()
 }
 
-/// Build the `Intl.SegmentData[]` the TS cases pass in explicitly.
 fn segments(line: &str, parts: &[&str]) -> Vec<Segment> {
     let mut index = 0;
     parts
@@ -1791,7 +1779,6 @@ fn no_op_delete_operations_do_not_push_undo_snapshots() {
 
 // === Autocomplete ===
 
-/// `applyCompletion` of the TS suite: replaces the prefix with `item.value`.
 fn apply_completion_helper(
     lines: &[String],
     cursor_line: usize,
@@ -1813,7 +1800,6 @@ fn apply_completion_helper(
 
 type SuggestFn = Box<dyn Fn(&[String], usize, usize, bool) -> Option<AutocompleteSuggestions>>;
 
-/// The inline `mockProvider` objects of the TS suite.
 struct MockProvider {
     trigger_characters: Vec<String>,
     calls: Rc<std::cell::Cell<usize>>,
@@ -2153,9 +2139,6 @@ async fn resets_custom_trigger_characters_when_the_provider_changes() {
     assert!(!editor.is_showing_autocomplete());
 }
 
-/// Port of "aborts active @ autocomplete when typing continues".
-///
-/// Deviation class 1: the request runs inside `pump_autocomplete()` rather than
 /// in a background promise, so the in-flight state is produced by dropping the
 /// pump future; further typing must then abort the signal the provider holds.
 #[tokio::test]
@@ -2651,7 +2634,6 @@ fn resets_the_last_action_when_jumping() {
 
 // === Sticky column ===
 
-/// `positionCursor()` of the TS suite.
 fn position_cursor(editor: &mut Editor, line: usize, col: usize) {
     for _ in 0..20 {
         editor.handle_input("\x1b[A");
@@ -3088,14 +3070,12 @@ fn rewrapped_lines_target_shorter_than_the_current_visual_column() {
 
 // === Paste marker atomic behavior ===
 
-/// `pasteWithMarker()` of the TS suite: a 20-line paste becomes a marker.
 fn paste_with_marker(editor: &mut Editor) -> String {
     let big_content = "line\n".repeat(20).trim_end().to_string();
     editor.handle_input(&format!("\x1b[200~{big_content}\x1b[201~"));
     editor.get_text()
 }
 
-/// `bigPaste()` of the TS suite: 12 lines with a distinguishing tag.
 fn big_paste(tag: &str) -> String {
     (0..12)
         .map(|index| format!("{tag}{index}"))

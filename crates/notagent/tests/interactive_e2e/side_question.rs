@@ -1,5 +1,4 @@
 //! `/btw` from the user's side.
-//!
 //! The child and the cache invariants are covered by `tests/side_question.rs`,
 //! the frame by `tests/side_question_panel.rs`. What runs here is the path a
 //! user takes: the typed command opens the panel, an answer lands in it, a

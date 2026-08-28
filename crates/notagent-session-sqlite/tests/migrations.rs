@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/test/migrations.test.ts`.
-
 use notagent_session_sqlite::{RusqliteDatabase, SqlQuery, SqliteDatabase, apply_migrations};
 
 fn names(db: &RusqliteDatabase, query: &str, column: &str) -> Vec<String> {

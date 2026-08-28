@@ -1,9 +1,3 @@
-//! `fireworksProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/fireworks.ts` (19 LOC). The generated
-//! `fireworks.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::{AnthropicMessagesApi, OpenAICompletionsApi};

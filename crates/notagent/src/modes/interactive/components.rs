@@ -1,10 +1,3 @@
-//! Interactive-mode components — port of
-//! `packages/coding-agent/src/modes/interactive/components/`.
-//!
-//! The module list mirrors the re-exports of `components/index.ts`; modules
-//! appear as their batch is ported (see `crates/notagent/PARITY.md`, section
-//! "A: interactive components").
-
 pub mod approval_selector;
 pub mod armin;
 pub mod assistant_message;
@@ -56,10 +49,8 @@ pub mod visual_truncate;
 
 /// `Number.prototype.toLocaleString()` for the token counts the message
 /// components print.
-///
 /// Node resolves the default locale from the environment; in this application
 /// it is `en-US`, whose only grouping rule is a comma every three digits. The
-/// port fixes that rule instead of pulling in an ICU dependency the master plan
 /// does not list.
 pub fn to_locale_string(value: u64) -> String {
     let digits = value.to_string();

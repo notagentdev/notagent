@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/test/client/remote-session-ownership.test.ts` (174 LOC).
-//!
-//! A `RemoteSession` borrows its client: disposing the session must release the
-//! lease without ever disposing or disconnecting the client.
-
 mod client_support;
 
 use std::sync::Arc;
@@ -63,8 +58,6 @@ async fn factory_opens_a_session_and_disposal_awaits_detach_without_disconnectin
     let requests = collect_requests(&server);
 
     let first_disposal = remote_session.dispose();
-    // Deviation class 1: futures have no identity to compare, so the observable
-    // half of TS `expect(secondDisposal).toBe(firstDisposal)` is asserted — the
     // second call detaches nothing more and settles with the same result.
     let second_disposal = remote_session.dispose();
 

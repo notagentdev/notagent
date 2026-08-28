@@ -1,17 +1,9 @@
-//! Interface for custom editor components.
-//!
-//! Port of `packages/tui/src/editor-component.ts` (74 LOC). Extensions can
-//! provide their own editor (vim mode, emacs mode, custom keybindings) as long
-//! as they implement this trait.
-
 use std::rc::Rc;
 
 use crate::autocomplete::AutocompleteProvider;
 use crate::tui::Component;
 
 /// An editor usable in place of [`crate::components::editor::Editor`].
-///
-/// Deviation class 1: the optional members of the TS interface become trait
 /// methods with default implementations; the `onSubmit`/`onChange` callbacks
 /// become polled queues, since a callback would need `&mut` access to the owner.
 pub trait EditorComponent: Component {

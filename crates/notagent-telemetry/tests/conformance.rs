@@ -1,8 +1,3 @@
-//! Konformanz- und Verhaltenstests des In-Memory-Adapters.
-//!
-//! Port von `packages/telemetry/test/conformance.test.ts` (46 LOC) und
-//! `packages/telemetry/test/telemetry.test.ts` (197 LOC).
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,7 +40,7 @@ async fn in_memory_context_passes_adapter_conformance() {
     assert_eq!(
         cases.len(),
         6,
-        "Alle portierbaren Konformanzfälle müssen registriert sein"
+        "all supported conformance cases must be registered"
     );
     for case in cases {
         case.run().await;
@@ -83,7 +78,6 @@ async fn returns_detached_snapshots_without_exposing_recording_state() {
     assert!(first[0].settled);
     assert_eq!(first[0].end_sequence, Some(1));
 
-    // Der Schnappschuss ist losgelöst: Änderungen daran erreichen die Aufzeichnung nicht.
     first[0].attributes.insert(
         "tags".to_string(),
         AttributeValue::StringArray(vec!["mutated".to_string()]),
@@ -122,7 +116,6 @@ async fn noop_context_admits_callbacks_and_reuses_one_inert_span() {
                 |child| async move { child },
             )
             .await;
-            // TS: `expect(child).toBe(span)` — derselbe inerte Span.
             assert!(Arc::ptr_eq(&child, &span));
             42
         },
@@ -171,8 +164,6 @@ async fn noop_context_does_not_retain_payloads() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_children_record_independent_parentage() {
-    // Ergänzung zum Konformanzfall: prüft dieselbe Aussage unter echter Nebenläufigkeit
-    // des generischen Wrappers (TS nutzt dafür ein Promise-Gate).
     let context = InMemoryTelemetryContext::new();
     let (release, wait) = tokio::sync::oneshot::channel::<()>();
 
@@ -224,7 +215,6 @@ async fn concurrent_children_record_independent_parentage() {
 
 #[tokio::test]
 async fn schema_definitions_stay_serializable() {
-    // TS: `expect(() => JSON.stringify(schema)).not.toThrow()` plus Feldtreue.
     let json = serde_json::json!({
         "version": 1,
         "spans": {

@@ -1,16 +1,3 @@
-//! Port of jsdiff 8.0.4's `diffWords` — the one function of the `diff` npm
-//! package that has no counterpart in the `similar` crate the master plan
-//! substitutes for unified patches.
-//!
-//! Sources: `node_modules/diff/libesm/diff/base.js` (253 LOC),
-//! `libesm/diff/word.js` (281 LOC) and the helpers of `libesm/util/string.js`
-//! (184 LOC). Only the code paths `renderDiff` reaches are ported: no
-//! `Intl.Segmenter`, no `ignoreCase`, no `comparator`, no `oneChangePerToken`,
-//! no `maxEditLength`, no `timeout`, no callback.
-//!
-//! `tests/diff_words_oracle.rs` compares the output against the real jsdiff for
-//! a generated corpus.
-
 use std::collections::HashMap;
 
 /// One change object of the diff.

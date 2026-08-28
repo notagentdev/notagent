@@ -1,23 +1,3 @@
-//! The panel that makes background work visible.
-//!
-//! Port of
-//! `packages/coding-agent/src/modes/interactive/components/tasks-panel.ts` (106 LOC),
-//! with a deliberate deviation (user decision 2026-08-16): the panel sits
-//! below the footer instead of above the editor, and its rows follow the
-//! roster style of `notagent-main-rust` (`notagent_tui/src/agent_roster.rs`)
-//! — a blank separator, a bulleted head line, `○` markers whose colour
-//! carries the state, and the elapsed time flush right. The scope ring and
-//! the ordering are unchanged from the TS original.
-//!
-//! A detached process the user cannot see is worse than one they had to wait
-//! for: it is still spending their machine, still holding their port, and the
-//! only evidence it exists is a line of tool output that scrolled away. So a
-//! running task is on screen for as long as it runs.
-//!
-//! It renders nothing at all when there is nothing to show. A panel that
-//! occupied a row to say "no tasks" would cost every user a line of terminal
-//! for a fact almost all of them do not need.
-
 use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
@@ -118,7 +98,6 @@ impl TasksPanel {
     }
 
     /// Steps through running → all → hidden.
-    ///
     /// Hidden is part of the ring rather than a separate key: someone who does
     /// not want the panel wants one way to get rid of it, not two keys to learn.
     pub fn cycle_scope(&mut self) -> TasksPanelScope {

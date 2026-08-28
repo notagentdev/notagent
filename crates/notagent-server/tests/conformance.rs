@@ -1,5 +1,3 @@
-//! Port of `packages/server/test/conformance.test.ts`.
-
 mod support;
 
 use std::sync::Arc;

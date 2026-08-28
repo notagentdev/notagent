@@ -1,12 +1,3 @@
-//! The bash filter as the `bash` tool uses it (port addition, v0.1.20).
-//!
-//! The filter itself — its classifier, its native and declarative filters, its
-//! guards — is covered by the ported suite in `core/bash_filter`. What runs
-//! here is the wiring: the rewrite reaching the child process, the filesystem
-//! adapter standing in for one, the compacted output replacing what the model
-//! reads while the raw output stays reachable, and the gate that is off until
-//! someone turns it on.
-
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 

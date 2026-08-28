@@ -1,14 +1,3 @@
-//! Port of the component half of
-//! `packages/coding-agent/test/tool-execution-component.test.ts` (537 LOC).
-//!
-//! The remaining cases of that file drive `createBashToolDefinition` and belong
-//! to the bash tool itself (`tests/bash_tool.rs`); ported here are the five that
-//! exercise `ToolExecutionComponent`.
-//!
-//! Class-1 deviation in the harness: TS builds tool definitions as object
-//! literals with optional `renderCall`/`renderResult`; here they are small
-//! structs implementing `ToolDefinition`.
-
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -19,7 +8,9 @@ use notagent::core::tools::tool_definition::{
 use notagent::modes::interactive::components::tool_execution::{
     ToolExecutionComponent, ToolExecutionOptions, ToolExecutionResult,
 };
-use notagent::modes::interactive::theme::theme::{BlockStyle, Theme, init_theme, set_block_style};
+use notagent::modes::interactive::theme::theme::{
+    BlockStyle, Theme, ThemeColor, init_theme, set_block_style, theme,
+};
 use notagent::utils::ansi::strip_ansi;
 use notagent_agent::types::{AgentToolResult, ToolExecutionError};
 use notagent_ai::types::{TextContent, TextOrImageContent};
@@ -27,7 +18,6 @@ use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, ComponentRef, component_ref};
 use serde_json::{Value, json};
 
-/// The theme and the block style are process-global; the TS-parity cases pin
 /// the standard layout, the badge cases set Badge themselves.
 fn guard() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -407,6 +397,91 @@ fn badge_style_badge_carries_the_three_states() {
         )),
     ];
     assert_eq!(actual, [true, true, true]);
+}
+
+#[test]
+fn badge_style_shows_colored_diff_stats_for_file_changes() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+
+    let cases = [
+        (
+            "patch",
+            json!({
+                "path": "test.py",
+                "edits": [{
+                    "old_string": "before\nunchanged\n",
+                    "new_string": "after\nunchanged\n"
+                }]
+            }),
+            "+1",
+            Some("-1"),
+        ),
+        (
+            "patch_minified",
+            json!({
+                "path": "test.py",
+                "old_string": "before\n",
+                "new_string": "after\n"
+            }),
+            "+1",
+            Some("-1"),
+        ),
+        (
+            "multi_patch_minified",
+            json!({
+                "path": "test.py",
+                "edits": [{
+                    "old_string": "before\n",
+                    "new_string": "after\n"
+                }]
+            }),
+            "+1",
+            Some("-1"),
+        ),
+        (
+            "write",
+            json!({ "path": "test.py", "content": "first\nsecond\n" }),
+            "+2",
+            None,
+        ),
+    ];
+
+    for (index, (tool_name, args, added, removed)) in cases.into_iter().enumerate() {
+        let mut component = ToolExecutionComponent::new(
+            tool_name,
+            format!("tool-diff-stats-{index}"),
+            args,
+            ToolExecutionOptions::default(),
+            None,
+            no_render(),
+            cwd(),
+        );
+        component.set_args_complete();
+
+        let rendered = component.render(120).join("\n");
+        let plain = strip_ansi(&rendered);
+        assert!(plain.contains(added), "{tool_name}: {plain}");
+        assert!(
+            plain.find(added) < plain.find("test.py"),
+            "the stats must sit between the tool badge and its path: {tool_name}: {plain}"
+        );
+        assert!(
+            rendered.contains(&theme().fg(ThemeColor::ToolDiffAdded, added)),
+            "{tool_name}: {rendered:?}"
+        );
+        match removed {
+            Some(removed) => {
+                assert!(plain.contains(removed), "{tool_name}: {plain}");
+                assert!(
+                    rendered.contains(&theme().fg(ThemeColor::ToolDiffRemoved, removed)),
+                    "{tool_name}: {rendered:?}"
+                );
+            }
+            None => assert!(!plain.contains(" -"), "{tool_name}: {plain}"),
+        }
+    }
 }
 
 #[test]

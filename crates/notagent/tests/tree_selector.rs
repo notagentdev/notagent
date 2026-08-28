@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/tree-selector.test.ts` (702 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};

@@ -1,7 +1,3 @@
-//! Splitting tools into immediate and transcript-loaded definitions.
-//!
-//! 1:1 port of `packages/ai/src/utils/deferred-tools.ts` (39 LOC).
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::types::{AssistantContent, Context, Message, Tool};
@@ -13,8 +9,6 @@ pub struct SplitTools {
 }
 
 /// `splitDeferredTools(context, enabled, normalizeName?)`
-///
-/// The unique-tool map keeps insertion order in TS; the Rust port preserves it by
 /// building a `Vec` of `(name, tool)` pairs and de-duplicating by normalized name.
 pub fn split_deferred_tools(
     context: &Context,

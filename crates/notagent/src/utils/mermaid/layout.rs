@@ -1,18 +1,3 @@
-//! Graph layout: rank, order, place, route, draw.
-//!
-//! Port of `grok-mermaid/src/layout.ts` (1015 LOC). Follows the Sugiyama
-//! outline — assign ranks along the flow axis, reorder within ranks to cut
-//! crossings, then relax positions on the cross axis so chains stay straight.
-//! Edges between adjacent ranks share horizontal "bus" rows; everything else is
-//! routed around the diagram through vertical "lanes".
-//!
-//! `BT` and `RL` reuse the `TD`/`LR` layouts and flip the finished canvas, so
-//! text never ends up mirrored.
-//!
-//! Deviation (class 1): the relaxation works on `f64` where TS works on its
-//! only number type; every coordinate that reaches the canvas is rounded back
-//! to a cell index exactly where TS does (`Math.round`, `Math.floor`).
-
 use std::collections::HashMap;
 
 use super::canvas::{
@@ -34,7 +19,6 @@ const MAX_CANVAS_CELLS: usize = 1 << 21;
 /// A laid-out canvas, or `None` when the diagram is empty or over the cell cap.
 pub type CanvasResult = Option<Canvas>;
 
-/// Saturating subtraction (`sat` in the TS source).
 fn sat(a: usize, b: usize) -> usize {
     a.saturating_sub(b)
 }
@@ -88,7 +72,6 @@ struct RoutePlan {
 // ------------------------------------------------------------------ ranking
 
 /// Longest-path ranking over the graph's DAG.
-///
 /// Back edges (those closing a cycle) are excluded by a DFS colouring pass, so
 /// `A --> B --> C --> A` still ranks 0, 1, 2 rather than diverging.
 pub fn compute_ranks(graph: &Graph) -> Vec<usize> {
@@ -364,7 +347,6 @@ fn relax_rank(nodes: &[usize], neigh: &[Vec<usize>], pos: &mut [f64], size: &[us
 type Span5 = [usize; 5];
 
 /// Pack spans into as few parallel tracks as possible.
-///
 /// Two spans share a track when they are two cells apart, or when they share an
 /// endpoint — edges fanning out of one node deliberately reuse a single row so
 /// a merge draws one arrowhead rather than a stack of them.
@@ -862,7 +844,6 @@ fn display_generics(s: &str) -> String {
 
 // -------------------------------------------------------------------- groups
 
-/// Item of a scope: a node or a nested subgraph (the TS `ItemKey` strings).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ItemKey {
     Node(usize),
@@ -870,7 +851,6 @@ enum ItemKey {
 }
 
 /// Lay out a flowchart that uses `subgraph`.
-///
 /// Each subgraph becomes a framed box holding its own independently laid-out
 /// canvas. An edge is drawn in the innermost scope containing both endpoints;
 /// one crossing a subgraph boundary attaches to the frame instead of the node.

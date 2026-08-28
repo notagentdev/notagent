@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/experimental.ts`.
-
 use notagent_ai::types::{ConstrainedSampling, ConstrainedSamplingConfig, StrictMode};
 
 pub fn are_experimental_features_enabled() -> bool {

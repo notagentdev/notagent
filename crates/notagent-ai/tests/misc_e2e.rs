@@ -1,10 +1,3 @@
-//! Ports of the smaller key-gated suites:
-//! `responseid.test.ts` (120), `zen.test.ts` (25),
-//! `openai-codex-cache-affinity-e2e.test.ts` (35),
-//! `openai-responses-cache-affinity-e2e.test.ts` (31),
-//! `openrouter-cache-write-repro.test.ts` (77) and
-//! `google-thinking-disable.test.ts` (160).
-
 mod e2e_support;
 
 use e2e_support::*;
@@ -12,7 +5,6 @@ use notagent_ai::types::*;
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
-// responseid.test.ts
 // ---------------------------------------------------------------------------
 
 /// `expectResponseId(model, options)`
@@ -134,7 +126,6 @@ async fn response_id_openai_codex_provider() {
 }
 
 // ---------------------------------------------------------------------------
-// zen.test.ts
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
@@ -215,7 +206,6 @@ async fn openai_responses_handles_aligned_cache_affinity_identifiers() {
 }
 
 // ---------------------------------------------------------------------------
-// openrouter-cache-write-repro.test.ts
 // ---------------------------------------------------------------------------
 
 /// `createLongSystemPrompt()` — the nonce keeps the prefix unique per run.
@@ -232,7 +222,6 @@ fn long_system_prompt() -> String {
     )
 }
 
-/// The TS `onPayload` hook marks the last user text block with `cache_control`.
 fn mark_last_user_text_with_cache_control(payload: &mut Value) {
     let Some(messages) = payload.get_mut("messages").and_then(Value::as_array_mut) else {
         return;
@@ -300,7 +289,6 @@ async fn openrouter_preserves_cache_write_tokens_on_the_completions_stream_path(
 }
 
 // ---------------------------------------------------------------------------
-// google-thinking-disable.test.ts
 // ---------------------------------------------------------------------------
 
 fn count_pongs(text: &str) -> usize {
@@ -356,7 +344,6 @@ async fn expect_thinking_disabled_e2e(
     }
 }
 
-/// The TS default options of `runWithoutReasoning`.
 fn disable_options(max_tokens: u64, temperature: Option<f64>) -> SimpleStreamOptions {
     let mut options = simple_options(None);
     options.base.max_tokens = Some(max_tokens);

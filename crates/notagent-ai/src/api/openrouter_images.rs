@@ -1,9 +1,3 @@
-//! OpenRouter image generation.
-//!
-//! 1:1 port of `packages/ai/src/api/openrouter-images.ts` (196 LOC). Class 3
-//! substitution: the `openai` SDK client is replaced by a direct POST to
-//! `<baseUrl>/chat/completions`, which is the request the SDK issues.
-
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
@@ -398,7 +392,6 @@ async fn read_body(body: FetchBody) -> Result<String, String> {
             while let Some(chunk) = receiver.recv().await {
                 match chunk {
                     Ok(chunk) => text.push_str(&String::from_utf8_lossy(&chunk)),
-                    // The TS SDK's body read rejects on a broken stream; a
                     // truncated body must not pass as the response — it would
                     // surface as a misleading JSON parse error.
                     Err(error) => return Err(error.to_string()),

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/usage-totals.ts` (70 LOC).
-
 use notagent_ai::types::Usage;
 use serde_json::Value;
 
@@ -39,7 +37,6 @@ pub struct UsageCostBreakdownEntry {
 
 /// `getUsageCostBreakdown(entries)` — group attributable assistant usage by
 /// model and all other usage into a separate bucket.
-///
 /// Deviation (class 1): the insertion order of a JavaScript `Map` is kept by an
 /// explicit key list, because Rust's `HashMap` has none and the sort below is
 /// not total — entries with equal cost keep the order in which they first
@@ -115,7 +112,6 @@ pub fn get_usage_cost_breakdown(entries: &[SessionEntry]) -> Vec<UsageCostBreakd
 }
 
 /// An absent or malformed `usage` object drops the entry, the same way the
-/// TypeScript skips an entry whose `usage` is `undefined`.
 fn parse_usage(value: Option<&Value>) -> Option<Usage> {
     serde_json::from_value::<Usage>(value?.clone()).ok()
 }

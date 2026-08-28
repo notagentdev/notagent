@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/core/messages.ts`.
-//!
-//! The file is a byte-for-byte twin of `packages/agent/src/harness/messages.ts`
-//! (only the `AgentMessage` import path and the `string | number` timestamp
-//! overloads differ), and TS merges both declarations into the same
-//! `CustomAgentMessages` interface. Rust has no declaration merging, so the four
-//! custom message types live once in `notagent-agent` and are re-exported here
-//! under the names the coding agent uses.
-
 pub use notagent_agent::harness::messages::{
     BRANCH_SUMMARY_PREFIX, BRANCH_SUMMARY_SUFFIX, BashExecutionMessage, BranchSummaryMessage,
     COMPACTION_SUMMARY_PREFIX, COMPACTION_SUMMARY_SUFFIX, CompactionSummaryMessage, CustomMessage,

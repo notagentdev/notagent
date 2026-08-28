@@ -1,7 +1,3 @@
-//! Port of `packages/coding-agent/test/approval-selector.test.ts` (75 LOC) and
-//! `packages/coding-agent/test/trust-selector.test.ts` (87 LOC), plus the
-//! behaviour of both dialogs those suites do not reach.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -50,7 +46,6 @@ fn request() -> ApprovalRequest {
     }
 }
 
-/// `answered(component, index)` of the TypeScript suite: drives the list the
 /// way the TUI would, without a terminal.
 fn answered(component: &ApprovalSelectorComponent, index: usize) {
     let mut list = component.get_select_list().borrow_mut();
@@ -147,13 +142,10 @@ async fn settles_with_the_answer_the_dialog_reports() {
 async fn ignores_a_second_answer_instead_of_failing() {
     let mut pending = create_pending_approval();
     pending.resolve(ApprovalAnswer::ApproveOnce);
-    // The TypeScript expectation is `not.toThrow()`; the port drops the second
     // answer just as `settle = undefined` does.
     pending.resolve(ApprovalAnswer::Deny);
     assert_eq!(pending.answer.await, Ok(ApprovalAnswer::ApproveOnce));
 }
-
-// --- behaviour the TypeScript suite does not cover ------------------------------------
 
 #[test]
 fn omits_the_mode_row_without_a_mode() {
@@ -338,8 +330,6 @@ fn adds_a_trust_parent_option() {
         }]
     );
 }
-
-// --- behaviour the TypeScript suite does not cover ------------------------------------
 
 #[test]
 fn reports_no_saved_decision_and_the_session_state() {

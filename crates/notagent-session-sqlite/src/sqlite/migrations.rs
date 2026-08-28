@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/migrations.ts`.
-
 use super::sql::{SqlQuery, param, text};
 use super::types::{SqliteDatabase, SqliteError, with_transaction};
 use crate::sql;
@@ -10,7 +8,6 @@ pub struct SqliteMigration {
     pub sql: &'static str,
 }
 
-/// TS reads the file at runtime; Rust embeds it (deviation class 4,
 /// distribution mechanics — the single binary has no migration directory).
 const INITIAL_MIGRATION: &str = include_str!("migrations/001_initial.sql");
 

@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/src/core/auth-storage.ts`.
-//!
-//! `CredentialStore` implementation backed by auth.json. Provider auth
-//! orchestration belongs to ModelRuntime and notagent-ai Models.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -24,14 +19,11 @@ use crate::utils::lockfile::{LockError, LockGuard, LockOptions, try_lock};
 use crate::utils::paths::{PathError, get_file_revision, normalize_path_default};
 
 /// `Record<string, Credential>` — kept as raw JSON so that entries this build
-/// does not understand survive a read/write round-trip, exactly like the TS
 /// version, which parses auth.json without validating it.
 pub type AuthStorageData = Map<String, Value>;
 
 /// The callback of `withLock`: it receives the current file content and returns
 /// the content to write, if any.
-///
-/// Deviation (class 1): TS returns `{ result, next }` because a JS callback
 /// cannot write to its caller's binding. A Rust closure can, so only `next`
 /// travels through the backend and the trait stays object-safe.
 pub type SyncLockFn<'a> =
@@ -244,7 +236,6 @@ fn create_dir_all_with_mode(directory: &Path) -> std::io::Result<()> {
 }
 
 fn write_auth_file(path: &Path, contents: &str) -> std::io::Result<()> {
-    // Deviation from the TS original (user decision 2026-08-16, v0.1.4): TS
     // truncates auth.json in place with `writeFileSync`; a crash or ENOSPC
     // mid-write loses every credential. The atomic variant cannot — the old
     // file stays intact until the new one is fully on disk. The caller holds
@@ -308,7 +299,6 @@ impl AuthStorageBackend for FileAuthStorageBackend {
 #[derive(Debug, Default)]
 pub struct InMemoryAuthStorageBackend {
     value: Mutex<Option<String>>,
-    /// The TS promise chain: mutations run one at a time, in arrival order.
     chain: tokio::sync::Mutex<()>,
 }
 
@@ -344,7 +334,6 @@ impl AuthStorageBackend for InMemoryAuthStorageBackend {
                 }
                 Ok(())
             };
-            // Deviation (class 1): TS keeps an abandoned mutation running because a
             // JS promise outlives its awaiter. A Rust future is cancelled when it is
             // dropped, so an aborted mutation stops where it is — it still cannot
             // commit, and later mutations still run in order.
@@ -1004,8 +993,6 @@ pub mod testing {
     use super::SHARED_AUTH_FILE_READ_STATE;
 
     /// Forget which auth.json owns the shared read state.
-    ///
-    /// The TS suite gets this for free because vitest re-imports the module for
     /// every test file; a Rust test binary shares one process.
     pub fn reset_shared_read_state() {
         *SHARED_AUTH_FILE_READ_STATE

@@ -1,7 +1,3 @@
-//! Port of the provider-independent cases of
-//! `packages/ai/test/constrained-sampling.test.ts` (305 LOC). The cases that drive
-//! `convertResponsesTools` belong to the OpenAI Responses port (task 9).
-
 use notagent_ai::api::constrained_sampling::*;
 use notagent_ai::types::{
     ConstrainedSampling, ConstrainedSamplingConfig, GrammarFormat, StrictMode, Tool,

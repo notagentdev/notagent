@@ -1,11 +1,3 @@
-//! Markdown lexer producing the token stream of `marked` 18.
-//!
-//! Port decision for plan task 11: instead of adapting a CommonMark parser, the
-//! lexer reproduces the marked token stream for exactly the token types the
-//! renderer consumes. `tools/gen-markdown-oracle.mjs` dumps the marked stream
-//! for every source of the ported test suite; `tests/markdown_oracle.rs` asserts
-//! equality against it, so the tokenizer is verified against the original.
-
 /// A lexed token.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Token {
@@ -292,7 +284,6 @@ fn line_spans(source: &str) -> Vec<(usize, usize)> {
 }
 
 /// Raw text of the lines `start..end`.
-///
 /// marked hands the newline that terminates a block to the following `space`
 /// token whenever a blank line follows, so it is dropped here in that case.
 fn raw_span(

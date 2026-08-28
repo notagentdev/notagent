@@ -1,9 +1,3 @@
-//! `qwen_token_plan_cnProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/qwen-token-plan-cn.ts` (15 LOC). The generated
-//! `qwen-token-plan-cn.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::OpenAICompletionsApi;

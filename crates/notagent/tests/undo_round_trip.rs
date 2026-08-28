@@ -1,5 +1,4 @@
 //! Taking back a change, through the tools that make it.
-//!
 //! The unit tests either side of this cover the store and the `undo` tool on
 //! their own. What is pinned here is that they meet: a real `write` or `patch`
 //! leaves a snapshot behind, and a real `undo` finds it. That connection is one

@@ -1,9 +1,3 @@
-//! HTTP-level retry that mirrors the pinned OpenAI/Anthropic SDK policy.
-//!
-//! 1:1 port of `packages/ai/src/utils/provider-retry.ts` (125 LOC). The SDKs' own retry
-//! timers ignore the abort signal, which is why the TS code calls them with
-//! `maxRetries: 0` and wraps the request here; the Rust port keeps that structure.
-
 use std::future::Future;
 use std::time::Duration;
 
@@ -21,7 +15,6 @@ pub struct ProviderRetryOptions {
     pub signal: Option<CancellationToken>,
 }
 
-/// The SDK error shape the TS code probes for (`status` plus `headers`).
 pub trait ProviderErrorInfo {
     fn status(&self) -> Option<u16>;
     fn header(&self, name: &str) -> Option<String>;
@@ -94,7 +87,6 @@ fn retry_delay_ms(
                     (target.timestamp_millis() - chrono::Utc::now().timestamp_millis()) as f64
                 }),
         };
-        // Deviation from the TS original (user decision 2026-08-16, v0.1.4):
         // an unparseable header produced NaN there, which slipped through the
         // `delayMs > max` validation and slept 0ms — a retry with no backoff
         // at all. Falling through to the exponential delay keeps the pacing.

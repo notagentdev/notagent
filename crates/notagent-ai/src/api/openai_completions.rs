@@ -1,11 +1,3 @@
-//! Streaming and transport for OpenAI-compatible chat completions.
-//!
-//! 1:1 port of the response half of `packages/ai/src/api/openai-completions.ts`
-//! (`stream`, `streamSimple`, `parseChunkUsage`, `mapStopReason`). The SDK's async
-//! iterator over `ChatCompletionChunk`s is replaced by the ported SSE decoder
-//! (master-plan substitution class 3); everything downstream of a decoded chunk is the
-//! TS state machine.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -148,7 +140,6 @@ pub fn parse_chunk_usage(raw_usage: &Value, model: &Model) -> Usage {
 /// `mapStopReason(reason)`
 pub fn map_stop_reason(reason: Option<&str>) -> (StopReason, Option<String>) {
     match reason {
-        // `finish_reason: null` is documented as "still running"; TS maps it to `stop`.
         None => (StopReason::Stop, None),
         Some("stop") | Some("end") => (StopReason::Stop, None),
         Some("length") => (StopReason::Length, None),
@@ -176,7 +167,6 @@ pub fn map_stop_reason(reason: Option<&str>) -> (StopReason, Option<String>) {
 /// plain autoregressive decoding.
 pub const MTP_DISABLED_DIAGNOSTIC: &str = "mtplx_mtp_disabled";
 
-/// Scratch state of one streaming tool call; TS keeps these fields on the block itself
 /// and deletes them in `finishBlock`.
 #[derive(Debug, Clone, Default)]
 struct ToolCallScratch {
@@ -560,7 +550,6 @@ impl OpenAICompletionsStreamState {
     }
 
     /// Records a server-reported MTP fallback as an informational diagnostic.
-    ///
     /// `error` stays `None`: the turn succeeded, only slower. The details carry
     /// the server's own field names untranslated. One diagnostic per stream —
     /// the reason arrives on the final chunk, but a server that repeated it
@@ -911,7 +900,6 @@ fn encrypted_reasoning_detail(detail: &Value) -> Option<(String, String)> {
 // ---------------------------------------------------------------------------
 
 /// `stream(model, context, options)` — the full request path.
-///
 /// Nothing is thrown after the call: every failure ends the returned stream with an
 /// `error` event, as the stream contract requires.
 pub fn stream(
@@ -960,7 +948,6 @@ pub fn stream(
                 stream.end(Some(state.output));
             }
             Err(error) => {
-                // Streaming scratch buffers are never persisted; the Rust port keeps them
                 // out of the block types, so only the stop reason has to be set here.
                 let aborted = request
                     .signal
@@ -1073,7 +1060,6 @@ async fn run_request(
     let body = serde_json::to_vec(&params)
         .map_err(|error| OpenAICompletionsStreamError::message(error.to_string()))?;
 
-    // The SDK is called with `maxRetries: 0` in TS; the retry policy lives here so it
     // can honour the abort signal.
     let response = retry_provider_request(
         || {
@@ -1202,8 +1188,6 @@ fn process_sse_event(
         return Err(StreamDone::Finished);
     }
     let chunk = serde_json::from_str::<Value>(&event.data).map_err(|error| {
-        // Deviation class 1: the text comes from serde instead of V8, so the wording of
-        // an unparsable-chunk error differs from TS.
         StreamDone::Failed(OpenAICompletionsStreamError::message(error.to_string()))
     })?;
     if let Some(error) = chunk.get("error").filter(|error| is_truthy(error)) {
@@ -1236,10 +1220,8 @@ fn api_error_without_status(error: &Value) -> OpenAICompletionsStreamError {
 }
 
 /// The openai SDK's `APIError.generate(status, errJSON, errText, headers)`.
-///
 /// `errJSON` is the parsed body when it is JSON, otherwise the raw text becomes the
 /// message. `makeMessage` then prefixes the status, which is what the error text of a
-/// failed request looks like in TS.
 fn api_error(
     status: u16,
     headers: Vec<(String, String)>,

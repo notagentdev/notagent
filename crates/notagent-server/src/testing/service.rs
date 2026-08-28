@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/testing/service.ts`.
-
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -46,7 +44,6 @@ pub fn test_model() -> ModelMetadata {
     }
 }
 
-/// Port of the `Deferred<T>` helper.
 pub struct Deferred<T: Clone + Send + 'static> {
     sender: Mutex<Option<oneshot::Sender<T>>>,
     promise: Shared<BoxFuture<'static, T>>,
@@ -344,7 +341,6 @@ struct TestServerServiceInner {
     next_list_delay: Mutex<Option<Arc<ListDelay>>>,
 }
 
-/// Deviation class 1: the TS class is shared by reference; the Rust struct is a
 /// cheap `Clone` over shared state so tests can hold it and hand it to the
 /// server at the same time.
 #[derive(Clone, Default)]
@@ -475,7 +471,6 @@ impl TestServerService {
                 .values()
                 .map(|stored| stored.lock().expect("stored mutex").clone())
                 .collect();
-            // TS iterates the insertion-ordered Map; Rust sorts to stay deterministic.
             snapshots.sort_by(|left, right| left.id.cmp(&right.id));
             snapshots
         };

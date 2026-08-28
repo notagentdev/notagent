@@ -1,5 +1,3 @@
-//! Port of `packages/client/test/state.test.ts`.
-
 mod support;
 
 use std::sync::{Arc, Mutex};

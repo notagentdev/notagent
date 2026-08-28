@@ -1,7 +1,3 @@
-//! Stack base class and the flexbox-like size allocation.
-//!
-//! 1:1 port of `packages/tui/src/components/stack.ts` (154 LOC).
-
 use std::rc::Rc;
 
 use crate::layout_node::{

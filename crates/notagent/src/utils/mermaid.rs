@@ -1,20 +1,3 @@
-//! Substitute for the npm package `grok-mermaid` 0.2.2 (4 546 LOC), which
-//! `modes/interactive/components/mermaid.ts` uses to draw Mermaid sources as
-//! Unicode box art.
-//!
-//! Ownership handed to workstream A with interface request O-6; the master
-//! plan lists the package under the substitutions, and its consumer is A's
-//! component. The port covers the surface that consumer uses — `render`,
-//! `MermaidArt`, `Span`, `Cls` — and keeps the module layout of the original
-//! so the two stay comparable.
-//!
-//! One deviation runs through the whole port (class 3): `width-data.ts` is a
-//! generated table of per-code-point widths, and its header says it comes from
-//! the Rust `unicode-width` crate. The port calls that crate directly instead
-//! of carrying the generated copy, and takes grapheme clusters from
-//! `unicode-segmentation` where TypeScript uses `Intl.Segmenter` — both sides
-//! of UAX #29.
-
 pub mod ansi;
 pub mod canvas;
 pub mod graph;
@@ -29,20 +12,15 @@ pub mod width;
 pub use types::{Cls, MermaidArt, Span};
 
 /// Render a Mermaid source block as Unicode box-drawing art.
-///
-/// Port of `render` (`grok-mermaid/src/index.ts:38-46`). Supported:
 /// `graph`/`flowchart` (including `subgraph`), `stateDiagram`, `classDiagram`,
 /// `erDiagram` and `sequenceDiagram`.
-///
 /// The diagram is laid out at whatever size it needs; `art.width` reports the
 /// columns that turned out to be. Deciding what to do when that exceeds the
 /// space at hand is the caller's — [`source_box::source_box`] is the usual
 /// answer.
-///
 /// `None` means there is no art to show: blank input, a syntax error, a
 /// diagram type this renderer does not draw, or one large enough that laying it
 /// out is refused. [`parse::diagram_kind`] separates the middle two.
-///
 /// Rendering is best-effort. A flowchart keeps whatever parsed; the stricter
 /// grammars additionally get one retry without their final line, which is what
 /// keeps a streaming diagram on screen while its last statement is half-typed.
@@ -69,7 +47,6 @@ struct Drawn {
 }
 
 /// Draw `src`, retrying once without its last line if the grammar rejects it.
-///
 /// State, class, ER and sequence fail a whole diagram on one unreadable
 /// statement, and while a source is streaming its last line is usually still
 /// being typed — so without this a diagram alternates with the source box all

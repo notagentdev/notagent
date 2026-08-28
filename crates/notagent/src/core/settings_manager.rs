@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/core/settings-manager.ts`.
-//!
-//! Deviation class 1: the TS `Settings` interface is an open JS object — unknown
-//! keys survive a load/persist round trip. The Rust struct keeps that property
-//! with a flattened `extra` map. Field-level modification tracking uses the
-//! camelCase wire names, which is what the persist step merges on.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -41,7 +34,6 @@ pub struct CompactionSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reserve_tokens: Option<u64>,
     /// Budget for the user messages a compaction carries through.
-    ///
     /// `keepRecentTokens` is the name this had while a compaction kept a window
     /// of raw transcript instead. It is still accepted so that a settings file
     /// written before the change keeps working, rather than silently falling
@@ -217,24 +209,17 @@ pub struct PackageSourceFilter {
     pub themes: Option<Vec<String>>,
 }
 
-// The fields typed as `Value` are the ones the TS accessors re-check at read time
 // (`typeof value === "string"`, `=== "fullscreen"`, `parseTimeoutSetting`, …). Keeping
-// them untyped means a settings.json that the TS app tolerates still loads here, and
-// the fallback lives in the accessor, exactly as in TS.
 settings_struct!(
     last_changelog_version: String,
     default_provider: String,
     default_model: String,
-    /// Addition over the TS original (user decision 2026-08-16, v0.1.6):
     /// the model delegated subagents run on; unset means inherit.
     subagent_provider: String,
     subagent_model: String,
-    /// Port addition (v0.1.7): gate of the `find_codebase` tool; absent = on.
     find_codebase_enabled: bool,
-    /// Port addition (v0.1.19): gate of the atomic file leases the mutating
     /// file tools take; absent = off (user decision 2026-08-17).
     atomic_leases: bool,
-    /// Port addition (v0.1.20): gate of the bash filter, which compacts the
     /// output of supported shell commands; absent = off (user decision
     /// 2026-08-17).
     bash_filter: bool,
@@ -244,9 +229,11 @@ settings_struct!(
     /// Whether a step that only continues an execution reasons one level below
     /// the session's; absent = off.
     tiered_thinking: bool,
-    /// Port addition (v0.1.9): chat-block style, "standard" | "badge";
     /// absent = badge (user decision 2026-08-17).
     block_style: String,
+    /// The operating mode that was active when the app last ran. `yolo` is
+    /// persisted too, but startup only honors it when `--yolo` is present.
+    last_mode: String,
     default_thinking_level: Value,
     transport: Value,
     steering_mode: Value,
@@ -292,7 +279,6 @@ settings_struct!(
     fullscreen_scrollbar: String,
 );
 
-// The TS `extensions` setting is dropped with the extension system
 // (plans/facts/extension-boundary.md); unknown keys keep round-tripping
 // through `Settings::extra`, so an existing settings.json is not damaged.
 
@@ -300,7 +286,6 @@ fn is_mergeable(value: &Value) -> bool {
     value.is_object()
 }
 
-/// Port of `deepMergeObjects`.
 fn deep_merge_objects(
     base: &Map<String, Value>,
     overrides: &Map<String, Value>,
@@ -308,7 +293,7 @@ fn deep_merge_objects(
     let mut result = base.clone();
     for (key, override_value) in overrides {
         if override_value.is_null() && !base.contains_key(key) {
-            // `undefined` overrides are skipped in TS; JSON null is a real value.
+            continue;
         }
         let merged = match (base.get(key), override_value) {
             (Some(base_value), override_value)
@@ -358,7 +343,6 @@ pub struct SettingsError {
     pub message: String,
 }
 
-/// TS: `withLock(scope, fn)` — the callback sees the current contents and
 /// returns the contents to write, or `None` to leave the file untouched.
 pub trait SettingsStorage: Send + Sync {
     fn with_lock(
@@ -419,9 +403,6 @@ impl SettingsStorage for FileSettingsStorage {
     }
 }
 
-/// Port of `acquireLockSyncWithRetry`: 10 attempts, 20 ms apart.
-///
-/// Deviation class 3: `proper-lockfile` becomes a `.lock` directory created
 /// exclusively, which is the same advisory scheme (a lock artefact next to the
 /// file) with the same retry semantics.
 struct SettingsLock {
@@ -456,7 +437,6 @@ fn acquire_lock_with_retry(path: &Path) -> SettingsLock {
             Err(_) => break,
         }
     }
-    // TS throws after the last attempt; the port proceeds without the advisory
     // lock rather than losing the write, and reports nothing — the file write
     // itself is still atomic per process.
     SettingsLock {
@@ -628,8 +608,6 @@ impl SettingsManager {
         state.settings = deep_merge_settings(&state.global_settings, &state.project_settings);
     }
 
-    /// TS awaits the write queue first; the Rust writes are synchronous, so
-    /// reload only re-reads (deviation class 1).
     pub fn reload(&self) {
         let (global_settings, global_error) =
             try_load(self.storage.as_ref(), SettingsScope::Global, true);
@@ -683,7 +661,6 @@ impl SettingsManager {
         std::mem::take(&mut self.lock().errors)
     }
 
-    /// TS queues writes on a promise chain; the Rust writes are synchronous, so
     /// `flush` has nothing left to await.
     pub fn flush(&self) {}
 
@@ -699,7 +676,6 @@ impl SettingsManager {
         self.save();
     }
 
-    /// Sets several global fields and persists them in one write, the way TS marks
     /// two fields modified before a single `save()`.
     pub fn set_global_fields(&self, fields: &[(&str, Value)]) {
         {
@@ -810,7 +786,6 @@ impl SettingsManager {
         state.modified_project_nested_fields.clear();
     }
 
-    /// Port of `persistScopedSettings`: merge only the modified fields into the
     /// file's current contents so concurrent writers keep their keys.
     fn persist_scoped(
         &self,
@@ -864,7 +839,6 @@ impl SettingsManager {
 }
 
 // =============================================================================
-// Typed accessors (settings-manager.ts:666-1272)
 // =============================================================================
 
 /// `ScrollViewScrollbar` — the visibility of the fullscreen scrollbar.
@@ -909,7 +883,6 @@ pub struct ResolvedProviderRetrySettings {
 
 pub const DEFAULT_HTTP_IDLE_TIMEOUT_MS: u64 = 300_000;
 
-/// Port of `parseHttpIdleTimeoutMs` (`core/http-dispatcher.ts`).
 pub fn parse_http_idle_timeout_ms(value: Option<&Value>) -> Option<u64> {
     match value? {
         Value::String(text) => {
@@ -934,7 +907,6 @@ pub fn parse_http_idle_timeout_ms(value: Option<&Value>) -> Option<u64> {
     }
 }
 
-/// Port of `parseTimeoutSetting`.
 fn parse_timeout_setting(value: Option<&Value>, setting_name: &str) -> Result<Option<u64>, String> {
     if let Some(timeout_ms) = parse_http_idle_timeout_ms(value) {
         return Ok(Some(timeout_ms));
@@ -1017,7 +989,14 @@ impl SettingsManager {
         ]);
     }
 
-    /// Chat-block style (port addition, v0.1.9): `"standard"` is the filled
+    pub fn get_last_mode(&self) -> Option<String> {
+        self.settings_snapshot().last_mode
+    }
+
+    pub fn set_last_mode(&self, mode_id: &str) {
+        self.set_global_field("lastMode", Value::from(mode_id));
+    }
+
     /// surface, anything else — including absent — is the badge style, the
     /// default by user decision.
     pub fn get_block_style_badge(&self) -> bool {
@@ -1033,7 +1012,6 @@ impl SettingsManager {
         );
     }
 
-    /// The `find_codebase` gate (port addition, v0.1.7). Absent means
     /// enabled, matching the reference default for `cb_search_enabled`.
     pub fn get_find_codebase_enabled(&self) -> bool {
         self.settings_snapshot()
@@ -1045,7 +1023,6 @@ impl SettingsManager {
         self.set_global_field("findCodebaseEnabled", Value::from(enabled));
     }
 
-    /// The atomic-lease gate of the mutating file tools (port addition,
     /// v0.1.19). Absent means disabled: leases coordinate several agent
     /// processes in one workspace, which is not what a single session needs,
     /// so they are opt-in via `/leases on`.
@@ -1057,7 +1034,6 @@ impl SettingsManager {
         self.set_global_field("atomicLeases", Value::from(enabled));
     }
 
-    /// The bash-filter gate (port addition, v0.1.20). Absent means disabled:
     /// the filter replaces what the model reads with a compacted form, which
     /// is a trade the user opts into with `/bash-filter on`.
     pub fn get_bash_filter_enabled(&self) -> bool {
@@ -1675,7 +1651,6 @@ impl SettingsManager {
 }
 
 /// `normalizePath(value)`; an unusable `file:` URL is kept verbatim rather than
-/// failing the accessor (TS throws here, which no caller handles).
 fn normalize_setting_path(value: &str) -> String {
     crate::utils::paths::normalize_path_default(value).unwrap_or_else(|_| value.to_owned())
 }
@@ -1725,7 +1700,6 @@ fn try_load(
     }
 }
 
-/// Port of `migrateSettings`.
 pub fn migrate_settings(mut settings: Map<String, Value>) -> Map<String, Value> {
     // queueMode -> steeringMode
     if settings.contains_key("queueMode") && !settings.contains_key("steeringMode") {

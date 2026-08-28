@@ -1,8 +1,3 @@
-//! Shared test helpers.
-//!
-//! `vi.spyOn(globalThis, "fetch")` has no Rust counterpart, so the suites that pin
-//! HTTP behavior run against a real loopback server instead (deviation class 3).
-
 #![allow(dead_code)]
 
 use std::collections::VecDeque;

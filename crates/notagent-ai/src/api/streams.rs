@@ -1,15 +1,3 @@
-//! `ProviderStreams` implementations of the ported API modules.
-//!
-//! Port of the nine `packages/ai/src/api/*.lazy.ts` wrappers (`anthropicMessagesApi()`
-//! and friends). Deviation class 4: the wrappers exist so a bundler can split the
-//! dynamically imported module out of browser builds — Rust links statically, so each
-//! wrapper collapses to a unit struct that forwards into its module.
-//!
-//! Deviation class 1: `ProviderStreams::stream` receives the generic [`StreamOptions`];
-//! the provider-specific extras of each adapter (thinking, tool choice, …) have no
-//! counterpart there and stay unset, exactly as they would for a TS caller that passes a
-//! plain `StreamOptions` object.
-
 use crate::api::{
     anthropic_messages, azure_openai_responses, bedrock_converse_stream, google_generative_ai,
     google_vertex, mistral_conversations, openai_codex_responses, openai_completions,
@@ -404,14 +392,10 @@ impl ProviderStreams for BedrockConverseStreamApi {
 }
 
 // ---------------------------------------------------------------------------
-// `BUILTIN_APIS` / `getApiProvider(api)` from `packages/ai/src/compat.ts`
 //
-// `compat.ts` itself stays excluded (see PARITY.md): its registry exists so
 // extensions can register or override an api implementation, and the extension
-// system is not ported. The static lookup of the ten built-in api ids is not
 // extension machinery — the coding-agent provider composer needs it whenever a
 // models.json model declares an api its base provider does not implement — so
-// that half is ported here.
 // ---------------------------------------------------------------------------
 
 /// `BUILTIN_APIS` — api id → streaming implementation, in declaration order.

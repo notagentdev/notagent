@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/testing/index.ts`.
-
 mod client;
 mod server;
 mod service;

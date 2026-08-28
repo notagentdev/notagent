@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/test/model-runtime-auth-options.test.ts` (326 LOC).
-//!
-//! The three cases that only exercise the extension `registerProvider(name, config)`
-//! API (extension API-key method, extension OAuth refresh cancellation, no fabricated
-//! API-key method for an OAuth-only extension provider) are excluded with that API
-//! (deviation class 2). The two header cases are re-expressed through models.json plus
-//! a native provider, which is the path that survives.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 

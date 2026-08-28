@@ -1,10 +1,3 @@
-//! POWERED BY DAXNUTS - Easter egg for OpenCode + Kimi K2.5
-//!
-//! A heartfelt tribute to dax (@thdxr) for providing free Kimi K2.5 access via OpenCode.
-//!
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/daxnuts.ts` (164 LOC).
-
 use std::time::{Duration, Instant};
 
 use notagent_tui::tui::{Component, Line, shared_lines};
@@ -12,8 +5,6 @@ use notagent_tui::tui::{Component, Line, shared_lines};
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
 /// 32x32 RGB image of dax, hex encoded (3 bytes per pixel).
-///
-/// One TypeScript string literal; split into lines here purely for the source.
 const DAX_HEX_PARTS: &[&str] = &[
     "bbbab8b9b9b6b9b8b5bcbbb8b8b7b4b7b5b2b6b5b2b8b7b4b7b6b3b6b4b1bdbcb8bab8b6bbb8b5b8b5b1bbb8b4c2bebb",
     "c1bebac0bdbabfbcb9c1bebabfbebbc0bfbcc0bdbabbb8b5c1bfbcbfbcb8bbb9b6bfbcb8c2bfbcc1bfbcbfbbb8bdb9b6",
@@ -139,8 +130,6 @@ fn build_image() -> Vec<String> {
 }
 
 /// The daxnuts easter egg.
-///
-/// The `setInterval` animation is polled like every other timer of this port:
 /// [`DaxnutsComponent::deadline`] says when the next frame is due and
 /// [`DaxnutsComponent::tick`] advances it.
 pub struct DaxnutsComponent {

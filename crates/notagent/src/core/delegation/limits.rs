@@ -1,18 +1,3 @@
-//! Port of `packages/coding-agent/src/core/delegation/limits.ts`.
-//!
-//! What a single delegation call is allowed to ask for.
-//!
-//! This used to hold per-turn ceilings — a running total, a concurrency limit,
-//! and fingerprints that spanned calls — ported from a different reference.
-//! They are gone. With recursion structurally impossible a subagent cannot
-//! multiply, so the things those ceilings guarded against no longer arise from
-//! delegation itself, and what remains is bounded by the deadline every child
-//! runs under and by the manager's cap on simultaneously running tasks.
-//!
-//! Two checks survive, both scoped to one call, because both catch a model
-//! mistake rather than a resource problem: asking for more children than any
-//! answer could use, and asking for the same thing twice in one breath.
-
 use std::collections::HashSet;
 
 /// Subagents accepted by one delegation call.
@@ -69,12 +54,10 @@ fn strip_trailing_punctuation(value: &str) -> &str {
 }
 
 /// Identity of a delegated task, for the purpose of catching a repeat.
-///
 /// Whitespace runs collapse, trailing punctuation goes, and case is dropped, so
 /// "Inspect the auth module." and "inspect  the auth module" are one task. The
 /// mode is part of the identity: the same question asked of a read-only and a
 /// worker subagent are different questions.
-///
 /// Returns an empty string for a task that normalizes to nothing, which the
 /// caller treats as an empty request rather than as a fingerprint.
 pub fn delegation_fingerprint(mode_id: &str, task: &str) -> String {

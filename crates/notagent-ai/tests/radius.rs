@@ -1,8 +1,3 @@
-//! Port of `packages/ai/src/providers/radius-config.ts` (96 LOC) and the refresh
-//! behaviour of `radius.ts` (82 LOC). Neither has a dedicated TS test file, so the cases
-//! come from the source: the sanitizer's field checks, the URL normalization and the
-//! three refresh phases (restore, legacy-cache import, network).
-
 use std::sync::Arc;
 
 use notagent_ai::auth::credential_store::InMemoryCredentialStore;

@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/tui-cell-size-input.test.ts` (82 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -35,7 +33,6 @@ impl Component for InputRecorder {
     fn invalidate(&mut self) {}
 }
 
-/// Pretend to run inside a terminal with image support (TS: `withImageTerminal`).
 fn with_image_terminal(body: impl FnOnce()) {
     let previous: Vec<(&str, Option<String>)> = ["TERM_PROGRAM", "TERM", "GHOSTTY_RESOURCES_DIR"]
         .iter()

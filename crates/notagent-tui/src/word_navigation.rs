@@ -1,10 +1,3 @@
-//! Word-wise cursor navigation.
-//!
-//! 1:1 port of `packages/tui/src/word-navigation.ts` (117 LOC). `Intl.Segmenter`
-//! with word granularity becomes `unicode-segmentation`'s word bounds; a segment
-//! counts as word-like when it contains an alphanumeric character, which matches
-//! ICU's `isWordLike`.
-
 use crate::utils::{is_punctuation_char, is_whitespace_char, word_segments};
 
 /// Predicate marking segments that must be treated as single units

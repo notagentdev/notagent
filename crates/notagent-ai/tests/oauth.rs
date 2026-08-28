@@ -1,7 +1,3 @@
-//! Ports of `packages/ai/test/oauth-device-code.test.ts` and the flow-level cases of
-//! `oauth-auth.test.ts` that do not need a live endpoint (PKCE, token parsing, JWT claim
-//! extraction, Copilot base-URL derivation, poll classification).
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

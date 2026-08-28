@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/tui-overlay-style-leak.test.ts` (81 LOC).
-
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{
     Component, Line, OverlayOptions, SizeValue, TuiStopOptions, component_ref, shared_lines,

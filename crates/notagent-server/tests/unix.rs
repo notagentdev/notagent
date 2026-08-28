@@ -1,5 +1,3 @@
-//! Port of `packages/server/test/unix.test.ts`.
-
 mod support;
 
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
@@ -104,7 +102,6 @@ async fn does_not_remove_a_replacement_inode_during_shutdown() {
 async fn removes_a_genuinely_stale_socket_before_binding() {
     let directory = temp_directory();
     let path = socket_path(&directory);
-    // TS forks a helper process and kills it; dropping a bound std listener
     // leaves exactly the same artefact: a socket file nobody listens on.
     {
         let stale = std::os::unix::net::UnixListener::bind(&path).expect("binds");

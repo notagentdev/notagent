@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/session-id-readonly.test.ts` and of
-//! `test/session-file-invalid.test.ts`.
-//!
-//! Both spawn the real binary: what is under test is the startup order of
-//! `main.ts` — which flags reserve a session on disk and which only read — and
-//! that its failures reach the user as sentences rather than stack traces.
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

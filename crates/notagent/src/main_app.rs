@@ -1,25 +1,3 @@
-//! Port of `packages/coding-agent/src/main.ts`.
-//!
-//! The entry point: parse the arguments, decide which mode the process is in,
-//! build exactly the services that mode needs, and hand over.
-//!
-//! Two things happen earlier than one might expect, for the same reason. Hooks
-//! are loaded before anything else runs, because `SessionStart` is one of them
-//! and a hook that missed the event it was declared for is worse than no hook.
-//! And the permission gate is built before the session it belongs to, so it sits
-//! ahead of everything else that could approve a call — its dialog is bound
-//! later, once there is a screen to ask on.
-//!
-//! Deviation (class 1): Rust reserves `src/main.rs` for the binary root, so the
-//! module of `src/main.ts` lives in `src/main_app.rs`; `src/cli.rs` carries the
-//! process setup of `src/cli.ts` and `src/bin/notagent.rs` is the binary root.
-//!
-//! Deviation (class 2): the extension factories, the extension flag values and
-//! the extension load diagnostics are gone with the extension system
-//! (`plans/facts/extension-boundary.md` §3). Permissions and hooks, which
-//! TypeScript installs as two hidden inline extensions, are built here as native
-//! objects and handed to the session.
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -105,8 +83,6 @@ use crate::utils::paths::{
 };
 
 /// Run a startup dialog on this thread.
-///
-/// Deviation (class 1): the TUI is `!Send` like its TypeScript original, and the
 /// binary runs on a multi-threaded runtime; a `LocalSet` gives the dialog the
 /// single-threaded context Node's event loop provides for free.
 async fn run_dialog<F: Future>(dialog: F) -> F::Output {
@@ -312,7 +288,6 @@ async fn run_auth_command_inner(
     })
 }
 
-/// The `auth check` body. `None` stands for the TypeScript `catch` that turns
 /// any failure below into `invalid`.
 async fn check_with_credentials(
     parsed: &Args,
@@ -576,7 +551,6 @@ async fn create_session_manager(
 
     if parsed.resume {
         let choice = run_dialog(select_session(cwd, session_dir, settings_manager)).await;
-        // `stopThemeWatcher()` in the `finally` of the TypeScript version: the
         // picker's theme watcher must not outlive the dialog.
         stop_theme_watcher();
         return match choice {
@@ -1202,13 +1176,6 @@ pub async fn main(args: Vec<String>) -> i32 {
         });
     }
 
-    if let Some(start_mode) = parsed.start_mode {
-        session.set_mode(match start_mode {
-            StartMode::Auto => "auto",
-            StartMode::Yolo => "yolo",
-        });
-    }
-
     // The approval observer records what the user answered, so a PreToolUse hook
     // sees the same decision the chain reached.
     permissions.observe(Some(create_approval_observer(Arc::clone(&hook_runtime))));
@@ -1228,11 +1195,9 @@ pub async fn main(args: Vec<String>) -> i32 {
             let auto_trust_on_reload_cwd = (parsed.project_trust_override.is_none()
                 && !has_trust_requiring_project_resources(&session_cwd))
             .then_some(session_cwd);
-            // `registerSignalHandlers()` (`interactive-mode.ts:4122-4155`): the
             // process signals belong to the binary. SIGTERM and SIGHUP shut the
             // session down gracefully — the children first, then the session
             // teardown and the terminal restore inside the mode, which owns
-            // them; the interactive path exits 0, as in TypeScript.
             let shutdown_signal = CancellationToken::new();
             #[cfg(unix)]
             let signal_task = {
@@ -1278,10 +1243,8 @@ pub async fn main(args: Vec<String>) -> i32 {
                 },
             );
             // `permissionPresent` and `hookReport` are bound to the mode, as in
-            // `main.ts:1021-1023`.
             *permission_present.lock().expect("poisoned") = Some(approval_presenter);
             *hook_report.lock().expect("poisoned") = Some(report);
-            // The render loop belongs to the caller (interface request A-20):
             // `run_until` renders and pumps stdin while the mode runs.
             let exit_code = run_until(renderer.as_mut(), pump.as_mut(), run).await;
             #[cfg(unix)]
@@ -1310,10 +1273,7 @@ pub async fn main(args: Vec<String>) -> i32 {
 }
 
 /// The trust prompt, as far as the current mode can show one.
-///
-/// `createProjectTrustContext` in `cli/project-trust.ts`: only the interactive
 /// mode has a screen, every other mode answers "no dialog".
-///
 /// Deviation (class 1): the dialog is `!Send` and the callback is not, so the
 /// selector runs on a blocking thread with its own single-threaded runtime.
 /// Node needs no equivalent because it has one event loop for everything; the
@@ -1548,6 +1508,12 @@ async fn build_runtime(
         },
     )
     .await;
+
+    let yolo_enabled = parsed.start_mode == Some(StartMode::Yolo);
+    created.session.set_yolo_cycle_enabled(yolo_enabled);
+    if let Some(start_mode) = parsed.start_mode {
+        created.session.set_mode(start_mode.as_str());
+    }
 
     let cli_thinking_override = parsed.thinking.is_some() || cli_thinking_from_model;
     if created.session.model().is_some() && cli_thinking_override {

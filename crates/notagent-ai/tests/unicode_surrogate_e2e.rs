@@ -1,15 +1,3 @@
-//! Port of `packages/ai/test/unicode-surrogate.test.ts` (839 LOC).
-//!
-//! Three scenarios (`testEmojiInToolResults`, `testRealWorldLinkedInData`,
-//! `testUnpairedHighSurrogate`) across the provider matrix; one test per TS `describe`
-//! block, gated as in TS.
-//!
-//! The third scenario builds its input from `String.fromCharCode(0xd83d)`. A Rust `String`
-//! cannot hold a lone surrogate — that is exactly why `sanitize_surrogates` is the identity
-//! (class 1, see the `sanitize_unicode.rs` ledger row) — so the port sends the replacement
-//! character a lossy UTF-16 decode produces, which is what a provider would receive from
-//! the sanitized TS payload.
-
 mod e2e_support;
 
 use e2e_support::*;
@@ -20,7 +8,6 @@ fn empty_schema_tool(name: &str, description: &str) -> Tool {
     Tool {
         name: name.to_string(),
         description: description.to_string(),
-        // TS uses `Type.Object({})`; Cloud Code Assist requires a real object schema.
         parameters: json!({ "type": "object", "properties": {} }),
         constrained_sampling: None,
     }
@@ -115,7 +102,7 @@ async fn test_emoji_in_tool_results(model: &Model, options: &SimpleStreamOptions
         tool_name: "test_tool",
         tool_description: "A test tool",
         first_user: "Use the test tool",
-        result_text: "Test with emoji 🙈 and other characters:\n- Monkey emoji: 🙈\n- Thumbs up: 👍\n- Heart: ❤️\n- Thinking face: 🤔\n- Rocket: 🚀\n- Mixed text: notagentdev wann? Wo? Bin grad äußersr eventuninformiert 🙈\n- Japanese: こんにちは\n- Chinese: 你好\n- Mathematical symbols: ∑∫∂√\n- Special quotes: \u{201c}curly\u{201d} \u{2018}quotes\u{2019}",
+        result_text: "Test with emoji 🙈 and other characters:\n- Monkey emoji: 🙈\n- Thumbs up: 👍\n- Heart: ❤️\n- Thinking face: 🤔\n- Rocket: 🚀\n- Mixed text: When is the next event? 🙈\n- Japanese: こんにちは\n- Chinese: 你好\n- Mathematical symbols: ∑∫∂√\n- Special quotes: \u{201c}curly\u{201d} \u{2018}quotes\u{2019}",
         follow_up: "Summarize the tool result briefly.",
         },
     )
@@ -136,7 +123,7 @@ async fn test_real_world_linkedin_data(model: &Model, options: &SimpleStreamOpti
         tool_name: "linkedin_skill",
         tool_description: "Get LinkedIn comments",
         first_user: "Use the linkedin tool to get comments",
-        result_text: "Post: Hab einen \"Generative KI für Nicht-Techniker\" Workshop gebaut.\nUnanswered Comments: 2\n\n=> {\n  \"comments\": [\n    {\n      \"author\": \"Matthias Neumayer's  graphic link\",\n      \"text\": \"Leider nehmen das viel zu wenige Leute ernst\"\n    },\n    {\n      \"author\": \"Matthias Neumayer's  graphic link\",\n      \"text\": \"notagentdev wann? Wo? Bin grad äußersr eventuninformiert 🙈\"\n    }\n  ]\n}",
+        result_text: "Post: Built a generative AI workshop for non-technical participants.\nUnanswered Comments: 2\n\n=> {\n  \"comments\": [\n    {\n      \"author\": \"Matthias Neumayer's graphic link\",\n      \"text\": \"Too few people take this seriously\"\n    },\n    {\n      \"author\": \"Matthias Neumayer's graphic link\",\n      \"text\": \"When is the next event? 🙈\"\n    }\n  ]\n}",
         follow_up: "How many comments are there?",
         },
     )

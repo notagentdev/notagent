@@ -1,11 +1,3 @@
-//! Behaviour tests for the remaining `packages/ai` modules without a TS suite:
-//! `utils/abort.ts` + `utils/abort-signals.ts`, `api/lazy.ts`, `auth/helpers.ts`,
-//! `auth/types.ts`, `compat/extension-oauth-types.ts` and `oauth.ts`.
-//!
-//! These modules are cancellation and trait plumbing rather than value mappings,
-//! so there is nothing a JSONL oracle could pin — the expectations are read off
-//! the TypeScript source named in each test.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -26,8 +18,6 @@ use notagent_ai::utils::abort::{
 use notagent_ai::utils::event_stream::create_assistant_message_event_stream;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
-
-// --- utils/abort.ts --------------------------------------------------------
 
 #[test]
 fn operation_signal_creates_a_token_when_the_caller_passes_none() {
@@ -54,7 +44,6 @@ async fn race_with_abort_signal_resolves_the_operation_when_nothing_aborts() {
 async fn race_with_abort_signal_gives_up_on_an_already_aborted_signal() {
     let signal = CancellationToken::new();
     signal.cancel();
-    // TS rejects with the abort reason before ever touching the operation.
     let ran = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&ran);
     let value = race_with_abort_signal(
@@ -87,8 +76,6 @@ async fn race_with_abort_signal_gives_up_when_the_signal_fires_first() {
     .await;
     assert_eq!(value, Err(Aborted));
 }
-
-// --- utils/abort-signals.ts ------------------------------------------------
 
 #[tokio::test]
 async fn combine_abort_signals_returns_nothing_without_a_signal() {
@@ -146,8 +133,6 @@ async fn combine_abort_signals_cleanup_stops_the_forwarding() {
         "cleanup() removes the forwarding listeners"
     );
 }
-
-// --- api/lazy.ts -----------------------------------------------------------
 
 fn test_model() -> Model {
     Model {
@@ -209,7 +194,6 @@ async fn lazy_stream_forwards_the_inner_stream() {
 
 #[tokio::test]
 async fn lazy_stream_turns_a_setup_failure_into_an_error_event() {
-    // The TS contract: nothing is thrown after `lazyStream` returned; a failed
     // setup terminates the stream instead.
     let stream = lazy_stream(test_model(), || async { Err("boom".to_owned()) });
 
@@ -226,8 +210,6 @@ async fn lazy_stream_turns_a_setup_failure_into_an_error_event() {
     assert_eq!(result.stop_reason, StopReason::Error);
     assert_eq!(result.error_message.as_deref(), Some("boom"));
 }
-
-// --- auth/helpers.ts -------------------------------------------------------
 
 struct MapAuthContext(Vec<(String, String)>);
 
@@ -373,11 +355,8 @@ async fn env_api_key_auth_login_prompts_for_the_key() {
     );
 }
 
-// --- auth/types.ts ---------------------------------------------------------
-
 #[test]
-fn oauth_credentials_keep_unknown_fields_like_the_typescript_index_signature() {
-    // `OAuthCredential` carries `[key: string]: unknown` in TS; the port keeps the
+fn oauth_credentials_keep_unknown_flattened_fields() {
     // extra fields so a stored credential survives a round trip unchanged.
     let stored = json!({
         "type": "oauth",
@@ -429,8 +408,6 @@ fn oauth_credentials_serialize_without_extra_fields() {
     );
 }
 
-// --- compat/extension-oauth-types.ts and oauth.ts --------------------------
-
 /// The extension callback surface, with only the two required callbacks filled in.
 struct MinimalCallbacks {
     selected: Option<String>,
@@ -459,8 +436,6 @@ impl notagent_ai::OAuthLoginCallbacks for MinimalCallbacks {
 
 #[tokio::test]
 async fn extension_oauth_callbacks_make_the_optional_hooks_defaults() {
-    // `oauth.ts` is a type-only re-export of these declarations. Deviation class 1:
-    // the optional TS callbacks become default trait methods, and `onSelect`
     // returns `Option<String>` instead of `string | undefined`.
     use notagent_ai::{OAuthLoginCallbacks, OAuthSelectOption, OAuthSelectPrompt};
 

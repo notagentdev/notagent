@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/agent-session-runtime.ts`.
-//!
-//! Owns the current session and its cwd-bound services, and is the only thing
-//! that replaces either. Every replacement tears the current one down first —
-//! the active response is settled so the aborted turn and its tool results are
-//! persisted to the outgoing session — and then builds the next.
-//!
-//! Deviation (class 2): the `session_before_switch` and `session_before_fork`
-//! cancellation points are gone with the extension system; `session_shutdown`
-//! survives as a hook call (`plans/facts/extension-boundary.md` §2.2). The
-//! `withSession`/`rebindSession` callbacks stay, because the host UI needs them
-//! and they are not extension API.
-
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -51,7 +38,6 @@ pub struct CreateAgentSessionRuntimeResult {
 }
 
 /// Builds a full runtime for a target directory and session manager.
-///
 /// The factory closes over the process-global fixed inputs, rebuilds the
 /// cwd-bound services, resolves the session options against them and finally
 /// creates the session.
@@ -91,9 +77,6 @@ struct RuntimeState {
 }
 
 /// Why opening a session file failed.
-///
-/// Deviation (class 1): TypeScript throws `MissingSessionCwdError` and the
-/// interactive mode catches it with `instanceof`; the port kept a `String` at
 /// first, which lost the issue the dialog needs. The variant carries it, and
 /// `to_string()` still produces the message the other callers print.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -272,7 +255,6 @@ impl AgentSessionRuntime {
     }
 
     /// Forks at `entry_id`.
-    ///
     /// `Before` puts the selected user message back into the editor and forks at
     /// its parent; `At` keeps everything up to and including it.
     pub async fn fork(
@@ -438,7 +420,6 @@ impl AgentSessionRuntime {
             .shutdown_hooks(ReplacementReason::Quit.as_str())
             .await;
         // Every MCP server this session started is a process it owns; the
-        // session ending is where they go (port addition, v0.1.22).
         session.shutdown_mcp_servers().await;
         if let Some(before) = self
             .before_session_invalidate

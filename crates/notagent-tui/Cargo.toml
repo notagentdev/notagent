@@ -7,9 +7,7 @@ license.workspace = true
 description = "Differenzielle Terminal-Rendering-Engine und Komponenten."
 
 [features]
-# Stellt `test_terminal::VirtualTerminal` bereit (Port von
-# packages/tui/test/virtual-terminal.ts). Workstream C aktiviert das Feature für
-# die Interactive-Mode-E2E-Szenarien aus Gate G3.
+# Provides `test_terminal::VirtualTerminal` for interactive end-to-end tests.
 test-terminal = ["dep:vt100"]
 
 [dependencies]

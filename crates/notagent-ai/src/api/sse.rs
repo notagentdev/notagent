@@ -1,17 +1,3 @@
-//! Server-sent-events decoding.
-//!
-//! 1:1 port of the hand-written SSE decoder in
-//! `packages/ai/src/api/anthropic-messages.ts:300-430` (`decodeSseLine`,
-//! `flushSseEvent`, `consumeLine`, `iterateSseMessages`). The workstream plan turns it
-//! into a generic module because every SSE-based API in the port uses it, while the TS
-//! code keeps a second, simpler reader in `pi-messages.ts`.
-//!
-//! Behaviour preserved exactly: `\r`, `\n` and `\r\n` all end a line; a blank line
-//! flushes the pending event; a line starting with `:` is a comment that still shows up
-//! in `raw`; a field without `:` has an empty value; one leading space after the colon
-//! is stripped; multiple `data:` lines are joined with `\n`; a trailing event without a
-//! closing blank line is still emitted at end of stream.
-
 /// `ServerSentEvent { event, data, raw }`
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ServerSentEvent {
@@ -38,7 +24,6 @@ impl SseDecoder {
     /// `flushSseEvent(state)`
     fn flush(&mut self) -> Option<ServerSentEvent> {
         if self.event.is_none() && self.data.is_empty() {
-            // A comment-only block carries no event; TS drops it as well.
             self.raw.clear();
             return None;
         }

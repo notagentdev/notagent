@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/modes/json-event.ts`.
-//!
-//! The wire shape of a session event. One thing is dropped on the way out: the
-//! cumulative `partial` snapshot of a streaming assistant delta. `message_start`
-//! carries the initial message, the deltas build it and `message_end` carries
-//! the authoritative one, so repeating the whole message on every delta would
-//! multiply the stream for nothing.
-//!
-//! Deviation (class 1): TypeScript hands the event object straight to
-//! `JSON.stringify`, so the union *is* the wire format. In Rust the events are
-//! enums without `Serialize` — `AgentEvent` belongs to workstream B — so the
-//! mapping to JSON is written out here. The field names and the `type`
-//! discriminators are those of the TypeScript unions.
-
 use serde_json::{Map, Value, json};
 
 use notagent_agent::types::{AgentEvent, AgentToolResult};
@@ -27,7 +13,6 @@ fn object(entries: Vec<(&str, Value)>) -> Value {
     Value::Object(map)
 }
 
-/// `undefined` fields are absent in the TypeScript output, not `null`.
 fn optional(map: &mut Map<String, Value>, key: &str, value: Option<Value>) {
     if let Some(value) = value {
         map.insert(key.to_owned(), value);
@@ -92,8 +77,6 @@ pub fn compaction_result_to_json(result: &CompactionResult) -> Value {
     Value::Object(map)
 }
 
-/// The core agent events, in the shape of `AgentEvent` in `packages/agent`.
-///
 /// `strip_partial` implements the one transformation of `toJsonEvent`.
 fn agent_event_to_json(event: &AgentEvent, strip_partial: bool) -> Value {
     let message = |value: &notagent_agent::types::AgentMessage| {

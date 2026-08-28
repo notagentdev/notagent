@@ -1,14 +1,7 @@
-//! Port of `packages/coding-agent/test/tool-result-images.test.ts` (139 LOC).
-//!
-//! The TypeScript suite builds its PNGs by hand to avoid pulling in an encoder;
-//! the port uses the `image` crate, which is already the substitution for
-//! Photon (deviation class 3, see the image row in `crates/notagent/PARITY.md`).
-
 use image::{DynamicImage, ImageFormat};
 use notagent::utils::tool_result_images::normalize_tool_result_images;
 use notagent_ai::types::{ImageContent, TextContent, TextOrImageContent};
 
-/// `TINY_PNG_BASE64` of the TypeScript suite.
 const TINY_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
 fn encode(image: &DynamicImage, format: ImageFormat) -> Vec<u8> {

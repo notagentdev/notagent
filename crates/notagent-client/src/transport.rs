@@ -1,5 +1,3 @@
-//! Port of `packages/client/src/transport.ts`.
-
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;

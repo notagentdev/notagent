@@ -1,17 +1,3 @@
-//! The task browser: everything that is running, in one place you can act from.
-//!
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/tasks-browser.ts` (435 LOC).
-//!
-//! The panel above the editor answers "is anything going on". This answers the
-//! questions that follow — what exactly, since when, what has it printed, and
-//! can I stop it. Those need room, so this takes the screen while it is open.
-//!
-//! Three panes rather than one list, because the three questions are different:
-//! which task (left), what is it (top right), what has it said (bottom right).
-//! A single list would either truncate the output to uselessness or bury the
-//! list under it.
-
 use std::time::{Duration, Instant};
 
 use notagent_tui::tui::{Component, Line, shared_lines};
@@ -137,7 +123,6 @@ fn exactly(line: &str, width: usize) -> String {
 }
 
 /// Which tasks are listed, and in what order.
-///
 /// Foreground work is included: a delegated child the turn is waiting on is
 /// exactly the thing someone opens this to look at. Running first, oldest
 /// first within that, so a row does not move while being read; finished work

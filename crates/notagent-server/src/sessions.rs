@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/sessions.ts`.
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -329,7 +327,6 @@ impl LiveSessionManager {
         for item in stored {
             match live_by_id.remove(&item.id) {
                 Some(snapshot) => {
-                    // TS spreads `{ ...item, ...toMetadata(snapshot) }`.
                     let mut merged = item;
                     let live_metadata = to_metadata(&snapshot);
                     merged.id = live_metadata.id;

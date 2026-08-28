@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/core/telemetry.ts` (13 LOC) plus the
-//! install ping from `modes/interactive/interactive-mode.ts:1212-1227`
-//! (`reportInstallTelemetry`).
-//!
-//! Deviation (class 1): the ping lives here rather than in the interactive mode.
-//! It is the only thing the flag below gates besides the attribution headers,
-//! and pulling it out of the TUI keeps the call site down to one line — the
-//! version bookkeeping around it (`recordVersionSeen`) stays in interactive mode.
-
 use std::time::Duration;
 
 use crate::core::remote_catalog_provider::urlencode;
@@ -17,8 +8,6 @@ const REPORT_INSTALL_URL: &str = "https://notagent.dev/api/report-install";
 const INSTALL_PING_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `isTruthyEnvFlag(value)`
-///
-/// An empty value is falsy in TypeScript, so `NOTAGENT_TELEMETRY=` reads as an
 /// opt-out rather than as an unset variable.
 fn is_truthy_env_flag(value: &str) -> bool {
     if value.is_empty() {
@@ -36,7 +25,6 @@ pub fn is_install_telemetry_enabled(settings_manager: &SettingsManager) -> bool 
 }
 
 /// The same with the environment value passed explicitly, mirroring the second
-/// parameter of the TypeScript function.
 pub fn is_install_telemetry_enabled_with_env(
     settings_manager: &SettingsManager,
     telemetry_env: Option<&str>,
@@ -48,7 +36,6 @@ pub fn is_install_telemetry_enabled_with_env(
 }
 
 /// `reportInstallTelemetry(version)` — fire and forget, failures are ignored.
-///
 /// Returns without spawning anything when the ping is switched off, so a caller
 /// on a runtime without a reactor stays safe.
 pub fn report_install_telemetry(settings_manager: &SettingsManager, version: &str) {

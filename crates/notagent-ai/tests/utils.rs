@@ -1,7 +1,3 @@
-//! Ports of the utility test suites of `packages/ai/test`:
-//! `text.test.ts` (33), `overflow.test.ts` (177), `node-http-proxy.test.ts` (76),
-//! `context-estimate.test.ts` (81) and `retry.test.ts` (223).
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -50,7 +46,6 @@ fn error_message(message: &str) -> AssistantMessage {
 }
 
 // ---------------------------------------------------------------------------
-// text.test.ts
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -91,7 +86,6 @@ fn content_text_extracts_text_from_tool_result_content() {
 }
 
 // ---------------------------------------------------------------------------
-// overflow.test.ts
 // ---------------------------------------------------------------------------
 
 fn length_stop_message(
@@ -221,7 +215,6 @@ fn recoverable_length_stops() {
 }
 
 // ---------------------------------------------------------------------------
-// node-http-proxy.test.ts
 // ---------------------------------------------------------------------------
 
 fn proxy_env(pairs: &[(&str, &str)]) -> ProviderEnv {
@@ -248,7 +241,6 @@ fn respects_no_proxy_exclusions() {
 
 #[test]
 fn no_proxy_matches_case_insensitively_like_the_whatwg_parser() {
-    // The WHATWG `URL` in TS lowercases scheme and host; the Rust parser must
     // do the same or `HTTPS://EXAMPLE.COM` slips past `no_proxy=example.com`.
     let env = proxy_env(&[
         ("HTTPS_PROXY", "http://proxy.example:8080"),
@@ -277,7 +269,6 @@ fn resolves_http_and_https_proxy_urls() {
 
 #[test]
 fn prefers_scoped_proxy_env_aliases() {
-    // The TS test puts `https_proxy` into the process env and `HTTPS_PROXY` into the
     // scoped env; the scoped value wins.
     let env = proxy_env(&[("HTTPS_PROXY", "http://scoped-proxy.example:8080")]);
     assert_eq!(
@@ -304,7 +295,6 @@ fn rejects_socks_and_pac_proxy_urls() {
 }
 
 // ---------------------------------------------------------------------------
-// context-estimate.test.ts
 // ---------------------------------------------------------------------------
 
 fn usage_with_total(total_tokens: u64) -> Usage {
@@ -401,7 +391,6 @@ fn calculate_context_tokens_falls_back_to_the_sum() {
 }
 
 // ---------------------------------------------------------------------------
-// retry.test.ts
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -778,7 +767,6 @@ async fn aborts_the_backoff_sleep_and_returns_an_aborted_message() {
     );
 }
 
-/// Port of `packages/ai/src/utils/typebox-helpers.ts` (24) — `index.ts` exports it, so the
 /// shape it produces is part of the public surface.
 #[test]
 fn string_enum_builds_a_plain_json_schema() {

@@ -1,16 +1,13 @@
 //! Copies of a file taken before it is changed, so a change can be taken back.
-//!
 //! Every mutating tool writes one of these before it touches a file. `undo`
 //! restores the newest and deletes it, so calling it repeatedly walks backwards
 //! through the history one step at a time.
-//!
 //! The store has no index, and that is what makes it worth trusting. A snapshot
 //! lands at `<base>/<hash of the path>/<timestamp>.snap`, where the timestamp is
 //! zero-padded down to nanoseconds — so the lexical order of the file names is
 //! their chronological order, and finding the newest snapshot is the maximum of
 //! a directory listing. There is no second record that could disagree with the
 //! files on disk.
-//!
 //! Snapshots live outside the workspace, under the agent directory. A snapshot
 //! inside the repository would be a file the agent might read, search, or
 //! commit.
@@ -24,7 +21,6 @@ use futures::future::BoxFuture;
 pub const SNAPSHOT_EXTENSION: &str = "snap";
 
 /// Name of the marker naming the file a directory belongs to.
-///
 /// The directory name is a hash, and a hash can in principle collide. Restoring
 /// the wrong file would be silent and destructive, so the original path is
 /// written next to the snapshots and checked before anything is put back. It
@@ -32,7 +28,6 @@ pub const SNAPSHOT_EXTENSION: &str = "snap";
 pub const ORIGIN_MARKER: &str = "path";
 
 /// FNV-1a over the path, which is what names its directory.
-///
 /// Chosen to match the reference implementation's layout. Any stable hash would
 /// do — the two stores are never shared — but a fixed choice means a snapshot
 /// taken by one version of this program is still found by the next.
@@ -48,7 +43,6 @@ fn fnv1a_64(bytes: &[u8]) -> u64 {
 }
 
 /// The path as it identifies a file for snapshot purposes.
-///
 /// The *directory* is resolved, not the file, and the file name is put back
 /// afterwards. Resolving the file itself would be the obvious thing and is what
 /// the reference does (`snapshot.rs:65`), but it breaks the case undo exists
@@ -56,7 +50,6 @@ fn fnv1a_64(bytes: &[u8]) -> u64 {
 /// when the snapshot was taken and the key computed when it is wanted back
 /// disagree — on macOS by the whole `/var` → `/private/var` prefix — and the
 /// snapshot cannot be found. A directory outlives the file inside it.
-///
 /// A relative path is refused. It would hash differently depending on where the
 /// process happened to be, which is a way to lose a snapshot without any error.
 pub fn canonical_key(path: &Path) -> Result<String, String> {
@@ -86,7 +79,6 @@ pub fn path_hash(key: &str) -> String {
 }
 
 /// Snapshot file name for a moment in time.
-///
 /// Nanoseconds are zero-padded so the names sort chronologically as text. Two
 /// snapshots of one file within the same nanosecond would collide; the caller
 /// takes them around file writes, which are orders of magnitude slower.
@@ -202,7 +194,6 @@ impl SnapshotStore {
     }
 
     /// Copies a file's current bytes into the store.
-    ///
     /// A file that does not exist is not an error and leaves nothing behind:
     /// `write` calls this before creating a file, and there is no earlier state
     /// to return to.
@@ -248,7 +239,6 @@ impl SnapshotStore {
     }
 
     /// Whether the directory belongs to the path it is about to restore.
-    ///
     /// A hash collision would otherwise put one file's content into another,
     /// silently. A directory with no marker is trusted — it was written by a
     /// version that did not keep one — since refusing would break an undo that
@@ -264,7 +254,6 @@ impl SnapshotStore {
     }
 
     /// Puts the newest snapshot back and consumes it.
-    ///
     /// Consuming is what makes repeated calls walk backwards. Returning the
     /// snapshot to the store on a failed write would be the safer-looking
     /// choice, but the write is the last step and a failure there means the
@@ -297,7 +286,6 @@ impl SnapshotStore {
 }
 
 /// The store this installation keeps its snapshots in.
-///
 /// Under the agent directory, never inside the workspace: a snapshot in the
 /// repository would be a file the agent can read, search and commit, and one
 /// bad `git add -A` would put every previous version of every file into history.
@@ -306,10 +294,8 @@ pub fn snapshot_store() -> SnapshotStore {
 }
 
 /// Takes a snapshot before a tool changes a file, when the session has a store.
-///
 /// A session without one — a test, or a build with the feature off — writes
 /// nothing and reports nothing, so the mutation goes ahead exactly as before.
-///
 /// A store that is present and fails, however, fails the mutation with it. The
 /// alternative is changing a file after quietly losing the ability to take the
 /// change back, which is the one outcome nobody would choose if asked. It is

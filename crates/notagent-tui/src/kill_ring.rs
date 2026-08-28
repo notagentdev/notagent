@@ -1,7 +1,3 @@
-//! Emacs-style kill ring.
-//!
-//! 1:1 port of `packages/tui/src/kill-ring.ts` (46 LOC).
-
 /// Ring buffer for kill/yank operations.
 #[derive(Debug, Default, Clone)]
 pub struct KillRing {

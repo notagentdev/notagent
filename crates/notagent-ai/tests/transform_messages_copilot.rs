@@ -1,16 +1,9 @@
-//! Port of `packages/ai/test/transform-messages-copilot-openai-to-anthropic.test.ts` (191 LOC).
-//!
-//! Session migration from an OpenAI-shaped history onto Copilot's Claude models: thinking
-//! blocks degrade to text, thought signatures are dropped and trailing tool calls get
-//! synthetic error results.
-
 use notagent_ai::api::transform_messages::transform_messages;
 use notagent_ai::types::*;
 use serde_json::Map;
 
 const TIMESTAMP: i64 = 1_700_000_000_000;
 
-/// The normalizer `anthropic.ts` passes in.
 fn anthropic_normalize_tool_call_id(id: &str, _source: &AssistantMessage) -> String {
     let sanitized: String = id
         .chars()

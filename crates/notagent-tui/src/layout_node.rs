@@ -1,9 +1,3 @@
-//! Layout node protocol.
-//!
-//! 1:1 port of `packages/tui/src/layout-node.ts` (51 LOC). The TS version tags
-//! layout-aware components with a `LAYOUT_NODE` symbol method; in Rust the
-//! `Component` trait carries an optional `layout_node()` instead.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -23,7 +17,6 @@ pub struct LayoutViewport {
 pub enum StackBasis {
     /// Fixed size in cells.
     Size(usize),
-    /// Intrinsic size (TS: `"auto"`).
     Auto,
 }
 
@@ -101,7 +94,6 @@ pub trait ScrollLayoutState {
     fn set_scrollbar_active_state(&mut self, active: bool);
 }
 
-/// Shared scroll state (the TS version passes the `ScrollView` itself).
 pub type ScrollStateRef = Rc<RefCell<dyn ScrollLayoutState>>;
 
 /// What a layout-aware component contributes to the layout tree.

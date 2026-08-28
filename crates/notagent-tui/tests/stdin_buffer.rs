@@ -1,15 +1,6 @@
-//! Port of `packages/tui/test/stdin-buffer.test.ts` (526 LOC).
-//!
-//! Based on code from OpenTUI (<https://github.com/anomalyco/opentui>),
-//! MIT License - Copyright (c) 2025 opentui.
-//!
-//! The TS suite drives real timers; here the caller-driven timeout is asserted
-//! via `pending_timeout_ms()` plus `flush_timeout()` — same logic, no sleeping.
-
 use notagent_tui::keys::matches_key;
 use notagent_tui::stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
 
-/// Buffer with the `{ timeout: 10 }` of the TS `beforeEach`.
 fn new_buffer() -> StdinBuffer {
     StdinBuffer::new(StdinBufferOptions {
         timeout: Some(10),
@@ -37,7 +28,6 @@ fn paste_events(events: &[StdinEvent]) -> Vec<String> {
         .collect()
 }
 
-/// Collects events across several `process` calls, like the TS `emittedSequences`.
 #[derive(Default)]
 struct Collector {
     events: Vec<StdinEvent>,
@@ -473,7 +463,6 @@ fn should_handle_buffer_input() {
 
 #[test]
 fn should_convert_a_single_high_byte_to_an_escape_prefixed_sequence() {
-    // Buffer path of the TS version: a lone byte > 127 becomes ESC + (byte - 128).
     let mut buffer = new_buffer();
     assert_eq!(data_events(&buffer.process_bytes(&[0xe1])), ["\x1ba"]);
 }

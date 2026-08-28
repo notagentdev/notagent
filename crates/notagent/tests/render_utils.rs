@@ -1,8 +1,3 @@
-//! Behaviour of `core/tools/render-utils.ts`, which workstream A took over with
-//! interface request O-5. The file has no TypeScript suite of its own — the two
-//! suites O-5 names drive it through `ToolExecutionComponent`, which is still
-//! blocked — so the expectations come from the source.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::core::tools::render_utils::{

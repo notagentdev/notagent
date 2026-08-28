@@ -1,8 +1,3 @@
-//! Port of `packages/tui/test/truncated-text.test.ts` (129 LOC).
-//!
-//! `chalk` is replaced by literal SGR sequences (the theme layer emits ANSI
-//! directly anyway, master plan substitution).
-
 use notagent_tui::components::truncated_text::TruncatedText;
 use notagent_tui::tui::Component;
 use notagent_tui::visible_width;

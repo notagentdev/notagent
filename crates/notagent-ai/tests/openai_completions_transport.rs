@@ -1,7 +1,3 @@
-//! Transport behaviour of openai-completions: client headers, session affinity and the
-//! retry policy. Ported from `test/openai-completions-prompt-cache.test.ts` (the header
-//! half) and `test/openai-completions-retry.test.ts`.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 

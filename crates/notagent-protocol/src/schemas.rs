@@ -1,18 +1,8 @@
-//! Port of `packages/protocol/src/schemas.ts`.
-//!
-//! Deviation class 3 (tech substitution): TypeBox schemas become serde types.
-//! `additionalProperties: false` → `deny_unknown_fields`, `Type.Union` →
-//! `#[serde(untagged)]` (variants in TS order), `Type.Literal` → generated tag
-//! types, `minLength`/`minimum`/`minItems` → `deserialize_with` checks.
-//! Optional fields reject an explicit `null`, exactly like `Type.Optional` in
-//! TypeBox.
-
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 
 pub const PROTOCOL_VERSION: u64 = 1;
 
-/// `JsonValue` aus schemas.ts (rekursives TypeBox-Schema).
 pub type JsonValue = serde_json::Value;
 
 // --- Literal tags (Type.Literal) --------------------------------------------
@@ -986,7 +976,6 @@ pub enum CommandResult {
 }
 
 impl CommandResult {
-    /// Corresponds to `result.command` in `client.ts` (response correlation).
     pub fn command(&self) -> CommandName {
         match self {
             Self::List(_) => CommandName::List,

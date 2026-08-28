@@ -1,16 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/modes/interactive/theme/theme.ts` (1 335 LOC).
-//!
-//! Deviations (see `crates/notagent/PARITY.md`):
-//! - chalk → direct ANSI sequences (master plan tech substitution). chalk's
-//!   nesting and newline handling is reproduced exactly; its TTY colour-level
-//!   gating is not, because the port emits ANSI unconditionally like the
-//!   hand-written `fg`/`bg` sequences already do in TypeScript.
-//! - TypeBox `Compile` → hand-written validator that reproduces the TypeBox
-//!   error strings, the schema-declaration error order and the 8-error cap
-//!   (verified against the TypeScript implementation).
-//! - Built-in themes ship inside the binary (`include_str!`) instead of next to
-//!   it (`dist/theme/*.json`) — distribution mechanics.
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,7 +21,6 @@ use crate::utils::syntax_highlight::{
 // Types & Schema
 // ============================================================================
 
-/// Error raised by the theme system. TypeScript throws `Error` with exactly
 /// these messages; they are user visible through `setTheme`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
@@ -123,7 +109,6 @@ pub struct ThemeJson {
     pub export: Option<ThemeExportJson>,
 }
 
-/// Foreground colour slots (`ThemeColor` in TypeScript).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[allow(missing_docs)]
 pub enum ThemeColor {
@@ -138,7 +123,6 @@ pub enum ThemeColor {
     Dim,
     Text,
     ThinkingText,
-    /// Label colour of a state badge (port addition, v0.1.12). Absent means
     /// the label follows [`ThemeColor::Text`], which is what every theme did
     /// before the badge style existed.
     BadgeText,
@@ -188,7 +172,6 @@ pub enum ThemeColor {
 }
 
 impl ThemeColor {
-    /// The TypeScript slot name.
     pub fn as_str(self) -> &'static str {
         match self {
             ThemeColor::Accent => "accent",
@@ -311,7 +294,6 @@ pub const ALL_THEME_COLORS: [ThemeColor; 52] = [
     ThemeColor::ModeYolo,
 ];
 
-/// Background colour slots (`ThemeBg` in TypeScript).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[allow(missing_docs)]
 pub enum ThemeBg {
@@ -323,7 +305,8 @@ pub enum ThemeBg {
     ToolPendingBg,
     ToolSuccessBg,
     ToolErrorBg,
-    // The badge fills (port addition, v0.1.12). A block background is chosen
+    ToolDiffAddedBg,
+    ToolDiffRemovedBg,
     // to sit behind twenty lines of text, so it is barely tinted; the same
     // value on an eight-character badge shows no state at all. These carry the
     // saturated tone the reference's themes use, and each falls back to its
@@ -335,7 +318,6 @@ pub enum ThemeBg {
 }
 
 impl ThemeBg {
-    /// The TypeScript slot name.
     pub fn as_str(self) -> &'static str {
         match self {
             ThemeBg::SelectedBg => "selectedBg",
@@ -346,6 +328,8 @@ impl ThemeBg {
             ThemeBg::ToolPendingBg => "toolPendingBg",
             ThemeBg::ToolSuccessBg => "toolSuccessBg",
             ThemeBg::ToolErrorBg => "toolErrorBg",
+            ThemeBg::ToolDiffAddedBg => "toolDiffAddedBg",
+            ThemeBg::ToolDiffRemovedBg => "toolDiffRemovedBg",
             ThemeBg::ToolPendingBadgeBg => "toolPendingBadgeBg",
             ThemeBg::ToolSuccessBadgeBg => "toolSuccessBadgeBg",
             ThemeBg::ToolErrorBadgeBg => "toolErrorBadgeBg",
@@ -372,7 +356,7 @@ impl ThemeBg {
 }
 
 /// Every background slot.
-pub const ALL_THEME_BGS: [ThemeBg; 12] = [
+pub const ALL_THEME_BGS: [ThemeBg; 14] = [
     ThemeBg::SelectedBg,
     ThemeBg::ScrollbarThumb,
     ThemeBg::SearchMatchBg,
@@ -381,13 +365,14 @@ pub const ALL_THEME_BGS: [ThemeBg; 12] = [
     ThemeBg::ToolPendingBg,
     ThemeBg::ToolSuccessBg,
     ThemeBg::ToolErrorBg,
+    ThemeBg::ToolDiffAddedBg,
+    ThemeBg::ToolDiffRemovedBg,
     ThemeBg::ToolPendingBadgeBg,
     ThemeBg::ToolSuccessBadgeBg,
     ThemeBg::ToolErrorBadgeBg,
     ThemeBg::CustomMessageBadgeBg,
 ];
 
-/// The two chat-block styles (port addition, user decision 2026-08-17,
 /// v0.1.9; takeover of the reference's `BlockStyle`): `Standard` washes the
 /// block colour across the full width, `Badge` leads with a state badge and
 /// leaves the terminal background untouched. Held as a process global like
@@ -422,7 +407,6 @@ pub fn set_block_style(style: BlockStyle) {
 
 /// A state badge: the label uppercased on the state background, the
 /// reference's `block_paint::badge`.
-///
 /// The label carries the theme's ordinary text colour, so it reads like every
 /// other word in the transcript and only the fill says which block this is —
 /// without naming it, the label would inherit whatever colour was last set and
@@ -463,7 +447,6 @@ fn badge_label(label: &str) -> String {
 }
 
 /// Serialises the tests that install a theme or a block style.
-///
 /// Both are process globals, so a test that sets one and a test that reads it
 /// have to take the same lock — one guard per module would leave them racing
 /// against each other inside the same test binary.
@@ -498,7 +481,6 @@ fn luminance((red, green, blue): (u8, u8, u8)) -> f32 {
 
 /// A foreground colour as a badge fill, dark enough for the label to stay
 /// legible.
-///
 /// A tone picked to be read *as* text on the terminal background is far too
 /// light to sit *behind* text — the thinking grey against the label's grey is
 /// the case that gave this away — so a light one is pulled toward black until
@@ -543,7 +525,6 @@ pub fn format_elapsed_precise(elapsed: std::time::Duration) -> String {
 
 /// The one way a duration is written in this interface: `42s`, `3m 12s`,
 /// `1h 4m`.
-///
 /// Everything that shows a running time goes through here — the badges on
 /// blocks, the task roster, the subagent panel, the status line. Three copies
 /// of this used to exist and one of them rounded where the others floored, so
@@ -573,6 +554,8 @@ fn is_bg_color_key(key: &str) -> bool {
             | "toolPendingBg"
             | "toolSuccessBg"
             | "toolErrorBg"
+            | "toolDiffAddedBg"
+            | "toolDiffRemovedBg"
             | "toolPendingBadgeBg"
             | "toolSuccessBadgeBg"
             | "toolErrorBadgeBg"
@@ -590,7 +573,6 @@ pub enum ColorMode {
 }
 
 impl ColorMode {
-    /// The TypeScript literal.
     pub fn as_str(self) -> &'static str {
         match self {
             ColorMode::TrueColor => "truecolor",
@@ -616,7 +598,6 @@ fn hex_to_rgb(hex: &str) -> Result<Rgb> {
     if cleaned.chars().count() != 6 {
         return Err(ThemeError::new(format!("Invalid hex color: {hex}")));
     }
-    // `parseInt(..., 16)` yields NaN for non-hex digits, which TypeScript turns
     // into the same error.
     let parse = |slice: &str| -> Option<u32> { u32::from_str_radix(slice, 16).ok() };
     let (r, g, b) = (
@@ -823,7 +804,6 @@ fn with_theme_color_fallbacks(colors: &ColorMap) -> ColorMap {
 }
 
 // ============================================================================
-// chalk replacement (master plan: chalk -> direct ANSI sequences)
 // ============================================================================
 
 /// Reproduces chalk's `applyStyle`: every nested close code is followed by the
@@ -844,7 +824,6 @@ fn apply_style(open: &str, close: &str, text: &str) -> String {
     format!("{open}{string}{close}")
 }
 
-/// Port of chalk's `stringEncaseCRLFWithFirstIndex`.
 fn encase_crlf_with_first_index(
     string: &str,
     prefix: &str,
@@ -943,6 +922,16 @@ impl Theme {
             ThemeBg::SearchMatchBg,
             ThemeBg::SelectedBg,
         );
+        apply_bg_fallback(
+            &mut backgrounds,
+            ThemeBg::ToolDiffAddedBg,
+            ThemeBg::ToolSuccessBg,
+        );
+        apply_bg_fallback(
+            &mut backgrounds,
+            ThemeBg::ToolDiffRemovedBg,
+            ThemeBg::ToolErrorBg,
+        );
         // A theme that names no badge fill keeps its block background there,
         // which is what every theme did before the badge style existed.
         for block in [
@@ -969,9 +958,6 @@ impl Theme {
     }
 
     /// Colour `text` with a foreground slot and reset only the foreground.
-    ///
-    /// Panics with the TypeScript message when the slot is missing — the
-    /// TypeScript getter throws an uncaught `Error` in the same situation.
     pub fn fg(&self, color: ThemeColor, text: &str) -> String {
         let ansi = self.get_fg_ansi(color);
         format!("{ansi}{text}\x1b[39m")
@@ -1018,7 +1004,6 @@ impl Theme {
 
     /// The channel values of a foreground slot, when the theme was resolved in
     /// 24-bit colour.
-    ///
     /// A slot only keeps its ready-made escape sequence, so the numbers are
     /// read back out of it. In the 256-colour mode there are no exact channel
     /// values to recover, and callers that need to mix colours have to do
@@ -1103,7 +1088,7 @@ fn apply_bg_fallback(colors: &mut Vec<(ThemeBg, ColorValue)>, key: ThemeBg, fall
 
 /// The colour slots of `ThemeJsonSchema` in declaration order; `true` marks the
 /// optional ones (`Type.Optional`).
-const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 64] = [
+const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 66] = [
     ("accent", false),
     ("border", false),
     ("borderAccent", false),
@@ -1115,7 +1100,6 @@ const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 64] = [
     ("dim", false),
     ("text", false),
     ("thinkingText", false),
-    // Port additions (v0.1.12), all optional: the badge fills and the badge
     // label colour, each falling back to what a theme already names.
     ("badgeText", true),
     ("selectedBg", false),
@@ -1130,6 +1114,8 @@ const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 64] = [
     ("toolPendingBg", false),
     ("toolSuccessBg", false),
     ("toolErrorBg", false),
+    ("toolDiffAddedBg", true),
+    ("toolDiffRemovedBg", true),
     ("toolPendingBadgeBg", true),
     ("toolSuccessBadgeBg", true),
     ("toolErrorBadgeBg", true),
@@ -1175,7 +1161,6 @@ const COLOR_SCHEMA_PROPERTIES: [(&str, bool); 64] = [
 ];
 
 /// TypeBox's `Errors()` iterator stops after this many errors (verified against
-/// the TypeScript implementation).
 const MAX_VALIDATION_ERRORS: usize = 8;
 
 /// A single validation error, in the shape `parseThemeJson` consumes.
@@ -1256,7 +1241,6 @@ fn color_value_from_json(value: &serde_json::Value) -> ColorValue {
     }
 }
 
-/// Port of `validateThemeJson.Check`/`Errors` for `ThemeJsonSchema`.
 fn validate_theme_json(
     json: &serde_json::Value,
 ) -> std::result::Result<ThemeJson, Vec<ValidationError>> {
@@ -1600,7 +1584,6 @@ fn load_theme_json(name: &str) -> Result<ThemeJson> {
     parse_theme_json_content(name, &content)
 }
 
-/// `fs.readFileSync` — a read failure throws in TypeScript and is turned into a
 /// `ThemeError` here (language idiom, no behaviour change).
 fn read_to_string(path: &str) -> Result<String> {
     std::fs::read_to_string(path)
@@ -1634,7 +1617,6 @@ fn create_theme(
             fg_colors.push((slot, value.clone()));
         }
         // Unknown keys are not rejected by the schema and are ignored, exactly
-        // as the TypeScript `ThemeColor`-typed record does at runtime.
     }
     Theme::new(
         fg_colors,
@@ -1689,7 +1671,6 @@ pub enum TerminalTheme {
 }
 
 impl TerminalTheme {
-    /// The TypeScript literal, which is also the built-in theme name.
     pub fn as_str(self) -> &'static str {
         match self {
             TerminalTheme::Dark => "dark",
@@ -1756,7 +1737,6 @@ pub enum TerminalThemeSource {
 }
 
 impl TerminalThemeSource {
-    /// The TypeScript literal.
     pub fn as_str(self) -> &'static str {
         match self {
             TerminalThemeSource::TerminalBackground => "terminal background",
@@ -1776,7 +1756,6 @@ pub enum TerminalThemeConfidence {
 }
 
 impl TerminalThemeConfidence {
-    /// The TypeScript literal.
     pub fn as_str(self) -> &'static str {
         match self {
             TerminalThemeConfidence::High => "high",
@@ -1801,7 +1780,6 @@ pub struct TerminalThemeDetection {
 /// Environment map (`NodeJS.ProcessEnv`).
 pub type EnvMap = HashMap<String, String>;
 
-/// A rejected terminal query (`queryTerminal*` throwing in TypeScript).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct TerminalQueryError(pub String);
@@ -1822,7 +1800,6 @@ pub trait TerminalBackgroundThemeDetector {
 /// Adds the optional color-scheme query (`queryTerminalColorScheme?`).
 pub trait TerminalAutoThemeDetector: TerminalBackgroundThemeDetector {
     /// Query the terminal's color-scheme preference. The default mirrors an
-    /// absent TypeScript method.
     fn query_terminal_color_scheme(
         &self,
         _timeout_ms: u64,
@@ -1940,8 +1917,6 @@ pub async fn detect_terminal_background_theme(
 }
 
 /// Prefer the terminal's color-scheme preference, otherwise the background.
-///
-/// Both queries are started before either is awaited, exactly as in TypeScript.
 pub async fn detect_terminal_theme_for_auto(
     ui: &dyn TerminalAutoThemeDetector,
     timeout_ms: u64,
@@ -1978,8 +1953,6 @@ pub fn get_default_theme() -> String {
 // Global Theme Instance
 // ============================================================================
 
-// TypeScript shares the theme through `globalThis` so that every module loader
-// (tsx + jiti) sees the same instance. The port uses process globals, which
 // additionally makes the theme readable from the tool tasks running on other
 // tokio worker threads.
 fn global_theme() -> &'static RwLock<Option<Arc<Theme>>> {
@@ -2001,9 +1974,7 @@ fn registered_themes() -> &'static RwLock<ThemeRegistry> {
 }
 
 /// Callback invoked after the active theme changed.
-///
 /// Must be `Send + Sync` because it is stored in a process global; the
-/// TypeScript callback lives on the single JavaScript thread.
 pub type ThemeChangeCallback = Arc<dyn Fn() + Send + Sync>;
 
 fn on_theme_change_callback() -> &'static RwLock<Option<ThemeChangeCallback>> {
@@ -2012,9 +1983,6 @@ fn on_theme_change_callback() -> &'static RwLock<Option<ThemeChangeCallback>> {
 }
 
 /// The active theme.
-///
-/// Panics with the TypeScript message when no theme was installed yet — the
-/// TypeScript proxy throws the same uncaught error.
 pub fn theme() -> Arc<Theme> {
     match global_theme().read().unwrap().as_ref() {
         Some(theme) => Arc::clone(theme),
@@ -2160,8 +2128,6 @@ fn theme_watcher() -> &'static RwLock<ThemeWatcherState> {
     WATCHER.get_or_init(|| RwLock::new(ThemeWatcherState::default()))
 }
 
-/// The OS-level directory watch; `FSWatcher` of `utils/fs-watch.ts`.
-///
 /// Kept out of [`ThemeWatcherState`] so it can be dropped without holding that
 /// lock — `Drop` joins the backend thread, which may be inside an event.
 fn theme_watcher_backend() -> &'static Mutex<Option<notify::RecommendedWatcher>> {
@@ -2185,7 +2151,6 @@ fn watch_custom_themes_dir(directory: &Path) {
     let handler = |event: notify::Result<notify::Event>| match event {
         Ok(event) => {
             if event.paths.is_empty() {
-                // No name reported — TypeScript schedules a reload as well.
                 notify_theme_directory_event(None);
                 return;
             }
@@ -2247,8 +2212,6 @@ fn start_theme_watcher() {
 }
 
 /// Handle a failure reported by the directory watcher.
-///
-/// `watchWithErrorHandler(dir, listener, onError)` of `utils/fs-watch.ts`
 /// attaches an `error` listener precisely so an asynchronous OS failure does not
 /// terminate the process (regression #2791); `onError` then stops the live
 /// reload. The `notify` backend reports the same failures as an `Err` event,
@@ -2262,8 +2225,6 @@ pub fn notify_theme_watcher_error() {
 }
 
 /// Handle one directory event of the watched custom themes directory.
-///
-/// `filename` is `None` when the platform does not report one — TypeScript then
 /// schedules a reload as well.
 pub fn notify_theme_directory_event(filename: Option<&str>) {
     let (watched_theme_name, watched_file_name) = {
@@ -2408,8 +2369,6 @@ fn ansi256_to_hex(index: i64) -> String {
 
 /// Get resolved theme colors as CSS-compatible hex strings.
 /// Used by HTML export to generate CSS custom properties.
-///
-/// Returns the entries in file order, like `Object.entries` of the TypeScript
 /// record.
 pub fn get_resolved_theme_colors(theme_name: Option<&str>) -> Result<Vec<(String, String)>> {
     let name = match theme_name {
@@ -2471,7 +2430,6 @@ pub fn get_theme_export_colors(theme_name: Option<&str>) -> ThemeExportColors {
             .clone()
             .unwrap_or_else(get_default_theme),
     };
-    // The whole body is wrapped in try/catch in TypeScript: any failure yields
     // an empty result.
     read_theme_export_colors(&name).unwrap_or_default()
 }
@@ -2508,14 +2466,11 @@ fn read_theme_export_colors(name: &str) -> Result<ThemeExportColors> {
 // ============================================================================
 
 /// Whether the syntax highlighter supports a language.
-///
-/// `packages/coding-agent/src/utils/syntax-highlight.ts` (146 LOC — highlight.js
 /// Formatter map of the syntax highlighter, keyed by highlight.js scope.
 type CliHighlightTheme = HighlightTheme;
 
 fn build_cli_highlight_theme(theme: &Arc<Theme>) -> CliHighlightTheme {
     fn fg(theme: &Arc<Theme>, color: ThemeColor) -> HighlightFormatter {
-        // TypeScript closes over the theme instance `t`, not the global.
         let theme = Arc::clone(theme);
         Rc::new(move |text: &str| theme.fg(color, text))
     }
@@ -2557,8 +2512,6 @@ fn build_cli_highlight_theme(theme: &Arc<Theme>) -> CliHighlightTheme {
 }
 
 /// `getCliHighlightTheme(t)` — the memoised formatter map.
-///
-/// TypeScript compares object identity (`cachedHighlightThemeFor !== t`); the
 /// port compares the `Arc` the global theme handed out and keeps that `Arc`
 /// alive in the cache, so an address can never be reused behind a stale hit.
 /// The formatters hold `Rc`, so the cache is per thread rather than global.
@@ -2581,7 +2534,6 @@ fn get_cli_highlight_theme(theme: &Arc<Theme>) -> Rc<CliHighlightTheme> {
 }
 
 /// The shared body of `highlightCode` and `getMarkdownTheme().highlightCode`.
-///
 /// The two differ only in the `catch` branch, which `on_error` supplies.
 fn highlight_code_with(
     code: &str,

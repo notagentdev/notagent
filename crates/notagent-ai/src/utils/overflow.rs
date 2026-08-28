@@ -1,15 +1,9 @@
-//! Detection of context-overflow errors across providers.
-//!
-//! 1:1 port of `packages/ai/src/utils/overflow.ts` (180 LOC). All 25 overflow patterns
-//! and the 3 non-overflow exclusions keep their original order and wording.
-
 use std::sync::OnceLock;
 
 use regex::RegexSet;
 
 use crate::types::{AssistantMessage, StopReason};
 
-/// The overflow patterns from `overflow.ts:52-78`, in source order.
 pub const OVERFLOW_PATTERNS: [&str; 25] = [
     r"(?i)prompt is too long",                    // Anthropic token overflow
     r"(?i)request_too_large",                     // Anthropic request byte-size overflow (HTTP 413)
@@ -38,7 +32,6 @@ pub const OVERFLOW_PATTERNS: [&str; 25] = [
     r"(?i)^4(?:00|13)\s*(?:status code)?\s*\(no body\)", // Cerebras: 400/413 with no body
 ];
 
-/// Patterns that mark an error as *not* an overflow (`overflow.ts:89-93`).
 pub const NON_OVERFLOW_PATTERNS: [&str; 3] = [
     r"(?i)^(Throttling error|Service unavailable):", // AWS Bedrock non-overflow errors
     r"(?i)rate limit",                               // Generic rate limiting
@@ -99,7 +92,6 @@ pub fn is_recoverable_length(message: &AssistantMessage, desired_max_output: u64
         && message.usage.output < desired_max_output
 }
 
-/// `getOverflowPatterns()` — exposed for tests, as in TS.
 pub fn get_overflow_patterns() -> Vec<&'static str> {
     OVERFLOW_PATTERNS.to_vec()
 }

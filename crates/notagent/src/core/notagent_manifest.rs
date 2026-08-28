@@ -1,11 +1,8 @@
-//! Port of `packages/coding-agent/src/core/notagent-manifest.ts` (34 LOC).
-
 use std::path::Path;
 
 use serde_json::Value;
 
 /// `PiManifest`
-///
 /// Deviation (class 2): the `extensions` field is gone with the extension system
 /// (`plans/facts/extension-boundary.md` §6).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

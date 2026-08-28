@@ -1,15 +1,3 @@
-//! `/leases` (port addition, v0.1.19) — the command form of the reference's
-//! Atomic leases setting.
-//!
-//! The store and the two-phase protocol are covered in
-//! `core/tools/file_lease.rs`, and the three mutating tools are covered in
-//! their own suites. What runs here is the path a user takes: the typed
-//! command reaches the handler, the handler answers on screen and the choice
-//! lands in the settings the tools read their gate from.
-//!
-//! `wait_for` searches the accumulated scrollback, so each notice is awaited
-//! only on its first appearance; the later steps read the setting instead.
-
 use notagent::config::APP_NAME;
 
 use super::harness::{InteractiveE2e, run_local};

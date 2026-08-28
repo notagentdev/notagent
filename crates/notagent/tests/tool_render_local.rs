@@ -1,12 +1,3 @@
-//! The two render paths the TypeScript oracle cannot pin.
-//!
-//! `tests/tool_render_oracle.rs` compares every other case against the real
-//! TypeScript renderers. Two paths are checked here instead, because their
-//! output depends on something the two implementations cannot share: the
-//! wording of a filesystem error (Node's `Error code: ENOENT` against Rust's
-//! message, deviation class 1) and the clock of a command that is still
-//! running.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -35,7 +26,6 @@ fn prepare() {
         hyperlinks: false,
     });
     init_theme(Some("dark"), false);
-    // These pins are the TS-parity look: the standard style, not the badge
     // default (v0.1.9).
     set_block_style(BlockStyle::Standard);
 }
@@ -59,12 +49,12 @@ fn the_edit_preview_reports_a_file_it_cannot_read() {
         .build()
         .expect("runtime");
 
-    let definition = create_tool_definition(ToolName::Edit, "/oracle-cwd", None);
+    let definition = create_tool_definition(ToolName::Edit, "/test-cwd", None);
     let args = json!({
-        "path": "/oracle-cwd/missing-file.ts",
+        "path": "/test-cwd/missing-file.rs",
         "edits": [{ "old_string": "a", "new_string": "b" }],
     });
-    let mut context = ToolRenderContext::new("call-1", args.clone(), "/oracle-cwd");
+    let mut context = ToolRenderContext::new("call-1", args.clone(), "/test-cwd");
     context.args_complete = true;
 
     let theme = theme();
@@ -85,7 +75,7 @@ fn the_edit_preview_reports_a_file_it_cannot_read() {
         .expect("the call renders");
     let text = rendered(&call, 100);
     assert!(
-        text.contains("Could not edit file: /oracle-cwd/missing-file.ts."),
+        text.contains("Could not edit file: /test-cwd/missing-file.rs."),
         "the preview shows why the file cannot be edited: {text}"
     );
     reset_capabilities_cache();
@@ -96,9 +86,9 @@ fn the_bash_result_counts_up_while_the_command_runs() {
     let _guard = global_lock();
     prepare();
 
-    let definition = create_tool_definition(ToolName::Bash, "/oracle-cwd", None);
+    let definition = create_tool_definition(ToolName::Bash, "/test-cwd", None);
     let args = json!({ "command": "sleep 5" });
-    let mut context = ToolRenderContext::new("call-1", args.clone(), "/oracle-cwd");
+    let mut context = ToolRenderContext::new("call-1", args.clone(), "/test-cwd");
     context.execution_started = true;
     context.is_partial = true;
 
@@ -134,7 +124,6 @@ fn the_bash_result_counts_up_while_the_command_runs() {
         "a running command shows the elapsed time: {text}"
     );
 
-    // The tick the TS version schedules with setInterval is a deadline here.
     let deadline = definition
         .render_deadline(&context)
         .expect("the elapsed line ticks");

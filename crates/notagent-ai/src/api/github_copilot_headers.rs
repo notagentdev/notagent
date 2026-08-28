@@ -1,7 +1,3 @@
-//! GitHub Copilot request headers.
-//!
-//! 1:1 port of `packages/ai/src/api/github-copilot-headers.ts` (37 LOC).
-
 use std::collections::BTreeMap;
 
 use crate::types::{Message, TextOrImageContent, UserContent};

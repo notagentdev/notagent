@@ -1,12 +1,3 @@
-//! Port of the core cases from
-//! `packages/session-backends/sqlite-node/test/repository.test.ts`,
-//! `test/branch-query.test.ts`, `test/facts-query.test.ts`,
-//! `test/log-query.test.ts` and `test/writer-leases.test.ts`.
-//!
-//! The TS tests drive the agent-core `Session` wrapper; that class is not part
-//! of this port yet, so the tests exercise the same contract on
-//! `SqliteSessionStorage` directly.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

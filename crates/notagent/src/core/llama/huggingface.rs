@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/src/extensions/llama/huggingface.ts` (158 LOC).
-//!
-//! Model search on huggingface.co: GGUF repositories, their quantizations and
-//! whether access is gated, plus the token lookup the CLI shares with `hf`.
-
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -54,12 +49,9 @@ pub struct HuggingFaceQuantization {
 }
 
 /// `HuggingFaceModelDetails["gated"] = false | "auto" | "manual"`
-///
 /// No serde derive on purpose: the union mixes a boolean with two strings and
-/// TS never writes it back out, so there is no wire format to reproduce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HuggingFaceGated {
-    /// TS: `false`.
     #[default]
     No,
     Auto,
@@ -99,8 +91,6 @@ async fn read_token(path: &PathBuf) -> Option<String> {
 }
 
 /// `findHuggingFaceToken(env)` — `HF_TOKEN` first, then the token files `hf` writes.
-///
-/// The environment is passed in, as in TS, so the ported suite can drive it.
 pub async fn find_hugging_face_token(env: &BTreeMap<String, String>) -> Option<String> {
     let from_environment = env.get("HF_TOKEN").map(|value| value.trim()).unwrap_or("");
     if !from_environment.is_empty() {
@@ -122,7 +112,6 @@ pub async fn find_hugging_face_token(env: &BTreeMap<String, String>) -> Option<S
     }
     let mut seen: Vec<&PathBuf> = Vec::new();
     for path in &paths {
-        // TS deduplicates through `new Set(paths)`, which keeps insertion order.
         if seen.contains(&path) {
             continue;
         }
@@ -134,7 +123,6 @@ pub async fn find_hugging_face_token(env: &BTreeMap<String, String>) -> Option<S
     None
 }
 
-/// `findHuggingFaceToken()` with TS's default argument, `process.env`.
 pub async fn find_hugging_face_token_from_process_env() -> Option<String> {
     find_hugging_face_token(&std::env::vars().collect()).await
 }
@@ -310,10 +298,8 @@ impl HuggingFaceClient {
                 size: complete.then_some(total),
             })
             .collect();
-        // TS answers `-1`/`1` whenever `Q4_K_M` is involved, so it beats every
         // other name; the rest sorts by size, ties by name. Expressed as a
         // partition plus a proper total order, because Rust's sort rejects a
-        // comparator that is not one (TS would call `Q4_K_M < Q4_K_M`).
         let mut quantizations: Vec<HuggingFaceQuantization> = quantizations;
         quantizations.sort_by(|left, right| {
             let left_size = left.size.unwrap_or(MAX_SAFE_INTEGER);

@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/types.ts`.
-
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -30,8 +28,6 @@ pub struct SqliteRunResult {
 }
 
 /// SQLite database capability used by the SQLite session backend.
-///
-/// Deviation class 1: TS exposes prepared statements; Rust runs `SqlQuery`
 /// values directly and returns rows as JSON objects, which keeps the typed
 /// `get<TRow>`/`all<TRow>` surface of the original.
 pub trait SqliteDatabase: Send + Sync {
@@ -42,7 +38,6 @@ pub trait SqliteDatabase: Send + Sync {
     fn close(&self);
 }
 
-/// Runs a write transaction. TS wraps this in `db.transaction(fn)`; Rust keeps
 /// the trait object safe by exposing the three statements separately.
 pub fn with_transaction<T>(
     db: &dyn SqliteDatabase,

@@ -1,7 +1,3 @@
-//! Behaviour of the batch-1 interactive components that the TypeScript suites do
-//! not cover. Expectations are taken from
-//! `packages/coding-agent/src/modes/interactive/components/*.ts`.
-
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -38,7 +34,6 @@ fn returns_nothing_for_empty_text() {
 
 #[test]
 fn keeps_every_line_below_the_limit() {
-    // `Text` pads every line to the render width, as in TypeScript.
     let result = truncate_to_visual_lines("a\nb\nc", 5, 20, 0);
     assert_eq!(
         result.visual_lines,
@@ -110,7 +105,6 @@ fn draws_a_rule_across_the_width() {
 
 #[test]
 fn uses_the_muted_border_color_by_default() {
-    // Deviation from the TS original (user decision 2026-08-17, v0.1.11):
     // the rules of a dialog are furniture, so they take the same muted grey
     // the input frame draws itself in instead of the accent blue.
     let _guard = theme_lock();

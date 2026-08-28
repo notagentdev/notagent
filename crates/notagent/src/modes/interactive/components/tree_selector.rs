@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/tree-selector.ts` (1 437 LOC).
-
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -35,9 +32,6 @@ struct GutterInfo {
 }
 
 /// The node payload a [`FlatNode`] carries.
-///
-/// The TypeScript `FlatNode.node` is a reference to the caller's
-/// `SessionTreeNode`; `children` is never read through it, so the port keeps
 /// only the fields the component uses (and `updateNodeLabel` writes).
 #[derive(Clone, Debug)]
 pub struct TreeNodeData {
@@ -80,7 +74,6 @@ const MIN_ANCHOR_CONTEXT_WIDTH: usize = 2;
 const MAX_ANCHOR_CONTEXT_WIDTH: usize = 12;
 
 /// Render tree rows into a horizontally clipped viewport.
-///
 /// The tree gutter is always kept visible. The row bodies are shifted left only
 /// when the selected row's anchor (the start of its entry text after tree
 /// indentation/markers) would otherwise be too far right to see useful content.
@@ -165,7 +158,6 @@ pub type CopyCallback = Box<dyn FnMut(Option<&str>)>;
 
 /// `String.prototype.slice(0, limit)` counts UTF-16 code units. A cut inside a
 /// surrogate pair would produce a lone surrogate, which Rust strings cannot
-/// hold, so the port stops before that character.
 fn js_slice(text: &str, limit: usize) -> &str {
     let mut units = 0usize;
     for (offset, character) in text.char_indices() {
@@ -220,10 +212,8 @@ fn message_role(message: &Value) -> &str {
 /// Tree list component with selection and ASCII art visualization
 pub struct TreeList {
     flat_nodes: Vec<FlatNode>,
-    /// Indices into `flat_nodes`; the TypeScript version holds references to the
     /// same objects, so `recalculateVisualStructure` writes through both views.
     filtered_nodes: Vec<usize>,
-    /// `number` in TypeScript: navigation on an empty list produces -1.
     selected_index: isize,
     current_leaf_id: Option<String>,
     max_visible_lines: usize,
@@ -242,8 +232,6 @@ pub struct TreeList {
     pub on_select: Option<TreeSelectCallback>,
     /// Invoked when the selector is cancelled.
     pub on_cancel: Option<Box<dyn FnMut()>>,
-    /// `onCopy`/`onLabelEdit` call back into the owning selector in TypeScript;
-    /// the port records the request and the selector drains it after dispatch.
     pending_copy: Option<Option<String>>,
     pending_label_edit: Option<(String, Option<String>)>,
 }
@@ -685,7 +673,6 @@ impl TreeList {
     }
 
     /// Recompute indentation/connectors for the filtered view
-    ///
     /// Filtering can hide intermediate entries; descendants attach to the nearest visible ancestor.
     /// Keep indentation semantics aligned with flattenTree() so single-child chains don't drift right.
     fn recalculate_visual_structure(&mut self) {
@@ -1123,7 +1110,6 @@ impl TreeList {
 
     /// Find the index of the next branch segment start in the given direction.
     /// A segment start is the first child of a branch point.
-    ///
     /// "up" walks the visible parent chain; "down" walks visible children
     /// (always following the first child).
     fn find_branch_segment_start(&self, direction: Direction) -> isize {
@@ -1967,7 +1953,6 @@ fn compact_raw_keys(keys: &[String]) -> String {
 struct LabelInput {
     input: Input,
     entry_id: String,
-    /// `onSubmit`/`onCancel` call back into the selector; the port records the
     /// request and the selector drains it after dispatch.
     pending_submit: Option<(String, Option<String>)>,
     pending_cancel: bool,
@@ -2056,7 +2041,6 @@ impl Focusable for LabelInput {
     }
 }
 
-/// The optional trailing parameters of the TypeScript constructor.
 #[derive(Default)]
 pub struct TreeSelectorOptions {
     /// Invoked when a label was set or cleared.
@@ -2077,8 +2061,6 @@ pub struct TreeSelectorComponent {
     on_label_change_callback: Option<LabelChangeCallback>,
     /// Invoked with the text of the copied entry.
     pub on_copy: Option<CopyCallback>,
-    /// `tree.length === 0` schedules `onCancel` in TypeScript; timers never call
-    /// back in this port, so the caller polls this flag instead.
     empty: bool,
 
     // Focusable implementation - propagate to labelInput when active for IME cursor positioning

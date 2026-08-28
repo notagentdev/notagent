@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/src/core/resolve-config-value.ts`.
-//!
-//! Resolve configuration values that may be shell commands, environment
-//! variables or literals. Used by auth storage and the model registry.
-
 use std::collections::{BTreeMap, HashMap};
 use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
@@ -130,7 +125,6 @@ fn parse_config_value_reference(config: &str) -> ConfigValueReference {
 }
 
 fn resolve_env_config_value(name: &str, env: Option<&BTreeMap<String, String>>) -> Option<String> {
-    // TS uses `||`, so an empty override falls through to the process env.
     if let Some(value) = env
         .and_then(|env| env.get(name))
         .filter(|value| !value.is_empty())
@@ -206,7 +200,6 @@ pub fn is_config_value_configured(config: &str, env: Option<&BTreeMap<String, St
 }
 
 /// Resolve a config value (API key, header value, …) to an actual value.
-///
 /// - `!command` executes the rest as a shell command and uses stdout (cached)
 /// - `$ENV_VAR` and `${ENV_VAR}` interpolate the named environment variable
 /// - in non-command values `$$` escapes a literal `$` and `$!` a literal `!`
@@ -269,7 +262,6 @@ pub fn resolve_headers(
     let headers = headers?;
     let mut resolved: BTreeMap<String, String> = BTreeMap::new();
     for (key, value) in headers {
-        // TS keeps only truthy values, so an empty result drops the header.
         if let Some(value) = resolve_config_value(value, env).filter(|value| !value.is_empty()) {
             resolved.insert(key.clone(), value);
         }
@@ -348,7 +340,6 @@ struct ConfiguredShellResult {
     value: Option<String>,
 }
 
-/// TS only takes this path on Windows, where `execSync`'s `cmd.exe` cannot run
 /// the configured bash. Compiled in tests everywhere so it stays covered.
 #[cfg(any(windows, test))]
 fn execute_with_configured_shell(command: &str) -> ConfiguredShellResult {
@@ -376,7 +367,6 @@ fn execute_with_configured_shell(command: &str) -> ConfiguredShellResult {
 
     let mut child = match process.spawn() {
         Ok(child) => child,
-        // A missing shell is TS's ENOENT: not executed, so the caller falls back.
         Err(_) => {
             return ConfiguredShellResult {
                 executed: false,
@@ -424,7 +414,6 @@ fn execute_with_default_shell(command: &str) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
-/// Port of the `timeout: 10000` option: kill the child when it overruns.
 fn wait_with_timeout(mut child: std::process::Child) -> Option<(std::process::ExitStatus, String)> {
     let stdout = child.stdout.take();
     let reader = std::thread::spawn(move || {

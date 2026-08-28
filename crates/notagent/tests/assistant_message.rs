@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/assistant-message.test.ts` (241 LOC).
-//!
-//! The TypeScript case "continues the Markdown transformer chain when a
-//! transformer throws" is dropped with the guard it exercises: a Rust
-//! transformer cannot throw, and the guard only ever protected against untyped
-//! extension code (see `crates/notagent/PARITY.md`).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -32,7 +25,6 @@ fn theme_lock() -> MutexGuard<'static, ()> {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    // The block style is a process global (default: badge); the TS-parity
     // tests pin the standard layout, the badge tests set Badge themselves.
     set_block_style(BlockStyle::Standard);
     guard

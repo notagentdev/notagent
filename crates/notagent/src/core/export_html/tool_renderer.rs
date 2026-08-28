@@ -1,14 +1,3 @@
-//! Port of the TUI-free half of
-//! `packages/coding-agent/src/core/export-html/tool-renderer.ts` (172 LOC).
-//!
-//! `createToolHtmlRenderer` itself is not here: it calls `renderCall`/
-//! `renderResult` of a tool definition, which return TUI components. Those two
-//! methods are not on `core::tools::tool_definition::ToolDefinition` — they are
-//! wired up with the interactive mode (workstream C, task 13), and the factory
-//! belongs to that wiring (interface request B-8). What stays here is the seam
-//! the exporter talks to plus the two pure helpers the factory needs: the blank
-//! line trimming and, in the sibling module, the ANSI conversion.
-
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -39,7 +28,6 @@ pub trait ToolHtmlRenderer {
     fn render_call(&self, tool_call_id: &str, tool_name: &str, args: &Value) -> Option<String>;
     /// Render a tool result to HTML. Returns collapsed/expanded, or `None` if the
     /// tool has no custom renderer. `details` is `Value::Null` when the message
-    /// carries none, which is what the TypeScript passes as `undefined`.
     fn render_result(
         &self,
         tool_call_id: &str,
@@ -83,11 +71,7 @@ pub fn rendered_result_from_lines<S: AsRef<str> + Clone>(
     }
 }
 
-/// `createToolHtmlRenderer(deps)` (`tool-renderer.ts:58-171`).
-///
-/// Interface request B-8 left the factory to workstream C, because it drives
 /// `renderCall`/`renderResult` of a tool definition — the halves that render
-/// TUI components and only exist once the interactive components are ported.
 /// The seam above and the two helpers stay where B put them.
 pub type GetToolDefinition = Box<dyn Fn(&str) -> Option<std::sync::Arc<dyn ToolDefinition>>>;
 
@@ -97,7 +81,6 @@ pub struct ToolDefinitionHtmlRenderer {
     cwd: String,
     width: usize,
     /// `renderedArgs`, `renderedStates` and the two component maps of the
-    /// TypeScript closure.
     args: RefCell<BTreeMap<String, Value>>,
     states: RefCell<BTreeMap<String, ToolRenderStateRef>>,
     call_components: RefCell<BTreeMap<String, ComponentRef>>,
@@ -192,7 +175,6 @@ impl ToolHtmlRenderer for ToolDefinitionHtmlRenderer {
     ) -> Option<RenderedToolResult> {
         let definition = (self.get_tool_definition)(tool_name)?;
         // The session file stores the blocks as plain JSON; anything that is not
-        // a text or image block is dropped, as the TS cast quietly does.
         let content: Vec<TextOrImageContent> = result
             .iter()
             .filter_map(|block| serde_json::from_value(block.clone()).ok())

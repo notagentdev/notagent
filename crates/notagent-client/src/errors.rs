@@ -1,8 +1,3 @@
-//! Port of `packages/client/src/errors.ts`.
-//!
-//! Deviation class 1: the five TS error classes become variants of one enum.
-//! `name` and `message` stay verbatim so consumers see the same texts.
-
 use notagent_protocol::{JsonValue, ProtocolError, ProtocolErrorCode};
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -29,7 +24,6 @@ pub enum PiError {
     /// `ProtocolValidationError` from `@notagent/protocol`
     #[error("{0}")]
     ProtocolValidation(String),
-    /// Byte transport or listener failure (TS: generic `Error`).
     #[error("{0}")]
     Other(String),
 }
@@ -77,7 +71,6 @@ impl PiError {
     }
 }
 
-/// Port of `toDisconnectedError`.
 pub(crate) fn to_disconnected_error(error: PiError) -> PiError {
     match error {
         PiError::Disconnected(_) => error,

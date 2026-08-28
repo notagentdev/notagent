@@ -1,9 +1,3 @@
-//! Differential test of the Google Generative AI adapter.
-//!
-//! `fixtures/google-generative-ai.jsonl` records, for each case, the URL and the body the
-//! TS implementation puts on the wire through the `@google/genai` SDK plus the event
-//! sequence it emits for a scripted SSE body (see `fixtures/generators`).
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::google_generative_ai::{

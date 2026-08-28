@@ -1,10 +1,8 @@
 //! A band of light travelling through a line of text.
-//!
 //! Stands in for a spinner. A spinner says "something is happening" with a
 //! glyph that has nothing to do with the message beside it; the band says the
 //! same thing using the message itself, so the eye is drawn to the words rather
 //! than away from them.
-//!
 //! The band pulls the text toward the background rather than brightening it.
 //! Brightening needs a colour beyond the text, which on a light terminal does
 //! not exist; the background is always there and lies in opposite directions in
@@ -14,7 +12,6 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 /// How often the band moves.
-///
 /// A sweep that advances five times a second reads as a series of jumps rather
 /// than as motion — the band moves several characters between frames, which is
 /// what makes it look like it is lagging behind rather than travelling. Thirty
@@ -45,7 +42,6 @@ pub struct ShimmerPalette {
 }
 
 /// The colour the band should pull `base` toward: the background behind it.
-///
 /// Derived from the text rather than asked for, because the two themes differ
 /// in exactly this and nothing else: light text sits on a dark ground and dark
 /// text on a light one. Taking the direction from the text's own brightness
@@ -83,7 +79,6 @@ fn fade_at(index: usize, position: f32) -> f32 {
 }
 
 /// Renders `text` with the band at the position `elapsed` puts it.
-///
 /// The sweep is derived from elapsed time rather than counted in frames, so a
 /// dropped frame shifts nothing: the band is where the clock says it is.
 pub fn shimmer(text: &str, palette: ShimmerPalette, elapsed: Duration) -> String {

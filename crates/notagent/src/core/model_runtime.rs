@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/core/model-runtime.ts` (787 LOC).
-//!
-//! Deviation (class 2): the extension provider layer (`registerProvider(id, config)`,
-//! `getRegisteredProviderConfig`, `validateExtensionProvider`) is dropped with the
-//! extension system (extension-boundary §6). `registerNativeProvider` stays — it is
-//! the entry point the native llama.cpp provider uses.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
@@ -58,7 +51,6 @@ pub struct CreateModelRuntimeOptions {
     /// Credential storage. Defaults to the file at `auth_path`.
     pub credentials: Option<Arc<dyn CredentialStore>>,
     pub auth_path: Option<String>,
-    /// `Some(None)` is TS' `modelsPath: null` — run without a models.json.
     pub models_path: Option<Option<String>>,
     pub models_store: Option<Arc<dyn ModelsStore>>,
     pub models_store_path: Option<String>,
@@ -1402,7 +1394,6 @@ impl ModelRuntime {
         self.spawn_offline_refresh();
     }
 
-    /// TS' `void this.refresh({ allowNetwork: false })` — fire and forget.
     fn spawn_offline_refresh(self: &Arc<Self>) {
         let runtime = Arc::clone(self);
         tokio::spawn(async move {
@@ -1429,8 +1420,6 @@ pub struct ModelsRequestTransforms {
 }
 
 /// `ModelsApiStreamOptions<TApi> = ApiStreamOptions<TApi> & ModelsRequestTransforms`
-///
-/// Deviation (class 1): TS intersects the transform into the options object; Rust has
 /// no structural intersection, so it becomes a field next to the provider options.
 #[derive(Clone, Default)]
 pub struct ModelsApiStreamOptions {

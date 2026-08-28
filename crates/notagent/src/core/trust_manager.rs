@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/core/trust-manager.ts`.
-//!
-//! Which project folders the user has decided to trust, and what the prompt
-//! offers. A decision is recorded for a path and inherited by everything below
-//! it, so trusting a workspace root covers the repositories inside it.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -26,7 +20,6 @@ pub struct ProjectTrustStoreEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectTrustUpdate {
     pub path: String,
-    /// `None` removes the entry, as `null` does in the TypeScript.
     pub decision: ProjectTrustDecision,
 }
 

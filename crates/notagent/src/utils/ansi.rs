@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/ansi.ts`.
-//!
-//! That file carries an MIT notice for the `ansi-regex`/`strip-ansi` packages by
-//! Sindre Sorhus; the pattern below is the same grammar expressed as a regex
-//! literal, so the notice applies here as well:
-//!
-//! ```text
-//! MIT License — Copyright (c) Sindre Sorhus <sindresorhus@gmail.com>
-//! ```
-
 use std::sync::LazyLock;
 
 use regex::Regex;

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/user-message.test.ts` (58 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -12,7 +10,6 @@ use notagent::modes::interactive::theme::theme::{BlockStyle, init_theme, set_blo
 use notagent::utils::ansi::strip_ansi;
 use notagent_tui::tui::Component;
 
-/// The global theme and the block style are process globals; the TS-parity
 /// cases pin the standard layout, the badge cases set Badge themselves.
 fn theme_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

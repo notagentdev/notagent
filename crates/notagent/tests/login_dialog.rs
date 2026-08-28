@@ -1,11 +1,3 @@
-//! Tests for the port of
-//! `packages/coding-agent/src/modes/interactive/components/login-dialog.ts`.
-//!
-//! The TypeScript repository has no suite for this component; the expected
-//! values come from `tools/gen-login-dialog-oracle.mjs`, which drives the
-//! TypeScript class with these fixtures and prints the rendered lines, the
-//! `requestRender` calls and how each input step resolved.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -40,7 +32,6 @@ enum Event {
     Complete(bool, Option<String>),
 }
 
-/// The oracle's line transformation: colours dropped, OSC 8 links spelled out.
 fn render_line(line: &str) -> String {
     let mut rendered = String::new();
     let mut rest = line;
@@ -99,7 +90,6 @@ impl Harness {
     }
 }
 
-/// `case1` of the oracle.
 #[test]
 fn the_title_follows_the_provider_name_and_the_overrides() {
     let _guard = test_lock();
@@ -115,7 +105,6 @@ fn the_title_follows_the_provider_name_and_the_overrides() {
 }
 
 /// Shadow the platform browser launcher for the duration of the process, the
-/// way `tools/gen-login-dialog-oracle.mjs` does: `show_auth` spawns `open` or
 /// `xdg-open`, and a test must not open a browser window.
 fn shadow_browser_launcher() {
     static SHADOW: OnceLock<tempfile::TempDir> = OnceLock::new();
@@ -145,7 +134,6 @@ fn shadow_browser_launcher() {
     }
 }
 
-/// `case2` of the oracle.
 #[test]
 fn show_auth_renders_the_url_as_a_hyperlink() {
     let _guard = test_lock();
@@ -175,7 +163,6 @@ fn show_auth_renders_the_url_as_a_hyperlink() {
     assert_eq!(&lines[5..7], &["", " Approve in the browser"]);
 }
 
-/// `case3` of the oracle.
 #[test]
 fn show_device_code_renders_the_verification_url_and_the_code() {
     let _guard = test_lock();
@@ -199,7 +186,6 @@ fn show_device_code_renders_the_verification_url_and_the_code() {
     assert_eq!(harness.take_events(), vec![Event::RequestRender]);
 }
 
-/// `case4` of the oracle: submitting replaces the input with the typed text.
 #[test]
 fn show_prompt_resolves_with_the_submitted_value() {
     let _guard = test_lock();
@@ -229,7 +215,6 @@ fn show_prompt_resolves_with_the_submitted_value() {
     assert!(harness.take_events().is_empty());
 }
 
-/// `case5` of the oracle: escape cancels the step, aborts the signal and
 /// reports the cancellation once.
 #[test]
 fn show_manual_input_is_cancelled_by_escape() {
@@ -257,11 +242,9 @@ fn show_manual_input_is_cancelled_by_escape() {
         harness.take_events(),
         vec![Event::Complete(false, Some("Login cancelled".to_string()))]
     );
-    // The content stays on screen, exactly as in TypeScript.
     assert_eq!(harness.lines()[3], " Paste the redirect URL");
 }
 
-/// `case6` of the oracle: the three informational steps.
 #[test]
 fn the_informational_steps_append_to_the_content() {
     let _guard = test_lock();

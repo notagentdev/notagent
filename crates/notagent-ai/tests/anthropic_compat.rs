@@ -1,13 +1,3 @@
-//! Anthropic compat-flag behaviour.
-//!
-//! Ports `packages/ai/test/anthropic-adaptive-thinking-models.test.ts` (40),
-//! `anthropic-temperature-compat.test.ts` (103), `anthropic-force-adaptive-thinking.test.ts`
-//! (123), `anthropic-empty-thinking-signature-compat.test.ts` (108),
-//! `anthropic-eager-tool-input-compat.test.ts` (166) and
-//! `anthropic-cache-write-1h-cost.test.ts` (86). The TS suites capture the request body
-//! through `onPayload` or a local HTTP server; the port injects a `fetch` that records
-//! the request and answers with a canned body — the same observation point.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::anthropic_messages::{stream, stream_simple};
@@ -65,7 +55,6 @@ fn user_context() -> Context {
     }
 }
 
-/// `capturePayload(model, options)` of the TS suites.
 async fn capture_payload(
     model: &Model,
     context: Context,
@@ -464,7 +453,6 @@ fn tool_context(tools: Vec<Tool>) -> Context {
     }
 }
 
-/// `captureAnthropicRequest(compat, context)` — the TS suite runs a local HTTP server;
 /// the injected fetch observes the same request.
 async fn capture_anthropic_request(compat: Option<Value>, context: Context) -> FetchRequest {
     let mut model = custom_model("claude-opus-4-8", None);
@@ -693,7 +681,6 @@ async fn prices_the_1h_cache_write_portion_at_twice_the_input_rate() {
 // ---------------------------------------------------------------------------
 // ANTHROPIC_AUTH_TOKEN / ANTHROPIC_OAUTH_TOKEN
 //
-// Port of `packages/ai/test/anthropic-auth-token.test.ts` (187). The TS suite reads the
 // SDK client's constructor options; here the request headers the adapter builds are the
 // equivalent observation point.
 // ---------------------------------------------------------------------------
@@ -949,7 +936,6 @@ async fn threads_the_env_tokens_through_models_into_the_request() {
 // ---------------------------------------------------------------------------
 // GitHub Copilot through the Anthropic Messages API
 //
-// Port of `packages/ai/test/github-copilot-anthropic.test.ts` (127).
 // ---------------------------------------------------------------------------
 
 #[test]

@@ -1,7 +1,3 @@
-//! Backend-neutrale Referenzimplementierung, die Spans im Prozessspeicher aufzeichnet.
-//!
-//! 1:1-Port von `packages/telemetry/src/memory.ts` (219 LOC).
-
 use std::sync::{Arc, Mutex};
 
 use crate::noop::noop_telemetry_context;
@@ -17,7 +13,7 @@ pub struct RecordedTelemetryEvent {
     pub attributes: SpanAttributes,
 }
 
-/// `RecordedTelemetrySpan` — losgelöster Schnappschuss.
+/// Detached snapshot of a recorded telemetry span.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordedTelemetrySpan {
     pub id: u64,
@@ -61,7 +57,6 @@ impl State {
     }
 }
 
-/// `copyAttributes` — defensive Kopie; `undefined`-Werte gibt es in Rust nicht.
 fn copy_attributes(attributes: Option<&SpanAttributes>) -> SpanAttributes {
     attributes.cloned().unwrap_or_default()
 }
@@ -92,7 +87,6 @@ fn create_span(state: &mut State, parent_id: Option<u64>, options: SpanOptions) 
     id
 }
 
-/// `settleSpan` — setzt bei Fehlern ohne expliziten Status automatisch Error.
 fn settle_span(state: &mut State, id: u64, outcome: SpanOutcome) {
     let next_end_sequence = state.next_end_sequence;
     let Some(span) = state.find(id) else { return };
@@ -117,7 +111,6 @@ struct InMemorySpan {
 impl TelemetryContext for InMemorySpan {
     fn begin_span(&self, options: SpanOptions) -> Arc<dyn TelemetrySpan> {
         let mut state = self.state.lock().expect("Telemetrie-Zustand vergiftet");
-        // TS: Kinder eines abgeschlossenen Spans werden nicht aufgezeichnet.
         if state.is_settled(self.id) {
             drop(state);
             return noop_telemetry_context().begin_span(options);
@@ -191,7 +184,7 @@ impl InMemoryTelemetryContext {
         InMemoryTelemetryContext::default()
     }
 
-    /// `getSpans()` — losgelöste Schnappschüsse in Startreihenfolge.
+    /// Returns detached snapshots in start order.
     pub fn get_spans(&self) -> Vec<RecordedTelemetrySpan> {
         let state = self.state.lock().expect("Telemetrie-Zustand vergiftet");
         state
@@ -223,13 +216,10 @@ impl TelemetryContext for InMemoryTelemetryContext {
     }
 }
 
-/// Hilfsfunktion für Attributwerte in Tests und Aufrufern.
 pub fn attribute(value: impl Into<AttributeValue>) -> AttributeValue {
     value.into()
 }
 
-/// TS `automaticErrorStatus` für Rust-Fehlerwerte: `Error.name` ist bei einem
-/// einfachen `new Error(...)` „Error", die Meldung ist `error.message`.
 pub fn automatic_error_status(error: &dyn std::fmt::Display) -> SpanStatusError {
     SpanStatusError {
         name: "Error".to_string(),

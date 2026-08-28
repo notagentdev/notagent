@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/custom-editor-history-keybindings.test.ts` (34 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -23,7 +21,6 @@ fn keybindings_lock() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|error| error.into_inner())
 }
 
-/// `packages/tui/test/test-themes.ts`
 fn default_editor_theme() -> EditorTheme {
     EditorTheme {
         border_color: Rc::new(|text| format!("\x1b[2m{text}\x1b[22m")),

@@ -1,8 +1,6 @@
 //! What the session shows while it is busy.
-//!
 //! The four activities are constructors rather than subclasses, and the retry
 //! variant keeps its countdown as an optional field.
-//!
 //! None of them draws a spinner. A spinner puts the motion beside the words,
 //! where it competes with them for attention while saying nothing the words do
 //! not; instead the message animates itself, with a band of fading colour
@@ -87,7 +85,6 @@ fn message_in(color: ThemeColor) -> Rc<dyn Fn(&str) -> String> {
 }
 
 /// The fade the travelling band pulls the message toward.
-///
 /// The background rather than the theme's dim colour: dim is a text colour and
 /// stops well short of the ground, which left the band shallow — most visibly
 /// in the light theme, where dim is a mid grey a long way from the page. The
@@ -102,7 +99,6 @@ fn shimmer_palette(base: ThemeColor) -> Option<ShimmerPalette> {
 }
 
 impl StatusIndicator {
-    /// The base constructor of the TypeScript class.
     pub fn new(
         kind: StatusIndicatorKind,
         spinner_color_fn: Rc<dyn Fn(&str) -> String>,
@@ -123,7 +119,6 @@ impl StatusIndicator {
     }
 
     /// The base constructor for an indicator that animates its own message.
-    ///
     /// A caller that hands in indicator options has asked for a particular
     /// animation and keeps it; everything else drops the spinner.
     fn animated(
@@ -152,7 +147,6 @@ impl StatusIndicator {
     }
 
     /// Update the running time beside the message.
-    ///
     /// Returns whether the figure changed, which is the only reason to redraw
     /// on account of the clock — the animation redraws on its own schedule.
     /// The clock is a suffix rather than part of the message, so the shimmer
@@ -187,7 +181,6 @@ impl StatusIndicator {
     }
 
     /// Stop, and leave behind what the work took.
-    ///
     /// The line stays on screen instead of being replaced by blank rows: how
     /// long a turn ran is the one thing about it a reader cannot reconstruct
     /// afterwards, and blanking the row throws it away at the exact moment it
@@ -292,7 +285,6 @@ impl StatusIndicator {
     }
 
     /// Advance the retry countdown; `true` when the message changed and the
-    /// caller must request a render (`tui.requestRender()` in TypeScript).
     pub fn tick_countdown(&mut self) -> bool {
         let Some(countdown) = self.countdown.as_mut() else {
             return false;

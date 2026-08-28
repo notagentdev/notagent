@@ -1,9 +1,3 @@
-//! Port of `packages/tui/test/terminal.test.ts` (300 LOC).
-//!
-//! The TS suite monkey-patches `process.stdout.write` / `process.stdin.on` and
-//! reaches into private members; the Rust port injects the write sink and uses
-//! the `test-terminal` harness API instead (deviation class 1).
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -312,7 +306,6 @@ fn writes_a_valid_osc_9_4_clear_sequence() {
 fn falls_back_to_columns_and_lines_before_default_dimensions() {
     let _guard = guard();
     let mut terminal = ProcessTerminal::with_writer(Box::new(|_| {}));
-    // The TS test overrides process.stdout.columns/rows and sets COLUMNS/LINES;
     // the harness pins the resolved values instead.
     terminal.set_dimensions_for_tests(Some(123), Some(45));
 

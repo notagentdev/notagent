@@ -1,9 +1,3 @@
-//! Port of `packages/ai/test/telemetry-options.test.ts` (171 LOC).
-//!
-//! `telemetryContext` rides on `ProviderRequestOptions`, so it has to survive every
-//! dispatch surface: the provider built by `createProvider`, the `Models` runtime, the
-//! direct image entry point and `ImagesModels`.
-
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
@@ -25,7 +19,6 @@ use notagent_ai::utils::event_stream::{
 };
 use notagent_telemetry::{TelemetryContext, noop_telemetry_context};
 
-/// The TS fixture's `{ name: "Test", resolve: async () => ({ auth: {} }) }`.
 struct EmptyApiKeyAuth;
 
 impl ApiKeyAuth for EmptyApiKeyAuth {
@@ -91,7 +84,6 @@ fn images_context() -> ImagesContext {
     }
 }
 
-/// A stream that is already finished when handed out, like the TS `completedStream`.
 fn completed_stream(request_model: &Model) -> AssistantMessageEventStream {
     let stream = create_assistant_message_event_stream();
     let message = AssistantMessage {

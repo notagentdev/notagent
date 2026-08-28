@@ -1,15 +1,3 @@
-//! Port of the tool cases of `packages/coding-agent/test/todos.test.ts` and of
-//! `packages/coding-agent/test/skill-tool.test.ts`.
-//!
-//! The store, the model-facing rendering and the transcript diff are unit-tested
-//! in `core::todos`; the reminder cases of `todos.test.ts` belong to
-//! `todos/reminder.ts` (plan task 11) and the `renderResult` case to task 13.
-//!
-//! The skill cases run against constructed sources rather than `loadModes`,
-//! which lands with plan task 9; the tool's own behaviour — mode before skill,
-//! case-insensitive resolution, envelope, resource listing, token estimate — is
-//! what is checked here.
-
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 

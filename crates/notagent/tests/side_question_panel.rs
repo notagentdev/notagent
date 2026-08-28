@@ -1,5 +1,4 @@
 //! What the side-question panel puts on screen.
-//!
 //! The frame is what carries the feature's claim: the exchange is visibly not
 //! part of the transcript. So the box, the title and the key hint are asserted
 //! rather than left to look right.

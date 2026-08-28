@@ -1,20 +1,3 @@
-//! Port of `packages/coding-agent/src/core/output-guard.ts`.
-//!
-//! Two jobs. The first is to keep standard output clean in the machine-readable
-//! modes: once it is taken over, everything the app would have printed goes to
-//! standard error, and only the protocol writer reaches the real stream. The
-//! second is that protocol writer itself — ordered, non-blocking for the caller,
-//! and with a way to wait until it has drained, which is what the agent uses to
-//! stop producing faster than the reader consumes.
-//!
-//! Deviation (class 3): TypeScript swaps `process.stdout.write` for the
-//! stderr writer, so even a stray `console.log` inside a dependency is caught.
-//! Rust has no process-wide equivalent, so the takeover is a flag that
-//! [`console_log`] and [`stdout_write`] honour — every print site in the port
-//! goes through them. The queued writer is a task fed by a channel instead of a
-//! promise chain; ordering, the retry on a full pipe and the exit on a hard
-//! write error are the same.
-
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -58,9 +41,7 @@ fn writer() -> &'static RawStdoutWriter {
 }
 
 /// Writes one chunk to the real standard output, waiting out a full pipe.
-///
 /// A write that fails for any other reason takes the process down, as it does
-/// in TypeScript: the protocol stream is the whole output of these modes, and a
 /// half-written one is worse than none.
 async fn write_raw_stdout_chunk(text: &str) {
     let mut stdout = tokio::io::stdout();

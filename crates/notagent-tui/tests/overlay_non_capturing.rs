@@ -1,8 +1,3 @@
-//! Port of `packages/tui/test/overlay-non-capturing.test.ts` (1203 LOC).
-//!
-//! This suite drives the overlay focus restore state machine
-//! (`inactive | eligible | blocked` with both resume variants).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -331,7 +326,6 @@ async fn handle_input_redirection_skips_non_capturing_overlays_when_focused_over
 }
 
 /// Component whose `handle_input` calls back into the TUI, like the inline
-/// `handleInput` overrides of the TS suite.
 struct ReactiveOverlay {
     probe: Probe,
     lines: Vec<String>,
@@ -512,7 +506,6 @@ async fn unfocus_target_releases_a_blocked_overlay_while_replacement_remains_foc
     tui.start();
 
     // The overlay handle is needed inside the overlay's own input handler, so
-    // the handler is installed through a shared slot (TS assigns handleInput
     // after showOverlay for the same reason).
     let pending: Rc<RefCell<Option<(OverlayHandle, ComponentRef)>>> = Rc::new(RefCell::new(None));
     let (overlay, overlay_component) = {
@@ -1018,7 +1011,6 @@ async fn hiding_focused_overlay_falls_back_to_next_visual_frontmost_overlay() {
 
 // describe("rendering order")
 
-/// `class StaticOverlay` of the TS suite.
 struct StaticOverlay(Vec<String>);
 
 impl Component for StaticOverlay {

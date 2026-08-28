@@ -1,7 +1,3 @@
-//! Behaviour of `parseThemeJson`/`loadThemeFromPath` that the TypeScript suites
-//! do not cover. Every expected string was taken from the TypeScript
-//! implementation (`npx tsx` against `theme.ts`), not from the schema text.
-
 use std::path::PathBuf;
 
 use notagent::modes::interactive::theme::theme::{ColorMode, load_theme_from_path};
@@ -284,9 +280,7 @@ fn accepts_unknown_color_keys_and_omitted_optional_slots() {
     assert!(load_theme_from_path(&path, Some(ColorMode::TrueColor)).is_ok());
 }
 
-/// Port of the theme half of `test/max-thinking.test.ts` ("falls back to
 /// thinkingXhigh for legacy themes"); the CLI and settings half belongs to
-/// workstream C. `withThemeColorFallbacks` fills `thinkingMax` from
 /// `thinkingXhigh`, so a theme written before the level existed still paints the
 /// editor border.
 #[test]

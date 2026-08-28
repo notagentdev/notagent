@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/src/cbor/options.ts`.
-
 pub const UINT32_BASE: u64 = 0x1_0000_0000;
 pub const MAX_UINT32: u64 = 0xffff_ffff;
 const MAX_CONFIGURED_DEPTH: u64 = 512;
@@ -9,7 +7,6 @@ pub const DEFAULT_MAX_CBOR_BYTE_LENGTH: u64 = 16 * 1024 * 1024;
 pub const DEFAULT_MAX_CBOR_CONTAINER_LENGTH: u64 = 1_000_000;
 pub const DEFAULT_MAX_CBOR_DEPTH: u64 = 64;
 
-/// Optional limits. `None` means "use the default" (TS: `undefined`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CborOptions {
     /// Maximum encoded input/output bytes and maximum byte/text string length.
@@ -43,7 +40,6 @@ pub struct ResolvedCborOptions {
     pub max_depth: u64,
 }
 
-/// TS has two error classes: `CborError` (encoding/decoding failures) and
 /// `RangeError` (invalid limit options). Both are variants of one type here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CborError {

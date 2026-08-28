@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/runtime-credentials.ts` (52 LOC).
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 

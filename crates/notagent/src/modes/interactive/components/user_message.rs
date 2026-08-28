@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/user-message.ts` (70 LOC).
-
 use std::rc::Rc;
 
 use notagent_tui::components::box_component::BoxComponent;
@@ -38,7 +35,6 @@ pub struct UserMessageComponent {
 
 impl UserMessageComponent {
     /// `markdown_theme` defaults to [`get_markdown_theme`], `output_pad` to 1
-    /// and `markdown_transformers` to empty, like the TypeScript parameters.
     pub fn new(
         text: impl Into<String>,
         markdown_theme: Option<MarkdownTheme>,

@@ -1,8 +1,3 @@
-//! Session server core (PiServer, LiveSessionManager, Unix transport).
-//!
-//! 1:1 port of `packages/server` (see crates/notagent-server/PARITY.md).
-//! Port of `packages/server/src/index.ts`.
-
 pub mod connection;
 pub mod errors;
 pub mod listener;

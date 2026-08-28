@@ -1,9 +1,3 @@
-//! Port of `packages/client/src/promise.ts`.
-//!
-//! Deviation class 3 (tech substitution): `Promise.withResolvers()` becomes a
-//! `oneshot` channel; promises awaited more than once become
-//! `futures::future::Shared`.
-
 use std::sync::{Arc, Mutex};
 
 use futures::FutureExt;

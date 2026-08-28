@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/core/bash-executor.ts`.
-//!
-//! Bash command execution with streaming support and cancellation. Used by
-//! `AgentSession::execute_bash` for interactive and RPC modes and by modes that
-//! need bash execution directly.
-
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -39,7 +33,6 @@ pub struct BashResult {
 }
 
 /// The rolling buffer plus the temp file behind it.
-///
 /// Deviation (class 1): the buffer is bounded by characters rather than by JS
 /// string length (UTF-16 code units); the two differ only for astral
 /// characters, and the bound is a memory guard rather than an observable.
@@ -162,7 +155,6 @@ impl Collector {
 }
 
 /// Execute a bash command using custom [`BashOperations`].
-///
 /// Used for remote execution (SSH, containers, …) as well as for the local
 /// backend.
 pub async fn execute_bash_with_operations(

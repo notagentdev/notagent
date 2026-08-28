@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/src/core/provider-composer.ts` (572 LOC).
-//!
-//! Deviation (class 2, extension-boundary §6 "Custom Provider via registerProvider
-//! (inkl. OAuth) entfällt ersatzlos"): the `extension` layer of every function here
-//! — `ProviderConfigInput`, `ExtensionOAuthConfig`, `adaptOAuth`,
-//! `validateExtensionProvider`, `applyExtension` — is dropped. What remains is the
-//! built-in layer plus the models.json layer. Native providers registered through
-//! `ModelRuntime::register_native_provider` (llama.cpp) enter as `base`, exactly as
-//! `nativeExtensionProviders` does in TS.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -137,8 +127,6 @@ fn merge_compat(base: Option<Value>, override_compat: Option<&Value>) -> Option<
 }
 
 /// Reparse a merged compat object against the model api.
-///
-/// Deviation (class 1): TS keeps the merged object untyped, so keys belonging to a
 /// different api survive unread. Rust parses into the api's compat struct, which
 /// drops keys the api never reads.
 fn compat_from_value(api: &str, value: Option<Value>) -> Option<ModelCompat> {
@@ -691,7 +679,6 @@ impl OAuthAuth for ComposedOAuthAuth {
         credential: OAuthCredential,
     ) -> BoxFuture<'a, Result<ModelAuth, AuthError>> {
         Box::pin(async move {
-            // `credential.env` reaches TS through the index signature of OAuthCredential.
             let env = credential.extra.get("env").and_then(|env| {
                 env.as_object().map(|env| {
                     env.iter()
@@ -841,7 +828,6 @@ impl ComposedProvider {
     }
 }
 
-/// The two `streamWith(..., simple)` shapes; TS reuses one options object and casts.
 enum StreamRequest {
     Full(Option<StreamOptions>),
     Simple(Option<SimpleStreamOptions>),

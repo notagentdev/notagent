@@ -1,7 +1,3 @@
-//! Persisted model catalogs keyed by provider id.
-//!
-//! 1:1 port of `packages/ai/src/models-store.ts` (45 LOC).
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -66,7 +62,6 @@ fn aborted(options: &Option<ModelsStoreOperationOptions>) -> bool {
         .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
 }
 
-/// `InMemoryModelsStore` — stores detached clones, as `structuredClone` does in TS.
 #[derive(Default, Clone)]
 pub struct InMemoryModelsStore {
     entries: Arc<Mutex<BTreeMap<String, ModelsStoreEntry>>>,

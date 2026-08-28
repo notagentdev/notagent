@@ -1,9 +1,3 @@
-//! Radius gateway OAuth.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/radius.ts` (403 LOC). The OAuth client APIs
-//! live on the configured gateway; only the interactive authorization endpoint is
-//! discovered. Both a browser and a device-code flow are offered.
-
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -34,8 +28,6 @@ fn redirect_uri() -> String {
     format!("http://{CALLBACK_HOST}:{CALLBACK_PORT}{CALLBACK_PATH}")
 }
 
-/// `normalizeRadiusGatewayUrl(gateway)` — lives in `providers/radius-config.ts`, which
-/// is where the port keeps it too.
 pub use crate::providers::radius_config::normalize_radius_gateway_url;
 
 /// `loadRadiusOAuthDiscovery(gateway, signal)` — only the authorization endpoint.

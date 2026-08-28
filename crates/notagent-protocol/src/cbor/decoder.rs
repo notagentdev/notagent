@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/src/cbor/decoder.ts`.
-
 use std::collections::HashSet;
 
 use super::options::{CborError, CborOptions, ResolvedCborOptions, UINT32_BASE, resolve_options};

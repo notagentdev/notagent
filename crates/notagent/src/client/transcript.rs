@@ -1,8 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/client/transcript.ts` (101 LOC).
-//!
-//! The snapshot the server sends stays authoritative; streamed progress is kept
-//! beside it and only merged when the transcript is read (`select_transcript`).
-
 use std::collections::{HashMap, HashSet};
 
 use notagent_protocol::{
@@ -12,8 +7,6 @@ use notagent_protocol::{
 };
 
 /// `TranscriptState`.
-///
-/// Deviation class 1: the TS `ReadonlyMap`/`readonly` markers are compile-time
 /// only; the Rust functions take the state by value and hand back a new one, so
 /// the same "never mutate in place" contract holds.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,7 +18,6 @@ pub struct TranscriptState {
 }
 
 /// `isJsonValue`.
-///
 /// Rust cannot build a `serde_json::Value` that carries a non-plain object or a
 /// non-finite number, so only the finiteness guard has anything left to check —
 /// it stays because `serde_json` does parse `1e999` into an infinite `f64`.
@@ -193,7 +185,6 @@ fn set_progress_item(mut state: TranscriptState, item: TranscriptItem) -> Transc
     state
 }
 
-/// The untagged protocol enums carry the id in every variant; TS reads
 /// `item.id` straight off the union.
 pub fn item_id(item: &TranscriptItem) -> &str {
     match item {

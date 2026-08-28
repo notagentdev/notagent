@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/git.ts` (226 LOC).
-//!
-//! Deviation (class 3): the npm package `hosted-git-info` becomes [`hosted_from_url`],
-//! a focused port of the four default hosts the TS code can reach (github, gitlab,
-//! bitbucket, gist) plus the bare `user/repo` shorthand that maps to github. The
-//! remaining hosts of that package are unreachable here: every other form falls
-//! through to `parseGenericGitUrl`, which produces the same result for them.
-
 /// Parsed git URL information.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitSource {
@@ -312,7 +304,6 @@ fn hosted_from_url(candidate: &str) -> Option<HostedInfo> {
 }
 
 /// Parse a git source into a [`GitSource`].
-///
 /// Rules:
 /// - With a `git:` prefix, accept all historical shorthand forms.
 /// - Without it, only accept explicit protocol URLs.

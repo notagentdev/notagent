@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/keybindings.test.ts` (81 LOC).
-
 use std::collections::HashMap;
 
 use notagent_tui::keybindings::{

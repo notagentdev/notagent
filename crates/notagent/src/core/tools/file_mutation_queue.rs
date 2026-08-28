@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/file-mutation-queue.ts`.
-//!
-//! Mutations of the same file are serialized; mutations of different files still
-//! run in parallel.
-
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -15,8 +10,6 @@ static FILE_MUTATION_QUEUES: LazyLock<Mutex<QueueMap>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The queue key is the real path, so hard links and symlinks share one queue.
-///
-/// Deviation (class 1): TS resolves the real path asynchronously and therefore
 /// needs a registration queue to keep call order. Resolving synchronously keeps
 /// the same order without one.
 fn mutation_queue_key(file_path: &str) -> String {

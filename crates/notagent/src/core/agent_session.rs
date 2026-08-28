@@ -1,25 +1,3 @@
-//! Port of `packages/coding-agent/src/core/agent-session.ts`.
-//!
-//! The integration middle of the app: the one object every run mode — print,
-//! rpc, interactive — talks to. It owns the agent, persists what the agent
-//! produces, decides when the context has to be compacted, retries what is
-//! worth retrying, and holds the operating mode that bounds which tools exist.
-//!
-//! The modes add their own I/O on top and nothing else.
-//!
-//! Deviation (class 2): the extension runner is gone
-//! (`plans/facts/extension-boundary.md`). Every `emit` it carried is replaced by
-//! one of three native things, or by nothing:
-//!   - `tool_call` becomes [`PermissionGate`], installed as the agent's
-//!     `before_tool_call` — the pre-tool gate.
-//!   - the lifecycle events the user's hooks care about become
-//!     [`HookDispatcher`] calls at exactly the points the runner emitted from
-//!     (extension-boundary §2.2).
-//!   - `session_before_compact`/`session_before_tree` cancellation and
-//!     replacement, message rewriting, input transformation, resource discovery
-//!     and the whole command/tool registration surface fall away with the
-//!     extensions that used them.
-
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -114,7 +92,6 @@ use crate::utils::tool_result_images::normalize_tool_result_images;
 const BACKGROUND_TOOL_NAMES: [&str; 3] = ["task_list", "task_output", "task_stop"];
 
 /// Marks the hidden message a mode switch is delivered in.
-///
 /// The model reads it — a custom message becomes a user message on the way to
 /// the provider — while the transcript leaves it out.
 const MODE_BLOCK_TYPE: &str = "mode_block";
@@ -192,9 +169,6 @@ pub enum SummarizationSource {
 }
 
 /// Session events, on top of the core agent events the agent itself emits.
-///
-/// The variants carry their payloads directly, as the TypeScript union does
-/// (CONVENTIONS.md §9); boxing them would change the shape of the port.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum AgentSessionEvent {
@@ -271,9 +245,6 @@ pub struct SessionAuth {
 }
 
 /// The slice of `ModelRuntime` the session reads.
-///
-/// Deviation (class 1): `model-runtime.ts` belongs to workstream B (O-4), so the
-/// boundary is a trait rather than the concrete type. Interface request C-13
 /// asks B for the implementation; the tests supply their own.
 pub trait SessionModelRuntime: Send + Sync {
     fn get_auth<'a>(
@@ -285,7 +256,6 @@ pub trait SessionModelRuntime: Send + Sync {
     fn is_using_oauth(&self, provider: &str) -> bool;
     /// `isUsingSubscription` — OAuth against a provider whose OAuth flow is a
     /// subscription. The footer reads it to mark the cost as covered
-    /// (`components/footer.ts:148`).
     fn is_using_subscription(&self, provider: &str) -> bool;
     fn get_available_snapshot(&self) -> Vec<Model>;
     fn get_model(&self, provider: &str, id: &str) -> Option<Model>;
@@ -471,7 +441,6 @@ struct ToolState {
 }
 
 /// Background work owned by this session, and the thing that announces it.
-///
 /// Both are built on first use rather than in the constructor: a manager needs a
 /// session id to root its records under, and that id appears once the session
 /// has actually been opened. They are dropped and rebuilt when the id changes,
@@ -515,6 +484,9 @@ pub struct AgentSession {
 
     queues: Mutex<QueueState>,
     modes: Mutex<ModeState>,
+    /// `yolo` is a CLI capability, not a normal stop in the mode ring. It is
+    /// enabled only for a process explicitly started with `--yolo`.
+    yolo_cycle_enabled: AtomicBool,
     tools: Mutex<ToolState>,
     tasks: Mutex<TaskState>,
     /// Star names for delegated children. Held by the session rather than by
@@ -523,9 +495,7 @@ pub struct AgentSession {
     subagent_aliases: AliasRegistry,
     todo_store: Arc<Mutex<TodoStore>>,
     /// The session's goal and the guard that judges its completion claims
-    /// (port addition, v0.1.21). In memory only, like the todos.
     goal_state: Arc<Mutex<GoalState>>,
-    /// The configured MCP servers and their connections (port addition,
     /// v0.1.22). Empty when no `.mcp.json` was found or none was trusted.
     mcp: Mutex<Arc<McpManager>>,
     /// The tools those servers offered, as of the last discovery. Held apart
@@ -589,6 +559,7 @@ impl AgentSession {
             idle: Arc::new(tokio::sync::Notify::new()),
             queues: Mutex::new(QueueState::default()),
             modes: Mutex::new(ModeState::default()),
+            yolo_cycle_enabled: AtomicBool::new(false),
             tools: Mutex::new(ToolState::default()),
             tasks: Mutex::new(TaskState::default()),
             subagent_aliases: AliasRegistry::new(),
@@ -864,7 +835,6 @@ impl AgentSession {
             })
     }
 
-    /// `_installAgentHooks`' `afterToolCall` (`agent-session.ts:567-597`),
     /// minus the extension runner: what is left is the `PostToolUse` hook —
     /// which the extension mapped from its `tool_result` event
     /// (`plans/facts/extension-boundary.md` §2.2) — and the image
@@ -1006,7 +976,6 @@ pub type SideQuestionListener = Arc<dyn Fn(AgentEvent) + Send + Sync>;
 
 impl AgentSession {
     /// Loads the mode folders.
-    ///
     /// `known_tool_names` decides which names a mode's tool delta may use. It is
     /// the built-in set on the first pass, because the registry does not exist
     /// yet, and the assembled one on the second — which is what lets a mode name
@@ -1034,7 +1003,12 @@ impl AgentSession {
             .as_ref()
             .is_some_and(|id| modes.modes.iter().any(|mode| &mode.id == id));
         if !active_known {
-            modes.active_id = initial_mode_id(&modes.modes);
+            modes.active_id = self
+                .settings_manager
+                .get_last_mode()
+                .filter(|id| id != "yolo")
+                .filter(|id| modes.modes.iter().any(|mode| &mode.id == id))
+                .or_else(|| initial_mode_id(&modes.modes));
         }
     }
 
@@ -1119,6 +1093,7 @@ impl AgentSession {
             let mut modes = self.modes.lock().expect("poisoned");
             modes.active_id = Some(mode.id.clone());
         }
+        self.settings_manager.set_last_mode(&mode.id);
         let tools: Vec<String> = mode
             .tools
             .iter()
@@ -1131,7 +1106,6 @@ impl AgentSession {
     }
 
     /// Builds the block delivered on the next user message.
-    ///
     /// Leaving auto is announced explicitly rather than left to be inferred from
     /// the new block: the model needs to know that approvals are back, not
     /// merely that some other mode is now in force.
@@ -1227,15 +1201,23 @@ impl AgentSession {
 
     /// Advances the mode ring and applies the result.
     pub fn cycle_mode(&self) -> Option<Mode> {
-        let (modes, current) = {
+        let (mut modes, current) = {
             let state = self.modes.lock().expect("poisoned");
             (
                 state.modes.clone(),
                 state.active_id.clone().unwrap_or_default(),
             )
         };
+        if !self.yolo_cycle_enabled.load(Ordering::SeqCst) {
+            modes.retain(|mode| mode.id != "yolo");
+        }
         let next = next_mode_id(&modes, &current)?;
         self.set_mode(&next)
+    }
+
+    /// Controls whether `yolo` participates in the mode ring for this process.
+    pub fn set_yolo_cycle_enabled(&self, enabled: bool) {
+        self.yolo_cycle_enabled.store(enabled, Ordering::SeqCst);
     }
 }
 
@@ -1486,7 +1468,6 @@ impl AgentSession {
         self.set_active_tools_by_name(&next_active);
     }
 
-    /// What a tool reads about the session it runs in. In TypeScript this comes
     /// from the extension context; the four fields the built-ins actually use
     /// are the same (`plans/facts/extension-boundary.md` §2.4).
     fn tool_context_factory(&self) -> Arc<dyn Fn() -> ToolContext + Send + Sync> {
@@ -1617,7 +1598,6 @@ impl AgentSession {
     }
 
     /// The tools a delegated child is built with.
-    ///
     /// Deliberately carries no task wiring at all: that is what makes "a
     /// subagent starts no background work" structural rather than a rule it
     /// could ignore.
@@ -1909,7 +1889,6 @@ impl AgentSession {
 
     /// The atomic-lease gate of the mutating file tools, read from settings at
     /// call time so `/leases on|off` applies without a session restart. Absent
-    /// session → disabled, which is the port's default.
     fn lease_gate(&self) -> crate::core::tools::file_lease::LeaseGate {
         let settings = Arc::clone(&self.settings_manager);
         Arc::new(move || settings.get_atomic_leases_enabled())
@@ -1917,7 +1896,6 @@ impl AgentSession {
 
     /// The bash-filter gate, read from settings at call time so
     /// `/bash-filter on|off` applies without a session restart. Absent session
-    /// → disabled, which is the port's default.
     fn bash_filter_gate(&self) -> crate::core::tools::bash::BashFilterGate {
         let settings = Arc::clone(&self.settings_manager);
         Arc::new(move || settings.get_bash_filter_enabled())
@@ -1937,7 +1915,6 @@ impl AgentSession {
     }
 
     /// Builds one tool for a subagent.
-    ///
     /// Resolved from the parent's assembled registry, so a tool reaches a child
     /// exactly as it reaches its parent. What a child may *ask* for is still its
     /// mode's allowlist minus the structural exclusions — this only decides
@@ -1970,7 +1947,6 @@ fn thinking_level_name(level: ThinkingLevel) -> &'static str {
 
 impl AgentSession {
     /// Whether this session may detach work.
-    ///
     /// All three observation tools or none: a model that can start a background
     /// task but not list, read or stop one has been handed something it cannot
     /// follow up on, which is worse than not having it. The check is on the
@@ -1984,7 +1960,6 @@ impl AgentSession {
     }
 
     /// The task manager for the current session, built on first use.
-    ///
     /// Rebuilt when the session id changes. Tasks belong to the conversation
     /// that started them, and carrying them into a new one would announce
     /// results nobody asked for into a conversation that has never heard of them.
@@ -2063,7 +2038,6 @@ impl AgentSession {
     }
 
     /// The post-compaction reminder, consumed once.
-    ///
     /// Built at prompt time rather than when the compaction ended, because a
     /// task that settled in between should not be re-announced as still running.
     fn pending_active_task_reminder(&self) -> Option<CustomMessage> {
@@ -2093,7 +2067,6 @@ impl AgentSession {
     }
 
     /// Hands the open todos back so the run continues instead of ending.
-    ///
     /// Queued as a follow-up, which the loop drains precisely where it would
     /// otherwise stop. Fires once per distinct set of open items: repeating the
     /// same reminder on every attempt to stop would be a loop, while a changed
@@ -2118,8 +2091,6 @@ impl AgentSession {
 
     /// Accounts the finished turn onto an active goal and, while it is still
     /// active, hands the agent a continuation so the loop keeps turning.
-    ///
-    /// Port addition (v0.1.21). Called at the same point open todos are handed
     /// back — a turn that produced no tool results is where the run would
     /// otherwise end.
     fn drive_active_goal(&self) {
@@ -2155,7 +2126,6 @@ impl AgentSession {
 
     /// The session's cumulative token spend, which the goal turns into its own
     /// usage against the baseline it took when it started.
-    ///
     /// Read from the session statistics rather than kept separately, so the
     /// number a goal budgets against is the number the footer and `/session`
     /// report.
@@ -2165,7 +2135,6 @@ impl AgentSession {
 
     /// How many of the driver's own reminders stand since the last real user
     /// message, and whether one of them was the wrap-up.
-    ///
     /// Looking back only that far is what makes a real user message reset the
     /// continuation budget.
     fn goal_reminders_standing(&self) -> (usize, bool) {
@@ -2202,8 +2171,6 @@ impl AgentSession {
 
     /// Reads the configured MCP servers, honours the trust decision, connects
     /// them and registers their tools.
-    ///
-    /// Port addition (v0.1.22). Called once the session is running rather than
     /// at process start, so a session that never reaches a server never spawns
     /// one. `decide` is asked about a project-local file that has no remembered
     /// answer; returning `None` leaves the file untrusted for this session
@@ -2280,7 +2247,6 @@ impl AgentSession {
     }
 
     /// One `authenticate` tool per server that is waiting on a login.
-    ///
     /// The built-ins and the discovered MCP tools have claimed their names by
     /// the time this runs, so a server that offers a tool of its own literally
     /// called `authenticate` keeps it and gets no synthetic twin.
@@ -2328,7 +2294,6 @@ impl AgentSession {
 
     /// Opens an endpoint an external agent can reach this session's tools
     /// through, or returns the one already open.
-    ///
     /// Idempotent on purpose: the token was handed to an agent that cannot be
     /// told a new one, so asking twice must not invalidate what the first answer
     /// gave out.
@@ -2357,7 +2322,6 @@ impl AgentSession {
     }
 
     /// Re-reads the MCP configuration from disk and rebuilds from it.
-    ///
     /// A file edited during a session is otherwise invisible until the next
     /// start. Nothing is re-prompted: a file whose contents changed since it
     /// was accepted has a different hash and is simply not honoured, which is
@@ -2664,7 +2628,6 @@ impl AgentSession {
 
     /// The model delegated children run on: the `subagentModel` setting when
     /// it names a model that exists right now, otherwise `None` — the child
-    /// then inherits the parent's model. Addition over the TS original (user
     /// decision 2026-08-16, v0.1.6); set and cleared via `/subagent-model`.
     pub fn subagent_model(&self) -> Option<Model> {
         let id = self.settings_manager.get_subagent_model()?;
@@ -2831,7 +2794,6 @@ impl AgentSession {
     }
 
     /// Sends a prompt.
-    ///
     /// Expands skill commands and prompt templates by default, queues via steer
     /// or follow-up while a run is active, and validates model and credentials
     /// before starting one.
@@ -3061,7 +3023,6 @@ impl AgentSession {
     }
 
     /// Sends a custom message.
-    ///
     /// Three cases: streaming queues it, `trigger_turn` starts a run, and
     /// otherwise it is appended to state and session without starting one.
     pub async fn send_custom_message(
@@ -3432,18 +3393,15 @@ impl AgentSession {
 
 /// The level one step of a turn is given, which is not always the level the
 /// session is set to.
-///
 /// The first request of a turn is where the work is decided — what the task is,
 /// which files matter, in what order. The requests after it mostly carry that
 /// decision out, and paying full reasoning for each of them buys less than it
 /// costs. So a step that only continues an execution already under way drops
 /// one level; the next turn starts from the session's level again, since fresh
 /// input means the deciding starts over.
-///
 /// A step continues an execution exactly when the one before it produced tool
 /// results. A step reached any other way exists because new input arrived, and
 /// that is a decision again rather than an execution.
-///
 /// Off by default: it trades reasoning for latency, and which side of that is
 /// worth more is the user's call rather than this function's.
 fn step_thinking_level(
@@ -3802,7 +3760,6 @@ impl AgentSession {
 
     /// Decides whether compaction is needed and runs it. Called after
     /// `agent_end` and before a prompt is submitted.
-    ///
     /// Two cases:
     ///  1. Recoverable failure — the provider reported a context overflow, or
     ///     stopped below its own output limit. The assistant message is removed
@@ -4369,7 +4326,6 @@ impl AgentSession {
     }
 
     /// Navigates to a different node of the session tree.
-    ///
     /// Unlike a fork, which creates a new session file, this stays in the same
     /// one. The summary of the branch being left is attached at the destination,
     /// not at the abandoned branch: it is context for what happens next.
@@ -4586,7 +4542,6 @@ impl AgentSession {
     }
 
     /// Session statistics.
-    ///
     /// Aggregated over ALL entries, compacted-away history included, so the
     /// totals reflect what was actually billed across the session.
     pub fn get_session_stats(&self) -> SessionStats {
@@ -4813,7 +4768,6 @@ impl AgentSession {
 
     /// Opens a side question: a child that already knows this conversation,
     /// answers from that knowledge alone, and reaches nothing here.
-    ///
     /// Replaces an open one — a second side channel would compete with the
     /// first for the panel and for the user's attention.
     pub fn start_side_question(self: &Arc<Self>) -> Result<(), String> {
@@ -4872,7 +4826,6 @@ impl AgentSession {
     }
 
     /// Stops the answer that is coming, and keeps the child.
-    ///
     /// Distinct from dropping it: the panel stays, what it already holds stays,
     /// and a follow-up still reaches the same conversation. Only the run in
     /// flight ends.
@@ -4900,7 +4853,6 @@ impl AgentSession {
 
     /// Runs `/init`: a child explores the project, writes `AGENTS.md`, and the
     /// result is read back into this conversation.
-    ///
     /// The child is a worker rather than a reader — it has to write the file —
     /// and it is registered with the task manager like any delegated run, so
     /// the panel shows it and the user can stop it from there.
@@ -5112,7 +5064,6 @@ fn model_thinking_level(level: ThinkingLevel) -> notagent_ai::types::ModelThinki
 }
 
 /// The queue mode as the agent names it. The two enums are the same two values
-/// in two crates; TypeScript has one string union for both.
 fn agent_queue_mode(mode: crate::core::settings_manager::QueueMode) -> QueueMode {
     match mode {
         crate::core::settings_manager::QueueMode::All => QueueMode::All,
@@ -5128,9 +5079,7 @@ fn settings_queue_mode(mode: QueueMode) -> crate::core::settings_manager::QueueM
 }
 
 /// The real model runtime, read through the seam.
-///
 /// The trait is C's and the type is B's, so the implementation lives here and
-/// workstream B needs no change (interface request C-13, resolved this way once
 /// `model-runtime.rs` landed).
 impl SessionModelRuntime for crate::core::model_runtime::ModelRuntime {
     fn get_auth<'a>(
@@ -5191,7 +5140,6 @@ impl SessionModelRuntime for crate::core::model_runtime::ModelRuntime {
 }
 
 /// This session's active tools, as the lending endpoint sees them.
-///
 /// Resolved on every request rather than captured once: the active set changes
 /// with the mode, and an endpoint still offering a tool the session has put away
 /// would be lending something a turn of ours could not run.
@@ -5212,7 +5160,6 @@ impl crate::core::mcp::lend::LentToolSource for SessionLentTools {
     }
 
     /// Runs a borrowed tool the way a turn of ours runs one.
-    ///
     /// Three things have to be the same or the endpoint is a way around the
     /// session rather than a way into it: the permission chain decides, the tool
     /// learns the same about its session, and the call stops when the borrower
@@ -5278,7 +5225,6 @@ impl crate::core::mcp::lend::LentToolSource for SessionLentTools {
 }
 
 /// The text of a borrowed call's result, which is what an MCP client reads.
-///
 /// Images have nowhere to go in this direction; they are counted so the
 /// borrowing agent knows the answer is incomplete rather than believing it has
 /// all of it.

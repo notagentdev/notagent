@@ -1,6 +1,5 @@
 //! The system adapters of the bash filter, for the handful of commands an
 //! agent runs constantly.
-//!
 //! Two execution models, per command: `ls`, `tree` and the two search engines
 //! receive a parse-friendly invocation and are compacted afterwards, while
 //! `find` and the read commands execute against the filesystem directly and
@@ -791,12 +790,10 @@ fn parse_compact_find_args(values: &[String]) -> Result<FindArgs, String> {
 }
 
 /// Matches a `find -name` glob: `*` spans any run of characters, `?` one.
-///
 /// Iterative with a single backtrack point, so the cost stays proportional to
 /// the input. The obvious recursive form — try both branches at every `*` —
 /// backtracks exponentially: a pattern of 14 `*a` pairs against a 40-character
 /// name took over four minutes, and the pattern comes from the model.
-///
 /// Steps over `char`s, not bytes, so `?` means one character. On bytes,
 /// `find . -name "?.rs"` missed `é.rs` while `??.rs` matched it.
 fn glob_match(pattern: &str, name: &str) -> bool {

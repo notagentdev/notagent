@@ -1,16 +1,12 @@
 //! A question the conversation does not have to carry.
-//!
 //! A question asked in the main conversation is paid for forever: it is re-sent
 //! with every later request and it moves the compaction threshold closer. A
 //! side question is asked of a child that already knows everything the main
 //! agent knows, answered from that knowledge alone, and then dropped. Nothing
 //! reaches the main context — no message, no reminder, no usage.
-//!
 //! # Why the child is built the way it is
-//!
 //! The child shares the parent's entire prefix, and every obvious shortcut in
 //! building it destroys that. The three that matter:
-//!
 //! - **Its tools are the parent's, unfiltered and in the parent's order.** The
 //!   Anthropic path puts its cache breakpoint on the last tool of the list
 //!   (`notagent-ai/src/api/anthropic_params.rs`), so a shorter list moves the
@@ -46,7 +42,6 @@ pub const TOOL_CALL_DISABLED_MESSAGE: &str =
 pub const SIDE_QUESTION_REMINDER_TYPE: &str = "side_question";
 
 /// What the child is told about the conversation it has been dropped into.
-///
 /// The paragraph about the tools is not decoration: the child can see every
 /// tool the parent has and would otherwise reasonably try one. It is told both
 /// that they are refused and why they are still there, so it does not read
@@ -67,7 +62,6 @@ presence is not permission to use them.
 out.";
 
 /// The instruction as the message that carries it.
-///
 /// Undisplayed: the panel shows the exchange, and the instruction is machinery
 /// rather than something the user asked to read.
 pub fn side_question_instruction_message() -> CustomMessage {
@@ -83,7 +77,6 @@ pub fn side_question_instruction_message() -> CustomMessage {
 }
 
 /// A hook that refuses every tool call with [`TOOL_CALL_DISABLED_MESSAGE`].
-///
 /// Refusing here rather than withholding the tools is what keeps the cached
 /// prefix intact; see the module documentation.
 pub fn refuse_tool_calls() -> BeforeToolCallFn {
@@ -112,7 +105,6 @@ pub struct SideQuestionFork {
 }
 
 /// Builds the child.
-///
 /// Every provider-facing field comes from the parent, so the child talks to the
 /// same model through the same transport, retries and headers. The one
 /// deliberate addition is the tool refusal; the one deliberate omission is the
@@ -154,7 +146,6 @@ pub fn create_side_question_agent(fork: &SideQuestionFork) -> Arc<Agent> {
 }
 
 /// The parent's messages as of now, with an unfinished tail left out.
-///
 /// A message the parent is still streaming is not part of the prefix yet: the
 /// parent will commit a longer version of it, and a child that inherited the
 /// short one would share a prefix with nobody.

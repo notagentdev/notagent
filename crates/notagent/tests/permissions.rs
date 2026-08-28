@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/test/permission-policy.test.ts`,
-//! `permission-chain.test.ts`, `permission-destructive.test.ts`,
-//! `permission-user-rules.test.ts`, `permission-coordinator.test.ts` and
-//! `permission-request.test.ts`.
-//!
-//! `permission-extension.test.ts` covers the inline-extension registration,
-//! which the port replaces with the native gate; its behaviour is checked in
-//! `permission_end_to_end.rs` instead.
-
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -80,7 +71,6 @@ fn answering(answer: ApprovalAnswer) -> ApprovalPresenter {
 }
 
 // ---------------------------------------------------------------------------
-// policy.ts
 // ---------------------------------------------------------------------------
 
 fn policy_context() -> PermissionContext {
@@ -213,7 +203,6 @@ fn resolving_without_a_dialog_refuses_when_every_policy_abstained() {
 }
 
 // ---------------------------------------------------------------------------
-// chain.ts — positional guarantees
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -253,7 +242,6 @@ fn lists_every_slot_exactly_once() {
 }
 
 // ---------------------------------------------------------------------------
-// chain.ts — mode policies
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -306,7 +294,6 @@ fn approves_only_in_its_own_mode() {
 }
 
 // ---------------------------------------------------------------------------
-// chain.ts — the assembled chain
 // ---------------------------------------------------------------------------
 
 fn user_deny() -> Vec<(&'static str, Arc<dyn PermissionPolicy>)> {
@@ -417,7 +404,6 @@ fn places_every_slot_of_the_declared_order_it_can_fill() {
 }
 
 // ---------------------------------------------------------------------------
-// chain.ts — self-contained policies in the chain
 // ---------------------------------------------------------------------------
 
 fn decide_in_chain(tool: &str, approval: ApprovalLevel, arguments: Value) -> String {
@@ -519,7 +505,6 @@ fn the_chain_always_decides_now_that_it_is_closed() {
 }
 
 // ---------------------------------------------------------------------------
-// policies.ts — the irreversible-command guard
 // ---------------------------------------------------------------------------
 
 const IRREVERSIBLE: [&str; 17] = [
@@ -728,7 +713,6 @@ fn exposes_the_same_judgement_the_history_policy_uses() {
 }
 
 // ---------------------------------------------------------------------------
-// user-rules.ts
 // ---------------------------------------------------------------------------
 
 fn with_verdict(
@@ -952,7 +936,6 @@ async fn the_history_reaches_the_chain_ahead_of_the_guards() {
 }
 
 // ---------------------------------------------------------------------------
-// coordinator.ts — watching who was asked
 // ---------------------------------------------------------------------------
 
 struct RecordingObserver {
@@ -1041,7 +1024,6 @@ async fn stays_quiet_when_nobody_was_asked() {
 
 #[tokio::test]
 async fn survives_an_observer_that_fails_since_watching_must_not_decide() {
-    // The TypeScript observer throws; here it panics, which the detached task
     // absorbs the same way the `try`/`catch` does.
     let coordinator = ApprovalCoordinator::with_observer(
         answering(ApprovalAnswer::ApproveOnce),
@@ -1057,7 +1039,6 @@ async fn survives_an_observer_that_fails_since_watching_must_not_decide() {
 }
 
 // ---------------------------------------------------------------------------
-// coordinator.ts — keys, queueing, memory and abort
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1159,7 +1140,6 @@ async fn shows_one_prompt_at_a_time() {
 #[tokio::test]
 async fn keeps_the_queue_moving_when_a_presenter_fails() {
     // A presenter cannot reject in Rust, so the first one answers `Deny`, which
-    // is what the TypeScript turns a rejected promise into.
     let calls = Arc::new(Mutex::new(0usize));
     let presenter: ApprovalPresenter = Arc::new(move |_request| {
         let calls = Arc::clone(&calls);
@@ -1308,7 +1288,6 @@ async fn asks_again_after_a_reset() {
 }
 
 // ---------------------------------------------------------------------------
-// request.ts
 // ---------------------------------------------------------------------------
 
 fn request_ctx(arguments: Value) -> PermissionContext {

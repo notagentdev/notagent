@@ -1,9 +1,3 @@
-//! Vertical scroll viewport.
-//!
-//! 1:1 port of `packages/tui/src/components/scroll-view.ts` (216 LOC).
-//! The scrollbar auto-hide timer is exposed as a deadline the caller drives,
-//! like the other timers of this crate (deviation class 1).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -430,7 +424,6 @@ impl Component for ScrollView {
 }
 
 /// Whether the scrollbar of a layout scroll state is currently drawn.
-///
 /// The layout engine only sees `dyn ScrollLayoutState`; this helper downcasts
 /// through the concrete state the crate always uses.
 pub(crate) fn scrollbar_visible(state: &crate::layout_node::ScrollStateRef) -> bool {

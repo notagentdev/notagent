@@ -1,27 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/config-selector.ts` (942 LOC).
-//!
-//! The resource browser of `notagent config`: it groups every skill, prompt
-//! template and theme by where it came from and writes the enable/disable
-//! decision back into `settings.json` — as a `+`/`-` pattern for the global
-//! scope and as an inherit/load/unload override for the project scope.
-//!
-//! Deviations:
-//!   * Class 2 (extension removal): the `extensions` resource type is gone, so
-//!     the type list is `skills`, `prompts`, `themes`. The `extensions` key of
-//!     an existing `packages` entry is still *read* where TypeScript checks
-//!     whether a package still carries any filter — dropping that check would
-//!     silently delete extension filters out of a settings.json that the
-//!     TypeScript app still writes.
-//!   * Class 1 (language idiom): `switchWriteScope` lives in `ResourceList`
-//!     instead of the outer component. In TypeScript the list calls back into
-//!     its owner; a Rust closure cannot re-enter the value that owns it, and
-//!     the outer `writeScope` field has no other reader.
-//!   * Class 1 (language idiom): the resolved-path types come from
-//!     `core::resource_loader` (`ResolvedResource`, `ResolvedResources`) and
-//!     `core::source_info` (`PathMetadata`), which are the same records
-//!     `core/package-manager.ts` declares in TypeScript.
-
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -105,8 +81,6 @@ fn locale_compare(a: &str, b: &str) -> std::cmp::Ordering {
 // ============================================================================
 
 /// The resource kinds the selector lists. `extensions` is gone with the
-/// extension system (deviation class 2); the remaining order is the one
-/// `RESOURCE_TYPES` fixes in TypeScript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ResourceType {
     Skills,
@@ -142,7 +116,6 @@ pub enum ConfigWriteScope {
     Project,
 }
 
-/// `SettingsScope` of the TypeScript file: the two scopes a resource pattern
 /// can be expressed in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SettingsScope {
@@ -158,7 +131,6 @@ pub enum ProjectOverrideState {
     Unload,
 }
 
-/// `ScopedResolvedPaths`. The `ResolvedPaths` of TypeScript is
 /// `ResolvedResources` here, minus its `extensions` list.
 #[derive(Debug, Clone, Default)]
 pub struct ScopedResolvedPaths {
@@ -197,7 +169,6 @@ pub struct ResourceGroup {
     pub subgroups: Vec<ResourceSubgroup>,
 }
 
-/// A row of the flattened list. TypeScript keeps object references here; the
 /// port keeps the indices into `groups`, which identify the same rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FlatEntry {
@@ -543,7 +514,6 @@ impl ResourceList {
     }
 
     /// The scope switch of the outer component: it flips the write scope of the
-    /// list and of the shared header (deviation class 1, see the module docs).
     fn switch_write_scope(&mut self) {
         let next = if self.write_scope == ConfigWriteScope::Global {
             ConfigWriteScope::Project
@@ -821,8 +791,6 @@ impl ResourceList {
         );
 
         // Clean up empty filter object. The `extensions` key counts even though
-        // the type is gone here, so an extension filter of the TypeScript app
-        // survives (deviation class 2, see the module docs).
         let has_filters = pkg.extensions.is_some()
             || pkg.skills.is_some()
             || pkg.prompts.is_some()
@@ -948,7 +916,6 @@ impl ResourceList {
 
     fn set_project_top_level_paths(&self, key: ResourceType, paths: &[String]) {
         // The project setters report a missing project settings file, which is
-        // what TypeScript throws for; the selector offers the project scope only
         // when the caller says it exists.
         let _ = match key {
             ResourceType::Skills => self.settings_manager.set_project_skill_paths(paths),
@@ -1299,7 +1266,6 @@ fn get_override_state_from_entries(
 }
 
 /// `resolvePath(input, baseDir, { trim: true })`, falling back to the input the
-/// way an unusable path would leave the TypeScript comparison unmatched.
 fn trimmed_resolve(input: &str, base_dir: &str) -> String {
     resolve_path(
         input,
@@ -1593,7 +1559,6 @@ pub struct ConfigSelectorComponent {
 }
 
 impl ConfigSelectorComponent {
-    /// The TypeScript constructor, with `requestRender` as a shared callback
     /// and the terminal height still optional.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -1654,7 +1619,6 @@ impl ConfigSelectorComponent {
         }
     }
 
-    /// `getResourceList()` — the focus target of `cli/config-selector.ts`.
     pub fn resource_list(&self) -> ComponentRef {
         Rc::clone(&self.resource_list) as ComponentRef
     }

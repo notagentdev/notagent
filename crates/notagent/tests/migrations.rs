@@ -1,9 +1,3 @@
-//! Tests for the port of `packages/coding-agent/src/migrations.ts`.
-//!
-//! The TS suite drives the migrations through the real agent directory
-//! (`getAgentDir()`); the Rust port exposes directory-scoped variants so the
-//! cases run against a temp directory without touching the user's home.
-
 use serde_json::{Value, json};
 
 fn read_json(path: &std::path::Path) -> Value {

@@ -1,14 +1,11 @@
 //! Manual smoke test for the input path on a real terminal emulator.
-//!
 //! Verification criterion of plan task 1–4: Kitty keyboard negotiation,
 //! bracketed paste and mouse events have to work on at least two real
 //! emulators, once through the Kitty protocol path and once through the legacy
 //! path. Run it in each emulator and press the listed keys:
-//!
 //! ```text
 //! cargo run -p notagent-tui --example input-smoke
 //! ```
-//!
 //! It prints the raw bytes, the parsed key and the negotiated protocol state,
 //! and exits on Ctrl+C.
 

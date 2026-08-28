@@ -1,5 +1,3 @@
-//! Port of `packages/server/test/server.test.ts`.
-
 mod support;
 
 use std::sync::Arc;
@@ -15,7 +13,6 @@ use notagent_server::transports::unix::{UnixServerOptions, create_unix_server};
 use notagent_server::{PiServer, PiServerOptions};
 use support::*;
 
-// The TS case "requires explicit listeners" has no Rust equivalent: the
 // listener list is a required field of `PiServerOptions`.
 
 #[test]
@@ -79,7 +76,6 @@ async fn handshake_timeout_cleanup_does_not_wait_for_a_blocked_output_queue() {
         }
 
         async fn send(&self, _chunk: Vec<u8>) -> Result<(), ServerError> {
-            // Never resolves, like the TS `new Promise(() => {})`.
             std::future::pending::<()>().await;
             Ok(())
         }

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/cache-stats.ts` (164 LOC).
-
 use std::collections::HashMap;
 
 use notagent_ai::types::AssistantMessage;
@@ -205,7 +203,6 @@ fn as_previous_request(message: &ScannedMessage, reported_cache: bool) -> Option
 struct Scan {
     previous: Option<PreviousRequest>,
     totals: CacheWasteTotals,
-    /// Deviation (class 1): the TypeScript keys this by `AssistantMessage`
     /// reference identity, which Rust has no equivalent for. The key is the id
     /// of the session entry that carries the message instead — stable across the
     /// rebuild the map exists for.

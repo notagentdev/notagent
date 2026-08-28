@@ -1,10 +1,3 @@
-//! History conversion of the OpenAI Responses adapters.
-//!
-//! Ports `packages/ai/test/openai-responses-empty-tool-result.test.ts` (58),
-//! `openai-responses-message-id.test.ts` (48) and
-//! `openai-responses-foreign-toolcall-id.test.ts` (66). The TS suites read the models
-//! through the excluded `compat.ts`; the port reads the same entries from the catalog.
-
 use std::collections::BTreeSet;
 
 use notagent_ai::api::openai_responses_shared::{

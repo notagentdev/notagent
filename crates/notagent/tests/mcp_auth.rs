@@ -1,16 +1,3 @@
-//! The OAuth path against a real HTTP server (port addition, v0.1.22).
-//!
-//! The server here is a few dozen lines of hand-written HTTP that records every
-//! request it is sent and refuses every one of them. That is enough to pin the
-//! things that actually break in the field: that a 401 becomes "this needs a
-//! login" rather than "this is broken", that a stored token is fetched and put
-//! on the wire, and that a refused token is not chased onto a second transport
-//! that cannot carry it.
-//!
-//! The browser half of the flow is not automated — it needs a provider and a
-//! human — so what is asserted around it is that every path which cannot reach
-//! it says so instead of waiting.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 

@@ -1,27 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/extension-editor.ts` (132 LOC).
-//!
-//! Renamed to `text_input_dialog` per interface request C-23, for the reason
-//! that renamed `extension-selector.ts` to [`super::list_selector`]: the file
-//! sits among the extension UI, but a core dialog uses it. The tree selector
-//! answers "Summarize with custom prompt" with
-//! `showExtensionEditor("Custom summarization instructions")`
-//! (`interactive-mode.ts:5285-5292` and `:2549-2577`), and that is the only
-//! caller left once the extension system is gone.
-//!
-//! Deviations:
-//!   * Class 1: `Editor` reports a submit through `take_submitted` instead of
-//!     an `onSubmit` callback (workstream A's editor port), so the dialog
-//!     drains it right after handing the key on — TypeScript's callback fires
-//!     inside that same call.
-//!   * Class 1: `tui.stop()` / `tui.start()` around the external editor is a
-//!     [`ExternalEditorRunner`] the owner supplies. Restarting the TUI means
-//!     re-registering the input pump, which a component cannot reach in the
-//!     port (`RendererCell` belongs to the mode); the command itself is still
-//!     resolved here, exactly as TypeScript does.
-//!   * Class 2: `EditorOptions` and the prefill stay, the extension plumbing
-//!     around them does not.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -41,9 +17,6 @@ use super::keybinding_hints::key_hint;
 
 /// Runs `command` over `content` while the TUI is stopped and returns the
 /// edited text, or `None` when the editor did not complete.
-///
-/// The port of the `tui.stop()` / `editInExternalEditor` / `tui.start()` block
-/// of `handleOpenExternalEditor` (`extension-editor.ts:113-131`).
 pub type ExternalEditorRunner = Box<dyn FnMut(&str, &str) -> Option<String>>;
 
 /// Everything `ExtensionEditorComponent` takes after its callbacks.
@@ -57,7 +30,6 @@ pub struct TextInputDialogOptions {
     /// (`notepad` on Windows) fill in.
     pub external_editor_command: Option<String>,
     /// Opens the external editor. Without one, `app.editor.external` does
-    /// nothing — as in TypeScript, where the key only ever reaches a mounted
     /// dialog.
     pub on_external_editor: Option<ExternalEditorRunner>,
 }

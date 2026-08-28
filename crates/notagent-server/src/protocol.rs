@@ -1,12 +1,3 @@
-//! Port of `packages/server/src/protocol.ts`.
-//!
-//! Bridge between the notagent-ai domain types and the wire protocol. The TS
-//! original additionally pins the field sets of the ai types with compile-time
-//! `ExactKeys` assertions so that new ai fields fail compilation here. Rust has
-//! no equivalent type-level assertion; the exhaustive `match` arms and the
-//! struct literals below take that role: a new ai field or content variant
-//! breaks this module at compile time as well (deviation class 1).
-
 use notagent_ai::models::get_supported_thinking_levels;
 use notagent_ai::{
     AssistantContent, AssistantMessage, Modality, Model, ModelThinkingLevel, StopReason,
@@ -38,8 +29,6 @@ pub struct ToolTranscriptOptions {
     pub call: ToolCall,
 }
 
-// TS clamps and floors the token counters (`nonNegativeInteger`); in Rust they
-// are already non-negative integers (deviation class 1).
 fn non_negative_number(value: f64) -> f64 {
     if value.is_finite() {
         value.max(0.0)
@@ -68,10 +57,8 @@ fn timestamp(value: i64) -> Result<u64, ServerError> {
 
 /// Validate and copy a value from an execution boundary into the protocol's
 /// JSON-compatible subset.
-///
 /// `serde_json::Value` is already the JSON subset; only non-finite numbers can
 /// violate it, and they cannot be represented by `serde_json::Number`. Cycles
-/// and non-plain objects are not representable in Rust (deviation class 1).
 pub fn to_protocol_json_value(value: &JsonValue) -> Result<JsonValue, ServerError> {
     Ok(value.clone())
 }
@@ -383,8 +370,6 @@ pub fn to_protocol_model_metadata(
                 Modality::Image => ModelInput::Image,
             })
             .collect(),
-        // TS floors and clamps to at least 1; the Rust counters are already
-        // non-negative integers (deviation class 1).
         context_window: model.context_window.max(1),
         max_tokens: model.max_tokens.max(1),
         cost: ModelCost {

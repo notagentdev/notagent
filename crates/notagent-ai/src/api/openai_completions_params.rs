@@ -1,13 +1,3 @@
-//! Request building for OpenAI-compatible chat completions.
-//!
-//! 1:1 port of the request half of `packages/ai/src/api/openai-completions.ts`
-//! (`buildParams`, `convertMessages`, `convertTools`, the Anthropic-style
-//! `cache_control` placement, the chat-template resolution and the client headers).
-//! The TS code hands the payload to the OpenAI SDK only to sign and send it, so the
-//! payload itself is what has to stay byte-identical — the fixtures in
-//! `tests/fixtures/openai-completions-payloads.jsonl` come straight out of the TS
-//! implementation.
-
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
@@ -33,7 +23,6 @@ use crate::utils::provider_env::get_provider_env_value;
 use crate::utils::sanitize_unicode::sanitize_surrogates;
 
 /// `OpenAICompletionsOptions extends StreamOptions` — the fields the payload depends on.
-///
 /// `toolChoice` stays a raw `Value`: the SDK type is an open union of `"none" | "auto" |
 /// "required"` and several object forms, and the payload copies it through unchanged.
 #[derive(Debug, Clone, Default)]
@@ -108,7 +97,6 @@ fn has_tool_history(messages: &[Message]) -> bool {
     })
 }
 
-/// `getDeferredToolNames(messages)` — insertion-ordered like the TS `Set`.
 fn get_deferred_tool_names(messages: &[Message]) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     for message in messages {
@@ -171,7 +159,6 @@ fn get_compat_cache_control(
 // ---------------------------------------------------------------------------
 
 /// `model.thinkingLevelMap?.[level]` with `undefined` and `null` kept apart.
-///
 /// The distinction is load-bearing: the zai and baseten branches test
 /// `mapped === undefined` explicitly, while qwen and the OpenAI default use `??`,
 /// which also swallows `null`.
@@ -217,7 +204,6 @@ fn resolve_chat_template_kwarg_value(
     options: &OpenAICompletionsOptions,
     value: &Value,
 ) -> Option<Value> {
-    // Primitives (including `null`) pass through: TS bails out on
     // `typeof value !== "object" || value === null`.
     let Ok(ChatTemplateKwargValue::Var(var)) =
         serde_json::from_value::<ChatTemplateKwargValue>(value.clone())
@@ -417,7 +403,6 @@ fn normalize_tool_call_id(model: &Model, id: &str) -> String {
         } else {
             format!("{call_id}_{item_id}")
         };
-        // TS measures with `String.length` (UTF-16 code units); sanitizing already
         // reduced everything to ASCII, so bytes and code units agree here.
         if combined_id.len() <= 40 {
             return combined_id;

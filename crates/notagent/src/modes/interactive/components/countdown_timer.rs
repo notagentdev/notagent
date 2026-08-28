@@ -1,14 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/countdown-timer.ts` (39 LOC).
-//!
-//! Reusable countdown timer for dialog components.
-//!
-//! The TypeScript timer drives itself with `setInterval` and calls back into its
-//! owner. The port follows the convention the tui crate already uses for every
-//! timer (`plans/interface-requests.md` A-4, "Timer rufen nie zurück"): the
-//! owner polls [`CountdownTimer::deadline`] and applies the [`CountdownTick`]
-//! that [`CountdownTimer::tick`] returns.
-
 use std::time::{Duration, Instant};
 
 /// One elapsed second of the countdown.
@@ -31,7 +20,6 @@ const TICK_INTERVAL: Duration = Duration::from_secs(1);
 
 impl CountdownTimer {
     /// Start the countdown. The caller applies [`CountdownTimer::remaining_seconds`]
-    /// right away, which is the `onTick` call the TypeScript constructor makes.
     pub fn new(timeout_ms: u64) -> Self {
         Self {
             remaining_seconds: (timeout_ms as f64 / 1000.0).ceil() as i64,

@@ -1,13 +1,3 @@
-//! The base components `packages/tui/test/` never covered: spacer, box,
-//! loader, cancellable loader, alt-screen flash, the image fallback and the
-//! native modifier query.
-//!
-//! Expectations are read off the TypeScript sources — `spacer.ts` (28 LOC),
-//! `box.ts` (137), `loader.ts` (92), `cancellable-loader.ts` (40),
-//! `alt-screen-flash.ts` (51) and `image.ts` (127). The suite is what lifts
-//! their ledger rows from "portiert" to "verifiziert"; there was no TypeScript
-//! suite to port.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -29,8 +19,6 @@ fn plain() -> Rc<dyn Fn(&str) -> String> {
     Rc::new(|text: &str| text.to_string())
 }
 
-// --- spacer.ts ---------------------------------------------------------------
-
 #[test]
 fn a_spacer_renders_that_many_empty_lines_whatever_the_width() {
     let mut spacer = Spacer::new(3);
@@ -41,8 +29,6 @@ fn a_spacer_renders_that_many_empty_lines_whatever_the_width() {
     spacer.set_lines(0);
     assert!(spacer.render(80).is_empty());
 }
-
-// --- box.ts ------------------------------------------------------------------
 
 #[test]
 fn a_box_pads_its_children_and_stays_empty_without_them() {
@@ -91,8 +77,6 @@ fn a_box_reuses_its_cache_until_the_background_changes() {
     );
     assert!(painted[0].starts_with('<'));
 }
-
-// --- loader.ts ---------------------------------------------------------------
 
 #[test]
 fn the_loader_leads_with_a_blank_line_and_paints_frame_and_message() {
@@ -188,8 +172,6 @@ fn a_zero_interval_falls_back_to_the_default() {
     );
 }
 
-// --- cancellable-loader.ts ---------------------------------------------------
-
 #[test]
 fn escape_cancels_the_token_and_calls_back_once_per_press() {
     let aborts = Rc::new(RefCell::new(0usize));
@@ -212,8 +194,6 @@ fn escape_cancels_the_token_and_calls_back_once_per_press() {
     // It renders its loader, blank line included.
     assert_eq!(loader.render(20)[0].as_ref(), "");
 }
-
-// --- alt-screen-flash.ts -----------------------------------------------------
 
 #[test]
 fn a_flash_is_inverse_video_padded_by_a_space_and_truncated_to_the_width() {
@@ -252,15 +232,12 @@ fn a_flash_expires_after_its_duration_and_dispose_clears_the_rest() {
     assert!(flashes.next_deadline().is_none());
 }
 
-// --- image.ts ----------------------------------------------------------------
-
 /// A 1×1 PNG, so the header parser has real dimensions to find.
 const PNG_1X1: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 #[test]
 fn an_image_without_terminal_support_falls_back_to_one_text_line() {
     // The test process has no image capability (no Kitty/iTerm2 environment),
-    // which is the branch `capabilities.images === undefined` in TypeScript.
     let mut image = Image::new(
         PNG_1X1,
         "image/png",
@@ -287,13 +264,9 @@ fn an_image_without_terminal_support_falls_back_to_one_text_line() {
     assert_eq!(image.render(40), lines);
 }
 
-// --- native-modifiers.ts -----------------------------------------------------
-
 #[test]
 fn asking_for_a_modifier_reaches_the_platform_and_answers() {
     // What a test can pin down here: the query resolves — on macOS through the
-    // CoreGraphics symbol the ported `darwin-modifiers.c` calls, on other
-    // platforms through the constant-`false` branch that TS also takes when the
     // prebuilt addon does not load. Whether the answer is `true` depends on the
     // keyboard at that moment, which no test can arrange; that ceiling is in
     // the ledger row.

@@ -1,10 +1,3 @@
-//! Differential test of the Amazon Bedrock Converse-Stream adapter.
-//!
-//! `fixtures/bedrock-converse-stream.jsonl` records, for each case, the
-//! `ConverseStreamCommand` input the TS implementation builds (through its `onPayload`
-//! hook, with the AWS SDK client mocked) plus the event sequence it emits for a scripted
-//! stream (see `fixtures/generators`).
-
 use std::collections::BTreeMap;
 
 use notagent_ai::api::bedrock_converse_stream::{
@@ -994,15 +987,10 @@ fn an_unknown_content_block_is_rejected_rather_than_dropped() {
 }
 
 // ---------------------------------------------------------------------------
-// Port of `packages/ai/test/bedrock-endpoint-resolution.test.ts` (208),
-// `bedrock-credentials.test.ts` (115), `bedrock-custom-headers.test.ts` (202) and
-// `bedrock-raw-stop-reason.test.ts` (82).
 //
-// The TS suites read the mocked SDK client's constructor config; here
 // `build_client_config` is that config. Cases that stub `process.env` per test are
 // expressed through the scoped provider env, which takes precedence over the ambient
 // process env — a Rust test process shares one environment across its threads
-// (deviation class 1).
 // ---------------------------------------------------------------------------
 
 fn bedrock_catalog_model(model_id: &str) -> Model {

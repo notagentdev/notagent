@@ -1,7 +1,3 @@
-//! Custom-Message-Typen und ihre Umwandlung an der LLM-Grenze.
-//!
-//! 1:1-Port von `packages/agent/src/harness/messages.ts` (168 LOC).
-
 use notagent_ai::types::{Message, TextContent, TextOrImageContent, UserContent, UserMessage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -17,13 +13,11 @@ pub const BRANCH_SUMMARY_PREFIX: &str =
 
 pub const BRANCH_SUMMARY_SUFFIX: &str = "</summary>";
 
-/// `BashExecutionMessage` — Bash-Ausführungen über das `!`-Kommando.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BashExecutionMessage {
     pub command: String,
     pub output: String,
-    /// TS: `number | undefined` (Feld ist vorhanden, der Wert kann fehlen).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
     pub cancelled: bool,
@@ -31,12 +25,10 @@ pub struct BashExecutionMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full_output_path: Option<String>,
     pub timestamp: i64,
-    /// Bei `!!`-Präfix: Nachricht bleibt aus dem LLM-Kontext ausgeschlossen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exclude_from_context: Option<bool>,
 }
 
-/// `CustomMessage<T>` — von Apps eingespeiste Nachrichten.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomMessage {
@@ -138,7 +130,6 @@ pub fn create_custom_message(
     }
 }
 
-/// `convertToLlm(messages)` — Standardumwandlung an der LLM-Grenze.
 pub fn convert_to_llm(messages: &[AgentMessage]) -> Vec<Message> {
     messages
         .iter()

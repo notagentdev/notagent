@@ -1,10 +1,3 @@
-//! History conversion of the shared Google layer.
-//!
-//! Ports `packages/ai/test/google-shared-gemini3-unsigned-tool-call.test.ts` (167),
-//! `google-shared-signed-empty-blocks.test.ts` (117),
-//! `google-shared-image-tool-result-routing.test.ts` (102) and
-//! `google-thinking-signature.test.ts` (38).
-
 use notagent_ai::api::google_shared::{
     convert_messages, is_thinking_part, retain_thought_signature,
 };
@@ -465,7 +458,6 @@ fn a_signature_survives_deltas_that_omit_it() {
 // ---------------------------------------------------------------------------
 // Raw finish reasons
 //
-// Port of `packages/ai/test/google-raw-stop-reason.test.ts` (106). Both adapters share
 // `GoogleStreamState`, so one state machine covers the Generative AI and the Vertex case.
 // ---------------------------------------------------------------------------
 

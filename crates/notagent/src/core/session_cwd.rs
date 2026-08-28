@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/core/session-cwd.ts`.
-//!
-//! A session records the directory it was started in, and resuming one whose
-//! directory has since been deleted is a real case — a worktree removed, a
-//! checkout moved. The session is still readable, so this is a question for the
-//! user rather than a crash: continue here, or not at all.
-
 use std::path::Path;
 
 /// A session file whose recorded working directory no longer exists.

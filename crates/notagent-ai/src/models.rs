@@ -1,7 +1,3 @@
-//! Provider registry, auth application and stream dispatch.
-//!
-//! 1:1 port of `packages/ai/src/models.ts` (944 LOC).
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -28,9 +24,7 @@ use crate::types::{
 use crate::utils::event_stream::AssistantMessageEventStream;
 
 /// `ModelsPublication`
-///
 /// The update closure may borrow from the provider, so the publication carries a
-/// lifetime; in TS that is implicit in the closure's scope.
 #[derive(Default)]
 pub struct ModelsPublication<'a> {
     /// Provider-selected persisted catalog; `None` leaves storage unchanged,
@@ -90,7 +84,6 @@ pub trait Provider: Send + Sync {
     /// treated as having no models.
     fn get_models(&self) -> Vec<Model>;
 
-    /// Whether this provider implements `refreshModels` (TS checks
     /// `provider.refreshModels !== undefined`, which Rust cannot probe on a trait).
     fn is_dynamic(&self) -> bool {
         false
@@ -188,7 +181,6 @@ pub struct Models {
     models_store: Arc<dyn ModelsStore>,
     auth_context: Arc<dyn AuthContext>,
     refresh: Mutex<RefreshState>,
-    /// Serialized publication chain per provider (TS: a promise chain).
     publication_chains: Mutex<BTreeMap<String, Arc<AsyncMutex<()>>>>,
 }
 
@@ -1031,8 +1023,6 @@ impl Models {
     }
 
     /// `fetchDeferred(model, handle, options?)`
-    ///
-    /// Like TS, the whole setup runs inside `lazyStream`, so a missing provider or a
     /// provider without deferred support surfaces as an error message rather than a
     /// rejection.
     pub async fn fetch_deferred(
@@ -1079,7 +1069,6 @@ impl Models {
     }
 
     /// `cancelDeferred(model, handle, options?)` — unlike `fetchDeferred` this one does
-    /// reject, exactly as TS does.
     pub async fn cancel_deferred(
         self: &Arc<Self>,
         model: Model,
@@ -1490,7 +1479,6 @@ impl Provider for BuiltProvider {
         handle: &DeferredHandle,
         options: Option<DeferredFetchOptions>,
     ) -> Option<AssistantMessageEventStream> {
-        // TS only defines `provider.fetchDeferred` when some api implements it; the
         // per-api lookup then happens inside `lazyStream`, so a provider that supports
         // deferred responses for a *different* api reports that in the stream.
         if !self

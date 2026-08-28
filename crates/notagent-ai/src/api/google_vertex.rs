@@ -1,11 +1,3 @@
-//! Google Vertex AI adapter.
-//!
-//! 1:1 port of `packages/ai/src/api/google-vertex.ts`. The message, tool and stream
-//! handling come from [`crate::api::google_shared`] and the stream state machine of
-//! [`crate::api::google_generative_ai`], which Vertex shares verbatim; specific here are
-//! the endpoint resolution (project/location versus API key versus a custom base URL),
-//! the ADC authentication and a thinking table without the Gemma branch.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -367,9 +359,6 @@ pub fn build_request_body(
 // Transport
 // ---------------------------------------------------------------------------
 
-/// Supplies the ADC bearer token; the TS side lets `google-auth-library` do this.
-///
-/// Substitution class 3: no ADC implementation lives in this crate, so the caller injects
 /// one. Without it a request that needs ADC fails with the SDK's own wording.
 pub type VertexTokenProvider = Arc<
     dyn Fn() -> std::pin::Pin<
@@ -461,7 +450,6 @@ pub fn resolve_endpoint(
     match (project, location) {
         (Ok(project), Ok(location)) => Ok(VertexEndpoint::ProjectLocation { project, location }),
         // A custom base URL alone is enough for the SDK; without it the missing
-        // project or location is the error the TS code reports.
         (project, location) => {
             if resolve_custom_base_url(&model.base_url).is_some() {
                 Ok(VertexEndpoint::CustomBaseUrl)

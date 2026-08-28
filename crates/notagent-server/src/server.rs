@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/server.ts`.
-
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -109,7 +107,6 @@ impl PiServerInner {
         if self.started.load(Ordering::SeqCst) {
             return Err(ServerError::other("PiServer is already started"));
         }
-        // One winner only: TS gets this atomicity for free from the
         // single-threaded event loop (`this.startPromise` is assigned in the
         // same tick as the checks); with two atomics a load-then-store pair
         // would let two concurrent `start()` calls both pass.

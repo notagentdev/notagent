@@ -1,13 +1,3 @@
-//! Port of `packages/ai/test/stream.test.ts` (1 747 LOC) — the provider matrix.
-//!
-//! TS applies six scenarios (`basicTextGeneration`, `handleToolCall`, `handleStreaming`,
-//! `handleThinking`, `multiTurn`, `handleImage`) across ~35 `describe` blocks, one per
-//! provider/model. The port keeps the scenarios as functions and drives them from a table,
-//! one test per TS `describe` block; `Scenario` names the six exactly as TS does.
-//!
-//! Every block is key-gated like its TS counterpart (see `e2e_support`): without the
-//! credential the test prints `skipped: …` and returns without making a request.
-
 mod e2e_support;
 
 use e2e_support::*;
@@ -150,7 +140,6 @@ async fn handle_streaming(model: &Model, options: &SimpleStreamOptions) {
 
 /// `handleThinking(model, options)`
 async fn handle_thinking(model: &Model, options: &SimpleStreamOptions) {
-    // TS randomizes the addend so the provider cannot serve a cached answer; the port
     // uses the clock for the same effect (scripts get no RNG).
     let addend = (now_ms() % 255) as u32;
     let context = context(
@@ -292,7 +281,6 @@ async fn multi_turn(model: &Model, options: &SimpleStreamOptions) {
 // The provider matrix
 // ---------------------------------------------------------------------------
 
-/// The six scenarios, named as in TS.
 #[derive(Clone, Copy)]
 enum Scenario {
     BasicText,
@@ -388,7 +376,6 @@ async fn google_vertex_provider_with_api_key() {
 #[tokio::test(flavor = "multi_thread")]
 async fn openai_completions_provider_gpt_4o_mini() {
     skip_unless!(env("OPENAI_API_KEY").is_some(), "OPENAI_API_KEY");
-    // TS drops `compat` and pins the api to openai-completions.
     let llm = Model {
         api: "openai-completions".to_string(),
         compat: None,
@@ -453,7 +440,6 @@ async fn anthropic_provider_claude_haiku_4_5() {
 async fn azure_openai_responses_provider_gpt_4o_mini() {
     skip_unless!(has_azure_openai_credentials(), "Azure OpenAI credentials");
     let llm = model("azure-openai-responses", "gpt-4o-mini");
-    // TS passes `azureDeploymentName` when the map configures one; the Rust adapter reads
     // the same map from the environment, so no extra option is needed.
     let _ = resolve_azure_deployment_name(&llm.id);
     run(

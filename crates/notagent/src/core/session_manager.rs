@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/session-manager.ts`.
-//!
-//! Sessions are append-only trees of JSONL entries. Entries carry `id`/`parentId`,
-//! the `leaf` pointer marks the current position, and appending creates a child of
-//! the leaf. Branching only moves the pointer; nothing is ever rewritten.
-//!
-//! Deviation (class 1): TS reads session files without validating them, so a legacy
-//! or hand-edited entry survives unchanged. The Rust types keep that property by
-//! defaulting every field and by falling back to [`SessionEntry::Unknown`], which
-//! round-trips the raw JSON object. One difference remains: a v1 entry has no
-//! `id`/`parentId` at all, and re-serializing it before the migration ran writes
-//! both keys. Every rewrite path migrates first, so the written file is the same
-//! either way.
-
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -97,14 +83,12 @@ entry_struct!(CompactionEntry {
     #[serde(default)]
     pub summary: String,
     /// The oldest entry the compaction kept.
-    ///
     /// Read on its own by builds that predate `retained`, which then keep
     /// everything from it onward — a superset of the retained selection, so an
     /// older build degrades rather than breaks.
     #[serde(default)]
     pub first_kept_entry_id: String,
     /// The user messages carried through, and how much of each survived.
-    ///
     /// Persisted rather than recomputed on load: the selection depends on a
     /// token estimate, and re-deriving it would let a changed estimator quietly
     /// rewrite the history of a session that was compacted months ago.
@@ -315,7 +299,6 @@ impl Serialize for SessionEntry {
                     Ok(other) => return other.serialize(serializer),
                     Err(error) => return Err(serde::ser::Error::custom(error)),
                 };
-                // `type` comes first, as in the TS object literals.
                 let mut ordered = Map::new();
                 ordered.insert("type".to_owned(), Value::from(entry.entry_type()));
                 ordered.append(&mut map);
@@ -369,7 +352,6 @@ impl SessionEntry {
 }
 
 /// Raw file entry (includes the header).
-///
 /// The two variants differ in size by a few hundred bytes, and boxing the
 /// larger one would be the wrong way round here: a session file holds exactly
 /// one header and every other line is an entry, so the vector is made almost
@@ -623,7 +605,6 @@ fn build_entry_index(entries: &[SessionEntry]) -> EntryIndex<'_> {
     entries.iter().map(|entry| (entry.id(), entry)).collect()
 }
 
-/// `leaf_id`: `Some(None)` is TS's explicit `null` (empty path), `None` is `undefined`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeafSelector<'a> {
     Undefined,
@@ -703,7 +684,6 @@ fn get_session_context_settings(path: &[&SessionEntry]) -> (String, Option<Sessi
 }
 
 /// Project one selected session entry into LLM/runtime messages.
-///
 /// Plain custom entries are display/state entries and do not participate in context.
 pub fn session_entry_to_context_messages(entry: &SessionEntry) -> Vec<AgentMessage> {
     match entry {
@@ -976,7 +956,6 @@ pub fn load_entries_from_file(file_path: &str) -> Vec<FileEntry> {
 }
 
 /// Inspect a physical line while searching for the first parsed session entry.
-///
 /// `None` keeps scanning, `Some(None)` is a parsed non-header entry, `Some(Some(_))`
 /// is the header.
 #[allow(clippy::option_option)]
@@ -1572,9 +1551,7 @@ impl SessionManager {
     }
 
     /// Append a message as a child of the current leaf, then advance the leaf.
-    ///
     /// Compaction and branch summaries must go through [`Self::append_compaction`]
-    /// and [`Self::branch_with_summary`] so they stay top-level entries; the TS
     /// signature enforces that at compile time.
     pub fn append_message(
         &mut self,

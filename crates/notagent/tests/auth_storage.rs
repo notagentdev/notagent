@@ -1,7 +1,3 @@
-//! Port of `packages/coding-agent/test/auth-storage.test.ts`.
-//!
-//! Every test holds `global_lock()`: the shared auth read state is process-wide,
-//! and vitest runs the TS file's tests sequentially as well.
 #![allow(clippy::await_holding_lock)]
 
 use std::path::{Path, PathBuf};
@@ -92,7 +88,6 @@ fn signal(token: &CancellationToken) -> Option<AuthOperationOptions> {
     })
 }
 
-/// Counts lock acquisitions the way the TS suite spies on `lockfile.lock`.
 #[derive(Default)]
 struct LockCounters {
     sync: AtomicUsize,
@@ -184,7 +179,6 @@ async fn returns_oauth_credentials_unchanged() {
         expires: 1_760_000_000_000,
         extra: serde_json::Map::new(),
     });
-    // The stored form is the one the TS app writes: `type: "oauth"`.
     let storage = AuthStorage::in_memory(storage_data(json!({
         "anthropic": {
             "type": "oauth",
@@ -597,7 +591,6 @@ async fn surfaces_a_compromised_file_storage_lock() {
         .with_lock_update_interval(Duration::from_millis(100));
     let lock_path = lock_path_for(Path::new(&path));
 
-    // Losing the lock directory is how a lock is compromised in practice; the TS
     // suite injects the same condition through `onCompromised`.
     let error = backend
         .with_lock_async(
@@ -958,7 +951,6 @@ async fn preserves_the_stored_credential_after_cancelling_an_active_refresh_muta
     let error = pending.await.expect_err("aborted");
     assert_eq!(error.to_string(), "The operation was aborted");
 
-    // Deviation (class 1): TS keeps the abandoned mutation running, so the
     // competing one waits for `finish`. A dropped Rust future stops where it is,
     // which frees the queue earlier — the outcome is the same either way.
     let competing_calls = Arc::new(AtomicUsize::new(0));

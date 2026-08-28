@@ -1,24 +1,3 @@
-//! Port addition (v0.1.24), taken from `../notagent-main-rust`
-//! (`crates/notagent_services/src/tool_services/plan_create.rs`).
-//!
-//! The `plan_create` tool: writes a plan to `plans/`.
-//!
-//! It exists so that a read-only session has somewhere to put its deliverable.
-//! A plan mode whose plan survives only as chat text is the same contradiction
-//! a shell exists to prevent: the prompt asks for a document, the tools cannot
-//! produce one.
-//!
-//! Being writable and read-only at once is only defensible because the tool
-//! cannot reach anything that was already there. The directory is fixed, the
-//! file name is derived rather than supplied, and an existing file is an error
-//! instead of an overwrite — so the worst a confused call can do is leave an
-//! unwanted file in `plans/`.
-//!
-//! That argument only holds while the name really is derived, which is why
-//! `sanitize_component` rejects path separators and traversal outright rather
-//! than repairing them: a `plan_name` of `../../etc/passwd` must not become a
-//! write outside `plans/`, and quietly rewriting it would hide the attempt.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -152,7 +131,6 @@ pub fn create_plan_create_tool_definition(
 }
 
 /// One filename component as the model supplied it.
-///
 /// Rejected rather than repaired: the name lands in a path, and a caller that
 /// meant `../secrets` should be told no instead of silently getting
 /// `..secrets`.

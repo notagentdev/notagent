@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/test/tasks-browser.test.ts` (283 LOC).
-//!
-//! The task browser.
-//!
-//! The cases worth pinning are the ones that decide whether the view can be
-//! acted from: what is listed and in what order, that a stop asks before it
-//! kills, and that every rendered line is exactly as wide as it was told — a
-//! frame that drifts by one column turns the whole layout into noise.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};

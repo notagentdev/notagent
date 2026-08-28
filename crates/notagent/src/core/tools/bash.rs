@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/bash.ts` (tool half).
-//!
-//! Deviation (class 1): `BashToolSources` hands the tool a
-//! [`BashTaskManager`] trait object instead of the concrete `TaskManager` of
-//! `core/tasks/manager.ts`. TS reaches the same indirection through the
-//! `sources` closures; in Rust it additionally lets the shell tool be built and
-//! tested before the task machinery exists (plan task 10), which is where the
-//! trait is implemented for the real manager and where
-//! `test/bash-background.test.ts` is ported.
-
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::process::Stdio;
@@ -59,7 +49,6 @@ const MAX_TIMEOUT_MS: f64 = 2_147_483_647.0;
 const MAX_TIMEOUT_SECONDS: f64 = MAX_TIMEOUT_MS / 1000.0;
 
 /// Deadlines, foreground and background.
-///
 /// The foreground default is ten minutes (user decision 2026-08-18): builds
 /// and test runs the conversation waits on routinely take that long, and
 /// reaching the deadline moves the command to the background rather than
@@ -72,14 +61,12 @@ pub const DEFAULT_BACKGROUND_TIMEOUT_S: f64 = 10.0 * 60.0;
 pub const MAX_BACKGROUND_TIMEOUT_S: f64 = 24.0 * 60.0 * 60.0;
 
 /// How long a command told to stop is given before it is killed.
-///
 /// Short on purpose: this is the escalation inside a single command, while the
 /// task manager's own grace window covers work that has no process at all.
 const ABORT_ESCALATION_MS: u64 = 2_000;
 
 /// Re-armed on every chunk that arrives after the shell exited, so a detached
 /// descendant still writing keeps us reading while a quiet inherited handle
-/// releases us (`utils/child-process.ts`, `waitForChildProcess`).
 const EXIT_STDIO_GRACE_MS: u64 = 100;
 
 const BASH_UPDATE_THROTTLE_MS: u64 = 100;
@@ -92,7 +79,6 @@ pub const BASH_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
         ],
     };
 
-/// What `ops.exec` rejects with. TS encodes the same three cases in the message
 /// of a plain `Error` (`"aborted"`, `"timeout:<seconds>"`, anything else).
 #[derive(Debug, Clone, PartialEq)]
 pub enum BashExecError {
@@ -120,7 +106,6 @@ pub type BashSpawnSink = Arc<dyn Fn(u32) + Send + Sync>;
 pub struct BashExecOptions {
     pub on_data: Option<BashOutputSink>,
     pub signal: Option<CancellationToken>,
-    /// Deadline in seconds, as in TS.
     pub timeout: Option<f64>,
     pub env: Option<BTreeMap<String, String>>,
     /// Background tasks need the pid to show what they started and to force a
@@ -131,12 +116,10 @@ pub struct BashExecOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BashExecResult {
-    /// `null` in TS: the process was killed by a signal.
     pub exit_code: Option<i32>,
 }
 
 /// Pluggable operations for the bash tool.
-///
 /// Override these to delegate command execution to remote systems (for example
 /// SSH).
 pub trait BashOperations: Send + Sync {
@@ -167,7 +150,6 @@ fn resolve_timeout_ms(timeout: Option<f64>) -> Result<Option<f64>, BashExecError
 }
 
 /// Bash operations using notagent's built-in local shell execution backend.
-///
 /// This is useful where a caller intercepts a command and still wants
 /// notagent's standard local shell behaviour while wrapping or rewriting it.
 pub struct LocalBashOperations {
@@ -183,7 +165,6 @@ pub fn create_local_bash_operations(shell_path: Option<String>) -> LocalBashOper
     }
 }
 
-/// Seams the ported suites need. TS reaches the same places with
 /// `vi.spyOn(shellModule, "getShellConfig")`, which has no Rust equivalent.
 pub mod testing {
     use super::{LocalBashOperations, ShellConfig};
@@ -250,14 +231,12 @@ impl BashOperations for LocalBashOperations {
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
-                // CREATE_NO_WINDOW — the `windowsHide` of the TS spawn call.
                 builder.creation_flags(0x0800_0000);
             }
 
             let mut child = builder.spawn().map_err(|error| {
                 BashExecError::Other(if error.kind() == std::io::ErrorKind::NotFound {
                     // Node rejects with `spawn <shell> ENOENT`; callers and the
-                    // ported tests match on that shape.
                     format!("spawn {} ENOENT", shell_config.shell)
                 } else {
                     error.to_string()
@@ -474,7 +453,6 @@ pub struct ManagedTaskSnapshot {
     pub status: TaskStatus,
     pub stop_reason: Option<String>,
     /// `exitCode` of a shell task; `None` for any other kind, matching the
-    /// `info?.kind === "shell" ? info.exitCode : null` of the TS source.
     pub exit_code: Option<i32>,
 }
 
@@ -495,7 +473,6 @@ pub trait BashTaskManager: Send + Sync {
 
 /// Reads whether the bash filter is enabled, at call time, so
 /// `/bash-filter on|off` applies to the next command rather than the next
-/// session. An absent gate means disabled, which is the port's default.
 pub type BashFilterGate = Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// What the shell tool needs in order to detach a command.
@@ -810,7 +787,6 @@ impl OutputPipeline {
     }
 }
 
-/// `details` as the TS object literal serializes: absent keys for `undefined`.
 fn details_value(snapshot: &OutputSnapshot) -> Value {
     let mut details = Map::new();
     if snapshot.truncation.truncated {
@@ -865,16 +841,12 @@ fn format_output(
 }
 
 /// The result text once the bash filter has had its shot at the output.
-///
 /// The filter is a whole-output function, so it runs on the finished snapshot
 /// and never on a chunk. Two cases send the raw output through unchanged: a
 /// filter that did not claim it, and a snapshot that was truncated — a summary
 /// computed from a tail states totals it cannot know ("2 passed" for a run of
 /// five hundred), which is worse than an honest truncation notice.
-///
-/// Deviation from the reference: this port interleaves stdout and stderr into
 /// one stream (`BashExecOptions::on_data` carries no stream tag, inherited from
-/// the TypeScript original), so the filter is handed the merged text as stdout
 /// and an empty stderr. A parser that cannot read the mixture claims nothing
 /// and the raw output remains, which is the same outcome as the filter being
 /// off.
@@ -1016,7 +988,6 @@ impl BashToolDefinition {
     }
 
     /// The prepared invocation for `command`, or `None` when the filter is off.
-    ///
     /// Prepared from the command the model wrote, not from the prefixed form:
     /// a command prefix makes the line multi-line, and the classifier refuses
     /// those — so preparing after the prefix would switch the filter off for
@@ -1029,7 +1000,6 @@ impl BashToolDefinition {
     }
 
     /// Whether this call is answered from the filesystem instead of a process.
-    ///
     /// Only with the local operations: the adapter reads this machine, and
     /// operations that run elsewhere would be asked about the wrong one.
     fn uses_execution_override(&self, prepared: Option<&PreparedInvocation>) -> bool {
@@ -1038,7 +1008,6 @@ impl BashToolDefinition {
 
     /// Re-runs the command as the caller wrote it when the rewritten form
     /// produced output the filter cannot read, and returns that run's result.
-    ///
     /// `None` when no retry is warranted, which is the overwhelmingly common
     /// case: only a rewritten search can ask for one. The retry always takes
     /// the direct execution path, even when the first attempt went through the
@@ -1113,11 +1082,8 @@ const BASH_PREVIEW_LINES: usize = 5;
 const BASH_ELAPSED_TICK: Duration = Duration::from_secs(1);
 
 /// The row state of a `bash` call.
-///
-/// `started_at`/`ended_at` are what TypeScript keeps in `context.state`; the
 /// `setInterval` that redraws the elapsed time becomes [`Self::tick_deadline`],
 /// which [`ToolDefinition::render_deadline`] reports to the render loop
-/// (deviation class 1).
 #[derive(Default)]
 pub struct BashRenderState {
     pub started_at: Option<Instant>,
@@ -1129,10 +1095,6 @@ pub struct BashRenderState {
 }
 
 /// The preview of a long output, truncated to the visible rows.
-///
-/// TypeScript adds an inline component that closes over the parent's cache;
-/// the port makes it a real component with the same cache, which the parent's
-/// `invalidate()` clears exactly as it does there (deviation class 1).
 struct BashPreviewComponent {
     styled_output: String,
     cached_width: Option<usize>,
@@ -1193,7 +1155,6 @@ fn format_duration(elapsed: Duration) -> String {
 /// The `$ command` header, restyled after the reference's bash toolbox
 /// (takeover from ../notagent-main-rust, user decision 2026-08-17, v0.1.8):
 /// a bold `$ ` prompt, the command syntax-coloured, and — while the command
-/// runs — a `[Running: 5s / timeout: 1m]` indicator in place of the TS
 /// original's static `(timeout Ns)` suffix.
 fn format_bash_call(args: &Value, theme: &Theme, running_for: Option<Duration>) -> String {
     let command = str_arg(args.get("command"));
@@ -1358,7 +1319,6 @@ fn rebuild_bash_result_component(
         let elapsed = end_time.saturating_duration_since(started_at);
         // Badge style (v0.1.9, reference `format_bash_result`): the timing
         // reads `(1.2s)` — live it stays invisible below one second, final it
-        // reads as ms only under a second. The standard style keeps the TS
         // original's `Elapsed/Took X.Xs` line.
         let timing = if block_style() == BlockStyle::Badge {
             if options.is_partial {
@@ -1477,7 +1437,6 @@ impl ToolDefinition for BashToolDefinition {
     ) -> Option<ComponentRef> {
         let mut state = tool_render_state::<BashRenderState>(&context.state);
         // While the command runs, the elapsed line is refreshed once a second;
-        // TypeScript keeps a `setInterval` here (deviation class 1, see
         // `render_deadline`).
         if state.started_at.is_some() && options.is_partial && state.tick_deadline.is_none() {
             state.tick_deadline = Some(Instant::now() + BASH_ELAPSED_TICK);
@@ -1793,7 +1752,6 @@ impl ToolDefinition for BashToolDefinition {
     }
 }
 
-/// TS truncates the derived foreground label at 60 characters.
 fn truncate_command_label(command: &str) -> String {
     let characters: Vec<char> = command.chars().collect();
     if characters.len() > 60 {
@@ -1804,7 +1762,6 @@ fn truncate_command_label(command: &str) -> String {
 }
 
 /// Runs a command as a managed task.
-///
 /// The foreground case is the interesting one: it waits for the task to release
 /// it, which happens either because the command ended or because it was moved to
 /// the background — by the user, or by its own deadline. Both are ordinary

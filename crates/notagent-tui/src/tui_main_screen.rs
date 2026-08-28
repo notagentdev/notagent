@@ -1,14 +1,3 @@
-//! Differential renderer for the terminal's main screen and scrollback.
-//!
-//! 1:1 port of `packages/tui/src/tui-main-screen.ts` (586 LOC). Lines are
-//! shared strings ([`Line`]) with embedded ANSI sequences — there is no cell
-//! buffer and no hashing. The frame diff settles an unchanged shared line by
-//! pointer identity and falls back to string equality, which is the whole
-//! comparison in TS (deviation class 1: TS strings are immutable and shared
-//! by the runtime, so the identity shortcut exists there implicitly).
-//! Scrolling happens only through CRLF at the bottom edge; no scroll regions
-//! are used.
-
 use std::collections::BTreeSet;
 use std::io::Write;
 
@@ -34,7 +23,6 @@ fn parse_kitty_image_header(line: &str) -> Option<KittyImageHeader> {
         let Some((key, value)) = param.split_once('=') else {
             continue;
         };
-        // TS: `Number(value)` must be a positive integer <= 0xffffffff.
         let Ok(number_value) = value.parse::<u64>() else {
             continue;
         };
@@ -101,7 +89,6 @@ impl TuiMainScreen {
         Self::with_options(terminal, None, None)
     }
 
-    /// New renderer with the optional constructor arguments of the TS version.
     pub fn with_options(
         terminal: Box<dyn crate::terminal::Terminal>,
         show_hardware_cursor: Option<bool>,
@@ -228,7 +215,6 @@ impl TuiMainScreen {
     }
 
     /// Render the frame the render loop reported as due.
-    ///
     /// Counterpart of [`TuiCore::wait_until_render_due`]: it consumes the
     /// pending request, so a loop that waits and then calls this cannot spin.
     pub fn render_pending_frame(&mut self) {
@@ -238,8 +224,6 @@ impl TuiMainScreen {
     }
 
     /// Render the pending frame once its throttle deadline has passed.
-    ///
-    /// Replaces the `setTimeout` scheduling of the TS version; the caller's loop
     /// (or a test) drives it. Unlike [`TuiCore::wait_until_render_due`] it
     /// returns right away when no frame is pending.
     pub async fn wait_for_render(&mut self) {
@@ -774,7 +758,6 @@ impl TuiMainScreen {
     }
 
     /// Write the crash log, stop the TUI and panic — a component that does not
-    /// truncate its output is a programming error, like the thrown Error in TS.
     fn crash_on_overwide_line(
         &mut self,
         index: usize,
@@ -812,7 +795,7 @@ impl TuiMainScreen {
         );
     }
 
-    #[allow(clippy::too_many_arguments)] // 1:1 port of the TS debug dump.
+    #[allow(clippy::too_many_arguments)] // The dump keeps each diagnostic field explicit.
     fn write_frame_debug_log(
         &self,
         first_changed: usize,

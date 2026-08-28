@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/model-resolver.test.ts` (801 LOC).
-
 use futures::future::BoxFuture;
 use notagent::core::model_resolver::{
     DEFAULT_MODEL_PER_PROVIDER, FindInitialModelOptions, ModelCatalog, ModelScopeDiagnostic,
@@ -115,7 +113,6 @@ fn all_models() -> Vec<Model> {
 
 type ModelLookup = Box<dyn Fn(&str, &str) -> Option<Model> + Send + Sync>;
 
-/// Stand-in for the structurally typed `modelRuntime` stubs of the TS suite.
 #[derive(Default)]
 struct StubCatalog {
     models: Vec<Model>,

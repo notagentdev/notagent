@@ -1,19 +1,3 @@
-//! The built-in model catalog.
-//!
-//! 1:1 port of `packages/ai/src/model-catalog.ts` (27 LOC), `models.generated.ts`
-//! (124 LOC, a pure aggregator) and the catalog-facing parts of
-//! `packages/ai/src/providers/all.ts` (155 LOC).
-//!
-//! The data itself is the byte-identical snapshot of
-//! `packages/ai/src/providers/data/` (39 files, 1 224 models). Per the workstream plan
-//! the generator (`scripts/generate-models.ts`) is not ported: the snapshot is the
-//! source, and updates keep happening in the TS repo. TypeScript imports the files as
-//! JSON modules; here they are embedded with `include_str!` and parsed once on first use.
-//!
-//! `.manifest.json` is stored as `manifest.json` (leading dots are awkward for build
-//! tooling); its content is unchanged and `tests/model_catalog.rs` verifies every
-//! SHA-256 against it.
-
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 

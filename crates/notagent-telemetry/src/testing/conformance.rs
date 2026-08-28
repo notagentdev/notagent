@@ -1,14 +1,3 @@
-//! Runner-unabhängige Fälle für den Callback-Vertrag eines Telemetrie-Adapters.
-//!
-//! 1:1-Port von `packages/telemetry/src/testing/conformance.ts` (315 LOC).
-//!
-//! Nicht portierbar sind die drei Fälle, die mit JS-`Proxy`-Objekten arbeiten, deren
-//! Lesezugriffe werfen („ignores failed attribute calls atomically", „suppresses
-//! unreadable telemetry payload failures", „ignores failed status calls atomically").
-//! Rust-Werte können beim Lesen nicht fehlschlagen: `SpanAttributes` ist eine fertige
-//! Map, `set_attributes` bekommt sie als Ganzes. Die Fälle sind damit gegenstandslos
-//! (Abweichung Klasse 1, siehe PARITY.md).
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -67,8 +56,6 @@ fn case(
     }
 }
 
-/// Fehlerwert der Konformanzfälle (TS wirft beliebige Werte; hier genügt ein Typ,
-/// dessen Identität geprüft werden kann).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct ConformanceError(pub String);
@@ -251,8 +238,6 @@ pub fn create_telemetry_adapter_conformance(
                                 ("count", AttributeValue::Number(1.0)),
                                 ("overwrite", AttributeValue::from("middle")),
                             ]));
-                            // TS setzt hier zusätzlich `count: undefined`; ein fehlender Schlüssel
-                            // ist das Rust-Äquivalent und lässt den Wert ebenso unangetastet.
                             span.set_attributes(attributes(&[(
                                 "overwrite",
                                 AttributeValue::from("end"),
@@ -352,10 +337,6 @@ pub fn create_telemetry_adapter_conformance(
             "records nested and concurrent child relationships",
             |fixture| {
                 Box::pin(async move {
-                    // TS hält das erste Kind über ein Promise offen, während das zweite bereits
-                    // abschließt. Ohne Kombinator-Bibliothek wird derselbe beobachtbare Ablauf
-                    // über das objekt-sichere Primitiv nachgestellt: Startreihenfolge erst, zweites
-                    // Kind schließt vor dem ersten, das Elternteil zuletzt.
                     start_span(
                         fixture.context().as_ref(),
                         SpanOptions::new("parent"),

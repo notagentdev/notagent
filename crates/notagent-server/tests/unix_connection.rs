@@ -1,5 +1,3 @@
-//! Port of `packages/server/test/unix-connection.test.ts`.
-
 use notagent_protocol::{
     HelloErrorTag, ProtocolError, ProtocolErrorCode, ServerHelloError, ServerMessage,
     ServerMessageDecoder, encode_server_message,

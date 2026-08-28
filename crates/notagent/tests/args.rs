@@ -1,11 +1,3 @@
-//! Ported from `packages/coding-agent/test/args.test.ts`.
-//!
-//! Not ported: the five `--extension` / `--no-extensions` cases — the flags are
-//! gone with the extension system (`plans/facts/extension-boundary.md` §6). The
-//! case that asserts `--ui-mode` lands in `unknownFlags` is kept, because that
-//! map still exists; what changed is that it is now an error rather than
-//! something the extensions get to claim.
-
 use notagent::cli::args::{
     ArgDiagnostic, DiagnosticLevel, ListModels, OutputMode, StartMode, UnknownFlagValue,
     parse_args, unknown_flags_error,
@@ -343,7 +335,6 @@ fn reports_an_unknown_short_flag_immediately() {
     );
 }
 
-/// Not in the TypeScript suite: with the extension system gone there is nobody
 /// left to claim an unknown long flag, so it becomes an error naming all of them.
 #[test]
 fn unknown_long_flags_become_one_error() {

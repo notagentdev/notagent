@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/test/model-selector.test.ts` (49 LOC) and
-//! `test/suite/regressions/7209-model-selector-filter-resets-selection.test.ts` (128 LOC).
-//!
-//! Both suites build the selector on `harness.session.modelRuntime`; the parts
-//! of the suite harness that matter here are the in-memory `ModelRuntime` and
-//! the faux provider it serves models from, so the tests build those two
-//! directly instead of the whole session (workstream C owns `AgentSession`).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
@@ -151,7 +143,6 @@ async fn lists_every_catalog_that_failed_to_refresh() {
     ));
 }
 
-/// The single-catalog half of the same branch, which the TS suite states in the
 /// source but never renders.
 #[tokio::test]
 async fn names_the_single_catalog_that_failed_to_refresh() {

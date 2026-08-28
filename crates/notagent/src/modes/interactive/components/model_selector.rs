@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/model-selector.ts` (364 LOC).
-
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::future::Future;
@@ -61,13 +58,10 @@ fn locale_compare(a: &str, b: &str) -> Ordering {
 }
 
 /// What one `refreshModels` pass learned from the runtime.
-///
-/// Deviation (class 1): `refreshModels` is one `async` method in TS, started
 /// from the constructor with `void`. A Rust constructor cannot own a task that
 /// later mutates `&mut self`, so the pass is split: [`ModelSelectorComponent::refresh_models`]
 /// returns the future that talks to the runtime (`Send`, so it can be spawned),
 /// and [`ModelSelectorComponent::apply_refresh`] performs the half that touches
-/// the component — including the `if (this.closed) return` that TS runs after
 /// its `await`.
 #[derive(Debug, Clone)]
 pub struct ModelRefreshOutcome {
@@ -76,8 +70,6 @@ pub struct ModelRefreshOutcome {
     /// The `timedOut` flag the timer sets before it aborts.
     pub timed_out: bool,
     /// `[...result.errors.keys()]`
-    ///
-    /// The ids arrive from a `BTreeMap`, so they are sorted where the TS `Map`
     /// preserved the order the providers failed in.
     pub failed_providers: Vec<String>,
 }
@@ -117,7 +109,6 @@ pub struct ModelSelectorComponent {
 }
 
 impl ModelSelectorComponent {
-    /// The TS constructor, minus the `void this.refreshModels()` at its end —
     /// see [`ModelRefreshOutcome`].
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -278,11 +269,8 @@ impl ModelSelectorComponent {
     }
 
     /// The half of `refreshModels` that talks to the runtime.
-    ///
-    /// The returned future is what TS starts with `void this.refreshModels()`;
     /// hand its result to [`ModelSelectorComponent::apply_refresh`]. The 15 s
     /// timer that aborts the shared signal lives inside it, so a `dispose()`
-    /// while it runs cancels the same token TS aborts.
     pub fn refresh_models(&self) -> impl Future<Output = ModelRefreshOutcome> + Send + 'static {
         let runtime = Arc::clone(&self.model_runtime);
         let signal = self.refresh_abort.clone();
@@ -625,7 +613,6 @@ impl Component for ModelSelectorComponent {
             // `this.searchInput.onSubmit` — Enter on the search input selects the
             // first filtered item. The callback cannot reach back into the
             // component, so it raises a flag the caller reads (class 1, as in
-            // `oauth_selector`); TS runs it inside `handleInput`, i.e. before the
             // `filterModels` below.
             if self.submitted.replace(false)
                 && let Some(selected) = self.filtered_models.get(self.selected_index)

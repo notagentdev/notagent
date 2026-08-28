@@ -1,7 +1,3 @@
-//! Behaviour of the batch-4 panels. The TypeScript suites do not cover them, so
-//! the expectations come from
-//! `packages/coding-agent/src/modes/interactive/components/{armin,daxnuts,earendil-announcement}.ts`.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::modes::interactive::components::armin::ArminComponent;
@@ -56,7 +52,6 @@ fn armin_clips_the_grid_to_a_narrow_terminal() {
     }
     // bug-compat: only the grid rows are clipped. The message keeps its full
     // length and overflows a terminal narrower than 15 columns, because
-    // TypeScript clamps just the right padding.
     assert_eq!(strip_ansi(message), " ARMIN SAYS HI");
 }
 

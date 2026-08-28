@@ -1,6 +1,5 @@
 //! The OpenAI-compatible providers: the two local runtimes and the instance
 //! whose address the user names.
-//!
 //! The listing bodies here are the shapes the real servers return — LM Studio's
 //! `/api/v0/models`, Ollama's `/api/tags` and `/api/show` — so a change to how
 //! they are read is caught without either runtime installed.

@@ -1,9 +1,3 @@
-//! Legacy extension OAuth types.
-//!
-//! 1:1 port of `packages/ai/src/compat/extension-oauth-types.ts` (45 LOC). The callback
-//! surface exists only for coding-agent extensions; the current flows use
-//! [`crate::auth::types::AuthInteraction`].
-
 use crate::auth::types::{AuthError, BoxFuture, OAuthCredential};
 use tokio_util::sync::CancellationToken;
 

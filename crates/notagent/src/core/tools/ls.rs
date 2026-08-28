@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/ls.ts` (tool half).
-
 use std::sync::Arc;
 
 use notagent_agent::types::{
@@ -43,7 +41,6 @@ fn ls_schema() -> Value {
 /// Pluggable operations, so listing can be delegated to a remote system.
 pub trait LsOperations: Send + Sync {
     fn exists<'a>(&'a self, absolute_path: &'a str) -> BoxFuture<'a, bool>;
-    /// `stat`; the error is the message TS reports.
     fn is_directory<'a>(&'a self, absolute_path: &'a str) -> BoxFuture<'a, Result<bool, String>>;
     fn read_dir<'a>(&'a self, absolute_path: &'a str)
     -> BoxFuture<'a, Result<Vec<String>, String>>;
@@ -297,7 +294,6 @@ impl ToolDefinition for LsToolDefinition {
                     ToolExecutionError::new(format!("Cannot read directory: {error}"))
                 })?;
 
-            // Deviation (class 1): TS sorts with `localeCompare` on the lowercased
             // name; Rust compares the lowercased name by code point, which differs
             // only for locale-specific accent ordering.
             entries.sort_by_key(|entry| entry.to_lowercase());

@@ -1,9 +1,3 @@
-//! Stateful wrapper around the low-level agent loop.
-//!
-//! 1:1 port of `packages/agent/src/agent.ts` (592 LOC). The `Agent` owns the transcript,
-//! reduces loop events into its state, awaits its listeners in subscription order and
-//! exposes the steering and follow-up queues.
-
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
@@ -22,7 +16,6 @@ use crate::types::{
     TransformContextFn,
 };
 
-/// `DEFAULT_MODEL` of `agent.ts:48-59`.
 pub fn default_model() -> Model {
     Model {
         id: "unknown".to_string(),
@@ -124,7 +117,6 @@ pub struct AgentOptions {
     pub transform_context: Option<TransformContextFn>,
     pub stream_fn: Option<StreamFn>,
     pub get_api_key: Option<GetApiKeyFn>,
-    /// `onPayload`/`onResponse` — TS forwards them into `streamSimple` (`agent.ts:452`).
     pub on_payload: Option<notagent_ai::types::OnPayload<Model>>,
     pub on_response: Option<notagent_ai::types::OnResponse<Model>>,
     pub before_tool_call: Option<BeforeToolCallFn>,
@@ -144,7 +136,6 @@ pub struct AgentOptions {
 pub type AgentListener =
     Arc<dyn Fn(AgentEvent, CancellationToken) -> BoxFuture<'static, ()> + Send + Sync>;
 
-/// Error of the run-lifecycle methods (TS throws).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct AgentError(pub String);
@@ -232,7 +223,6 @@ impl Agent {
         }
     }
 
-    /// Assigning tools copies the top-level array, as the TS setter does.
     pub fn set_tools(&self, tools: Vec<Arc<dyn AgentTool>>) {
         self.state.lock().expect("poisoned").tools = tools;
     }
@@ -269,18 +259,14 @@ impl Agent {
         self.follow_up_queue.lock().expect("poisoned").mode = mode;
     }
 
-    /// The current provider wiring. TS keeps `streamFunction`, `getApiKey`, `onPayload`,
     /// `onResponse`, `beforeToolCall`, `afterToolCall`, `thinkingBudgets`, `transport`,
     /// `maxRetryDelayMs` and `toolExecution` as public fields on `Agent`
-    /// (`packages/agent/src/agent.ts:180-201`); the Rust port folds them into
     /// `AgentOptions`, so this hands out the same view as a clone.
     pub fn options(&self) -> AgentOptions {
         self.options.lock().expect("poisoned").clone()
     }
 
-    /// The counterpart of TS's field assignments (`session.agent.transport = …`,
     /// `agent.beforeToolCall = …`). The next `createLoopConfig` picks the change up, so a
-    /// running turn keeps the wiring it started with — exactly as in TS, where the loop
     /// captured the field values when the run began.
     pub fn update_options(&self, update: impl FnOnce(&mut AgentOptions)) {
         update(&mut self.options.lock().expect("poisoned"));
@@ -355,7 +341,6 @@ impl Agent {
         tokio::pin!(notified);
         notified.as_mut().enable();
         // The second look asks whether *this* run is still the active one, not
-        // whether any run is. TS hands out `activeRun.promise`, which stays
         // resolved once that run finished; a successor run occupying the slot
         // does not make `waitForIdle()` wait again.
         let still_running = self
@@ -747,7 +732,6 @@ impl Agent {
                     state.messages.push(message.clone());
                 }
                 AgentEvent::ToolExecutionStart { tool_call_id, .. } => {
-                    // Copy-on-write, as in TS.
                     let mut pending = state.pending_tool_calls.clone();
                     pending.insert(tool_call_id.clone());
                     state.pending_tool_calls = pending;
@@ -773,7 +757,6 @@ impl Agent {
 
         let signal = self.signal();
         let Some(signal) = signal else {
-            // TS throws here; without an active run there is nothing to notify.
             return;
         };
         let listeners: Vec<AgentListener> = self

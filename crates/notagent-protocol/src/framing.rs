@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/src/framing.ts`.
-
 const FRAME_HEADER_LENGTH: usize = 4;
 const MAX_UINT32: u64 = 0xffff_ffff;
 const PAYLOAD_BLOCK_SIZE: usize = 64 * 1024;
@@ -20,7 +18,6 @@ impl FrameDecoderOptions {
     }
 }
 
-/// TS has two error classes: `FrameError` and the `RangeError` thrown by
 /// `resolveMaxFrameLength`. Both are variants of one type here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FrameError {

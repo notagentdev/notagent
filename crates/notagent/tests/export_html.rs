@@ -1,13 +1,3 @@
-//! Ports of `packages/coding-agent/test/export-html-xss.test.ts` (67 LOC),
-//! `export-html-whitespace.test.ts` (42) and `export-html-skill-block.test.ts`
-//! (40), plus a round trip through `export_from_file`.
-//!
-//! The three TypeScript suites read `template.js`/`template.css` from disk and
-//! assert on their text; the Rust binary embeds the same files, so the suites
-//! assert on the embedded constants. The one case that drives a TUI component
-//! through `createToolHtmlRenderer` uses the pure line-trimming half that stayed
-//! in this crate (see `core/export_html/tool_renderer.rs`).
-
 use notagent::core::export_html::ToolHtmlRenderer;
 use notagent::core::export_html::ansi_to_html::{ansi_lines_to_html, ansi_to_html};
 use notagent::core::export_html::tool_renderer::rendered_result_from_lines;
@@ -304,11 +294,9 @@ fn reproduces_the_dollar_expansion_of_string_replace() {
 }
 
 // ---------------------------------------------------------------------------
-// createToolHtmlRenderer — the factory workstream C added with task 16 (B-8)
 // ---------------------------------------------------------------------------
 
 /// A tool whose two renderers answer with a fixed component, like the fake tool
-/// of the TypeScript case.
 struct FakeTool {
     parameters: serde_json::Value,
 }

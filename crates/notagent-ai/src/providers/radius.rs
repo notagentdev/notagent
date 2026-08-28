@@ -1,10 +1,3 @@
-//! `radiusProvider(options?)`.
-//!
-//! 1:1 port of `packages/ai/src/providers/radius.ts` (82 LOC). Radius is the only
-//! provider with a purely dynamic catalog: it starts empty, restores the persisted list,
-//! imports the catalog cached by the pre-`ModelsStore` implementation and only then goes
-//! to the network.
-
 use std::sync::{Arc, Mutex};
 
 use crate::api::streams::PiMessagesApi;

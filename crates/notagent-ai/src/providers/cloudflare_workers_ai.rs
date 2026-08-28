@@ -1,7 +1,3 @@
-//! `cloudflareWorkersAIProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/cloudflare-workers-ai.ts` (15 LOC).
-
 use std::sync::Arc;
 
 use crate::api::streams::OpenAICompletionsApi;

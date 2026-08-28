@@ -1,8 +1,3 @@
-//! Armin says hi! A fun easter egg with animated XBM art.
-//!
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/armin.ts` (382 LOC).
-
 use std::time::{Duration, Instant};
 
 use rand::RngExt as _;
@@ -130,8 +125,6 @@ fn shuffled_positions() -> Vec<(usize, usize)> {
 }
 
 /// The easter egg component.
-///
-/// The `setInterval` animation is polled like every other timer of this port:
 /// [`ArminComponent::deadline`] says when the next frame is due and
 /// [`ArminComponent::tick`] advances it.
 pub struct ArminComponent {

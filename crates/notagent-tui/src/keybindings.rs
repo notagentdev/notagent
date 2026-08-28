@@ -1,9 +1,3 @@
-//! Global keybinding registry.
-//!
-//! 1:1 port of `packages/tui/src/keybindings.ts` (320 LOC). Pulled forward from
-//! task 13 because the select list, settings list and cancellable loader
-//! dispatch through it.
-
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 

@@ -1,20 +1,3 @@
-//! Native replacement for `packages/coding-agent/src/core/permissions/extension.ts`.
-//!
-//! In TypeScript, permission enforcement is registered as a hidden inline
-//! extension: a `tool_call` handler placed first among the factories, plus
-//! `session_start` and `session_shutdown` handlers that reset and abort the
-//! coordinator. `plans/facts/extension-boundary.md` §2.1 records that the whole
-//! approval, auto and yolo behaviour hangs on that one handler, and that the
-//! Rust port replaces it with a native pre-tool gate.
-//!
-//! So this type is the same three entry points without the indirection:
-//! [`PermissionGate::before_tool_call`] is what the agent loop awaits before
-//! running a tool, and [`PermissionGate::session_start`] /
-//! [`PermissionGate::session_shutdown`] are called at the two lifecycle points.
-//! Placing the gate ahead of everything else is no longer a registration order
-//! to get right — there is nothing else that could approve a call the chain
-//! refused.
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -41,7 +24,6 @@ pub struct PermissionGateOptions {
 }
 
 /// A refused call, as the agent loop reports it.
-///
 /// `terminate` ends the batch, so later calls in the same batch do not run
 /// against a state the user just refused to create.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +65,6 @@ impl PermissionGate {
     }
 
     /// The pre-tool gate. `None` lets the call proceed.
-    ///
     /// The turn's cancellation token is what settles a prompt nobody will
     /// answer. Without it, interrupting the agent while the dialog is up
     /// leaves this call waiting forever, and the interrupt waits on the

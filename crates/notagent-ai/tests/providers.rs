@@ -1,8 +1,3 @@
-//! Port of `packages/ai/test/providers.test.ts` (the `builtin providers` block) and
-//! `packages/ai/test/cloudflare-stream.test.ts` (332/64 LOC), plus a differential check
-//! of every factory against `tests/fixtures/providers.jsonl`, which is generated from
-//! the TS `builtinProviders()`.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -60,7 +55,6 @@ impl AuthContext for FakeAuthContext {
 }
 
 /// Answers prompts from a queue and records notifications, like the arrow functions the
-/// TS test passes to `login`.
 struct ScriptedInteraction {
     answers: Mutex<Vec<String>>,
     events: Mutex<Vec<AuthEvent>>,
@@ -178,13 +172,12 @@ async fn builtin_models_registers_every_builtin_provider_with_models() {
 /// Providers whose catalogue comes from a server rather than from a snapshot.
 const DYNAMIC_PROVIDERS: [&str; 5] = ["radius", "mtplx", "ollama", "lmstudio", "custom"];
 
-/// Providers this port adds, which the TypeScript fixture cannot contain.
 /// They are checked on their own (see `cline_pass_is_an_openai_compatible_provider`,
 /// `tests/mtplx_provider.rs` and `tests/openai_compatible_providers.rs`).
 const PORT_ADDED_PROVIDERS: [&str; 5] = ["cline-pass", "mtplx", "ollama", "lmstudio", "custom"];
 
 #[test]
-fn every_builtin_provider_matches_the_typescript_fixture() {
+fn every_builtin_provider_matches_the_catalog_fixture() {
     let fixture: Vec<Value> = include_str!("fixtures/providers.jsonl")
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -233,7 +226,6 @@ fn every_builtin_provider_matches_the_typescript_fixture() {
             "{id} dynamic"
         );
 
-        // Models this port adds keep the fixture readable as the TS snapshot it
         // is: they are named here rather than written into it (v0.1.16).
         let port_added: &[&str] = match id {
             "zai" => &["glm-5.3", "glm-5.3-flash"],
@@ -297,7 +289,6 @@ async fn every_declared_model_api_dispatches() {
             );
         }
 
-        // A single-api provider dispatches every model (TS: `single ?? byApi[api]`),
         // so only the api-map providers reject an unknown api.
         if seen.len() > 1 {
             let ghost = Model {
@@ -679,7 +670,6 @@ async fn requires_cloudflare_ai_gateway_account_and_gateway_config_and_returns_s
     );
 }
 
-/// Port of `test/cloudflare-stream.test.ts`.
 #[tokio::test]
 async fn materializes_the_model_endpoint_before_dispatch() {
     #[derive(Default)]
@@ -1037,7 +1027,6 @@ async fn bedrock_dispatches_through_the_aws_sdk_and_reports_transport_failures()
     );
 }
 
-/// ClinePass is a port addition taken from ../notagent-main-rust, where it is
 /// a provider entry in `crates/notagent_repo/src/provider/provider.json`
 /// (user decision 2026-08-17): an OpenAI-compatible endpoint on an API key,
 /// with the plan covering the tokens — hence no per-token price.

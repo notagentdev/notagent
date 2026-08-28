@@ -1,9 +1,3 @@
-//! Pattern matching of `packages/coding-agent/src/core/package-manager.ts`.
-//!
-//! The four pattern kinds a settings entry or a manifest entry can carry:
-//! a plain include, `!exclude`, `+force-include` and `-force-exclude`. The
-//! first two match through minimatch, the last two only match exactly.
-
 use std::path::Path;
 
 use globset::GlobBuilder;
@@ -63,7 +57,6 @@ pub fn split_patterns(entries: &[String]) -> (Vec<String>, Vec<String>) {
 }
 
 /// `minimatch(value, pattern)`
-///
 /// Deviation (class 3, master substitution minimatch → globset): `literal_separator`
 /// keeps minimatch's rule that `*` does not cross `/`, `**` does.
 fn minimatch(value: &str, pattern: &str) -> bool {
@@ -192,8 +185,6 @@ pub fn is_enabled_by_overrides(file_path: &str, patterns: &[String], base_dir: &
 }
 
 /// `applyPatterns(allPaths, patterns, baseDir)`
-///
-/// Deviation (class 1): the TypeScript returns a `Set` whose insertion order one
 /// caller reads back (`collectManifestFiles` turns it into `allFiles`), so the
 /// port keeps a `Vec` — membership tests go through [`contains_path`].
 pub fn apply_patterns(all_paths: &[String], patterns: &[String], base_dir: &str) -> Vec<String> {
@@ -254,8 +245,6 @@ pub fn contains_path(paths: &[String], path: &str) -> bool {
 }
 
 /// `applyAutoloadDisabledPatterns(allPaths, patterns, baseDir)`
-///
-/// Deviation (class 1): the TypeScript `Map` is a `Vec` of pairs — the caller
 /// iterates it in insertion order, and re-setting a key keeps its first slot.
 pub fn apply_autoload_disabled_patterns(
     all_paths: &[String],

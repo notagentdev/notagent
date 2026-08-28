@@ -1,9 +1,3 @@
-//! Filesystem discovery of `packages/coding-agent/src/core/package-manager.ts`.
-//!
-//! Walking a resource directory, honouring the ignore files it passes on the
-//! way, and the two special layouts: a skill directory stops recursing at its
-//! `SKILL.md`, and `.agents/skills` is scanned from the cwd up to the repo root.
-
 use std::path::{Path, PathBuf};
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -24,11 +18,8 @@ pub enum SkillDiscoveryMode {
     Agents,
 }
 
-/// The accumulating ignore matcher the TypeScript threads through the walk.
-///
 /// Deviation (class 3, master substitution for the npm package `ignore`): the
 /// rules go into a `GitignoreBuilder`, rebuilt when a directory adds new ones.
-/// Like the TypeScript, one matcher is shared by the whole walk — rules a
 /// sibling directory contributed stay visible afterwards.
 pub struct IgnoreMatcher {
     root: PathBuf,
@@ -136,7 +127,6 @@ struct EntryKind {
 }
 
 /// `entry.isDirectory()` / `entry.isFile()`, resolved through a symlink like
-/// the `statSync` branch of the TypeScript. `None` means the `statSync` threw.
 fn entry_kind(entry: &std::fs::DirEntry, full_path: &Path) -> Option<EntryKind> {
     let file_type = entry.file_type().ok()?;
     if file_type.is_symlink() {

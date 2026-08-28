@@ -1,9 +1,3 @@
-//! SQLite session backend (SessionRepo/SessionStorage).
-//!
-//! 1:1 port of `packages/session-backends/sqlite-node` (see
-//! crates/notagent-session-sqlite/PARITY.md).
-//! Port of `packages/session-backends/sqlite-node/src/index.ts`.
-
 pub mod session;
 pub mod session_types;
 pub mod sqlite;

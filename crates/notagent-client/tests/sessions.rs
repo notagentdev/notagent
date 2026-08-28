@@ -1,5 +1,3 @@
-//! Port of `packages/client/test/sessions.test.ts`.
-
 mod support;
 
 use std::sync::atomic::{AtomicUsize, Ordering};

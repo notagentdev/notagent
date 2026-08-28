@@ -1,19 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tasks/notification.ts`.
-//!
-//! How a task that has settled tells the model about it.
-//!
-//! The alternative to this file is telling the model to poll, and a model that
-//! polls spends a turn per check and still learns late. So a completion is
-//! pushed: it arrives as an ordinary message in the conversation, and the model
-//! reacts to it the way it reacts to anything else that shows up.
-//!
-//! Delivery has three cases and they are not interchangeable. While a run is in
-//! progress the note rides into it. When the run is about to end it re-opens it
-//! rather than letting the agent stop with news undelivered. And when nothing is
-//! running it starts a turn of its own. What must never happen is the same
-//! completion arriving twice, which is why every note is keyed and why the
-//! transcript itself is consulted before a second attempt.
-
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
@@ -48,7 +32,6 @@ fn escape_attribute(value: &str) -> String {
 }
 
 /// The sentence a completion leads with.
-///
 /// A plain shell failure carries no reason — its exit code is the reason — so
 /// nothing is invented for it; the code is in the record the model can read.
 fn summarise(info: &TaskInfo) -> String {
@@ -85,7 +68,6 @@ fn summarise(info: &TaskInfo) -> String {
 }
 
 /// What to do about a subagent that did not run to completion.
-///
 /// The two identifiers are spelled out because they look alike and only one of
 /// them works — a model that passes the task id back gets an unknown-subagent
 /// error and usually responds by starting the work over.
@@ -160,9 +142,6 @@ pub fn render_task_notification(info: &TaskInfo, output: Option<&NotificationOut
 }
 
 /// The message that carries a completion into the conversation.
-///
-/// Deviation (class 1): TS returns a `Pick<CustomMessage, …>` — the four fields
-/// the session fills the rest of in. The port names that shape instead of
 /// building a half-initialised `CustomMessage`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskNotificationMessage {
@@ -230,7 +209,6 @@ pub trait TaskNotificationHost: Send + Sync {
 }
 
 /// Announces settled tasks, exactly once each.
-///
 /// The delivered set is the fast path; the transcript scan is the correct one.
 /// Both are needed: the set is empty after a restart, and the transcript is the
 /// only record that survives one.
@@ -348,7 +326,6 @@ impl TaskNotifier {
 }
 
 /// The reminder injected after a compaction.
-///
 /// Compaction removes the messages that started the running tasks, so without
 /// this the model has no idea they exist and starts them again. The list is the
 /// point — a reminder that says "some tasks are running" without saying which

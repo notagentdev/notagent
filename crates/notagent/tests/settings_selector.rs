@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/settings-selector.test.ts` (43 LOC, one
-//! case) plus the submenu flows that suite does not reach.
-//!
-//! The extra expectations come from `tools/gen-settings-selector-oracle.mjs`,
-//! which drives the TypeScript component with the same fixtures and keystrokes
-//! and prints the rendered lines and every callback call.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -44,15 +37,11 @@ const DOWN: &str = "\x1b[B";
 
 type Calls = Rc<RefCell<Vec<(&'static str, String)>>>;
 
-/// The fixture of `tools/gen-settings-selector-oracle.mjs`.
 fn config() -> SettingsConfig {
     SettingsConfig {
         auto_compact: true,
-        // Port addition (v0.1.9), not in the TS oracle fixture.
         block_style_badge: true,
-        // Port addition (v0.1.19), not in the TS oracle fixture.
         atomic_leases: false,
-        // Port addition (v0.1.20), not in the TS oracle fixture.
         bash_filter: false,
         show_images: false,
         image_width_cells: 80,
@@ -91,7 +80,6 @@ fn config() -> SettingsConfig {
         default_project_trust: DefaultProjectTrust::Ask,
         clear_on_shrink: true,
         show_terminal_progress: true,
-        // Addition (v0.1.34), not in the TS oracle fixture.
         show_workspace_in_footer: false,
         tiered_thinking: false,
         tui_mode: TuiMode::Regular,
@@ -101,7 +89,6 @@ fn config() -> SettingsConfig {
     }
 }
 
-/// Records every callback the component fires, as the oracle's proxy does.
 fn callbacks(calls: &Calls) -> SettingsCallbacks {
     macro_rules! record {
         ($name:literal, $calls:expr, $value:ident => $rendered:expr) => {{
@@ -169,7 +156,6 @@ impl Harness {
     }
 }
 
-/// The one case of `settings-selector.test.ts`.
 #[test]
 fn cycles_through_fullscreen_settings() {
     let _guard = test_lock();
@@ -202,7 +188,6 @@ fn cycles_through_fullscreen_settings() {
     );
 }
 
-/// `case2` of the oracle: the timeout row shows a label, not a number.
 #[test]
 fn the_http_idle_timeout_row_cycles_through_its_labels() {
     let _guard = test_lock();
@@ -218,7 +203,6 @@ fn the_http_idle_timeout_row_cycles_through_its_labels() {
     );
 }
 
-/// `case3` of the oracle: the warnings submenu.
 #[test]
 fn the_warnings_submenu_toggles_and_returns() {
     let _guard = test_lock();
@@ -240,7 +224,6 @@ fn the_warnings_submenu_toggles_and_returns() {
     assert!(harness.take_calls().is_empty());
 }
 
-/// `case4` of the oracle: the thinking submenu writes the chosen level back
 /// into the row it came from.
 #[test]
 fn the_thinking_submenu_selects_a_level() {
@@ -267,7 +250,6 @@ fn the_thinking_submenu_selects_a_level() {
     );
 }
 
-/// `case5` and `case6` of the oracle: the single-mode theme menu.
 #[test]
 fn the_theme_submenu_selects_and_cancels() {
     let _guard = test_lock();
@@ -315,7 +297,6 @@ fn the_theme_submenu_selects_and_cancels() {
     );
 }
 
-/// `case7` of the oracle: single → automatic, pick a light theme, apply.
 #[test]
 fn the_theme_submenu_builds_an_automatic_setting() {
     let _guard = test_lock();
@@ -391,7 +372,6 @@ fn the_theme_submenu_builds_an_automatic_setting() {
     );
 }
 
-/// `case8` of the oracle: an automatic setting opens the automatic menu, and
 /// "Change mode" goes back to the single list with the active theme selected.
 #[test]
 fn an_automatic_theme_setting_opens_the_automatic_menu() {

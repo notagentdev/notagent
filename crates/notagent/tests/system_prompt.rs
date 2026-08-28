@@ -1,5 +1,3 @@
-//! Ported from `packages/coding-agent/test/system-prompt.test.ts`.
-
 use notagent::core::system_prompt::{BuildSystemPromptOptions, build_system_prompt};
 
 fn cwd() -> String {

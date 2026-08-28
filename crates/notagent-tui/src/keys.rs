@@ -1,13 +1,3 @@
-//! Keyboard input handling for terminal applications.
-//!
-//! 1:1 port of `packages/tui/src/keys.ts` (1401 LOC). Supports both legacy
-//! terminal sequences and the Kitty keyboard protocol.
-//! See <https://sw.kovidgoyal.net/kitty/keyboard-protocol/>.
-//!
-//! Symbol keys are supported as well, however some ctrl+symbol combos overlap
-//! with ASCII codes, e.g. ctrl+[ = ESC. Those can still be used for ctrl+shift
-//! combos.
-
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -17,11 +7,9 @@ use regex::Regex;
 // Global Kitty Protocol State
 // =============================================================================
 
-/// Process-global like the module-level `_kittyProtocolActive` in TS.
 static KITTY_PROTOCOL_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Set the global Kitty keyboard protocol state.
-///
 /// Called by `ProcessTerminal` after detecting protocol support.
 pub fn set_kitty_protocol_active(active: bool) {
     KITTY_PROTOCOL_ACTIVE.store(active, Ordering::SeqCst);
@@ -46,7 +34,6 @@ fn is_symbol_key(c: char) -> bool {
 }
 
 /// `String.fromCharCode(code)`: JavaScript truncates to 16 bits.
-///
 /// Returns `None` for lone surrogates, which Rust `char` cannot represent; no
 /// surrogate is a symbol key, so the classification result is unchanged.
 fn js_from_char_code(code: i64) -> Option<char> {
@@ -311,9 +298,7 @@ struct ParsedModifyOtherKeysSequence {
 }
 
 /// Check whether the input is a key release event.
-///
 /// Only meaningful when the Kitty keyboard protocol with flag 2 is active.
-/// Deliberately substring-based, exactly as in TS.
 pub fn is_key_release(data: &str) -> bool {
     // Don't treat bracketed paste content as key release, even if it contains
     // patterns like ":3F" (e.g. bluetooth MAC addresses like "90:62:3F:A5").
@@ -332,7 +317,6 @@ pub fn is_key_release(data: &str) -> bool {
 }
 
 /// Check whether the input is a key repeat event.
-///
 /// Only meaningful when the Kitty keyboard protocol with flag 2 is active.
 pub fn is_key_repeat(data: &str) -> bool {
     if data.contains("\x1b[200~") {
@@ -643,7 +627,6 @@ fn parse_key_id(key_id: &str) -> Option<ParsedKeyId> {
 }
 
 /// Match input data against a key identifier string.
-///
 /// Supported identifiers: single keys ("escape", "tab", "enter", "backspace",
 /// "delete", "home", "end", "space"), arrows, and modifier combinations such as
 /// "ctrl+c", "shift+tab", "alt+enter", "super+k", "ctrl+shift+p".
@@ -1140,7 +1123,6 @@ pub fn parse_key(data: &str) -> Option<String> {
 const KITTY_PRINTABLE_ALLOWED_MODIFIERS: i64 = modifiers::SHIFT | LOCK_MASK;
 
 /// Decode a Kitty CSI-u sequence into a printable character, if applicable.
-///
 /// Only plain or Shift-modified keys are accepted; Ctrl, Alt and unsupported
 /// modifier combinations are rejected (they are handled by keybinding matching).
 /// Prefers the shifted keycode when Shift is held and one is reported.
@@ -1176,7 +1158,6 @@ pub fn decode_kitty_printable(data: &str) -> Option<String> {
         return None;
     }
 
-    // `String.fromCodePoint` throws for invalid code points; TS catches it.
     char::from_u32(u32::try_from(effective_codepoint).ok()?).map(|c| c.to_string())
 }
 

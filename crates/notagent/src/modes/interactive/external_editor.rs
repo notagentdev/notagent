@@ -1,8 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/external-editor.ts` (47 LOC).
-//!
-//! Hands the prompt to the user's `$EDITOR` (Ctrl+G) and reads it back.
-
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -25,8 +20,6 @@ pub enum ExternalEditorResult {
 }
 
 /// Run `options.command` on a temporary file holding `options.content`.
-///
-/// Deviation (class 1): TS avoids `spawnSync` because a synchronous Node child
 /// keeps libuv's console read alive on Windows, which then races the editor for
 /// the input buffer. Rust has no such reader — the terminal is only read while
 /// the pump runs, and the caller stops it before handing the console over — so
@@ -62,7 +55,6 @@ fn run_editor(options: &ExternalEditorOptions, file_path: &PathBuf) -> ExternalE
     let _ = stdout.flush();
 
     let mut command = if cfg!(windows) {
-        // TS passes `shell: true` on Windows so `code --wait` resolves the
         // `.cmd` shim; cmd.exe does that lookup.
         let mut command = Command::new("cmd");
         command.arg("/C").arg(editor);

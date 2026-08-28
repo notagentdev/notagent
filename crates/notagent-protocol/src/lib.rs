@@ -1,8 +1,3 @@
-//! CBOR binary protocol for remote sessions (version 1).
-//!
-//! 1:1 port of `packages/protocol` (see crates/notagent-protocol/PARITY.md).
-//! Port of `packages/protocol/src/index.ts`.
-
 pub mod cbor;
 pub mod codec;
 pub mod framing;

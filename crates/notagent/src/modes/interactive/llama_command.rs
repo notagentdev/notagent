@@ -1,24 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/extensions/llama/index.ts` (228 LOC).
-//!
-//! The `/llama` command: it reads the router catalog of the configured
-//! llama.cpp server, refreshes the provider from it, and loads, unloads or
-//! downloads a model.
-//!
-//! Deviation (class 2): the file is the llama extension's factory in
-//! TypeScript. With the extension system gone
-//! (`plans/facts/extension-boundary.md` §2.3) `registerProvider` becomes the
-//! native registration in `core/agent_session_services.rs` and
-//! `registerCommand("llama", …)` becomes a command of the interactive mode's
-//! own table. The `ctx.mode !== "tui"` guard goes with it: without the
-//! extension command dispatcher there is nothing that would run `/llama` in
-//! print or RPC mode, where the text stays an ordinary prompt.
-//!
-//! Deviation (class 1, structural): the dialogs of `ui.ts` answer over a
-//! channel instead of resolving promises (see
-//! [`super::components::llama`]); [`LlamaUi`] is the flow's side of it and
-//! turns each answer back into an awaited value, so the control flow below
-//! stays the one TypeScript has.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -64,8 +43,6 @@ fn model_is_loaded(model: &LlamaModelInfo) -> bool {
 }
 
 /// `isConnectionError(error)`
-///
-/// Deviation (class 3): TypeScript matches the wording of `node:fetch`
 /// (`fetch failed`, plus `timeout`/`network` for the messages a server or a
 /// DNS layer produces). `reqwest` reports every unreachable host, refused
 /// connection, DNS failure and exceeded deadline as
@@ -149,7 +126,6 @@ pub struct LlamaUi {
 
 impl LlamaUi {
     /// The next answer of the dialog `seq`; answers of dialogs that have since
-    /// been replaced are dropped, like the promises TypeScript lets go.
     async fn await_answer(&mut self, seq: u64) -> Option<LlamaAnswer> {
         loop {
             let (answered, answer) = self.answers.recv().await?;
@@ -348,7 +324,6 @@ impl LlamaCommand {
             }
         }
 
-        // Outside the `try` in TypeScript: a failure here is not restored.
         if replace {
             for model in &loaded {
                 self.client
@@ -545,7 +520,6 @@ impl LlamaCommand {
     }
 
     /// `runWithProgress(ui, options)` — `Ok(None)` is `{ cancelled: true }`.
-    ///
     /// Deviation (class 1): the run is a task, not a future awaited in place.
     /// A JavaScript promise keeps running while the confirmation dialog is up
     /// and `completed` may flip in the meantime; a Rust future would be
@@ -641,8 +615,6 @@ struct ProgressOptions {
 }
 
 /// The view and the flow half of the manager, both fresh.
-///
-/// `showLlamaUi(ctx, run)` in TypeScript: the caller mounts the returned view
 /// through the mode's own `ctx.ui.custom` equivalent and drives
 /// [`run_llama_command`] to completion.
 pub fn create_llama_ui(request_render: Rc<dyn Fn()>) -> (Rc<RefCell<LlamaView>>, LlamaUi) {
@@ -656,7 +628,6 @@ pub fn create_llama_ui(request_render: Rc<dyn Fn()>) -> (Rc<RefCell<LlamaView>>,
 }
 
 /// The `handler` of the registered `llama` command, minus the client setup.
-///
 /// The body of `showLlamaUi(ctx, async (ui) => { … })`.
 pub async fn run_llama_command(command: &LlamaCommand, ui: &mut LlamaUi) -> Result<(), String> {
     let server_url = command.client.server_url.clone();

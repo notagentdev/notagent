@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/args.ts`.
-//!
-//! One pass over `argv`, no parser library. Two decisions are worth naming.
-//!
-//! An unknown long flag is an error rather than something to forward: in
-//! TypeScript it was collected for an extension to claim, and with the extension
-//! system gone there is nobody left to claim it, so silently ignoring it would
-//! turn a typo into a wrong run (`plans/facts/extension-boundary.md` §6).
-//!
-//! `--auto` and `--yolo` together are a conflict the caller has to resolve
-//! rather than a last-one-wins: they decide how much runs unsupervised, and
-//! guessing is the wrong kindness there.
-
 use std::collections::BTreeMap;
 
 use notagent_agent::types::ThinkingLevel;
@@ -411,8 +398,6 @@ pub fn parse_args(args: &[String]) -> Args {
 }
 
 /// The error for flags nothing claimed.
-///
-/// Deviation (class 2): TypeScript forwards them to the extensions and only
 /// errors on the ones no extension registered. With the extension system gone
 /// every unknown flag reaches this, which is why parsing keeps them instead of
 /// erroring inline — the message names all of them at once, as it did before.

@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/test/cache-stats.test.ts` (143 LOC).
-//!
-//! `collectCacheMisses` keys its result by session entry id rather than by
-//! `AssistantMessage` reference (see `core/cache_stats.rs`), so the entries below
-//! carry distinct ids where the TypeScript reuses one.
-
 use notagent::core::cache_stats::{
     ModelPriceSource, collect_cache_misses, compute_cache_waste, detect_cache_miss,
 };

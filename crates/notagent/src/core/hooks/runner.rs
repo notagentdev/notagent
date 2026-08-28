@@ -1,21 +1,3 @@
-//! Port of `packages/coding-agent/src/core/hooks/runner.ts`.
-//!
-//! Running hooks.
-//!
-//! A hook is a shell command. It receives the event payload as JSON on standard
-//! input rather than as arguments, so a script reads structured data and no
-//! value has to survive shell quoting.
-//!
-//! Every run is bounded. A hung script must not stall the agent, so the timeout
-//! kills the child and the outcome counts as a failure — never as approval,
-//! which is the direction that matters for a blocking hook.
-//!
-//! Only PreToolUse can decide about a call. It refuses by exiting 2, or states a
-//! decision by printing JSON. What it writes becomes the reason the user sees,
-//! so a refusal explains itself. Any other non-zero exit is a broken hook rather
-//! than a refusal — otherwise a typo in a command name would block every tool
-//! call in the session.
-
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -46,7 +28,6 @@ pub struct HookRunResult {
 }
 
 /// What a PreToolUse hook decided about one tool call.
-///
 /// Three-valued rather than block-or-not, because the permission chain has
 /// three user-authored slots and a hook is how they are filled. Most hooks
 /// abstain: a formatter or a logger observes the call and has no opinion about
@@ -248,23 +229,19 @@ fn parse_json_object(text: &str) -> Option<Map<String, Value>> {
 pub const REFUSAL_EXIT_CODE: i32 = 2;
 
 /// Reads what a hook decided.
-///
 /// A hook states a decision by printing JSON: `{"permission": "allow" | "ask" |
 /// "deny", "reason": "..."}`. The reference spellings `permissionDecision` and
 /// `decision` with `approve`/`block` are accepted too, so a hook written against
 /// it works here unchanged.
-///
 /// Without such output the exit status decides, and only exit 2 refuses. Every
 /// other non-zero exit is a broken hook, not a decision: a command that does not
 /// exist leaves 127, and a hook with a typo in its name would otherwise refuse
 /// every tool call in the session while reporting nothing more useful than the
 /// number. The reference draws the same line, so a hook written for it keeps its
 /// meaning here.
-///
 /// A timeout still refuses, deliberately unlike the reference. A hook that hangs
 /// has decided nothing, and treating silence as consent is the one direction a
 /// blocking hook must never fail in.
-///
 /// Exit zero without a stated decision abstains rather than approves: an
 /// ordinary hook that happens to succeed must not silently widen what is
 /// permitted.
@@ -320,13 +297,11 @@ pub fn is_hook_fault(result: &HookRunResult) -> bool {
 }
 
 /// Runs the PreToolUse hooks and combines what they decided.
-///
 /// A denial ends the run: the call is not happening, so later hooks would react
 /// to an action that never occurs. Anything else keeps going, because a hook
 /// that allows must not be able to suppress a later one that refuses — order
 /// would otherwise decide safety, and the order of a hook file is not something
 /// a user thinks of as a security setting.
-///
 /// Among what remains, the strictest wins: asking beats allowing, allowing beats
 /// abstaining.
 pub async fn decide_tool_call(

@@ -1,14 +1,3 @@
-//! Ports of the remaining key-gated suites:
-//! `context-overflow.test.ts` (771), `image-tool-result.test.ts` (550),
-//! `openai-responses-tool-result-images.test.ts` (194),
-//! `openai-responses-reasoning-replay-e2e.test.ts` (291),
-//! `cross-provider-handoff.test.ts` (522), `cache-retention.test.ts` (532, e2e half) and
-//! `bedrock-thinking-payload.test.ts` (266, e2e half).
-//!
-//! One test per TS `describe` block, gated as in TS. The payload halves of
-//! `cache-retention` and `bedrock-thinking-payload` are offline and live in
-//! `anthropic_params.rs`, `openai_responses_params.rs` and `bedrock_converse_stream.rs`.
-
 mod e2e_support;
 
 use e2e_support::*;
@@ -18,7 +7,6 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
-// context-overflow.test.ts
 // ---------------------------------------------------------------------------
 
 const LOREM_IPSUM: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ";
@@ -221,7 +209,6 @@ async fn overflow_github_copilot_oauth() {
         resolve_api_key("github-copilot").await,
         "github-copilot OAuth"
     );
-    // TS picks the first Gemini model Copilot offers, then the Claude route.
     if let Some(google_model) = notagent_ai::model_catalog::get_builtin_models("github-copilot")
         .into_iter()
         .find(|candidate| candidate.id.starts_with("gemini-"))
@@ -320,7 +307,6 @@ async fn overflow_openrouter() {
 }
 
 // ---------------------------------------------------------------------------
-// image-tool-result.test.ts
 // ---------------------------------------------------------------------------
 
 fn empty_tool(name: &str, description: &str) -> Tool {
@@ -569,7 +555,6 @@ async fn image_tool_openai_codex_provider() {
 }
 
 // ---------------------------------------------------------------------------
-// openai-responses-tool-result-images.test.ts
 // ---------------------------------------------------------------------------
 
 /// Asserts that the replayed payload carries the tool result image inside
@@ -715,7 +700,6 @@ async fn openai_codex_sends_tool_result_images_in_function_call_output() {
 }
 
 // ---------------------------------------------------------------------------
-// openai-responses-reasoning-replay-e2e.test.ts / cross-provider-handoff.test.ts
 // ---------------------------------------------------------------------------
 
 /// Runs a two-turn conversation whose first turn is produced by `first_model` and whose
@@ -801,7 +785,6 @@ async fn openai_responses_replays_anthropic_history() {
     .await;
 }
 
-/// `cross-provider-handoff.test.ts` — every configured provider pair hands its history to
 /// the next without erroring.
 #[tokio::test(flavor = "multi_thread")]
 async fn cross_provider_handoff() {
@@ -862,11 +845,9 @@ async fn cross_provider_handoff() {
 }
 
 // ---------------------------------------------------------------------------
-// cache-retention.test.ts (E2E half)
 // ---------------------------------------------------------------------------
 
 /// The two `NOTAGENT_CACHE_RETENTION` cases that need a live key. The variable is read
-/// per request through `ProviderRequestOptions::env`, so the port passes it explicitly
 /// instead of mutating the process environment (which would race across tests).
 #[tokio::test(flavor = "multi_thread")]
 async fn anthropic_cache_ttl_follows_notagent_cache_retention() {
@@ -925,7 +906,6 @@ async fn openai_responses_prompt_cache_retention_follows_notagent_cache_retentio
 }
 
 // ---------------------------------------------------------------------------
-// bedrock-thinking-payload.test.ts (E2E half)
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]

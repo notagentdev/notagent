@@ -1,5 +1,3 @@
-//! Hilfsmodule des LLM-Layers (`packages/ai/src/utils/`).
-
 pub mod abort;
 pub mod deferred_tools;
 pub mod diagnostics;

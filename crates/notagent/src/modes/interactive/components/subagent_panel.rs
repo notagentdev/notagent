@@ -1,19 +1,3 @@
-//! The subagents, below the footer.
-//!
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/subagent-panel.ts` (111 LOC).
-//!
-//! A delegated run is the one thing the agent does that is otherwise invisible:
-//! it produces no output until it answers, it can run for minutes, and it is
-//! spending money the whole time. The transcript shows that a delegation was
-//! started and then nothing until it returns.
-//!
-//! So each running child gets a row: its name, what it may do, what it was
-//! asked, how long it has been at it, and what it has spent. The parent sits
-//! above them as the thing they were split off from. A finished child keeps
-//! its row for a few seconds so its outcome — the marker turning green or red
-//! — registers before the row leaves.
-
 use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
@@ -64,7 +48,6 @@ pub fn format_elapsed(started_at: i64, now: i64) -> String {
 }
 
 /// Thousands as `17.9k`.
-///
 /// The decimal is kept well past ten thousand because that is the band a
 /// subagent actually lives in, and `17.9k` versus `18.2k` is the difference a
 /// reader is looking for. Past a hundred thousand the tenth stops carrying
@@ -124,7 +107,6 @@ pub fn build_subagent_rows(tasks: &[TaskInfo], now: i64) -> Vec<SubagentRow> {
 
 /// The name as the row shows it: the star, and the restriction when there is
 /// one.
-///
 /// A read-only child says so; a worker shows only its name. Same rule the footer
 /// applies to modes (`format_mode_label`) and for the same reason — the
 /// restriction is the part worth a column, and "worker" is what a subagent is
@@ -178,7 +160,6 @@ impl Component for SubagentPanel {
 
         let shown = &rows[..rows.len().min(MAX_ROWS)];
         // `Math.max(...shown.map((row) => row.name.length))` — JavaScript counts
-        // UTF-16 units; the port counts characters, which agrees for every star
         // name and keeps the column aligned for the rest.
         let name_width = shown
             .iter()

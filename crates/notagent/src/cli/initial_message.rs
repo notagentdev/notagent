@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/initial-message.ts`.
-//!
-//! Piped stdin, `@file` text and the first CLI message become one prompt. The
-//! first message is *consumed* — it leaves the message list, so the caller's
-//! loop over the remaining messages does not send it twice.
-
 use notagent_ai::types::ImageContent;
 
 use crate::cli::args::Args;

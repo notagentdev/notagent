@@ -1,10 +1,3 @@
-//! Port of `packages/ai/test/sampling-options.test.ts` (128 LOC).
-//!
-//! TS captures the request body through the `onPayload` hook of `streamSimple`. The
-//! Rust port walks the same two steps that `streamSimple` walks — `buildBaseOptions`
-//! merges the model- and request-level sampling params, `buildParams` writes them into
-//! the body — so the assertions stay on the payload, as in TS.
-
 use notagent_ai::api::anthropic_params::{
     AnthropicOptions, build_params as build_anthropic_params, is_oauth_token,
 };
@@ -95,7 +88,6 @@ fn simple_options(
     }
 }
 
-/// The `streamSimple` path of `openai-completions.ts`: base options first, then params.
 fn capture_completions_payload(model: &Model, options: &SimpleStreamOptions) -> Value {
     let context = make_context();
     let base = build_base_options(model, &context, Some(options), None);
@@ -119,7 +111,6 @@ fn capture_completions_payload(model: &Model, options: &SimpleStreamOptions) -> 
     .expect("params")
 }
 
-/// The same for `anthropic-messages.ts`, whose options carry no sampling params at all.
 fn capture_anthropic_payload(model: &Model, options: &SimpleStreamOptions) -> Value {
     let context = make_context();
     let base = build_base_options(model, &context, Some(options), None);

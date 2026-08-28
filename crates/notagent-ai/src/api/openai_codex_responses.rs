@@ -1,11 +1,3 @@
-//! OpenAI Codex Responses API (the ChatGPT backend).
-//!
-//! 1:1 port of `packages/ai/src/api/openai-codex-responses.ts`. The message, tool and
-//! stream handling come from [`crate::api::openai_responses_shared`]; specific to Codex
-//! are the request body, the JWT account id, the zstd-compressed SSE request, the
-//! WebSocket transport with its session-scoped connection cache, and the fallback from
-//! WebSocket to SSE with its `provider_transport_failure` diagnostics.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -123,7 +115,6 @@ impl CodexReasoningEffort {
 // Errors
 // ---------------------------------------------------------------------------
 
-/// Errors of this provider, split the way the TS classes are: only `CodexApiError` and
 /// `CodexProtocolError` count as non-transport errors and stop the WebSocket fallback.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodexError {
@@ -407,7 +398,6 @@ pub fn build_request_body(
             CodexReasoningEffort::Level(level) => level.into(),
         };
         // `?? fallback` swallows both a missing entry and an explicit null, so the
-        // `effort !== null` guard in TS can never fire.
         let effort = model
             .thinking_level_map
             .as_ref()
@@ -537,7 +527,6 @@ pub fn extract_account_id(token: &str) -> Result<String, CodexError> {
         .ok_or_else(failed)
 }
 
-/// Header list in insertion order, with the `Headers` set/delete semantics of TS.
 #[derive(Debug, Clone, Default)]
 pub struct CodexHeaders(Vec<(String, String)>);
 
@@ -602,7 +591,6 @@ fn build_base_codex_headers(
 
 /// `notagent (<platform> <release>; <arch>)`, the string `node:os` produces.
 pub fn codex_user_agent() -> String {
-    // TS reads `os.platform()`, `os.release()` and `os.arch()`; the Rust equivalents are
     // compile-time constants plus the kernel release from uname.
     let platform = match std::env::consts::OS {
         "macos" => "darwin",
@@ -876,7 +864,6 @@ fn map_codex_event(
 // ---------------------------------------------------------------------------
 
 /// `parseSSE(response, signal)` — the Codex-specific parser, not the shared decoder.
-///
 /// It splits on `\n\n`, keeps only `data:` lines and joins them with newlines. Unlike a
 /// spec SSE decoder it never looks at `event:` names.
 #[derive(Debug, Default)]
@@ -976,13 +963,10 @@ type WebSocketStream =
 /// server for the lifetime of the WebSocket connection; a continuation replayed over a
 /// fresh connection is rejected with "Invalid `previous_response_id`".
 struct CachedWebSocketConnection {
-    /// `None` while a request has the socket checked out (TS `busy: true`).
     socket: Option<WebSocketStream>,
     continuation: Option<ContinuationState>,
     /// `entry.createdAt` — the age limit closes a connection after 55 minutes.
     created_at: i64,
-    /// When the entry was last released; TS arms an idle timer here, the Rust port
-    /// checks the timestamps lazily on the next acquire (substitution class 3: an
     /// idle-expired socket lingers as an open TCP connection until then).
     last_used_at: i64,
     /// Guards release against an entry that was cleaned up and recreated meanwhile.
@@ -991,7 +975,6 @@ struct CachedWebSocketConnection {
 
 #[derive(Default)]
 struct CodexWebSocketState {
-    /// sessionId → accountId → cached connection (TS `websocketSessionCache`).
     connections: BTreeMap<String, BTreeMap<String, CachedWebSocketConnection>>,
     next_generation: u64,
     debug_stats: BTreeMap<String, OpenAICodexWebSocketDebugStats>,
@@ -1001,7 +984,6 @@ struct CodexWebSocketState {
 fn websocket_state() -> &'static Mutex<CodexWebSocketState> {
     static STATE: OnceLock<Mutex<CodexWebSocketState>> = OnceLock::new();
     STATE.get_or_init(|| {
-        // TS registers the cache cleanup at module load; the Rust port does it on first
         // use, which is the earliest point the state exists.
         crate::session_resources::register_session_resource_cleanup(Arc::new(
             |session_id: Option<&str>| {
@@ -1040,7 +1022,6 @@ pub fn reset_openai_codex_websocket_debug_stats(session_id: Option<&str>) {
 }
 
 /// `closeOpenAICodexWebSocketSessions(sessionId?)` — dropping an entry closes its TCP
-/// connection; the close frame TS sends ("debug_close") is skipped in the sync path.
 pub fn close_openai_codex_websocket_sessions(session_id: Option<&str>) {
     let mut state = websocket_state().lock().expect("poisoned");
     match session_id {
@@ -1214,7 +1195,6 @@ struct AcquiredWebSocket {
     cache_key: Option<(String, String, u64)>,
 }
 
-/// `isWebSocketReusable(socket)` — TS reads `readyState`; the Rust port polls the
 /// stream once without blocking: a pending close frame, error, or EOF means the server
 /// already gave up on the connection.
 fn websocket_is_reusable(socket: &mut WebSocketStream) -> bool {
@@ -1271,7 +1251,6 @@ async fn acquire_websocket(
             continuation: Option<ContinuationState>,
             generation: u64,
         },
-        /// Another request has the socket checked out — connect uncached (TS `busy`).
         Busy,
         Vacant,
     }
@@ -1287,7 +1266,6 @@ async fn acquire_websocket(
             None => CacheLookup::Vacant,
             Some(entry) if entry.socket.is_none() => CacheLookup::Busy,
             Some(entry) => {
-                // `isWebSocketSessionExpired(entry)` plus the idle timer TS schedules
                 // on release, both checked lazily here.
                 let expired = now_ms - entry.created_at >= SESSION_WEBSOCKET_MAX_AGE_MS as i64
                     || now_ms - entry.last_used_at >= SESSION_WEBSOCKET_CACHE_TTL_MS as i64;
@@ -1331,7 +1309,6 @@ async fn acquire_websocket(
             }
             let _ = socket.close(None).await;
             remove_cached_connection(session_id, account_id, Some(generation));
-            // Fall through to a fresh cached connection, like the TS fallthrough.
         }
         CacheLookup::Busy => {
             let socket = connect_websocket(url, headers, request, connect_timeout_ms).await?;
@@ -1345,7 +1322,6 @@ async fn acquire_websocket(
         CacheLookup::Vacant => {}
     }
 
-    // TS registers the entry after the connect resolves; the Rust port inserts a busy
     // placeholder first so a concurrent request goes uncached instead of racing the slot.
     let generation = {
         let mut state = websocket_state().lock().expect("poisoned");
@@ -1381,7 +1357,6 @@ async fn acquire_websocket(
     }
 }
 
-/// The `release({ keep })` closure from TS `acquireWebSocket`, plus settling the
 /// entry's continuation while the slot is written back.
 async fn release_websocket(
     cache_key: Option<(String, String, u64)>,
@@ -1429,7 +1404,6 @@ async fn release_websocket(
 fn empty_output(model: &Model, timestamp: i64) -> AssistantMessage {
     AssistantMessage {
         content: Vec::new(),
-        // TS pins the api to the literal, independent of `model.api`.
         api: "openai-codex-responses".to_string(),
         provider: model.provider.clone(),
         model: model.id.clone(),
@@ -1530,7 +1504,6 @@ fn empty_placeholder() -> AssistantMessage {
     }
 }
 
-/// `streamSimple(model, context, options)` — errors without an api key, like TS.
 pub fn stream_simple(
     model: Model,
     context: Context,
@@ -2143,7 +2116,6 @@ async fn read_body(body: FetchBody) -> String {
 // ---------------------------------------------------------------------------
 
 /// `processWebSocketStream(...)`
-///
 /// Returns whether the stream had started when it failed, which decides between a
 /// fallback to SSE and a hard error.
 #[allow(clippy::too_many_arguments)]
@@ -2256,7 +2228,6 @@ async fn run_websocket_stream(
             };
             // Settle what the cache entry keeps: a fresh continuation from this
             // response; otherwise the one taken at acquire, unless the delta check
-            // discarded it (TS clears `entry.continuation` in place there).
             let settled = if new_continuation.is_some() {
                 new_continuation
             } else if !use_cached_context || keep_continuation {
@@ -2292,7 +2263,6 @@ async fn connect_websocket(
     {
         let request_headers = client_request.headers_mut();
         for (key, value) in headers.pairs() {
-            // TS deletes `OpenAI-Beta` from the connect headers of the raw socket.
             if key.eq_ignore_ascii_case("OpenAI-Beta") {
                 continue;
             }

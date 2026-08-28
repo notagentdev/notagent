@@ -1,18 +1,3 @@
-//! Lending our tools out, over the wire (port addition, v0.1.22).
-//!
-//! Driven with this port's own MCP client against the endpoint, because that is
-//! the only way to find out whether an external agent could actually use it: a
-//! handler tested by calling its methods directly would pass with the transport,
-//! the router and the token check all broken.
-//!
-//! One test, five scenarios, on purpose. The endpoint is process-wide and its
-//! server runs on whichever runtime first started it; a second `#[tokio::test]`
-//! brings its own runtime, and the first one to finish takes the server down
-//! while the static URL still points at it. The application has one runtime for
-//! its whole life, so this is a property of the test harness rather than of the
-//! endpoint — but splitting these into separate tests makes them fail for a
-//! reason that has nothing to do with what they check.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -77,7 +62,6 @@ impl ToolDefinition for Echo {
 }
 
 /// One tool, behind a stand-in for the permission chain.
-///
 /// `permitted` is what the session's chain would have decided. The endpoint
 /// must never run the tool when it says no, and the tool must record that it
 /// did not run — a refusal that still executes is the failure this exists to

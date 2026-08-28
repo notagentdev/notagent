@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/test/delegation-run.test.ts`.
-//!
-//! Running a child.
-//!
-//! A real Agent runs against a stubbed provider, so what is asserted is the
-//! wiring that decides what a subagent may do: its tool allowlist, the type and
-//! skill blocks it starts from, and what it borrowed from its parent.
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -391,7 +383,6 @@ async fn runs_on_the_parents_model_when_no_override_is_set() {
 
 #[tokio::test]
 async fn runs_on_the_override_model_when_one_is_set() {
-    // `/subagent-model` (port addition, v0.1.6): the override replaces the
     // model alone; transport and prompt still come from the parent.
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mut cheap = model();

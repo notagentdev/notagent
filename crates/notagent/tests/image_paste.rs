@@ -1,5 +1,4 @@
 //! Images pasted into the input box.
-//!
 //! A paste used to put its temporary file path into the editor. Now it inserts
 //! `[Image #1]` and the bytes ride along with the message. What is pinned here
 //! is the parsing half — which markers resolve, in what order, and that a

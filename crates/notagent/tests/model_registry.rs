@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/model-registry.test.ts` (1 982 LOC).
-//!
-//! The `dynamic provider lifecycle` block is ported only where it does not depend on
-//! the extension `registerProvider(name, config)` API — that API is dropped with the
-//! extension system (deviation class 2, extension-boundary §6). See
-//! `crates/notagent/PARITY.md`, section "B: model layer", for the excluded cases.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

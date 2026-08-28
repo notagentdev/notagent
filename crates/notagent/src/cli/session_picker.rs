@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/session-picker.ts`.
-//!
-//! The `--resume` dialog: pick a session from this project or from all of them.
-//!
-//! Deviation (class 1): TypeScript awaits the session loaders inside the
-//! component and resolves the choice through a `new Promise`. The port keeps
-//! both outside — the component hands out load requests
-//! (`take_pending_load`/`apply_load_result`, workstream A's seam) and the choice
-//! arrives on a `oneshot` — so the loop below owns every await and the component
-//! stays synchronous.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -30,7 +19,6 @@ pub enum SessionChoice {
     Selected(String),
     /// Escape: no session was picked.
     Cancelled,
-    /// Ctrl+C: the caller exits with code 0, as `process.exit(0)` does in TS.
     Exit,
 }
 
@@ -88,11 +76,9 @@ pub async fn select_session(
 }
 
 /// The render loop of the picker.
-///
 /// It is written out rather than delegated to `run_until` because the picker has
 /// a third thing to do: run the session loads the component asks for. They are
 /// awaited as their own branch so the list keeps rendering while a scope loads,
-/// the way the TypeScript promise does.
 async fn run_picker_loop(
     tui: &mut StartupTui,
     selector: &Rc<RefCell<SessionSelectorComponent>>,

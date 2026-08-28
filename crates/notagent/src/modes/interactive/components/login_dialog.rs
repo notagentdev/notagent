@@ -1,19 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/login-dialog.ts` (233 LOC).
-//!
-//! The dialog that replaces the editor while an OAuth login runs: it shows the
-//! verification URL, opens the browser, and collects the code the provider asks
-//! for.
-//!
-//! Deviations:
-//!   * Class 3: `AbortController`/`AbortSignal` → `CancellationToken`; the
-//!     `Promise` of `showPrompt`/`showManualInput` → `oneshot::Receiver`, which
-//!     carries the same "resolve once, reject on cancel" semantics.
-//!   * Class 1: `tui.requestRender()` → an injected `Rc<dyn Fn()>`, as in the
-//!     other ported dialogs; `input.onSubmit`/`onEscape` set a flag that
-//!     `handle_input` reads right after `Input::handle_input`, because the
-//!     callbacks cannot re-enter the dialog that owns the input.
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -48,7 +32,6 @@ impl std::error::Error for LoginCancelled {}
 /// The answer of an input step, or the cancellation that ended it.
 pub type LoginInput = oneshot::Receiver<Result<String, LoginCancelled>>;
 
-/// An OSC 8 hyperlink, spelled out as in the TypeScript source.
 fn hyperlink(url: &str, text: &str) -> String {
     format!("\x1b]8;;{url}\x07{text}\x1b]8;;\x07")
 }

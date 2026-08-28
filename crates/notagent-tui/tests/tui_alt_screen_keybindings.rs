@@ -1,9 +1,3 @@
-//! Port of the custom-binding cases of
-//! `packages/tui/test/tui-alt-screen.test.ts`.
-//!
-//! They live in their own test binary because they replace the global
-//! keybindings manager, which must not race with the other cases.
-
 use notagent_tui::components::text::Text;
 use notagent_tui::keybindings::{
     KeybindingsConfig, KeybindingsManager, TUI_KEYBINDINGS, set_keybindings,
@@ -36,7 +30,6 @@ fn restore_bindings() {
 
 #[tokio::test]
 async fn scrolls_the_transcript_with_custom_bindings() {
-    // Both TS cases run in one function: the global manager is process state.
     let terminal = VirtualTerminal::new(20, 10);
     let mut tui = TuiAltScreen::new(Box::new(terminal.clone()), TuiAltScreenOptions::default());
     install_bindings(&[

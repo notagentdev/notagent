@@ -1,22 +1,3 @@
-//! Port of `packages/coding-agent/src/core/permissions/coordinator.ts`.
-//!
-//! Serialises approval requests and survives an abort.
-//!
-//! Two problems the dialog alone does not solve. A model may call several tools
-//! in one batch, but only one selector can hold the terminal at a time, so
-//! requests queue and are asked one after another. And a turn can be interrupted
-//! while a request is waiting, in which case every outstanding request must
-//! settle — as a denial, since nobody answered.
-//!
-//! The interrupt arrives as the turn's cancellation token, which is what makes
-//! the denial scoped correctly: it ends the requests belonging to the interrupted
-//! turn and nothing beyond it. Without that, interrupting the agent while a
-//! prompt was on screen leaves the tool call waiting on an answer that can never
-//! come, and the interrupt itself never completes.
-//!
-//! Answers marked as lasting for the session are remembered here, which is what
-//! fills the session-history slot of the policy chain.
-
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
@@ -28,14 +9,11 @@ use super::policy::PermissionContext;
 use super::request::{ApprovalAnswer, ApprovalRequest, answer_allows, answer_persists};
 
 /// Presents one request and resolves when the user answers.
-///
 /// Deviation (class 1): a presenter that fails answers `Deny` itself, where the
-/// TypeScript catches a rejected promise and settles the same way.
 pub type ApprovalPresenter =
     Arc<dyn Fn(ApprovalRequest) -> BoxFuture<'static, ApprovalAnswer> + Send + Sync>;
 
 /// Watches the moments a human is involved.
-///
 /// Only actual prompts are reported. A remembered answer and an aborted session
 /// both settle without anyone being asked, and reporting those as requests
 /// would tell a supervisor the agent is waiting when it is not — which is the
@@ -64,7 +42,6 @@ pub fn approval_key_for(context: &PermissionContext) -> String {
 
 struct CoordinatorState {
     /// Cancelled while the session is aborted; replaced by `reset`, since the
-    /// TypeScript clears a boolean flag.
     aborted: CancellationToken,
     remembered: HashSet<String>,
 }
@@ -73,7 +50,6 @@ pub struct ApprovalCoordinator {
     present: ApprovalPresenter,
     state: Mutex<CoordinatorState>,
     observer: Mutex<Option<Arc<dyn ApprovalObserver>>>,
-    /// The promise chain of the TypeScript: one request holds the screen at a
     /// time, and tokio's mutex hands it on in arrival order.
     queue: tokio::sync::Mutex<()>,
 }
@@ -119,7 +95,6 @@ impl ApprovalCoordinator {
     /// Observing must not be able to break approval, so the observer runs
     /// detached and a panic on either side of the await is swallowed: a
     /// supervisor that crashed is not consent, and it is not a denial either.
-    /// The TypeScript wraps the same two cases in one `try`/`catch`.
     fn notify(&self, run: impl FnOnce(Arc<dyn ApprovalObserver>) -> BoxFuture<'static, ()>) {
         let observer = self.observer.lock().expect("approval observer").clone();
         let Some(observer) = observer else { return };

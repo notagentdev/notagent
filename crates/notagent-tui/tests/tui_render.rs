@@ -1,11 +1,3 @@
-//! Port of `packages/tui/test/tui-render.test.ts` (832 LOC).
-//!
-//! The seven Kitty image cases need `encodeKitty` and the `Image` component and
-//! follow with tasks 9 and 12; everything else is ported here.
-//!
-//! `terminal.waitForRender()` of the TS suite becomes `tui.wait_for_render()`:
-//! the render loop is driven by the caller in Rust, not by a timer callback.
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -22,7 +14,6 @@ fn guard() -> MutexGuard<'static, ()> {
 }
 
 /// `class TestComponent` — the lines live behind a handle so the test can change
-/// them after the component was mounted (TS mutates the object directly).
 #[derive(Clone, Default)]
 struct TestHandle {
     lines: Rc<RefCell<Vec<String>>>,

@@ -1,7 +1,3 @@
-//! Port of `packages/coding-agent/test/rpc-jsonl.test.ts`.
-//!
-//! Strict JSONL framing: LF separates records and nothing else does.
-
 use notagent::modes::rpc::jsonl::{JsonlLineSplitter, serialize_json_line};
 use serde_json::json;
 
@@ -56,7 +52,6 @@ fn emits_a_final_line_without_trailing_lf() {
     assert_eq!(lines, vec!["{\"a\":1}".to_owned()]);
 }
 
-/// Beyond the TypeScript cases: Node's `StringDecoder` holds back a UTF-8
 /// sequence split across two chunks, and so does the splitter.
 #[test]
 fn decodes_a_multibyte_character_split_across_chunks() {

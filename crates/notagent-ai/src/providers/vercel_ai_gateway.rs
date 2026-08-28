@@ -1,9 +1,3 @@
-//! `vercel_ai_gatewayProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/vercel-ai-gateway.ts` (15 LOC). The generated
-//! `vercel-ai-gateway.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::AnthropicMessagesApi;

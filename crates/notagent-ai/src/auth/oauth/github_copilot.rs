@@ -1,9 +1,3 @@
-//! GitHub Copilot OAuth device flow.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/github-copilot.ts` (417 LOC): GitHub's device
-//! flow yields a long-lived GitHub token that is exchanged for a short-lived Copilot
-//! token on every refresh, plus model enablement and the available-model list.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -18,7 +12,6 @@ use crate::auth::types::{
     AuthError, AuthEvent, BoxFuture, ModelAuth, OAuthAuth, OAuthCredential, ProviderAuthInteraction,
 };
 
-/// The client id is base64-obfuscated in the TS source; taken over verbatim.
 fn client_id() -> String {
     use base64::Engine;
     let decoded = base64::engine::general_purpose::STANDARD
@@ -273,7 +266,6 @@ pub async fn refresh_copilot_access_token(
     Ok(OAuthCredential {
         refresh: refresh_token.to_string(),
         access: token.to_string(),
-        // A five-minute safety margin, as in TS.
         expires: (expires_at * 1000.0) as i64 - 5 * 60 * 1000,
         extra,
     })
@@ -430,7 +422,6 @@ impl OAuthAuth for GitHubCopilotOAuth {
     }
 }
 
-/// The shared instance, matching the TS export.
 pub fn github_copilot_oauth() -> Arc<dyn OAuthAuth> {
     Arc::new(GitHubCopilotOAuth)
 }

@@ -29,7 +29,6 @@ pub struct IndexWatcher {
 
 impl IndexWatcher {
     /// Create a new index watcher
-    ///
     /// Returns the watcher and a receiver for file change events
     pub fn new() -> Result<(Self, mpsc::Receiver<PathBuf>)> {
         let (event_tx, event_rx) = mpsc::channel(100);
@@ -208,15 +207,12 @@ impl IndexManager {
         })
     }
     /// Refreshes a workspace while holding its cross-process index lock.
-    ///
     /// The cache and BM25 reader are reopened only after the lock is acquired,
     /// so a process never refreshes from state made stale by another writer.
-    ///
     /// # Arguments
     /// * `workspace_root` - Root directory whose supported source files are indexed.
     /// * `state_dir` - Persistent state directory shared by index users.
     /// * `on_progress` - Optional callback receiving indexing progress.
-    ///
     /// # Errors
     /// Returns an error when the refresh lock, index, workspace scan, or cache write fails.
     pub fn refresh_workspace<F>(
@@ -250,7 +246,6 @@ impl IndexManager {
     }
 
     /// Full workspace indexing with optional progress callback.
-    ///
     /// Uses rayon to parallelize file I/O, hashing, parsing, and chunking.
     /// Results are collected and applied sequentially; BM25 uses a single
     /// batched commit at the end.

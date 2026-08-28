@@ -1,10 +1,3 @@
-//! Binary root of the `notagent` command.
-//!
-//! Rust reserves a file for the binary crate root; `src/main.rs` is the module
-//! of `main.ts` instead (see `crate::main_app`). Everything here is the tokio
-//! entry point plus the process setup of `packages/coding-agent/src/cli.ts`,
-//! which lives in `notagent::cli::run`.
-
 fn main() {
     // ring and aws-lc-rs are both linked; without an explicit default rustls
     // panics on the first TLS handshake (see notagent_ai's helper doc).

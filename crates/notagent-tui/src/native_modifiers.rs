@@ -1,15 +1,3 @@
-//! Native modifier key state.
-//!
-//! Port of `packages/tui/src/native-modifiers.ts` (66 LOC) together with the C
-//! sources it loads as prebuilt addons: `native/darwin/src/darwin-modifiers.c`
-//! and `native/win32/src/win32-console-mode.c`. Instead of a Node addon the
-//! Rust port calls the OS APIs directly under `cfg(target_os)`
-//! (deviation class 3, master plan: "native addons → direct OS calls").
-//!
-//! Pulled forward from task 13 of the workstream plan because
-//! `ProcessTerminal::forward_input_sequence` needs it for the Shift+Enter
-//! normalization.
-
 /// Modifier keys the native helpers can report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModifierKey {
@@ -103,14 +91,11 @@ mod platform {
     use super::ModifierKey;
 
     pub(super) fn is_modifier_pressed(_key: ModifierKey) -> bool {
-        // No native helper exists for other platforms (TS returns false too).
         false
     }
 }
 
 /// Whether the given modifier is currently held down.
-///
-/// Returns `false` when no native support exists, exactly like the TS version
 /// when the prebuilt addon cannot be loaded.
 pub fn is_native_modifier_pressed(key: ModifierKey) -> bool {
     platform::is_modifier_pressed(key)

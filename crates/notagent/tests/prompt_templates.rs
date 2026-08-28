@@ -1,5 +1,3 @@
-//! Ported from `packages/coding-agent/test/prompt-templates.test.ts`.
-
 use notagent::core::prompt_templates::{
     LoadPromptTemplatesOptions, PromptTemplate, expand_prompt_template, load_prompt_templates,
     parse_command_args, substitute_args,

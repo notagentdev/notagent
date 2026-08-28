@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/trust-selector.ts` (134 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 

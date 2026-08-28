@@ -1,11 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/sql.ts`.
-//!
-//! Deviation class 1: JavaScript tagged templates have no Rust equivalent.
-//! `SqlQuery` is built explicitly from text parts, parameters and nested
-//! fragments; the composition semantics (nested queries are inlined, other
-//! interpolations become `?` parameters, parameter order is preserved) are
-//! identical.
-
 use rusqlite::ToSql;
 use rusqlite::types::{ToSqlOutput, Value};
 

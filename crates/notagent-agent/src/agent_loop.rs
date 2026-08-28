@@ -1,13 +1,3 @@
-//! The low-level agent loop.
-//!
-//! 1:1 port of `packages/agent/src/agent-loop.ts` (796 LOC). Works on `AgentMessage`
-//! throughout and converts to `Message` only at the LLM boundary.
-//!
-//! Parallel tool execution uses a `JoinSet` (master plan) while keeping the TS
-//! semantics exactly: preflight runs sequentially with an abort check after every call,
-//! `tool_execution_end` fires in completion order, and the tool-result messages are
-//! emitted afterwards in assistant source order.
-
 use std::sync::Arc;
 
 use notagent_ai::types::{
@@ -33,7 +23,6 @@ pub type AgentEventSink = Arc<dyn Fn(AgentEvent) -> BoxFuture<'static, ()> + Sen
 /// The loop's event stream; terminated by `agent_end`.
 pub type AgentEventStream = EventStream<AgentEvent, Vec<AgentMessage>>;
 
-/// Error of [`agent_loop_continue`] (TS throws).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct AgentLoopError(pub String);
@@ -197,7 +186,6 @@ pub async fn run_agent_loop_continue(
 }
 
 /// `runLoop(...)` — the shared loop body.
-///
 /// `drain_steering_first` controls whether the steering queue is polled before
 /// the first request. A run started with fresh prompts defers the poll so the
 /// model answers those prompts alone; every later poll happens after a
@@ -975,7 +963,6 @@ async fn execute_tool_calls_parallel(
                         signal,
                     )
                     .await;
-                    // `tool_execution_end` fires in completion order, as in TS.
                     emit_tool_execution_end(&finalized, &emit).await;
                     (index, finalized)
                 });

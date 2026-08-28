@@ -1,10 +1,3 @@
-//! Tests for `api/simple_options.rs` and `api/transform_messages.rs`.
-//!
-//! Expectations come from `packages/ai/src/api/simple-options.ts` (thinking budgets,
-//! context clamping) and `transform-messages.ts`, plus the context-clamp assertion of
-//! `packages/ai/test/context-estimate.test.ts` (`buildBaseOptions(...).maxTokens` is
-//! 4 899 for that fixture).
-
 use notagent_ai::api::simple_options::*;
 use notagent_ai::api::transform_messages::transform_messages;
 use notagent_ai::types::*;
@@ -61,7 +54,6 @@ fn assistant(
 
 #[test]
 fn clamps_max_tokens_against_the_remaining_context() {
-    // Exactly the fixture of `context-estimate.test.ts`: the assistant usage is stale
     // (a newer user message precedes it), so the estimate is 1 005 tokens and
     // `buildBaseOptions(...).maxTokens` must come out as 4 899.
     let stale_assistant = Message::Assistant(AssistantMessage {

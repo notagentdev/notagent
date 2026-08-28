@@ -1,16 +1,3 @@
-//! `clinePassProvider()`.
-//!
-//! Port addition (user decision 2026-08-17, v0.1.16), taken from
-//! ../notagent-main-rust, where ClinePass is a provider entry in
-//! `crates/notagent_repo/src/provider/provider.json`: an OpenAI-compatible
-//! endpoint authenticated with `CLINE_API_KEY`. The model list and the
-//! per-model thinking levels come from there verbatim; the catalog snapshot
-//! lives in `data/cline-pass.json`, read through [`get_builtin_models`].
-//!
-//! ClinePass is a subscription — the plan covers the tokens, so its models
-//! carry no per-token price and the footer reports none (see
-//! `interactive/components/footer.rs`).
-
 use std::sync::Arc;
 
 use crate::api::streams::OpenAICompletionsApi;

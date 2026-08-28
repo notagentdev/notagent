@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/scrollbar-theme.test.ts` (70 LOC).
-
 use std::path::PathBuf;
 
 use notagent::modes::interactive::theme::theme::{

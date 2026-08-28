@@ -1,8 +1,3 @@
-//! Anthropic OAuth (Claude Pro/Max).
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/anthropic.ts` (364 LOC): PKCE plus a local
-//! callback server, with a manual code/redirect-URL fallback racing against it.
-
 use std::sync::Arc;
 
 use base64::Engine;
@@ -16,7 +11,6 @@ use crate::auth::types::{
 };
 use crate::utils::provider_env::get_provider_env_value;
 
-/// The client id is base64-obfuscated in the TS source; taken over verbatim.
 fn client_id() -> String {
     let decoded = STANDARD
         .decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl")
@@ -115,7 +109,6 @@ fn credential_from(token: TokenResponse) -> OAuthCredential {
     OAuthCredential {
         refresh: token.refresh_token,
         access: token.access_token,
-        // The TS flow subtracts a five-minute safety margin.
         expires: crate::auth::resolve::now_ms() + token.expires_in * 1000 - 5 * 60 * 1000,
         extra: Default::default(),
     }
@@ -193,7 +186,6 @@ impl OAuthAuth for AnthropicOAuth {
                 port: CALLBACK_PORT,
                 path: CALLBACK_PATH.to_string(),
                 redirect_uri: redirect_uri.clone(),
-                // TS uses the verifier as the state parameter.
                 expected_state: pkce.verifier.clone(),
                 success_message: "Anthropic authentication completed. You can close this window."
                     .to_string(),
@@ -296,12 +288,10 @@ impl OAuthAuth for AnthropicOAuth {
     }
 }
 
-/// The shared instance, matching the TS export.
 pub fn anthropic_oauth() -> Arc<dyn OAuthAuth> {
     Arc::new(AnthropicOAuth)
 }
 
-/// Minimal percent-encoding for query values (`URLSearchParams` in TS).
 pub fn urlencode(value: &str) -> String {
     value
         .bytes()

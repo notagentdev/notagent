@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/testing/client.ts`.
-
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 

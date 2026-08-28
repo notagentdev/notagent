@@ -1,8 +1,3 @@
-//! Port of `packages/ai/test/deferred-tools.test.ts` (550 LOC).
-//!
-//! TS captures the request body through `onPayload` on `streamSimple`; the port calls the
-//! request builders those streams call, so the assertions stay on the payload.
-
 use std::collections::BTreeMap;
 
 use notagent_ai::api::anthropic_params::{

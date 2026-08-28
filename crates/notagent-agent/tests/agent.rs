@@ -1,5 +1,3 @@
-//! Port of the core cases of `packages/agent/test/agent.test.ts` (810 LOC).
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -115,7 +113,6 @@ async fn a_second_prompt_during_a_run_is_rejected() {
     let (stream_fn, _) = scripted_stream_fn(vec!["one"]);
     let agent = Agent::new(options(stream_fn));
 
-    // The run is driven to completion first; a nested prompt is what TS rejects.
     let blocker = Arc::clone(&agent);
     let error = Arc::new(Mutex::new(None));
     let sink = Arc::clone(&error);
@@ -558,13 +555,9 @@ async fn listeners_are_awaited_in_subscription_order() {
 }
 
 // ---------------------------------------------------------------------------
-// Provider wiring (interface request C-8)
 // ---------------------------------------------------------------------------
 
-/// TS keeps `streamFunction`, `getApiKey`, `onPayload`, `onResponse`, `beforeToolCall`,
 /// `afterToolCall`, `thinkingBudgets`, `transport`, `maxRetryDelayMs` and `toolExecution`
-/// as public fields (`agent.ts:180-201`), and `delegation/run.ts:170-203` copies them onto
-/// a child agent. The Rust port exposes the same through `options`/`update_options`.
 #[tokio::test]
 async fn the_provider_wiring_is_readable_and_writable() {
     let (stream_fn, _) = scripted_stream_fn(vec!["ok"]);
@@ -579,7 +572,6 @@ async fn the_provider_wiring_is_readable_and_writable() {
     assert_eq!(current.max_retry_delay_ms, Some(1234));
     assert!(current.stream_fn.is_some());
 
-    // The runtime assignments TS does (`session.agent.transport = …`).
     agent.update_options(|options| {
         options.transport = Some(Transport::Websocket);
         options.tool_execution = Some(ToolExecutionMode::Sequential);
@@ -590,8 +582,6 @@ async fn the_provider_wiring_is_readable_and_writable() {
     assert_eq!(current.tool_execution, Some(ToolExecutionMode::Sequential));
 }
 
-/// `onPayload`/`onResponse` reach the provider through the loop config, as TS forwards
-/// them into `streamSimple` (`agent.ts:452-453`).
 #[tokio::test]
 async fn on_payload_and_on_response_reach_the_stream_options() {
     let seen = Arc::new(Mutex::new(Vec::<&'static str>::new()));

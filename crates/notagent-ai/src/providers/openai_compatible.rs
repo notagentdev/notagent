@@ -1,12 +1,10 @@
 //! Providers for servers that speak the OpenAI completions API: the two common
 //! local runtimes, plus one instance whose address the user names.
-//!
 //! What they share is that their catalogue cannot be shipped. Which models
 //! exist depends on what the user pulled or loaded, so a static list would
 //! offer models the server does not have and hide the ones it does. All of them
 //! ask the server instead, and a server that is not running simply offers
 //! nothing.
-//!
 //! They differ in one thing only: where the address comes from. The two local
 //! runtimes listen on a documented port, so theirs is a constant and activation
 //! needs no more than `/login`. A custom instance can be anywhere, so its
@@ -46,7 +44,6 @@ const REMOTE_LIST_TIMEOUT: Duration = Duration::from_secs(10);
 const PLACEHOLDER_KEY: &str = "local";
 
 /// What a discovered model is assumed to hold when the server does not say.
-///
 /// Deliberately small. A local runtime is bounded by the memory of the machine
 /// it runs on, far below what the weights would allow, and a window assumed too
 /// large defers compaction until the server is already failing. A server that
@@ -79,7 +76,6 @@ pub fn is_loopback(base_url: &str) -> bool {
         .rsplit_once('@')
         .map_or(authority, |(_, host)| host);
     let host = if let Some(bracketed) = authority.strip_prefix('[') {
-        // Bracketed IPv6: the port sits outside the brackets, so the host is
         // everything up to the closing bracket — with or without a port.
         bracketed.split(']').next().unwrap_or_default()
     } else {
@@ -102,7 +98,6 @@ pub fn is_loopback(base_url: &str) -> bool {
 }
 
 /// Normalises what a user typed into a base url this can request against.
-///
 /// The three mistakes worth absorbing are a missing scheme, a trailing slash,
 /// and a missing `/v1` — the last because both runtimes document their address
 /// without it while their OpenAI surface lives under it.
@@ -131,7 +126,6 @@ pub fn normalize_base_url(input: &str) -> Option<String> {
 }
 
 /// Where a provider's model list comes from.
-///
 /// The OpenAI listing is the only one every server has, but it is also the
 /// poorest: the specification has no field for a context window and none for
 /// what a model is for, so both runtimes answer it with little more than a name.
@@ -267,7 +261,6 @@ fn credential_key(credential: Option<&Credential>) -> Option<String> {
 }
 
 /// The server's own root, below which its native API lives.
-///
 /// Both runtimes put their own listing beside the OpenAI one rather than under
 /// it: `/api/v0/models` and `/api/tags` are siblings of `/v1`, not children.
 fn server_root(base_url: &str) -> String {
@@ -276,7 +269,6 @@ fn server_root(base_url: &str) -> String {
 }
 
 /// Key handling.
-///
 /// `resolve` has no unconditional fallback: an instance nobody activated
 /// resolves to nothing, which keeps it out of the model picker until `/login`
 /// stores a credential. The placeholder lives in `login`, so activation is an
@@ -429,7 +421,6 @@ impl OpenAICompatibleAuth {
 }
 
 /// One model as a listing described it, before it becomes a [`Model`].
-///
 /// The three listings disagree on almost everything except that a model has a
 /// name, so each parser reduces its own shape to this and the rest is shared.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -456,7 +447,6 @@ enum Fetched {
 }
 
 /// Asks the server which models it holds.
-///
 /// This runs only for a provider somebody activated — the refresh reaches a
 /// dynamic provider's fetch only once a credential resolves. So an address
 /// nobody is listening at is worth reporting rather than swallowing: the
@@ -580,7 +570,6 @@ fn unreachable_message(config: &OpenAICompatibleConfig, base_url: &str) -> Strin
 }
 
 /// `GET {host}/api/v0/models` — LM Studio's own listing.
-///
 /// `Ok(None)` means the route is not there, which is how an older build
 /// answers; the caller then falls back to the OpenAI listing.
 async fn fetch_lmstudio_models(
@@ -603,7 +592,6 @@ async fn fetch_lmstudio_models(
 }
 
 /// `GET {host}/api/tags`, then `POST {host}/api/show` for each model.
-///
 /// The listing names the models and nothing else, so what each one can do and
 /// how much context it holds has to be asked for separately. A model whose
 /// details cannot be read is kept rather than dropped: a name that chats is
@@ -690,7 +678,6 @@ async fn ollama_model_details(
 }
 
 /// Reads one `/api/show` body.
-///
 /// Split from the request so the shape handling is exercised without a server.
 pub fn ollama_details_from_show(body: &Value) -> OllamaDetails {
     // The capability list is the server's own answer to "what is this for".
@@ -807,7 +794,6 @@ pub fn models_from_openai_listing(body: &Value) -> Result<Vec<ListedModel>, Stri
 }
 
 /// The effort levels a runtime accepts, as a map that marks the rest absent.
-///
 /// Both runtimes take `low`, `medium` and `high` on their OpenAI surface and
 /// reject anything else, so `minimal` has to be struck: offering it would put a
 /// setting in front of the user that the server answers with an error. `xhigh`

@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/test/model-runtime-modify-models-compat.test.ts` (332 LOC).
-//!
-//! The two cases built on the extension `registerProvider(name, config)` API
-//! (`refreshModels` of an extension config and legacy OAuth `modifyModels`) are
-//! excluded with that API (deviation class 2); the native-provider cases remain.
-
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/paths.ts`.
-
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -42,7 +40,6 @@ pub struct PathInputOptions {
 }
 
 /// Resolve a path to its canonical (real) form, following symlinks.
-///
 /// Falls back to the raw path if resolution fails (e.g. the target does not
 /// exist yet), so that callers never crash on missing filesystem entries.
 pub fn canonicalize_path(path: &str) -> String {
@@ -566,7 +563,6 @@ mod tests {
                 .prefix("notagent-paths-")
                 .tempdir()
                 .expect("temp dir");
-            // `keep` mirrors the TS suite, which removes the directory itself.
             let path = directory.path().to_path_buf();
             let _ = directory.keep();
             Self { path }

@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/src/core/source-info.ts`.
-//!
-//! Where a loaded resource — a skill, a prompt template, a theme — came from.
-//! Every resource that reaches the user carries one of these so the UI can say
-//! "this skill is installed from package X" instead of just showing a path.
-//!
-//! `PathMetadata` is declared here rather than in `core/package-manager.rs`
-//! (task 14): in TypeScript the two files import from each other, which Rust
-//! modules of one crate do not need — and the type is the source-info record
-//! minus its `path`. `package_manager` re-exports it when it lands.
-
 use serde::{Deserialize, Serialize};
 
 /// Whose configuration directory a resource lives in.
@@ -62,9 +51,7 @@ pub fn create_source_info(path: impl Into<String>, metadata: &PathMetadata) -> S
 }
 
 /// The optional half of `create_synthetic_source_info`'s argument object.
-///
 /// `source` is the only field every caller sets; the defaults below are the
-/// `?? "temporary"` / `?? "top-level"` fallbacks from the TypeScript.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SyntheticSourceInfoOptions {
     pub source: String,

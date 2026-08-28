@@ -1,10 +1,3 @@
-//! Inter-process file locking, the behaviour `proper-lockfile` gives the TS app.
-//!
-//! Tech substitution (master plan): `proper-lockfile` is replaced by a `<file>.lock`
-//! directory. `mkdir` is atomic on every supported filesystem, the directory mtime
-//! carries the heartbeat that makes an abandoned lock detectably stale, and a
-//! background thread refreshes it while the lock is held.
-
 use std::fs::{File, FileTimes};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -1,5 +1,4 @@
 //! The transcript lines that report what background work did.
-//!
 //! The panels show what is running and drop a task the moment it settles, so
 //! without these lines a background job simply vanishes and the user is left
 //! guessing whether it worked. What is pinned here is which lines appear, that

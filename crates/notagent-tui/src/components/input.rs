@@ -1,9 +1,3 @@
-//! Single line text input with horizontal scrolling.
-//!
-//! 1:1 port of `packages/tui/src/components/input.ts` (447 LOC). Cursor
-//! positions are byte offsets instead of UTF-16 indices; all arithmetic stays
-//! internally consistent (deviation class 1).
-
 use crate::keybindings::keybindings_match;
 use crate::keys::decode_kitty_printable;
 use crate::kill_ring::{KillRing, KillRingPushOptions};
@@ -273,7 +267,6 @@ impl Input {
         self.last_action = None;
         self.push_undo();
         // Newlines are dropped, tabs become four spaces.
-        // TS chains four replaces; collapsing the two single-character ones is
         // equivalent because the CRLF pass already removed those pairs.
         let clean_text = pasted_text
             .replace("\r\n", "")

@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/test/delegation-limits.test.ts`.
-//!
-//! What a single delegation call may ask for.
-//!
-//! The per-turn ceilings this file used to assert are gone: they came from a
-//! different reference, and with recursion structurally impossible the thing
-//! they guarded against — a tree of subagents multiplying out of one request —
-//! cannot arise. What is left catches a model repeating itself inside one call,
-//! and asking for more children than any answer could use.
-
 use notagent::core::delegation::limits::{
     DelegationRefusal, MAX_DELEGATIONS_PER_CALL, check_delegation_request, delegation_fingerprint,
 };

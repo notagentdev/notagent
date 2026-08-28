@@ -35,12 +35,6 @@ If a test fails because of your change, decide deliberately whether the code or
 the expectation is wrong, and say which you concluded. A pinned expectation that
 no longer matches is sometimes the bug and sometimes exactly the point.
 
-Some expectations are generated rather than written: the oracles under
-`tools/gen-*-oracle.mjs` and the fixtures in `crates/*/tests/fixtures/`. Never
-hand over a regenerated one you have not read. Regenerating turns a failing test
-green whether or not the new output is right, which is the one thing a test was
-there to stop.
-
 ## Scope
 
 Agree on what a change is before writing it. Anything that touches the system

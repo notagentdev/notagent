@@ -1,23 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/extensions/llama/ui.ts` (542 LOC).
-//!
-//! The `/llama` model manager: the model list of a llama.cpp router, the
-//! confirmation and choice dialogs it opens, the Hugging Face search and the
-//! progress view of a load or a download.
-//!
-//! Deviation (class 1, structural): TypeScript hands every dialog back as a
-//! promise the extension's flow awaits. A component here cannot resolve a
-//! promise from inside `handle_input`, so every dialog gets a sequence number
-//! and reports its answer over a channel; the flow ([`super::super::llama_command`])
-//! awaits the answer whose sequence number it just installed. Answers of a
-//! dialog that has already been replaced are therefore ignored instead of
-//! resolving a promise nobody holds any more — the same effect TypeScript gets
-//! by dropping the promise in `setContent`.
-//!
-//! Deviation (class 1): `tui`, `theme` and `keybindings` are not constructor
-//! arguments — the port reads the process-wide theme and keybindings the same
-//! way every other component here does, and renders through the
-//! `request_render` callback of the mode.
-
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -102,13 +82,11 @@ pub struct ProgressState {
 
 impl ProgressState {
     /// `Object.assign(state, progress)`.
-    ///
     /// Deviation (class 1): `Object.assign` distinguishes an absent key from an
     /// explicit `undefined`, a Rust struct cannot. All three fields are copied,
     /// which matches every sequence the client produces: `parseLoadProgress`
     /// and `parseDownloadProgress` always carry the keys they may clear, and
     /// the two key-less emissions (`{ message: "Loading model" }` and
-    /// `{ message: "Downloading model" }`) are the first report of their run,
     /// where there is no ratio or detail to keep.
     pub fn apply(&mut self, progress: LlamaProgress) {
         self.message = progress.message;
@@ -295,10 +273,6 @@ fn is_exact_repository(query: &str) -> bool {
 pub type SearchCache = Rc<RefCell<BTreeMap<String, Vec<HuggingFaceModel>>>>;
 
 /// `class HuggingFaceSearch extends Container implements Focusable`
-///
-/// Deviation (class 1): TypeScript runs the debounce with `setTimeout` and the
-/// request with an `AbortController` the component owns. The port keeps the
-/// same state but lets the caller drive both time seams (interface request
 /// A-23): [`HuggingFaceSearch::take_due_search`] hands out the query whose
 /// debounce has elapsed together with its cancellation token, and
 /// [`HuggingFaceSearch::apply_search_result`] delivers the answer.
@@ -505,7 +479,6 @@ impl HuggingFaceSearch {
             .is_some_and(CancellationToken::is_cancelled);
         match result {
             Ok(results) => {
-                // TypeScript caches before it checks the guards.
                 self.cache
                     .borrow_mut()
                     .insert(query.to_lowercase(), results.clone());

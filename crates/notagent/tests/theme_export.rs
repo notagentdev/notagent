@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/theme-export.test.ts` (104 LOC).
-
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -14,7 +12,6 @@ fn agent_dir_lock() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|error| error.into_inner())
 }
 
-/// The `beforeEach`/`afterEach` pair of the TS suite.
 struct AgentDir {
     root: PathBuf,
     agent_dir: PathBuf,
@@ -59,7 +56,6 @@ impl Drop for AgentDir {
     }
 }
 
-/// The built-in dark theme, as the TS suite reads it from `dark.json`.
 fn dark_theme() -> serde_json::Value {
     serde_json::from_str(include_str!("../src/modes/interactive/theme/dark.json"))
         .expect("dark.json parses")

@@ -1,7 +1,3 @@
-//! Immutable, credential-blind models.json snapshot.
-//!
-//! Port of `packages/coding-agent/src/core/model-config.ts` (298 LOC).
-
 use std::collections::BTreeMap;
 
 use notagent_ai::types::{Modality, ModelCostTier, ThinkingLevelMap};
@@ -18,9 +14,7 @@ use crate::utils::paths::normalize_path_default;
 // handwritten validator (`validate_models_config`) plus serde deserialization.
 // The messages follow TypeBox's localized wording ("Expected string", "Expected
 // required property", …) and the same `<path>: <message>` layout; they are not
-// pinned by any TS test.
 //
-// `compat` stays raw JSON: the TS schema is a union of three all-optional
 // objects, so every object passes, and the composer merges it key-wise.
 // ---------------------------------------------------------------------------
 

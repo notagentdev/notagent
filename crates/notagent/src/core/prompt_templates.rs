@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/src/core/prompt-templates.ts`.
-//!
-//! A prompt template is a markdown file that becomes a slash command. The
-//! interesting half is the substitution grammar, which is deliberately a small
-//! subset of bash parameter expansion: `$1`, `$@`, `$ARGUMENTS`, `${N:-default}`
-//! and `${@:N:L}` slices.
-//!
-//! Substitution runs over the template only. An argument that happens to
-//! contain `$1` is inserted literally — recursion here would let a pasted file
-//! path rewrite the rest of the prompt.
-
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -34,7 +23,6 @@ pub struct PromptTemplate {
 }
 
 /// Splits a command's argument string the way a shell would, honouring quotes.
-///
 /// Quotes are removed and never re-inserted, and an unterminated quote simply
 /// ends at the end of the string rather than being an error: the input comes
 /// from a person typing into an editor line, not from a script.
@@ -74,7 +62,6 @@ pub fn parse_command_args(args_string: &str) -> Vec<String> {
 }
 
 /// The one expression that recognizes every supported form, in the order the
-/// TypeScript alternation lists them: defaults first, then slices, then the
 /// bare references. Group order matters — a `${@:2}` must not be read as a
 /// bare `$@` followed by literal text.
 static SUBSTITUTION: LazyLock<Regex> = LazyLock::new(|| {
@@ -83,7 +70,6 @@ static SUBSTITUTION: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Substitutes argument placeholders in template content.
-///
 /// Supported:
 /// - `$1`, `$2`, … positional arguments
 /// - `$@` and `$ARGUMENTS` for all arguments
@@ -105,7 +91,6 @@ pub fn substitute_args(content: &str, args: &[String]) -> String {
                         .and_then(|index| index.checked_sub(1))
                         .and_then(|index| args.get(index).cloned()),
                 };
-                // Falsy in TypeScript: missing *and* empty both fall back.
                 return match value {
                     Some(value) if !value.is_empty() => value,
                     _ => default_value.to_string(),

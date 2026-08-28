@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/patch-minified.ts` (tool half).
-//!
-//! `patch_minified` and `multi_patch_minified`: the editing counterparts of
-//! `read_minified`.
-//!
-//! Both route through the same single-edit path ([`apply_minified_replace`]), as
-//! in the reference service. `multi_patch_minified` applies its edits
-//! sequentially against the result of the previous one, re-minifying in
-//! between, because every splice invalidates the previous source map. Nothing
-//! is written until all edits succeed.
-
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -36,7 +25,7 @@ use crate::core::tools::tool_definition::{
     tool_render_state, wrap_tool_definition,
 };
 use crate::modes::interactive::components::diff::{RenderDiffOptions, diff_info_line, render_diff};
-use crate::modes::interactive::theme::theme::{BlockStyle, Theme, ThemeColor, block_style};
+use crate::modes::interactive::theme::theme::{BlockStyle, Theme, block_style};
 
 fn minified_edit_properties() -> Value {
     json!({
@@ -162,7 +151,6 @@ impl PatchMinifiedOperations for LocalPatchMinifiedOperations {
     }
 }
 
-/// TS reports `Error code: ${error.code}` for Node errors.
 fn error_code(error: &std::io::Error) -> String {
     let code = match error.kind() {
         std::io::ErrorKind::NotFound => "ENOENT",
@@ -253,7 +241,6 @@ fn apply_minified_replace(
 }
 
 /// The shared write path of `patch_minified` and `multi_patch_minified`.
-///
 /// Takes the tool it runs for rather than its pieces: it needs the cwd, the
 /// operations, the lease coordinator and the tool name, which is the tool
 /// itself.
@@ -496,10 +483,8 @@ pub fn create_multi_patch_minified_tool_definition(
 // ============================================================================
 
 /// The row state of a patch call.
-///
 /// The result is a `Text` when there is something to show and an empty
 /// `Container` otherwise; see [`crate::core::tools::write`] for why the two
-/// slots are separate here (deviation class 1).
 #[derive(Default)]
 struct PatchRenderState {
     call: Option<Rc<RefCell<Text>>>,
@@ -586,7 +571,7 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
         &self,
         result: ToolRenderResult<'_>,
         _options: ToolRenderResultOptions,
-        theme: &Theme,
+        _theme: &Theme,
         context: &ToolRenderContext,
     ) -> Option<ComponentRef> {
         let raw_path = patch_path_arg(&context.args);
@@ -609,25 +594,10 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
                 },
             ));
             // The badge style closes the diff with its summary; the standard
-            // style stays the TS original, which the render oracle pins.
             if badge_style && let Some(info) = diff_info_line(diff) {
                 sections.push(info);
             }
         }
-        if let Some(warnings) = result
-            .details
-            .and_then(|details| details.get("warnings"))
-            .and_then(Value::as_array)
-        {
-            for warning in warnings {
-                let warning = warning.as_str().map_or_else(
-                    || crate::core::tools::tool_definition::display_arg(warning),
-                    str::to_string,
-                );
-                sections.push(theme.fg(ThemeColor::Warning, &format!("! {warning}")));
-            }
-        }
-
         let mut state = tool_render_state::<PatchRenderState>(&context.state);
         if sections.is_empty() {
             let component = state
@@ -708,7 +678,6 @@ pub fn create_multi_patch_minified_tool(
 
 #[cfg(test)]
 mod tests {
-    //! Atomic leases (port addition, v0.1.19). The editing behaviour of these
     //! two tools is covered by `tests/minified_tools.rs`; what is checked here
     //! is that they take, release and respect a lease like `write` and `edit`.
 

@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/test/credential-print.test.ts`.
-//!
-//! `auth print-api-key` and `auth print-bearer-token` resolve exactly one
-//! credential; the refusals are as much a part of the contract as the value.
-//!
-//! Two TypeScript cases have no counterpart here (documented in
-//! `crates/notagent/PARITY.md`): both replace `oauth.refresh` on a provider
-//! object with a spy, which needs module mocking rather than a seam the port
-//! offers.
-
 use std::sync::Arc;
 
 use notagent::cli::args::parse_args;

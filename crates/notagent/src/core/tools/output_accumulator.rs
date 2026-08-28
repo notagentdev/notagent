@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/output-accumulator.ts`.
-//!
-//! Tracks streaming output with bounded memory: chunks are decoded
-//! incrementally, only a decoded tail is kept for snapshots, and a temp file is
-//! opened once the full output has to be preserved.
-
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -92,7 +86,6 @@ impl OutputAccumulator {
         }
     }
 
-    /// Append raw bytes; panics after [`Self::finish`], as the TS version throws.
     pub fn append(&mut self, data: &[u8]) {
         assert!(
             !self.finished,
@@ -182,10 +175,7 @@ impl OutputAccumulator {
 
     /// Writes the collected output to the temp file even when it was never
     /// large enough to spill there on its own.
-    ///
-    /// Port addition (v0.1.20): the bash filter replaces the output the caller
     /// sees with a compacted form, and the raw output has to stay reachable
-    /// afterwards. Nothing in the TS original ever needed that, because nothing
     /// there rewrote a finished output.
     pub fn persist(&mut self) {
         self.ensure_temp_file();

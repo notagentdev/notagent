@@ -1,9 +1,3 @@
-//! Box layout engine for the alternate screen.
-//!
-//! 1:1 port of `packages/tui/src/layout.ts` (410 LOC): layout tree, per-frame
-//! render cache, clipping, the `paintBox` fast path, scrollbar geometry and hit
-//! testing.
-
 use std::collections::HashMap;
 use std::rc::Rc;
 

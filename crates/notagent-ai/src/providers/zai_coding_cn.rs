@@ -1,9 +1,3 @@
-//! `zai_coding_cnProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/zai-coding-cn.ts` (15 LOC). The generated
-//! `zai-coding-cn.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::OpenAICompletionsApi;

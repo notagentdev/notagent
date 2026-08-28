@@ -1,13 +1,3 @@
-//! The pump seam of the render loop (interface request C-14).
-//!
-//! There is no TS counterpart to port: Node's event loop delivers stdin,
-//! SIGWINCH and the buffer timeouts by itself, so `createStartupTui` only hands
-//! the terminal to `TuiMainScreen` and calls `start()`
-//! (`packages/coding-agent/src/cli/startup-ui.ts:74-90`). These cases pin the
-//! properties that substitute for it: input reaches the handler even when the
-//! handler writes back into the terminal, a parked loop wakes on a render
-//! request, and a cancelled `pump()` loses nothing.
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -143,7 +133,6 @@ async fn a_request_during_the_wait_wakes_the_loop() {
 }
 
 /// Input outranks painting.
-///
 /// A component that asks for another frame from inside its own render — which
 /// is what an animated status row does — leaves a frame due on every pass. A
 /// loop that painted before it read would then never get to stdin, and a
@@ -217,8 +206,6 @@ async fn input_is_read_even_while_a_frame_is_always_due() {
 
 /// The loop of `startStartupTui` plus an awaited dialog: input arrives, the
 /// frame is rendered without the test driving it, and the result comes back.
-///
-/// Like the TS original the loop returns as soon as the dialog resolves — the
 /// promise continuation runs before the pending `setTimeout` of
 /// `scheduleRender()` — so the checked frame is the one before the last key.
 #[tokio::test(flavor = "current_thread")]
@@ -237,8 +224,6 @@ async fn run_until_renders_and_returns_the_dialog_result() {
             ui.core()
                 .add_child(component_ref(TextComponent(Rc::clone(&lines))));
             // Like a component: change the content, then ask for a frame — the
-            // TS core does not schedule one on input either
-            // (`packages/tui/src/tui.ts:820-897`).
             let listener_core = ui.core().clone();
             ui.core().add_input_listener(Box::new(move |data: &str| {
                 if data == "\r" {

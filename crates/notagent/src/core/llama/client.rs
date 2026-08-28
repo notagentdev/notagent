@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/src/extensions/llama/client.ts` (332 LOC).
-//!
-//! Management client of a llama.cpp server in router mode: model catalog,
-//! load/unload/download and the SSE event stream that reports progress.
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -14,7 +9,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::utils::abort::{AbortError, race_with_abort_signal};
 
-/// Failure of a llama.cpp management call (TS throws `Error`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct LlamaError(pub String);
@@ -26,9 +20,6 @@ impl From<AbortError> for LlamaError {
 }
 
 /// `LlamaModelStatus = "unloaded" | "loading" | "loaded" | "downloading" | "sleeping"`
-///
-/// Deviation (class 1): the TS union narrows at compile time only — `isModelInfo`
-/// accepts any string, and `index.ts:214` prints the raw value
 /// (`${model.id} is ${model.status.value}`). A Rust enum would have to invent a
 /// catch-all variant and could not round-trip an unknown server value unchanged,
 /// so the field keeps the string the server sent.
@@ -190,7 +181,6 @@ fn parse_load_progress(data: Option<&Value>) -> Option<LlamaProgress> {
 }
 
 /// `parseDownloadProgress(data)` — accepts both `{ progress: files }` and a bare
-/// file record, which is why the parameter stays untyped in TS.
 fn parse_download_progress(data: Option<&Value>) -> Option<LlamaProgress> {
     let data = data?.as_object()?;
     let files: &Map<String, Value> = match data.get("progress") {
@@ -223,7 +213,6 @@ fn parse_download_progress(data: Option<&Value>) -> Option<LlamaProgress> {
 }
 
 /// `Number.prototype.toFixed(digits)` for the two widths `formatBytes` uses.
-///
 /// Deviation (class 3): Rust's `{:.n}` rounds ties to even, `toFixed` rounds them
 /// away from zero, so the tie is nudged before formatting.
 pub(crate) fn to_fixed(value: f64, digits: u32) -> String {
@@ -259,7 +248,6 @@ pub fn format_bytes(bytes: f64) -> String {
 }
 
 /// `normalizeLlamaServerUrl(value)` — management base URL without `/v1`.
-///
 /// Deviation (class 1): an input the WHATWG parser accepts but `url` rejects
 /// (for example `127.0.0.1:8080`, where JS reads `127.0.0.1:` as the protocol)
 /// reports `Invalid URL` — the message of the `TypeError` JS raises for inputs
@@ -305,9 +293,7 @@ fn find_frame_end(buffer: &[u8]) -> Option<usize> {
 }
 
 /// `LlamaClient`
-///
 /// Cloneable so `loadAndWait`/`downloadAndWait` can hand a client to the
-/// background SSE task; TS passes `this` to the same effect.
 #[derive(Clone)]
 pub struct LlamaClient {
     pub server_url: String,
@@ -349,7 +335,6 @@ impl LlamaClient {
                 .await?
                 .map_err(|error| LlamaError(error.to_string()))?;
         let status = response.status().as_u16();
-        // TS wraps `response.json()` in a catch-all, so an unreadable or
         // non-JSON body — an abort mid-body included — becomes `undefined`.
         let payload = response
             .text()
@@ -478,7 +463,6 @@ impl LlamaClient {
         let mut buffer: Vec<u8> = Vec::new();
         while let Some(chunk) = race_with_abort_signal(stream.next(), signal).await? {
             let chunk = chunk.map_err(|error| LlamaError(error.to_string()))?;
-            // Per chunk, as in TS — a CRLF split across two chunks stays as it is
             // there too.
             buffer.extend_from_slice(&replace_crlf(&chunk));
             while let Some(boundary) = find_frame_end(&buffer) {

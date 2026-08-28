@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/sessions.ts`.
-
 use std::collections::BTreeMap;
 
 use serde_json::Value;
@@ -71,8 +69,6 @@ fn parse_metadata(
     }
 }
 
-/// TS additionally runs `assertJsonSerializable`; every `serde_json::Value` is
-/// serializable by construction (deviation class 1).
 fn serialize_metadata(
     metadata: Option<&BTreeMap<String, Value>>,
 ) -> Result<Option<String>, SessionError> {

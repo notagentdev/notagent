@@ -1,5 +1,4 @@
 //! Tests of the Google Vertex adapter.
-//!
 //! The endpoint resolution is what sets Vertex apart from the Gemini adapter, so the
 //! URLs are checked against the ones the `@google/genai` SDK builds (captured by hand
 //! from its `getBaseUrl`/`constructUrl` logic), and the request body against the shared

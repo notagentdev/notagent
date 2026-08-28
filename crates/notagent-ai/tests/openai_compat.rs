@@ -1,6 +1,3 @@
-//! Tests for the OpenAI-compatible compat matrix
-//! (`detectCompat`/`getCompat`, `openai-completions.ts:1444-1577`).
-
 use notagent_ai::api::openai_completions_compat::{
     ResolvedOpenAICompletionsCompat, detect_compat, get_compat,
 };
@@ -342,7 +339,6 @@ fn all_eleven_thinking_formats_are_accepted_as_overrides() {
 
 #[test]
 fn open_router_routing_falls_back_to_empty_not_to_detection() {
-    // TS uses `model.compat.openRouterRouting ?? {}` — the detected value is not reused.
     let mut model = model(
         "openrouter",
         "https://openrouter.ai/api/v1",

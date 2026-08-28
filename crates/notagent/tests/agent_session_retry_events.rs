@@ -1,8 +1,3 @@
-//! Ported from `packages/coding-agent/test/suite/agent-session-retry-events.test.ts`.
-//!
-//! Not ported: "emits extension events before public event subscribers"
-//! (`plans/facts/extension-boundary.md`).
-
 mod suite;
 
 use std::sync::{Arc, Mutex};
@@ -218,7 +213,6 @@ async fn does_not_retry_an_error_that_will_not_get_better() {
     );
 }
 
-/// The TypeScript `normalizeEventOrder`: message events carry their role, and a
 /// run of `message_update` collapses to one.
 fn normalize_event_order(events: Vec<AgentSessionEvent>) -> Vec<String> {
     let mut normalized: Vec<String> = Vec::new();

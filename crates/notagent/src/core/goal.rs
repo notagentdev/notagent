@@ -1,19 +1,3 @@
-//! A session's long-running goal.
-//!
-//! Port addition (user decision 2026-08-17, v0.1.21). One optional objective
-//! per session, held next to the todos. While a goal is `Active` the agent
-//! keeps working toward it across turns without the user re-prompting, until it
-//! marks the goal `Complete`, reports itself `Blocked`, or exhausts a budget.
-//!
-//! The objective is untrusted user data (see
-//! [`validate_thread_goal_objective`]) and is escaped wherever it reaches a
-//! model prompt.
-//!
-//! Like the todos, the goal lives in memory only: it does not survive `/resume`
-//! or a restart. Nothing session-scoped is persisted in this port, and giving
-//! the goal its own answer would leave two mechanisms where there should be
-//! one.
-
 use serde::{Deserialize, Serialize};
 
 /// Maximum objective length, in characters.
@@ -23,7 +7,6 @@ pub const MAX_THREAD_GOAL_OBJECTIVE_CHARS: usize = 4_000;
 pub const MAX_THREAD_GOAL_REASON_CHARS: usize = 500;
 
 /// Lifecycle status of a goal.
-///
 /// `Active` goals are pursued automatically; `Paused` goals resume when the
 /// conversation does; `Blocked`, `BudgetLimited` and `Complete` are terminal
 /// from the model's perspective — only the user leaves them. `Blocked` and
@@ -53,7 +36,6 @@ impl ThreadGoalStatus {
 }
 
 /// A conversation's goal.
-///
 /// `tokens_used` is derived from the conversation's cumulative token spend since
 /// the goal started (see [`observe_total_tokens`](ThreadGoal::observe_total_tokens)),
 /// while `turns_used` counts the continuation turns the goal itself drove (see
@@ -77,8 +59,6 @@ pub struct ThreadGoal {
     /// goal is resumed or completed; absent for every other status.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocked_reason: Option<String>,
-    /// Whether an open checklist is the contract (port addition, v0.1.21).
-    ///
     /// A strict goal never lets a completion claim override the open-todo
     /// refusal, and asks for one quality self-check once the checklist really
     /// is clear. See [`GoalCompletionGuard`].
@@ -114,7 +94,6 @@ impl ThreadGoal {
         goal
     }
 
-    /// Makes an open checklist the contract for this goal (port addition,
     /// v0.1.21).
     #[must_use]
     pub fn strict(mut self, strict: bool) -> Self {
@@ -257,7 +236,6 @@ pub fn validate_goal_block_reason(value: &str) -> Result<(), String> {
 }
 
 /// The self-check a strict goal is asked for once its checklist is clear.
-///
 /// Taken from `../reasonix-main` (`internal/control/goal.go:25`), which learned
 /// that a checklist ticked off is not the same as work that holds up.
 const SELF_CHECK_REQUEST: &str = "All tracked tasks are done. Before finishing this goal, run one \
@@ -277,12 +255,9 @@ pub enum CompletionVerdict {
 }
 
 /// Guards the step from "the model says it is done" to "the goal is done".
-///
-/// Port addition (v0.1.21), adapted from `../reasonix-main`
 /// (`internal/control/goal.go:370`). The source of this feature takes the
 /// model's word for `complete`, and declaring victory over an unfinished
 /// checklist is the most common way an autonomous loop ends badly.
-///
 /// An ordinary goal refuses the first claim and honours the second, because a
 /// finished agent with a stale checklist must not be trapped. A strict goal
 /// refuses every claim until the checklist really is clear, and then asks for
@@ -334,7 +309,6 @@ will be honoured."
 }
 
 /// A session's goal and the guard that judges its completion claims.
-///
 /// Both are session-scoped and neither is persisted; see the module header.
 #[derive(Debug, Clone, Default)]
 pub struct GoalState {
@@ -351,7 +325,6 @@ impl GoalState {
 
 /// Distinctive opening lines used both to render the driver's reminders and to
 /// recognise them again.
-///
 /// One constant for both jobs on purpose: a reworded reminder that no longer
 /// matches its own detector would silently disable the duplicate suppression
 /// and the per-turn cap at the same time, and nothing would look wrong.
@@ -367,9 +340,7 @@ pub const MAX_CONTINUATIONS_PER_TURN: usize = 25;
 pub const GOAL_REMINDER_TYPE: &str = "goal-reminder";
 
 /// Which reminder a message is, recorded in its details.
-///
 /// Deviation from the reference, which recognises its own reminders by matching
-/// their opening phrase because it has nowhere else to put a marker. This port
 /// stamps the kind explicitly, so rewording a reminder cannot silently disable
 /// the duplicate suppression or the per-turn cap.
 pub const GOAL_REMINDER_KIND: &str = "kind";
@@ -388,7 +359,6 @@ pub enum GoalNudge {
 }
 
 /// Chooses the reminder for a goal at the end of a turn.
-///
 /// `already_sent` counts how many of the driver's own reminders stand since the
 /// last real user message, which is what bounds the loop and what stops a
 /// second wrap-up from being asked for.
@@ -417,7 +387,6 @@ fn budget_line(goal: &ThreadGoal) -> String {
 }
 
 /// Escapes the objective for the prompt it is replayed into every turn.
-///
 /// The objective is user text and the one input of this feature an injection
 /// would ride in on, so it is wrapped in a tag of its own and the characters
 /// that could close that tag are escaped.
@@ -498,7 +467,6 @@ pub enum SetGoalOutcome {
 }
 
 /// A parsed `/goal` invocation.
-///
 /// The TUI, the plain CLI and the desktop app all dispatch `/goal` themselves,
 /// so the grammar lives here once instead of three times — a budget flag that
 /// only works in one of them is worse than none.
@@ -517,7 +485,6 @@ pub enum GoalCommand {
         /// Set by the leading `replace` keyword. Without it, an existing goal
         /// is reported rather than overwritten.
         replace: bool,
-        /// Set by the leading `strict` keyword (port addition, v0.1.21): an
         /// open checklist is the contract, and a completion claim can never
         /// override it.
         strict: bool,

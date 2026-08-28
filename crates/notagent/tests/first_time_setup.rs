@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/first-time-setup.test.ts` and of
-//! `test/first-time-setup-fork.test.ts`.
-//!
-//! The fork suite mocks the config module to rebrand the package; Rust cannot
-//! swap a `const`, so it calls `is_official_distribution` with the forked name
-//! instead (deviation class 1, documented in `cli/startup_ui.rs`).
-
 use notagent::cli::startup_ui::{is_official_distribution, should_run_first_time_setup};
 use notagent::config::{APP_NAME, CONFIG_DIR_NAME, PACKAGE_NAME, env_agent_dir};
 use notagent::core::settings_manager::SettingsManager;
@@ -109,7 +102,6 @@ fn returns_false_for_a_forked_package() {
 }
 
 // ---------------------------------------------------------------------------
-// analytics settings (same TypeScript file)
 // ---------------------------------------------------------------------------
 
 #[test]

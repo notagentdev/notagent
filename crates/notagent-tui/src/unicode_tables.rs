@@ -1,11 +1,3 @@
-//! GENERIERT — nicht von Hand bearbeiten.
-//!
-//! Erzeugt von `tools/gen-unicode-tables.mjs` aus der Node-Runtime
-//! (Unicode 17.0, ICU 78.3) und
-//! `get-east-asian-width` des TS-Repos — denselben Quellen, gegen die die
-//! TS-Tests laufen. Bildet die `\p{…}`-Klassen aus `packages/tui/src/utils.ts` ab.
-
-/// Codepoint liegt in einem der sortierten [start, end]-Bereiche.
 pub(crate) fn in_ranges(ranges: &[(u32, u32)], cp: u32) -> bool {
     ranges
         .binary_search_by(|&(start, end)| {
@@ -710,7 +702,6 @@ pub(crate) static LEADING_NON_PRINTING: &[(u32, u32)] = &[
     (0xe0000, 0xe0fff),
 ];
 
-/// wie LEADING_NON_PRINTING, als Einzelzeichen-Test
 pub(crate) static NON_PRINTING_CHAR: &[(u32, u32)] = &[
     (0x0, 0x1f),
     (0x7f, 0x9f),
@@ -1388,7 +1379,6 @@ pub(crate) static MARK_CHAR: &[(u32, u32)] = &[
     (0xe0100, 0xe01ef),
 ];
 
-/// `[\p{Spacing_Mark}--[\u1734\u302E\u302F]]` plus die Myanmar-/Tibet-Liste
 pub(crate) static TERMINAL_SPACING_MARK: &[(u32, u32)] = &[
     (0x65f, 0x65f),
     (0x903, 0x903),
@@ -1782,7 +1772,7 @@ pub(crate) static EAW_WIDE: &[(u32, u32)] = &[
     (0x30000, 0x3fffd),
 ];
 
-/// Einzelcodepoint erfüllt `\p{RGI_Emoji}`
+/// Single code point satisfying `\p{RGI_Emoji}`.
 pub(crate) static RGI_BASIC_SINGLE: &[(u32, u32)] = &[
     (0x231a, 0x231b),
     (0x23e9, 0x23ec),
@@ -1866,7 +1856,7 @@ pub(crate) static RGI_BASIC_SINGLE: &[(u32, u32)] = &[
     (0x1faef, 0x1faf8),
 ];
 
-/// Codepoint + U+FE0F erfüllt `\p{RGI_Emoji}`
+/// Code point plus U+FE0F satisfying `\p{RGI_Emoji}`.
 pub(crate) static RGI_BASIC_VS16: &[(u32, u32)] = &[
     (0xa9, 0xa9),
     (0xae, 0xae),
@@ -1986,10 +1976,10 @@ pub(crate) static RGI_BASIC_VS16: &[(u32, u32)] = &[
     (0x1f6f3, 0x1f6f3),
 ];
 
-/// Codepoint + U+FE0F + U+20E3 erfüllt `\p{RGI_Emoji}`
+/// Code point plus U+FE0F and U+20E3 satisfying `\p{RGI_Emoji}`.
 pub(crate) static RGI_KEYCAP_BASE: &[(u32, u32)] = &[(0x23, 0x23), (0x2a, 0x2a), (0x30, 0x39)];
 
-/// Codepoint + Hautton erfüllt `\p{RGI_Emoji}`
+/// Code point plus skin tone satisfying `\p{RGI_Emoji}`.
 pub(crate) static RGI_MODIFIER_BASE: &[(u32, u32)] = &[
     (0x261d, 0x261d),
     (0x26f9, 0x26f9),
@@ -2034,7 +2024,6 @@ pub(crate) static RGI_MODIFIER_BASE: &[(u32, u32)] = &[
     (0x1faf0, 0x1faf8),
 ];
 
-/// RGI_Emoji_Flag_Sequence: Index `(a * 26 + b)` der Regionalindikatorpaare.
 pub(crate) static RGI_FLAG_PAIRS: &[u16] = &[
     2, 3, 4, 5, 6, 8, 11, 12, 14, 16, 17, 18, 19, 20, 22, 23, 25, 26, 27, 29, 30, 31, 32, 33, 34,
     35, 37, 38, 39, 40, 42, 43, 44, 45, 47, 48, 50, 51, 52, 54, 55, 57, 58, 59, 60, 62, 63, 64, 65,
@@ -2051,14 +2040,13 @@ pub(crate) static RGI_FLAG_PAIRS: &[u16] = &[
     544, 545, 546, 548, 550, 552, 554, 559, 566, 577, 590, 608, 628, 643, 650, 662, 672,
 ];
 
-/// RGI_Emoji_Tag_Sequence (vollständig).
 pub(crate) static RGI_TAG_SEQUENCES: &[&str] = &[
     "\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}",
     "\u{1f3f4}\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f}",
     "\u{1f3f4}\u{e0067}\u{e0062}\u{e0077}\u{e006c}\u{e0073}\u{e007f}",
 ];
 
-/// RGI_Emoji_ZWJ_Sequence, lexikografisch sortiert (Binärsuche).
+/// RGI emoji ZWJ sequences sorted lexicographically for binary search.
 pub(crate) static RGI_ZWJ_SEQUENCES: &[&str] = &[
     "\u{26d3}\u{fe0f}\u{200d}\u{1f4a5}",
     "\u{26f9}\u{fe0f}\u{200d}\u{2640}\u{fe0f}",

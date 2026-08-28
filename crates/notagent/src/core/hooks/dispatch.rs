@@ -1,18 +1,3 @@
-//! Native replacement for `packages/coding-agent/src/core/hooks/extension.ts`.
-//!
-//! Maps agent activity onto hook events.
-//!
-//! In TypeScript the mapping is registered as a hidden inline extension, which
-//! is how it reaches the session's events without new plumbing. There is no
-//! extension system here, so the same mapping is a set of methods the session
-//! calls at the corresponding points — the table in
-//! `plans/facts/extension-boundary.md` §2.2, one method per row.
-//!
-//! PreToolUse is deliberately absent. It runs from the permission path, where
-//! its verdict fills the user-authored slots of the policy chain — dispatching
-//! it here as well would run every hook twice and give two mechanisms a claim on
-//! the same decision.
-
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
@@ -119,7 +104,6 @@ impl HookDispatcher {
 
     /// `before_agent_start`. Returns the body of the hidden `hook_context`
     /// message, or `None` when no hook wrote anything.
-    ///
     /// Delivered as a message rather than folded into the prompt, so what
     /// the user typed stays exactly what they typed. The wrapper names the
     /// source, since text of unclear origin is the thing a model is most
@@ -237,7 +221,6 @@ impl HookDispatcher {
 }
 
 /// Reports approval prompts as hook events.
-///
 /// Both names fire: PermissionRequest and PermissionResult carry the detail, and
 /// Notification carries the same moment under the name an external supervisor
 /// already watches for. That duplication is the point — a consumer built against

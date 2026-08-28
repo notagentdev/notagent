@@ -1,7 +1,3 @@
-//! Redigierte Provider-/Laufzeit-Diagnosen an `AssistantMessage`.
-//!
-//! 1:1-Port von `packages/ai/src/utils/diagnostics.ts` (45 LOC).
-
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -13,7 +9,6 @@ pub struct DiagnosticErrorInfo {
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack: Option<String>,
-    /// TS: `string | number`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<Value>,
 }
@@ -36,8 +31,6 @@ pub fn format_thrown_value(value: &dyn std::fmt::Display) -> String {
 }
 
 /// `extractDiagnosticError(error)` for a Rust error value.
-///
-/// TS distinguishes `Error` instances from arbitrary thrown values; the Rust
 /// counterpart of a thrown non-error is a plain value, which callers pass through
 /// [`thrown_value_diagnostic`].
 pub fn extract_diagnostic_error(error: &dyn std::error::Error) -> DiagnosticErrorInfo {
@@ -49,7 +42,6 @@ pub fn extract_diagnostic_error(error: &dyn std::error::Error) -> DiagnosticErro
     }
 }
 
-/// `extractDiagnosticError(value)` for a non-error value (TS: `{ name: "ThrownValue" }`).
 pub fn thrown_value_diagnostic(value: &dyn std::fmt::Display) -> DiagnosticErrorInfo {
     DiagnosticErrorInfo {
         name: Some("ThrownValue".to_string()),

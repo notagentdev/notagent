@@ -1,7 +1,3 @@
-//! Provider-side constrained sampling.
-//!
-//! 1:1 port of `packages/ai/src/api/constrained-sampling.ts` (277 LOC).
-
 use serde_json::{Map, Value, json};
 
 use crate::types::{
@@ -33,7 +29,6 @@ const UNSUPPORTED_STRICT_SCHEMA_KEYS: [&str; 16] = [
 #[error("{0}")]
 pub struct UnsupportedStrictJsonSchema(pub String);
 
-/// Errors surfaced to callers as ordinary `Error`s in TS.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct ConstrainedSamplingError(pub String);

@@ -1,34 +1,3 @@
-//! Port of `packages/coding-agent/src/core/permissions/chain.ts`.
-//!
-//! The policy chain and the mode-driven policies in it.
-//!
-//! The order below is the safety logic. Three positions carry guarantees that
-//! are asserted in tests, because a refactor could reorder this list without
-//! anything else failing:
-//!
-//!  - The auto-mode question denial is first, so a model cannot substitute
-//!    questions for the approval prompts auto removed.
-//!  - User-authored denials sit ahead of auto-approval, so turning on auto
-//!    never overrides a restriction the user set deliberately.
-//!  - Yolo approval sits ahead of every guard except explicit user denials and
-//!    the irreversible-command check: yolo means yolo about supervision, not
-//!    about whether a mistake can be taken back. Auto sits behind the
-//!    sensitive-file and version-control checks instead, so the gradient is
-//!    real — manual asks, auto proceeds but still stops at credentials and
-//!    version control, yolo proceeds.
-//!  - The irreversible-command check sits ahead of every approving policy,
-//!    including yolo. Every other guard reads a path argument, and a shell
-//!    command has none, so without this one the chain is blind precisely where
-//!    the damage is.
-//!
-//! The user-authored slots are filled by PreToolUse hooks, which run once per
-//! call before the chain and leave their verdict on the context. The session
-//! history slot needs the coordinator and is therefore supplied from outside.
-//!
-//! Slots whose policies are not implemented yet are simply absent from the
-//! assembled chain; their position in ORDER is what fixes where they land once
-//! they arrive.
-
 use std::sync::Arc;
 
 use super::policies::self_contained_policies;

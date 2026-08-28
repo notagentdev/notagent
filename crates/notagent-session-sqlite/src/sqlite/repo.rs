@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/repo.ts`.
-
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -128,7 +126,6 @@ fn get_parent_path(path: &str) -> String {
 }
 
 /// Runs a write transaction and preserves the original `SessionError` code:
-/// `with_transaction` only carries a message, TS propagates the error itself.
 fn in_transaction<T>(
     db: &dyn SqliteDatabase,
     body: impl FnOnce() -> Result<T, SessionError>,
@@ -156,7 +153,6 @@ fn require_session_row(
         .ok_or_else(|| SessionError::not_found(format!("Session not found: {session_id}")))
 }
 
-/// Port of `decodeEntry`: the storage columns plus the JSON payload.
 pub(crate) fn decode_entry(row: &EntryRow) -> Result<Entry, SessionError> {
     let invalid = || {
         SessionError::new(
@@ -182,7 +178,6 @@ pub(crate) fn decode_entry(row: &EntryRow) -> Result<Entry, SessionError> {
     serde_json::from_value(Value::Object(object)).map_err(|_| invalid())
 }
 
-/// Port of `decodeRecord`.
 fn decode_record(seq: i64, timestamp: i64, payload: &str) -> Result<LaneRecord, SessionError> {
     let invalid = || {
         SessionError::storage(format!(
@@ -280,13 +275,11 @@ fn record_op_kind(record: &LaneRecord) -> Option<String> {
     })
 }
 
-/// Port of `SqliteSessionStorage`.
 pub struct SqliteSessionStorage {
     db: Arc<dyn SqliteDatabase>,
     metadata: SqliteSessionMetadata,
     lease: Mutex<WriterLease>,
     lease_options: ResolvedWriterLeaseOptions,
-    /// TS uses a `SerialOperationQueue`; the fair tokio mutex serializes in call order.
     operations: tokio::sync::Mutex<()>,
     lease_error: Mutex<Option<SessionError>>,
     closing: AtomicBool,
@@ -353,7 +346,6 @@ impl SqliteSessionStorage {
         });
     }
 
-    /// Port of `enqueueWrite`: serialized, lease-renewing write transaction.
     async fn enqueue_write<T>(
         &self,
         operation: impl FnOnce() -> Result<T, SessionError>,
@@ -935,7 +927,6 @@ struct RepositoryInner {
     active_storages: Mutex<Vec<Arc<SqliteSessionStorage>>>,
 }
 
-/// Port of `SqliteSessionRepository`.
 pub struct SqliteSessionRepository {
     inner: Arc<RepositoryInner>,
 }

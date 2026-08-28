@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/oauth-selector.ts` (206 LOC).
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -63,7 +60,6 @@ pub fn format_auth_selector_provider_type(auth_type: AuthType) -> &'static str {
     }
 }
 
-/// The literal strings of the TypeScript `"oauth" | "api_key"` union, which the
 /// filter text interpolates.
 fn auth_type_text(auth_type: AuthType) -> &'static str {
     match auth_type {
@@ -88,7 +84,6 @@ pub enum AuthSelectorMode {
 pub struct OAuthSelectorComponent {
     container: Container,
     search_input: Rc<RefCell<Input>>,
-    /// Set by the input's `onSubmit`; the TypeScript callback closes over `this`.
     submitted: Rc<Cell<bool>>,
 
     // Focusable implementation - propagate to search input for IME cursor positioning
@@ -218,7 +213,6 @@ impl OAuthSelectorComponent {
 
         let max_visible = 8usize;
         // `Math.max(0, Math.min(selected - 4, length - maxVisible))` — both
-        // operands can be negative in TypeScript, which the clamp to 0 absorbs.
         let start_index = (self.selected_index as isize - (max_visible / 2) as isize)
             .min(self.filtered_providers.len() as isize - max_visible as isize)
             .max(0) as usize;

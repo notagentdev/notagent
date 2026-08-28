@@ -1,7 +1,3 @@
-//! xAI OAuth device-code flow.
-//!
-//! 1:1 port of `packages/ai/src/auth/oauth/xai.ts` (239 LOC).
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -246,7 +242,6 @@ impl OAuthAuth for XaiOAuth {
     }
 }
 
-/// The shared instance, matching the TS export.
 pub fn xai_oauth() -> Arc<dyn OAuthAuth> {
     Arc::new(XaiOAuth)
 }

@@ -1,10 +1,3 @@
-//! Mistral Chat Completions adapter.
-//!
-//! 1:1 port of `packages/ai/src/api/mistral-conversations.ts` (931 LOC). Class 3
-//! substitution: the `fetch` call and the event reader become reqwest plus the
-//! adapter's own boundary scanner — Mistral's stream is *not* read with the shared
-//! SSE decoder, because the TS reader accepts eight different separator forms.
-
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
@@ -199,8 +192,6 @@ pub fn derive_mistral_tool_call_id(id: &str, attempt: u32) -> String {
 // ---------------------------------------------------------------------------
 
 /// `buildChatPayload(model, context, messages, options)` followed by
-/// `toMistralWirePayload(payload)` — the port builds the wire body directly, in the
-/// key order the TS remapping produces.
 pub fn build_request_body(
     model: &Model,
     context: &Context,
@@ -663,7 +654,6 @@ impl MistralStreamState {
                 self.output.error_message = Some(error_message);
             }
         } else if choice.get("finish_reason").is_some_and(Value::is_null) {
-            // `choice.finish_reason` is null: TS skips the branch (falsy).
         }
 
         let delta = choice.get("delta").cloned().unwrap_or(Value::Null);
@@ -919,7 +909,6 @@ fn map_chat_stop_reason(reason: Option<&str>) -> (StopReason, Option<String>) {
 // Transport
 // ---------------------------------------------------------------------------
 
-/// `new URL("v1/chat/completions", baseUrl)` with the trailing-slash rule of the TS
 /// adapter: the base path always ends in `/`, so the relative segment is appended.
 pub fn build_request_url(model: &Model) -> String {
     let base = model.base_url.trim_end_matches('/');
@@ -1021,7 +1010,6 @@ pub fn stream(
                         stream.end(Some(state.output));
                     }
                     None => {
-                        // `stopReason` was pending, aborted or error: the TS adapter throws.
                         let message = match state.output.stop_reason {
                             StopReason::Pending => {
                                 "Mistral stream ended without a finish reason".to_string()
@@ -1049,7 +1037,6 @@ pub fn stream(
     outer
 }
 
-/// The `catch` branch of the TS adapter.
 fn fail(
     state: &mut MistralStreamState,
     stream: &AssistantMessageEventStream,

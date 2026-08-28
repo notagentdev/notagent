@@ -1,21 +1,3 @@
-//! Buffers stdin input and emits complete escape sequences.
-//!
-//! 1:1 port of `packages/tui/src/stdin-buffer.ts` (444 LOC). stdin data events
-//! arrive in partial chunks, especially for mouse events; without buffering a
-//! partial sequence would be misread as regular key presses.
-//!
-//! Based on code from OpenTUI (<https://github.com/anomalyco/opentui>),
-//! MIT License - Copyright (c) 2025 opentui.
-//!
-//! Two shape changes against the TS original (deviation class 1, behaviour
-//! identical):
-//! - The `EventEmitter` becomes ordered [`StdinEvent`]s returned from
-//!   [`StdinBuffer::process`].
-//! - `setTimeout` becomes [`StdinBuffer::pending_timeout_ms`]: the caller arms
-//!   a timer and calls [`StdinBuffer::flush_timeout`] when it fires. Calling
-//!   `process` again cancels that timer, exactly like the TS version clears its
-//!   pending timeout at the top of `process()`.
-
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -29,9 +11,7 @@ const BRACKETED_PASTE_END: &str = "\x1b[201~";
 /// What the buffer produces while processing input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StdinEvent {
-    /// A complete input sequence (TS: `data` event).
     Data(String),
-    /// Content of a bracketed paste (TS: `paste` event).
     Paste(String),
 }
 
@@ -201,7 +181,6 @@ fn extract_complete_sequences(buffer: &str) -> ExtractedSequences {
 
         if remaining.starts_with(ESC) {
             // Find the end of this escape sequence, growing character by
-            // character (TS grows by UTF-16 code unit; escape sequences are
             // ASCII, so the scan is equivalent).
             let mut seq_end = ESC.len();
             let mut consumed = false;
@@ -307,7 +286,6 @@ impl StdinBuffer {
         }
     }
 
-    /// Feed raw bytes, applying the high-byte conversion of the TS version: a
     /// single byte > 127 becomes ESC + (byte - 128).
     pub fn process_bytes(&mut self, data: &[u8]) -> Vec<StdinEvent> {
         if data.len() == 1 && data[0] > 127 {
@@ -384,7 +362,6 @@ impl StdinBuffer {
     }
 
     fn emit_data_sequence(&mut self, sequence: &str, events: &mut Vec<StdinEvent>) {
-        // TS: `sequence.length === 1` counts UTF-16 code units.
         let raw_codepoint = if sequence.encode_utf16().count() == 1 {
             sequence.chars().next().map(u32::from)
         } else {
@@ -401,8 +378,6 @@ impl StdinBuffer {
     }
 
     /// How long to wait before flushing an incomplete sequence, if any.
-    ///
-    /// Replaces the `setTimeout` of the TS version: the caller arms a timer for
     /// this duration and calls [`Self::flush_timeout`] when it fires. A new
     /// [`Self::process`] call cancels the timer.
     pub fn pending_timeout_ms(&self) -> Option<u64> {
@@ -416,7 +391,6 @@ impl StdinBuffer {
         })
     }
 
-    /// Flush the buffered remainder as events (what the TS timeout handler does).
     pub fn flush_timeout(&mut self) -> Vec<StdinEvent> {
         let mut events = Vec::new();
         for sequence in self.flush() {
@@ -448,7 +422,6 @@ impl StdinBuffer {
         &self.buffer
     }
 
-    /// Same as [`Self::clear`]; kept for parity with the TS API.
     pub fn destroy(&mut self) {
         self.clear();
     }

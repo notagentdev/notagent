@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/delegation/`.
-
 /// The two subagent types a delegation can target.
 pub mod agent_type;
 /// Star names, so the user can tell one running child from another.

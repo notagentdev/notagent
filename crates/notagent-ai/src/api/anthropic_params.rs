@@ -1,11 +1,3 @@
-//! Anthropic Messages request building.
-//!
-//! 1:1 port of the request half of `packages/ai/src/api/anthropic-messages.ts`
-//! (`getAnthropicCompat`, `getCacheControl`, `convertMessages`, `convertTools`,
-//! `buildParams`, the Claude Code tool-name mapping and the beta-header assembly).
-//! The TS code hands the payload to the Anthropic SDK only to sign and send it, so the
-//! payload itself is what has to stay byte-identical.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
@@ -145,7 +137,6 @@ pub fn get_anthropic_compat(model: &Model) -> ResolvedAnthropicCompat {
     }
 }
 
-/// `forceAdaptiveThinking` — not part of the resolved defaults in TS either.
 pub fn force_adaptive_thinking(model: &Model) -> bool {
     anthropic_compat(model)
         .and_then(|compat| compat.force_adaptive_thinking)
@@ -210,7 +201,6 @@ fn convert_content_blocks(content: &[TextOrImageContent]) -> Value {
             .iter()
             .map(|block| match block {
                 TextOrImageContent::Text(text) => text.text.as_str(),
-                // TS reads `.text` off the image block too, which yields undefined and
                 // joins as an empty segment; unreachable because of the guard above.
                 TextOrImageContent::Image(_) => "",
             })
@@ -791,7 +781,6 @@ pub fn build_params(
     Value::Object(params)
 }
 
-/// The default headers the TS code hands to the SDK client, per auth mode.
 pub fn build_default_headers(
     model: &Model,
     api_key: Option<&str>,

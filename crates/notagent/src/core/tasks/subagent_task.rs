@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tasks/subagent-task.ts`.
-//!
-//! A delegated subagent as a piece of managed work.
-//!
-//! This is the file that makes a subagent and a shell command the same kind of
-//! thing. Once a delegation is a task, it appears in the same list, is stopped
-//! the same way, announces itself through the same note, and can be detached
-//! from the turn that started it — none of which needed a second mechanism.
-//!
-//! A subagent has no process to force, so `force_stop` is absent: cancelling
-//! the signal is the whole of stopping one, and the run it drives reacts to
-//! that cancellation itself.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::types::BoxFuture;
@@ -43,7 +30,6 @@ pub struct SubagentTaskOptions {
     /// The star name the user sees it under (`core/delegation/aliases.rs`).
     pub alias: String,
     /// The run, already started, which the task observes rather than owns.
-    ///
     /// Deviation (class 1): a JS promise several places await becomes a
     /// `oneshot` receiver here, since only the task itself awaits the answer.
     pub run: oneshot::Receiver<SubagentRunResult>,
@@ -109,7 +95,6 @@ impl BackgroundTask for SubagentTask {
                 let watcher_signal = stop_signal.clone();
                 let watcher_cancel = Arc::clone(&cancel);
                 // Dropped with the guard below, which is what removing the
-                // `abort` listener does in TS.
                 let stop_watcher = tokio::spawn(async move {
                     watcher_signal.cancelled().await;
                     watcher_cancel();

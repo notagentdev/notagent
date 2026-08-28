@@ -1,9 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/auth-command.ts`.
-//!
-//! `notagent auth …` is parsed before the normal argument pass, because it is a
-//! different command surface: it takes only `--provider`/`--model` plus its own
-//! switches, and everything else is an error rather than a prompt.
-
 use std::sync::OnceLock;
 
 use notagent_ai::auth::types::AuthResult;

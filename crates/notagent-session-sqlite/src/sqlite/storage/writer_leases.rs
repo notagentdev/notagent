@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/writer-leases.ts`.
-
 use crate::session_types::SessionError;
 use crate::sql;
 use crate::sqlite::sql::{param, text};

@@ -1,9 +1,3 @@
-//! `azure_openai_responsesProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/azure-openai-responses.ts` (14 LOC). The generated
-//! `azure-openai-responses.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::AzureOpenAIResponsesApi;

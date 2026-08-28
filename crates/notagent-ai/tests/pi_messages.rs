@@ -1,9 +1,3 @@
-//! Differential test of the pi-messages adapter.
-//!
-//! `fixtures/pi-messages.jsonl` records, for each case, the URL, the headers and the
-//! body the TS implementation puts on the wire plus the event sequence it emits for a
-//! scripted SSE body (see `fixtures/generators`).
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::pi_messages::{
@@ -164,8 +158,6 @@ fn strip_expected(mut expected: Value) -> Value {
     if let Some(object) = expected.as_object_mut() {
         // `{ ...event, partial }` spreads the wire event, so the emitted object carries
         // fields the declared `AssistantMessageEvent` type does not have and no typed
-        // consumer can read. The port's enum only carries the declared fields; the data
-        // itself reaches the consumer through `partial.content` (deviation class 1).
         for key in [
             "contentSignature",
             "redacted",

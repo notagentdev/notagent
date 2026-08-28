@@ -1,7 +1,3 @@
-//! Word-wrapping text component.
-//!
-//! 1:1 port of `packages/tui/src/components/text.ts` (106 LOC).
-
 use std::rc::Rc;
 
 use crate::tui::{Component, Line, shared_lines};
@@ -22,7 +18,6 @@ pub struct Text {
 }
 
 impl Text {
-    /// New text component (TS defaults: `paddingX = 1`, `paddingY = 1`).
     pub fn new(text: impl Into<String>, padding_x: usize, padding_y: usize) -> Self {
         Self {
             text: text.into(),

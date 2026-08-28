@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/package-manager.ts` (2 677 LOC).
-//!
-//! Packages are npm specs, git repositories or local directories. This module
-//! installs them, keeps them current, and turns the settings entries plus the
-//! auto-discovered directories into the resource lists the resource loader
-//! consumes.
-//!
-//! Deviation (class 2): the resource type `extensions` is gone with the
-//! extension system (`plans/facts/extension-boundary.md` §6) — with it go
-//! `resolveExtensionSources` (its only caller was the CLI `--extension` path of
-//! the resource loader) and the extension-entry discovery
-//! (`resolveExtensionEntries` / `collectAutoExtensionEntries`). The remaining
-//! three types keep their behaviour exactly.
-
 pub mod command_runner;
 pub mod discovery;
 pub mod patterns;
@@ -52,7 +38,6 @@ const UPDATE_CHECK_CONCURRENCY: usize = 4;
 const GIT_UPDATE_CONCURRENCY: usize = 4;
 
 /// Everything the package manager can fail with; the message is the one the
-/// TypeScript puts into its `Error`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct PackageManagerError(pub String);
@@ -77,18 +62,13 @@ fn is_offline_mode_enabled() -> bool {
 }
 
 /// `isExactNpmVersion(version)`
-///
 /// Deviation (class 3, master substitution node-semver → the `semver` crate):
 /// `valid()` becomes `Version::parse`. The crate rejects the `v1.2.3` spelling
-/// node-semver tolerates; no caller of this port produces one.
 fn is_exact_npm_version(version: Option<&str>) -> bool {
     Version::parse(version.unwrap_or("")).is_ok()
 }
 
 /// `getNpmVersionRange(version)`
-///
-/// Deviation (class 1): the TypeScript stores the *normalized* range string;
-/// this port keeps the source spelling and parses it where it is used, which
 /// is equivalent — the value is only ever fed back into `satisfies` and
 /// `maxSatisfying`.
 fn get_npm_version_range(version: Option<&str>) -> Option<String> {
@@ -293,7 +273,6 @@ fn set_owner_only_permissions(path: &Path) {
 fn set_owner_only_permissions(_path: &Path) {}
 
 /// `globSync(entry, { cwd: root, absolute: true, dot: false, nodir: false })`
-///
 /// Deviation (class 3, master substitution glob → globset): the walk is local;
 /// `dot: false` becomes "skip entries whose name starts with a dot", and the
 /// matches are sorted so the resolved order does not depend on the filesystem.
@@ -339,7 +318,6 @@ fn glob_sync(pattern: &str, root: &Path) -> Vec<String> {
     matches
 }
 
-/// One entry of the `ResourceAccumulator` maps of the TypeScript.
 #[derive(Debug, Clone)]
 struct AccumulatedResource {
     metadata: PathMetadata,
@@ -347,7 +325,6 @@ struct AccumulatedResource {
 }
 
 /// `ResourceAccumulator`
-///
 /// Deviation (class 1): the `Map`s are `Vec`s of pairs, because the insertion
 /// order carries meaning (first-wins collision resolution downstream) and the
 /// port must not depend on hash order.
@@ -1232,7 +1209,6 @@ impl DefaultPackageManager {
     }
 
     /// `resolveLocalExtensionSource(source, accumulator, filter, metadata, baseDir)`
-    ///
     /// Deviation (class 2): the two branches that registered the source itself
     /// as an extension (a file source, and a directory without resources) are
     /// gone with the extension system; a local package now contributes exactly
@@ -2659,7 +2635,6 @@ impl DefaultPackageManager {
 
 impl PackageResources for DefaultPackageManager {
     /// Deviation (class 1): the trait C defined for the resource loader
-    /// (interface request C-11) cannot report an error, while the TypeScript
     /// `resolve()` propagates a failed install to the loader. A failed resolve
     /// therefore yields an empty set here.
     fn resolve(&self) -> BoxFuture<'_, ResolvedResources> {
@@ -2866,8 +2841,6 @@ fn apply_package_delta_filter(
 }
 
 /// `collectManifestFiles(packageRoot, resourceType)`
-///
-/// Returns the TypeScript's `allFiles`; the second half of its return value
 /// (`enabledByManifest`) is the same list in both branches.
 fn collect_manifest_files(package_root: &Path, resource_type: ResourceType) -> Vec<String> {
     let manifest = read_pi_manifest(&package_root.join("package.json"));

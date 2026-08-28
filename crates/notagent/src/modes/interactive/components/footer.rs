@@ -1,20 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/footer.ts` (253 LOC).
-//!
-//! Shows the working directory, the git branch, the session name, the token and
-//! cost totals of the whole session, the context usage and the model.
-//!
-//! Deviation (class 1): TS hands the component the `AgentSession` and the
-//! `ReadonlyFooterDataProvider` themselves, and its test passes duck-typed
-//! stubs instead. Rust needs a named contract for that, so the component reads
-//! through [`FooterSession`] and [`FooterData`]; both are implemented for the
-//! real types, and the ported suite implements them with stubs.
-//!
-//! Deviation (class 2): the extension status line is gone. Its only producer
-//! was `ctx.ui.setStatus` of the extension API, and `FooterDataProvider`
-//! therefore no longer carries a status map (see the note there and
-//! `plans/facts/extension-boundary.md` §6).
-
 use std::path::{Component as PathComponent, Path, PathBuf};
 use std::sync::Arc;
 
@@ -129,9 +112,7 @@ fn relative_path(from: &Path, to: &Path) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// What the footer reads from the session (`AgentSession` in TS).
 /// `[goal ● active · 7/20 turns · 12.4K tokens]`, coloured by status.
-///
 /// A `Complete` goal is not badged: it is cleared from the session the moment
 /// the user is told, and a badge for it would linger over work that is done.
 fn render_goal_badge(goal: &ThreadGoal) -> String {
@@ -180,10 +161,8 @@ pub trait FooterSession: Send + Sync {
     fn context_usage(&self) -> Option<ContextUsage>;
     fn active_mode(&self) -> Option<Mode>;
     fn is_using_subscription(&self, provider: &str) -> bool;
-    /// The running goal, or `None` (port addition, v0.1.21).
     fn goal(&self) -> Option<ThreadGoal>;
     /// How many MCP servers are connected, and how many want attention
-    /// (port addition, v0.1.22).
     fn mcp_summary(&self) -> McpSummary;
 }
 
@@ -257,7 +236,6 @@ impl FooterSession for AgentSession {
 }
 
 /// What the footer reads from the data provider
-/// (`ReadonlyFooterDataProvider` in TS).
 pub trait FooterData: Send + Sync {
     fn get_git_branch(&self) -> Option<String>;
     fn get_available_provider_count(&self) -> u64;
@@ -305,7 +283,6 @@ impl FooterComponent {
 }
 
 /// The colour of the footer's mode label.
-///
 /// The built-in modes take the reference's mode palette (takeover, user
 /// decision 2026-08-18): plan green, auto yellow, yolo red; `manual` stays
 /// neutral like the reference's `permission on`. A user-authored mode keeps
@@ -369,7 +346,6 @@ impl Component for FooterComponent {
                             add_usage_to_totals(&mut usage_totals, &usage);
                         }
                         // An assistant message without usage still resets the
-                        // rate, exactly as the TS branch does.
                         (Some("assistant"), None) => latest_cache_hit_rate = None,
                         _ => {}
                     }

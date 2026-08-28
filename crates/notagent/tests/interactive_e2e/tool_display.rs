@@ -1,5 +1,4 @@
 //! Scenario 3 — tool display.
-//!
 //! A scripted tool call runs through the real tool and shows up as a tool row
 //! in the transcript. Both halves of the row exist on main: `render_call` and
 //! `render_result` of the sixteen tools (C-17) and `ToolExecutionComponent`
@@ -279,7 +278,6 @@ async fn a_new_turn_starts_its_own_block() {
 
 /// A search that finished keeps its result, even when the turn it ran in did
 /// not.
-///
 /// The abort path fails only the calls that never reported back
 /// (`ExploreBlockComponent::fail_running_calls`); a completed one is a fact
 /// about that search, not about the turn around it. Colouring it red because

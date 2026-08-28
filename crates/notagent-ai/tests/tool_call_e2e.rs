@@ -1,8 +1,3 @@
-//! Ports of `packages/ai/test/tool-call-without-result.test.ts` (359 LOC) and
-//! `packages/ai/test/tool-call-id-normalization.test.ts` (290 LOC).
-//!
-//! One test per TS `describe` block, gated as in TS.
-
 mod e2e_support;
 
 use e2e_support::*;
@@ -43,7 +38,6 @@ fn echo_tool() -> Tool {
 }
 
 // ---------------------------------------------------------------------------
-// tool-call-without-result.test.ts
 // ---------------------------------------------------------------------------
 
 /// `testToolCallWithoutResult(model, options)` — an orphaned tool call must be filtered
@@ -303,7 +297,6 @@ async fn orphan_openai_codex_provider() {
 }
 
 // ---------------------------------------------------------------------------
-// tool-call-id-normalization.test.ts
 // ---------------------------------------------------------------------------
 
 /// Generates a pipe-separated tool call with Copilot, then replays it on `target`.

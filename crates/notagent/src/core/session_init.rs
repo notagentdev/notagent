@@ -1,11 +1,9 @@
 //! `/init`: the brief that produces the project's `AGENTS.md`, and the
 //! reminder that carries the result back.
-//!
 //! The work runs in a subagent rather than in the main conversation, because
 //! exploring a repository costs far more context than the file it produces. The
 //! main agent would spend its window on directory listings and file reads it
 //! never needs again; a child spends its own and hands back one file.
-//!
 //! That split creates the problem this module's second half solves: the child's
 //! conversation is not the parent's, so once the child is gone the main agent
 //! has no idea what was written. The reminder puts the finished file into the
@@ -28,7 +26,6 @@ pub const INIT_FILE_NAME: &str = "AGENTS.md";
 pub const INIT_REMINDER_TYPE: &str = "init";
 
 /// Reads back what the child wrote, or `None` when it wrote nothing usable.
-///
 /// Read from disk rather than taken from the child's answer: a child that
 /// reports success without writing is exactly the case worth catching.
 pub fn read_written_guide(cwd: &str) -> Option<String> {

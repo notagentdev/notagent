@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/migrations.ts`.
-//!
-//! One-time migrations that run on startup.
-//!
-//! Deviation class 2 (extension removal): `checkDeprecatedExtensionDirs` and
-//! `showDeprecationWarnings` only pointed users at the extension system, which
-//! this port drops (plans/facts/extension-boundary.md §6). `commands/` →
-//! `prompts/` stays, because prompt templates stay.
-
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
@@ -14,7 +5,6 @@ use serde_json::{Map, Value};
 use crate::config::{get_agent_dir, get_bin_dir};
 
 /// Migrate legacy oauth.json and settings.json apiKeys to auth.json.
-///
 /// Returns the provider names that were migrated.
 pub fn migrate_auth_to_auth_json() -> Vec<String> {
     migrate_auth_to_auth_json_in(&get_agent_dir())
@@ -33,8 +23,6 @@ pub(crate) fn migrate_auth_to_auth_json_in(agent_dir: &Path) -> Vec<String> {
     let mut migrated: Map<String, Value> = Map::new();
     let mut providers: Vec<String> = Vec::new();
 
-    // Gather first, destroy later. Deviation from the TS original (user
-    // decision 2026-08-16, v0.1.4): the TS code renames oauth.json and strips
     // settings.json BEFORE writing auth.json and ignores a failing write,
     // which can lose the credentials. Here nothing is touched until auth.json
     // is durably on disk; on failure the migration simply retries next start.
@@ -104,9 +92,7 @@ pub(crate) fn migrate_auth_to_auth_json_in(agent_dir: &Path) -> Vec<String> {
     providers
 }
 
-/// Port of the session directory encoding in `session-manager.ts`.
 pub(crate) fn encode_cwd_directory(cwd: &str) -> String {
-    // TS strips exactly one leading separator (`replace(/^[/\\]/, "")`).
     let trimmed = match cwd.strip_prefix(['/', '\\']) {
         Some(rest) => rest,
         None => cwd,
@@ -125,7 +111,6 @@ pub(crate) fn encode_cwd_directory(cwd: &str) -> String {
 }
 
 /// Migrate sessions from `~/.notagent/agent/*.jsonl` into their session directories.
-///
 /// Bug in v0.30.0: sessions were saved to `~/.notagent/agent/` instead of
 /// `~/.notagent/agent/sessions/<encoded-cwd>/`.
 pub fn migrate_sessions_from_agent_root() {
@@ -243,7 +228,6 @@ pub fn run_migrations(cwd: &Path) -> MigrationResult {
     }
 }
 
-/// Directory-scoped variants for tests (TS drives them through `getAgentDir()`).
 pub mod testing {
     use std::path::Path;
 
@@ -267,7 +251,6 @@ mod tests {
             "--Users-dev-project--"
         );
         assert_eq!(encode_cwd_directory("C:\\work\\repo"), "--C--work-repo--");
-        // Only the first separator is stripped, exactly like the TS regex.
         assert_eq!(encode_cwd_directory("//server/share"), "---server-share--");
     }
 }

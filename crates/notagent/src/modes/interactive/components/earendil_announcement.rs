@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/earendil-announcement.ts` (53 LOC).
-
 use std::sync::OnceLock;
 
 use notagent_tui::components::image::{Image, ImageOptions, ImageTheme};
@@ -16,16 +13,12 @@ use super::dynamic_border::DynamicBorder;
 const BLOG_URL: &str = "https://mariozechner.at/posts/2026-04-08-ive-sold-out/";
 const IMAGE_FILENAME: &str = "clankolas.png";
 
-/// The picture TypeScript ships next to the source
 /// (`src/modes/interactive/assets/clankolas.png`, 539 053 bytes).
-///
-/// Deviation (class 3, distribution): the TypeScript app reads it from its
 /// package directory at runtime; a standalone Rust binary has no package
 /// directory, so the same bytes are compiled in. A file of that name next to
 /// the binary still wins, which is what an npm-style install would place there.
 const BUNDLED_IMAGE: &[u8] = include_bytes!("../../../../assets/clankolas.png");
 
-/// `loadImageBase64()` — the module-level cache of the TypeScript version;
 /// `OnceLock` gives it the same "attempt exactly once" semantics.
 fn load_image_base64() -> Option<&'static String> {
     static CACHE: OnceLock<Option<String>> = OnceLock::new();

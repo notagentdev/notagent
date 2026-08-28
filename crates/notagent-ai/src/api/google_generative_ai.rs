@@ -1,9 +1,3 @@
-//! Google Generative AI (Gemini) adapter.
-//!
-//! 1:1 port of `packages/ai/src/api/google-generative-ai.ts`. Master-plan substitution
-//! class 3: the `@google/genai` SDK is replaced by a direct REST call to
-//! `…/models/{id}:streamGenerateContent?alt=sse`, which is what the SDK issues.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,7 +31,6 @@ use crate::utils::sanitize_unicode::sanitize_surrogates;
 pub const GOOGLE_AI_DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 pub const GOOGLE_AI_API_DEFAULT_VERSION: &str = "v1beta";
 
-/// `let toolCallCounter = 0` — module-scoped in TS, so it keeps counting across streams.
 static TOOL_CALL_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// `GoogleOptions extends StreamOptions`
@@ -130,7 +123,6 @@ pub fn is_gemini3_flash_model(model_id: &str) -> bool {
 }
 
 /// `getDisabledThinkingConfig(model)`
-///
 /// Google documents that Gemini 3.1 Pro cannot turn thinking off and that Gemini 3 Flash
 /// and Flash-Lite do not support a full off either, so those get the lowest level without
 /// `includeThoughts`, which keeps the hidden thinking invisible.
@@ -207,8 +199,6 @@ pub fn google_budget(
 // ---------------------------------------------------------------------------
 
 /// The request body the SDK puts on the wire for `generateContentStream(params)`.
-///
-/// TS hands a `GenerateContentParameters` to the SDK, which flattens `config` into the
 /// body: `systemInstruction`, `tools` and `toolConfig` go to the top level, everything
 /// else into `generationConfig`.
 pub fn build_request_body(
@@ -348,7 +338,6 @@ impl GoogleStreamState {
         GoogleStreamState {
             output: AssistantMessage {
                 content: Vec::new(),
-                // TS pins the api to the literal, independent of `model.api`.
                 api: api.to_string(),
                 provider: model.provider.clone(),
                 model: model.id.clone(),
@@ -854,7 +843,6 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)` — errors without an api key, like TS.
 pub fn stream_simple(
     model: Model,
     context: Context,
@@ -902,7 +890,6 @@ pub fn stream_simple(
         ModelThinkingLevel::Low => ThinkingLevel::Low,
         ModelThinkingLevel::Medium => ThinkingLevel::Medium,
         ModelThinkingLevel::High => ThinkingLevel::High,
-        // The cast in TS says these cannot occur after clamping.
         ModelThinkingLevel::Xhigh | ModelThinkingLevel::Max => ThinkingLevel::High,
     };
 

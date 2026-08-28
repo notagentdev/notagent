@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/models-store.ts` (146 LOC).
-
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,10 +16,6 @@ use crate::utils::abort::race_with_abort_signal;
 use crate::utils::paths::{PathError, get_file_revision, normalize_path_default};
 
 /// `InMemoryCodingAgentModelsStore`
-///
-/// Deviation (class 1): the TS class is byte-for-byte the behavior of
-/// `packages/ai`'s `InMemoryModelsStore` (detached clones, abort check first),
-/// which the port already provides — the coding-agent name aliases it instead of
 /// duplicating the implementation.
 pub type InMemoryCodingAgentModelsStore = notagent_ai::models_store::InMemoryModelsStore;
 
@@ -76,7 +70,6 @@ fn as_auth_options(options: &Option<ModelsStoreOperationOptions>) -> Option<Auth
 }
 
 fn parse(content: Option<&str>) -> StoredModels {
-    // TS lets a malformed file throw out of `withLock`; `serde` reports the same
     // failure, which the caller surfaces as a store error.
     match content {
         Some(content) if !content.is_empty() => {
@@ -142,7 +135,6 @@ impl FileModelsStore {
         Ok(store)
     }
 
-    /// `join(getAgentDir(), "models-store.json")` — the TS default parameter.
     pub fn at_default_path() -> Result<Self, PathError> {
         Self::new(
             &crate::config::get_agent_dir()

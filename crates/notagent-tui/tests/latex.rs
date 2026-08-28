@@ -1,7 +1,3 @@
-//! Port of `packages/tui/test/latex.test.ts` (496 LOC).
-//!
-//! The five `defineCases` tables live in the generated `latex_cases` module.
-
 mod latex_cases;
 
 use notagent_tui::latex::{RenderLatexOptions, render_latex};

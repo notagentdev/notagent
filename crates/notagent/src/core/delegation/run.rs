@@ -1,26 +1,3 @@
-//! Port of `packages/coding-agent/src/core/delegation/run.ts`.
-//!
-//! Running a delegated child.
-//!
-//! A child is an ordinary agent with three things taken from elsewhere: the
-//! parent's provider wiring, its type's tool allowlist, and the skills it was
-//! asked to load, prepended to the task. That last part is the whole of task
-//! activation — the same envelope the `skill` tool produces, delivered ahead of
-//! the work instead of on request, so a child needs no activation mechanism of
-//! its own.
-//!
-//! Delegation used to target a *mode*. Modes are the user's autonomy ring — `auto`, `manual`, `yolo` differ only in
-//! how often the user is asked, which is not a distinction a child can act on.
-//! What a child needs to know is whether it may change the workspace, and what
-//! it is supposed to be good at; the first is its type, the second is its
-//! skills.
-//!
-//! The parent's tool hooks are inherited deliberately. A subagent that could
-//! write outside the permission chain would be a way around every rule the user
-//! set, so a child's tool calls are governed exactly as the parent's are — and
-//! since the chain reads the approval level from the live session on every
-//! call, a child asks for approval exactly when its parent would.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -35,16 +12,12 @@ use crate::core::permissions::requester::{Requester, with_requester};
 use crate::core::tools::{ToolName, ToolsOptions, create_tool};
 
 /// Tools a child never gets, whatever its mode allows.
-///
 /// Delegation is the first: a subagent that can delegate turns one conversation
 /// into a tree of them, each retelling the one above it, and a task that reaches
 /// the fourth level bears no relation to what was asked.
-///
 /// The three background tools are the second: a subagent's conversation ends
 /// when it answers, and work it detached would outlive it with nobody left to
 /// collect the result.
-///
-/// The two goal tools are the third (port addition, v0.1.21): a goal continues
 /// its agent after every turn, and a child running that loop inside its
 /// parent's multiplies turns with nobody watching. All three exclusions are
 /// structural because an instruction is something a model can decide to ignore.
@@ -62,7 +35,6 @@ const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 7] = [
 ];
 
 /// Longest a child may run before it is stopped.
-///
 /// Nothing else bounds it: a child has no user watching it and no turn ceiling
 /// of its own, so a model that loops in a subagent loops until the provider
 /// refuses. Two hours matches the reference and is far longer than any task
@@ -88,7 +60,6 @@ pub fn resolve_delegation_timeout_ms() -> u64 {
 }
 
 /// Longest answer a child may return.
-///
 /// A subagent exists to compress work into a paragraph. One that returns a
 /// megabyte has failed at that regardless of what it says, and passing it on
 /// would spend the parent's context on the very thing delegation was meant to
@@ -96,7 +67,6 @@ pub fn resolve_delegation_timeout_ms() -> u64 {
 pub const MAX_ANSWER_CHARS: usize = 100_000;
 
 /// Shortest answer a child may return without being asked to expand it.
-///
 /// The two caps point at opposite failures and both are real. A megabyte is a
 /// transcript the parent has to read anyway; three words is a handoff the parent
 /// cannot act on. One extra turn is cheaper than the parent redoing the
@@ -127,7 +97,6 @@ pub type ResolveToolFn = Arc<dyn Fn(ToolName) -> Option<Arc<dyn AgentTool>> + Se
 pub type OnTokensFn = Arc<dyn Fn(u64) + Send + Sync>;
 
 /// A skill a child is told to follow, already read from disk.
-///
 /// Resolved by the caller rather than here: the session owns the skill
 /// catalogue, and a child that resolved names itself could reach a skill the
 /// delegating session cannot see.
@@ -164,7 +133,6 @@ pub struct DelegationOptions {
     pub timeout_ms: Option<u64>,
     pub on_tokens: Option<OnTokensFn>,
     /// The model the child binds instead of the parent's. Addition over the
-    /// TS original (user decision 2026-08-16, v0.1.6): `/subagent-model` pins
     /// it; `None` inherits the parent's model as before.
     pub model_override: Option<Model>,
 }
@@ -179,7 +147,6 @@ pub fn child_tool_names(agent: SubagentType) -> Vec<ToolName> {
 }
 
 /// One skill in the same envelope the `skill` tool produces.
-///
 /// Deliberately identical: a child that was handed a skill up front and one
 /// that loaded the same skill on request should be reading the same thing, or
 /// guidance written for one path would quietly misbehave on the other.
@@ -194,7 +161,6 @@ fn render_skill_block(skill: &ChildSkill) -> String {
 
 /// The first message a child sees: what it is, what it should follow, then the
 /// task it was given.
-///
 /// The type block states the limit rather than leaving the child to discover it
 /// from a missing tool. A read-only child that knows it cannot write reports the
 /// change that is needed; one that finds out by having `write` refused tends to
@@ -215,7 +181,6 @@ pub fn render_child_prompt(agent: SubagentType, skills: &[ChildSkill], task: &st
     blocks.join("\n\n")
 }
 
-/// `String.prototype.length` — UTF-16 code units, as every cap in TS counts.
 fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
@@ -270,7 +235,6 @@ fn last_assistant_text(messages: &[AgentMessage]) -> String {
 
 /// Wraps the parent's permission chain so the calls a child makes are known to
 /// be the child's.
-///
 /// The chain itself is unchanged — that is the point. A child is governed by
 /// exactly the rules its parent is, including the approval level, which the
 /// chain reads from the live session at every call rather than from anything
@@ -278,7 +242,6 @@ fn last_assistant_text(messages: &[AgentMessage]) -> String {
 /// background child is working starts being asked about that child's next call,
 /// which is what "inherits the main agent's permissions" has to mean if it is
 /// to mean anything.
-///
 /// What the wrapper adds is attribution. The scope covers the returned future,
 /// so it is still in place while the dialog waits for an answer.
 fn attribute_to_child(

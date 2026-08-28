@@ -1,5 +1,3 @@
-//! Port von `packages/tui/test/wrap-ansi.test.ts` (266 LOC).
-
 use notagent_tui::{visible_width, wrap_text_with_ansi};
 
 // describe("wrapTextWithAnsi") > describe("underline styling")
@@ -269,7 +267,6 @@ fn does_not_emit_osc_8_sequences_on_lines_outside_the_hyperlink() {
     assert_eq!(close_count, 1);
 }
 
-/// Entspricht `line.replace(/\x1b\]8;;[^\x1b\x07]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, "")`.
 fn strip_osc8_and_sgr(line: &str) -> String {
     let mut out = String::new();
     let bytes = line.as_bytes();

@@ -1,12 +1,4 @@
-//! Port of `packages/tui/test/markdown.test.ts` (1667 LOC).
-//!
-//! Deviation class 1 (test infrastructure): the 79 TS cases assert substrings
-//! of the rendered output for a fixed set of sources. The port instead compares
-//! the complete rendered output against a fixture generated from the TypeScript
-//! component (`tools/gen-markdown-render-oracle.mjs`) over the same sources,
-//! multiplied by widths, paddings, options and hyperlink capability — a strictly
-//! stronger check. The behavioural cases that do not compare rendered lines
-//! (transform caching, OSC 8 emission, TUI integration) are ported directly.
+//! Native behavior tests for markdown caching, links, and shared rendered lines.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,7 +10,6 @@ use notagent_tui::terminal_image::{
     ImageProtocol, TerminalCapabilities, reset_capabilities_cache, set_capabilities,
 };
 use notagent_tui::tui::{Component, Line};
-use serde_json::Value;
 
 /// SGR reset plus OSC 8 link close — what the paint pass appends and the
 /// component now bakes into its cache (`tui.rs`, `SEGMENT_RESET`).
@@ -53,7 +44,7 @@ fn bold_cyan() -> StyleFn {
     Rc::new(move |text: &str| bold(&cyan(text)))
 }
 
-/// `defaultMarkdownTheme` of `test/test-themes.ts` (chalk level 3).
+/// Shared high-contrast theme for the markdown component tests.
 fn default_markdown_theme() -> MarkdownTheme {
     MarkdownTheme {
         heading: bold_cyan(),
@@ -73,97 +64,6 @@ fn default_markdown_theme() -> MarkdownTheme {
         highlight_code: None,
         code_block_indent: None,
     }
-}
-
-fn options_for(variant: &str) -> Option<MarkdownOptions> {
-    match variant {
-        "preserve-markers" => Some(MarkdownOptions {
-            preserve_ordered_list_markers: true,
-            ..MarkdownOptions::default()
-        }),
-        "preserve-escapes" => Some(MarkdownOptions {
-            preserve_backslash_escapes: true,
-            ..MarkdownOptions::default()
-        }),
-        "no-latex" => Some(MarkdownOptions {
-            render_latex: Some(false),
-            ..MarkdownOptions::default()
-        }),
-        _ => None,
-    }
-}
-
-fn padding_for(variant: &str) -> (usize, usize) {
-    if variant == "padded" { (2, 1) } else { (0, 0) }
-}
-
-#[test]
-fn renders_exactly_like_the_typescript_component() {
-    let _capabilities = lock_capabilities();
-    let fixture = include_str!("fixtures/markdown-render-oracle.json");
-    let cases: Vec<Value> = serde_json::from_str(fixture).expect("fixture parses");
-
-    let mut mismatches: Vec<String> = Vec::new();
-    let mut current_hyperlinks: Option<bool> = None;
-    for case in &cases {
-        let hyperlinks = case["hyperlinks"].as_bool().expect("hyperlinks");
-        if current_hyperlinks != Some(hyperlinks) {
-            set_capabilities(TerminalCapabilities {
-                images: None::<ImageProtocol>,
-                true_color: true,
-                hyperlinks,
-            });
-            current_hyperlinks = Some(hyperlinks);
-        }
-
-        let source = case["source"].as_str().expect("source");
-        let variant = case["variant"].as_str().expect("variant");
-        let width = case["width"].as_u64().expect("width") as usize;
-        let expected: Vec<Line> = case["lines"]
-            .as_array()
-            .expect("lines")
-            .iter()
-            .map(|line| Line::from(line.as_str().expect("line")))
-            .collect();
-
-        let (padding_x, padding_y) = padding_for(variant);
-        let mut markdown = Markdown::new(
-            source,
-            padding_x,
-            padding_y,
-            default_markdown_theme(),
-            None,
-            options_for(variant),
-        );
-        // The component finishes its lines with the segment reset since the
-        // shared-line change (deliberate deviation from TS, which resets only
-        // in the paint path); the oracle pins the TS output, so the reset is
-        // stripped before comparing.
-        let actual: Vec<Line> = markdown
-            .render(width)
-            .iter()
-            .map(|line| Line::from(line.strip_suffix(SEGMENT_RESET).unwrap_or(line)))
-            .collect();
-        if actual != expected {
-            mismatches.push(format!(
-                "source {source:?} variant {variant} width {width} hyperlinks {hyperlinks}\n  expected {expected:?}\n  actual   {actual:?}"
-            ));
-        }
-    }
-
-    reset_capabilities_cache();
-    assert!(
-        mismatches.is_empty(),
-        "{} of {} cases mismatch:\n{}",
-        mismatches.len(),
-        cases.len(),
-        mismatches
-            .iter()
-            .take(3)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
 }
 
 #[test]

@@ -1,8 +1,3 @@
-//! Transient inverse-video messages for the alternate screen.
-//!
-//! 1:1 port of `packages/tui/src/components/alt-screen-flash.ts` (51 LOC). The
-//! per-message timer becomes a deadline the renderer drives (deviation class 1).
-
 use std::time::{Duration, Instant};
 
 use crate::tui::{Component, Line};
@@ -28,7 +23,6 @@ impl AltScreenFlashContainer {
         Self::default()
     }
 
-    /// Show `message` for `duration_ms` (TS default: 1000 ms).
     pub fn flash(&mut self, message: impl Into<String>, duration_ms: Option<u64>) {
         let duration = Duration::from_millis(duration_ms.unwrap_or(DEFAULT_DURATION_MS));
         self.entries.push(FlashEntry {

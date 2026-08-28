@@ -1,8 +1,3 @@
-//! Fast deterministic hash used to shorten long strings.
-//!
-//! 1:1 port of `packages/ai/src/utils/hash.ts` (13 LOC). The TS implementation works on
-//! UTF-16 code units (`charCodeAt`), which this port reproduces via `encode_utf16`.
-
 /// `shortHash(str)`
 pub fn short_hash(text: &str) -> String {
     let mut h1: u32 = 0xdead_beef;

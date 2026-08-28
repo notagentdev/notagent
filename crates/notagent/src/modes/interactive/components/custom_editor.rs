@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/custom-editor.ts` (96 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -12,9 +9,6 @@ use notagent_tui::tui::{Component, Focusable, Line, TuiCore};
 use crate::core::keybindings::KeybindingsManager;
 
 /// Handler for an app action.
-///
-/// TypeScript types the handler as `() => unknown` and treats only the literal
-/// `false` as "declined"; the port returns `true` when the action claimed the
 /// key and `false` to fall through to ordinary editor handling.
 pub type AppActionHandler = Box<dyn FnMut() -> bool>;
 
@@ -26,7 +20,6 @@ pub struct CustomEditor {
     /// which then falls through to ordinary editor handling — that is how an
     /// action can share a key with an editing binding and only claim it when it
     /// has something to do.
-    ///
     /// A `Vec` rather than a map: the dispatch loop depends on the insertion
     /// order of the JavaScript `Map`.
     action_handlers: Vec<(String, AppActionHandler)>,

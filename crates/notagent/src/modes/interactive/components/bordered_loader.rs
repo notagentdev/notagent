@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/bordered-loader.ts` (68 LOC).
-
 use std::rc::Rc;
 
 use notagent_tui::components::cancellable_loader::CancellableLoader;
@@ -26,13 +23,11 @@ pub struct BorderedLoader {
     container: Container,
     loader: WrappedLoader,
     cancellable: bool,
-    /// Set for the non-cancellable variant, which TypeScript backs with an
     /// `AbortController` that is never tripped.
     signal_token: Option<CancellationToken>,
 }
 
 impl BorderedLoader {
-    /// New bordered loader; `cancellable` defaults to `true` in TypeScript.
     pub fn new(theme: &Theme, message: impl Into<String>, cancellable: Option<bool>) -> Self {
         let cancellable = cancellable.unwrap_or(true);
         let mut container = Container::new();
@@ -93,7 +88,6 @@ impl BorderedLoader {
         match (&self.loader, &self.signal_token) {
             (WrappedLoader::Cancellable(loader), _) => loader.borrow().token(),
             (_, Some(token)) => token.clone(),
-            // TypeScript falls back to a fresh, never-aborted controller.
             _ => CancellationToken::new(),
         }
     }

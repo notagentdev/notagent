@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/auth-check.test.ts`.
-//!
-//! `notagent auth check` answers in three states. The distinction that matters
-//! to a caller is `not_ready` (nothing configured) against `invalid` (something
-//! configured but unusable), and the file-system assertions guard the promise
-//! that a check never creates the auth file it reads.
-
 use std::sync::Arc;
 
 use notagent::cli::args::parse_args;

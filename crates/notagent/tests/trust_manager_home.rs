@@ -1,10 +1,3 @@
-//! The `hasTrustRequiringProjectResources` case of
-//! `packages/coding-agent/test/trust-manager.test.ts`.
-//!
-//! In its own file because it replaces `$HOME` for the duration: every test in
-//! a file shares one process, and reading the environment while another thread
-//! writes it is undefined behaviour.
-
 use std::path::{Path, PathBuf};
 
 use notagent::core::trust_manager::has_trust_requiring_project_resources;

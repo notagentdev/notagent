@@ -1,15 +1,3 @@
-//! Native replacement for `packages/coding-agent/src/core/extensions/types.ts`
-//! (`ToolDefinition`) and `core/tools/tool-definition-wrapper.ts`.
-//!
-//! Deviation (class 2): the extension system is removed, so `ExtensionContext`
-//! collapses to [`ToolContext`] with exactly the fields the built-in tools read
-//! at runtime (`plans/facts/extension-boundary.md` §2.4: only bash uses it, for
-//! `NOTAGENT_SESSION_ID`, the session file and `NOTAGENT_REASONING_LEVEL`).
-//!
-//! `renderCall`/`renderResult` belong to the interactive mode (task 13) and are
-//! declared here as default methods, together with the render context the TS
-//! version defines in `extensions/types.ts:410-497`.
-
 use std::any::Any;
 use std::cell::{RefCell, RefMut};
 use std::pin::Pin;
@@ -56,7 +44,6 @@ pub struct SystemPromptContribution {
 }
 
 // ============================================================================
-// Rendering (`extensions/types.ts:410-497`)
 // ============================================================================
 
 /// `ToolRenderResultOptions` — how the result view is currently displayed.
@@ -69,10 +56,7 @@ pub struct ToolRenderResultOptions {
 }
 
 /// The result half handed to [`ToolDefinition::render_result`].
-///
 /// `renderResult` receives `{ content, details }` only; whether the result is an
-/// error travels in the context, exactly as in TypeScript
-/// (`components/tool-execution.ts:296-301`).
 #[derive(Debug, Clone, Copy)]
 pub struct ToolRenderResult<'a> {
     pub content: &'a [TextOrImageContent],
@@ -80,21 +64,15 @@ pub struct ToolRenderResult<'a> {
 }
 
 /// The shared render state of one tool row (`rendererState: any = {}`).
-///
-/// Deviation (class 1): TypeScript hands every renderer the same untyped object
-/// and each tool writes the fields it wants. The port keeps one boxed value per
 /// row and lets each tool claim it with its own state type through
 /// [`tool_render_state`]; a row only ever runs the renderers of a single tool,
-/// so the slot has exactly one occupant, as in TS.
 pub type ToolRenderStateRef = Rc<RefCell<Option<Box<dyn Any>>>>;
 
-/// A fresh, still unclaimed render state — the `{}` of the TS version.
 pub fn new_tool_render_state() -> ToolRenderStateRef {
     Rc::new(RefCell::new(None))
 }
 
 /// The row state as `T`, initialised on first use.
-///
 /// The `!is::<T>()` branch is the equivalent of reading a field the previous
 /// occupant never wrote: it cannot happen while a row belongs to one tool, and
 /// it starts from the default rather than panicking if it ever does.
@@ -125,10 +103,8 @@ pub struct ToolRenderContext {
     /// Redraw just this tool row.
     pub invalidate: Rc<dyn Fn()>,
     /// The component the same renderer returned last time, if any.
-    ///
     /// The built-in tools keep their reusable components in [`Self::state`]
     /// instead, because a `dyn Component` cannot be downcast back to the
-    /// concrete type the TS renderers cast to (deviation class 1, same
     /// observable result: one component per slot for the lifetime of the row).
     pub last_component: Option<ComponentRef>,
     /// Shared renderer state for this tool row.
@@ -170,9 +146,6 @@ impl ToolRenderContext {
 }
 
 /// The two `Text` components of a tool row that renders plain text.
-///
-/// TypeScript reuses `context.lastComponent` and falls back to `new Text("", 0, 0)`;
-/// the port keeps the same two components in the row state, one per renderer.
 #[derive(Default)]
 pub struct TextRenderSlots {
     pub call: Option<Rc<RefCell<Text>>>,
@@ -192,7 +165,6 @@ pub fn render_text_call(context: &ToolRenderContext, text: &str) -> ComponentRef
 }
 
 /// `renderResult` of every tool whose result display is a single `Text`.
-///
 /// The renderers prefix their result with `\n`, which the standard style's
 /// filled box needs as a separator row. The badge style stacks the result
 /// directly under the badge line, so the leading blank is dropped here for
@@ -218,7 +190,6 @@ pub fn render_text_result(context: &ToolRenderContext, text: &str) -> ComponentR
 }
 
 /// A raw argument value in a rendered header, spelled as JavaScript spells it.
-///
 /// The renderers interpolate arguments straight into template literals
 /// (`` `limit ${limit}` ``), and they run on incomplete, unvalidated arguments
 /// while the model is still streaming them — so anything JSON can hold has to
@@ -252,8 +223,6 @@ pub trait ToolDefinition: Send + Sync {
     /// Human-readable label for the UI.
     fn label(&self) -> &str;
     /// Description for the LLM.
-    ///
-    /// Deviation (class 1): TS uses a getter so a tool can change what it
     /// advertises without being rebuilt. A Rust tool does the same by returning
     /// one of the descriptions it owns, so the borrow stays valid.
     fn description(&self) -> &str;
@@ -314,10 +283,7 @@ pub trait ToolDefinition: Send + Sync {
     }
 
     /// When this row needs to be rendered again without any input.
-    ///
-    /// Deviation (class 1): the TS renderers keep the row moving with
     /// `setInterval`/`setTimeout` handles they store in the render state. A
-    /// callback would need `&mut` access to the row, so the port reports the
     /// deadline and the render loop redraws — the same seam the TUI already uses
     /// (`Loader::next_frame_deadline`, `Editor::autocomplete_deadline`).
     fn render_deadline(&self, context: &ToolRenderContext) -> Option<Instant> {
@@ -326,9 +292,6 @@ pub trait ToolDefinition: Send + Sync {
     }
 
     /// Run the render-side work this row started, if any.
-    ///
-    /// Deviation (class 1): where TS continues a promise inside the renderer
-    /// (`edit` computes its diff preview), the port hands the work back to the
     /// render loop, which awaits it on the TUI thread and redraws afterwards —
     /// the same seam as `Editor::pump_autocomplete`; `None` means there is
     /// nothing to await.
@@ -339,7 +302,6 @@ pub trait ToolDefinition: Send + Sync {
 }
 
 /// Wrap a [`ToolDefinition`] into an [`AgentTool`] for the agent loop.
-///
 /// `description` and `parameters` are forwarded rather than copied, so a tool
 /// whose capabilities depend on session state can change what it advertises
 /// without being rebuilt.
@@ -419,9 +381,6 @@ impl AgentTool for WrappedToolDefinition {
     }
 }
 
-/// Port of `createToolDefinitionFromAgentTool` from
-/// `packages/coding-agent/src/core/tools/tool-definition-wrapper.ts`.
-///
 /// The other direction of [`wrap_tool_definition`]: a plain tool becomes a
 /// definition so the session can keep a definition-first registry even when a
 /// caller supplies tools rather than definitions.

@@ -1,7 +1,3 @@
-//! Behaviour of the compaction and branch summary components, which have no
-//! TypeScript tests. Expectations are taken from
-//! `packages/coding-agent/src/modes/interactive/components/{compaction,branch}-summary-message.ts`.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::modes::interactive::components::branch_summary_message::BranchSummaryMessageComponent;
@@ -17,7 +13,6 @@ fn theme_lock() -> MutexGuard<'static, ()> {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    // The block style is a process global (default: badge); the TS-parity
     // cases pin the standard layout, the badge cases set Badge themselves.
     set_block_style(BlockStyle::Standard);
     guard

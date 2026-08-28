@@ -1,5 +1,3 @@
-//! Port of `packages/client/src/state.ts`.
-
 use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, Weak};
@@ -11,7 +9,6 @@ use crate::types::{ListenerErrorHandler, Unsubscribe};
 
 pub type Listener<T> = Arc<dyn Fn(&T) + Send + Sync>;
 
-/// Deviation class 1: the JS `Set<listener>` becomes a list with ids so that
 /// individual listeners can unsubscribe again.
 struct ListenerSet<T> {
     next_id: u64,
@@ -284,7 +281,6 @@ impl ClientState {
         self.notify(listeners, &snapshot);
     }
 
-    /// Listeners are invoked without holding the lock: like in TS they may
     /// re-enter the client. A panicking listener is caught and reported just
     /// like a JS exception.
     fn notify<T>(&self, listeners: Vec<Listener<T>>, value: &T) {

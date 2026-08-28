@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/test/mermaid.test.ts` (99 LOC, 7 cases).
-//!
-//! Class-1 deviation in the harness: the TS suite passes a fake `Theme` object
-//! whose `fg` writes `<color>…</color>` markers. `Theme` is a struct here, so
-//! the themed cases install a real theme and assert against what it produces
-//! for the same colours.
-
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
@@ -115,7 +108,6 @@ fn maps_semantic_spans_through_the_notagent_theme() {
         },
     );
 
-    // The TS suite looks for the `<borderMuted>` / `<accent>` markers its fake
     // theme writes; here the equivalent is the escape sequence the real theme
     // opens a run of that colour with.
     assert!(rendered.contains(&opening_sequence(&theme, ThemeColor::BorderMuted)));

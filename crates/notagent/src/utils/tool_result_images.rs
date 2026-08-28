@@ -1,12 +1,8 @@
-//! 1:1 port of `packages/coding-agent/src/utils/tool-result-images.ts` (62 LOC).
-
 use notagent_ai::types::{ImageContent, TextContent, TextOrImageContent};
 
 use super::image::{ProcessImageResult, process_image};
 
 /// `normalizeToolResultImages(content, options)`.
-///
-/// Deviation (class 1): TypeScript returns the same array when nothing changed
 /// and the caller compares by identity (`normalizedContent === content`). Rust
 /// has no such identity, so "nothing changed" is `None` — the caller reads it
 /// the same way.

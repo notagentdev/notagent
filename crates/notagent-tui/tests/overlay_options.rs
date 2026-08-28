@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/overlay-options.test.ts` (541 LOC).
-
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -42,7 +40,6 @@ impl Component for EmptyContent {
     fn invalidate(&mut self) {}
 }
 
-/// Render a component from a closure (replaces the inline TS classes).
 struct FnContent(fn(usize) -> Vec<String>);
 
 impl Component for FnContent {

@@ -1,8 +1,3 @@
-//! Port of `packages/tui/test/autocomplete.test.ts` (542 LOC).
-//!
-//! The `fd`-based cases are skipped when `fd` is not installed, exactly as the
-//! TS suite does with `{ skip: !isFdInstalled }`.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -10,7 +5,6 @@ use notagent_tui::autocomplete::{
     AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider, SuggestionOptions,
 };
 
-/// `resolveFdPath()` of the TS suite.
 fn resolve_fd_path() -> Option<String> {
     let command = if cfg!(windows) { "where" } else { "which" };
     let output = std::process::Command::new(command)
@@ -39,7 +33,6 @@ fn make_temp_dir(prefix: &str) -> PathBuf {
     panic!("no free temporary directory");
 }
 
-/// `setupFolder()` of the TS suite.
 fn setup_folder(base_dir: &Path, dirs: &[&str], files: &[(&str, &str)]) {
     for dir in dirs {
         fs::create_dir_all(base_dir.join(dir)).expect("create directory");
@@ -123,7 +116,7 @@ async fn preserves_dot_slash_prefix_when_completing_paths() {
     setup_folder(
         &base_dir,
         &[],
-        &[("update.sh", "#!/bin/bash"), ("utils.ts", "export {};")],
+        &[("update.sh", "#!/bin/bash"), ("utils.rs", "fn sample() {}")],
     );
 
     let provider =
@@ -142,7 +135,7 @@ async fn preserves_dot_slash_prefix_when_completing_paths() {
 #[tokio::test]
 async fn preserves_dot_slash_prefix_for_directory_completions() {
     let base_dir = make_temp_dir("notagent-autocomplete-dotslash-dir");
-    setup_folder(&base_dir, &["src"], &[("src/index.ts", "export {};")]);
+    setup_folder(&base_dir, &["src"], &[("src/index.rs", "fn sample() {}")]);
 
     let provider =
         CombinedAutocompleteProvider::new(Vec::new(), base_dir.to_string_lossy().as_ref(), None);
@@ -332,11 +325,15 @@ async fn returns_nested_file_paths() {
     let Some(fixture) = fd_fixture("nested") else {
         return;
     };
-    setup_folder(&fixture.base_dir, &[], &[("src/index.ts", "export {};\n")]);
+    setup_folder(
+        &fixture.base_dir,
+        &[],
+        &[("src/index.rs", "fn sample() {}\n")],
+    );
 
     let provider = fd_provider(&fixture);
     let result = get_suggestions(&provider, &["@index"], 0, 6, false).await;
-    assert!(values(&result).contains(&"@src/index.ts".to_string()));
+    assert!(values(&result).contains(&"@src/index.rs".to_string()));
 }
 
 #[tokio::test]
@@ -348,8 +345,8 @@ async fn matches_deeply_nested_paths() {
         &fixture.base_dir,
         &[],
         &[
-            ("packages/tui/src/autocomplete.ts", "export {};"),
-            ("packages/ai/src/autocomplete.ts", "export {};"),
+            ("crates/tui/src/autocomplete.rs", "fn sample() {}"),
+            ("crates/ai/src/autocomplete.rs", "fn sample() {}"),
         ],
     );
 
@@ -357,8 +354,8 @@ async fn matches_deeply_nested_paths() {
     let line = "@tui/src/auto";
     let result = get_suggestions(&provider, &[line], 0, line.len(), false).await;
     let values = values(&result);
-    assert!(values.contains(&"@packages/tui/src/autocomplete.ts".to_string()));
-    assert!(!values.contains(&"@packages/ai/src/autocomplete.ts".to_string()));
+    assert!(values.contains(&"@crates/tui/src/autocomplete.rs".to_string()));
+    assert!(!values.contains(&"@crates/ai/src/autocomplete.rs".to_string()));
 }
 
 #[tokio::test]
@@ -370,8 +367,8 @@ async fn matches_a_directory_in_the_middle_of_a_path() {
         &fixture.base_dir,
         &[],
         &[
-            ("src/components/Button.tsx", "export {};"),
-            ("src/utils/helpers.ts", "export {};"),
+            ("src/components/button.rs", "fn sample() {}"),
+            ("src/utils/helpers.rs", "fn sample() {}"),
         ],
     );
 
@@ -379,8 +376,8 @@ async fn matches_a_directory_in_the_middle_of_a_path() {
     let line = "@components/";
     let result = get_suggestions(&provider, &[line], 0, line.len(), false).await;
     let values = values(&result);
-    assert!(values.contains(&"@src/components/Button.tsx".to_string()));
-    assert!(!values.contains(&"@src/utils/helpers.ts".to_string()));
+    assert!(values.contains(&"@src/components/button.rs".to_string()));
+    assert!(!values.contains(&"@src/utils/helpers.rs".to_string()));
 }
 
 #[tokio::test]
@@ -392,9 +389,9 @@ async fn scopes_the_fuzzy_search_to_relative_directories() {
         &fixture.outside_dir,
         &[],
         &[
-            ("nested/alpha.ts", "export {};"),
-            ("nested/deeper/also-alpha.ts", "export {};"),
-            ("nested/deeper/zzz.ts", "export {};"),
+            ("nested/alpha.rs", "fn sample() {}"),
+            ("nested/deeper/also-alpha.rs", "fn sample() {}"),
+            ("nested/deeper/zzz.rs", "fn sample() {}"),
         ],
     );
 
@@ -402,9 +399,9 @@ async fn scopes_the_fuzzy_search_to_relative_directories() {
     let line = "@../outside/a";
     let result = get_suggestions(&provider, &[line], 0, line.len(), false).await;
     let values = values(&result);
-    assert!(values.contains(&"@../outside/nested/alpha.ts".to_string()));
-    assert!(values.contains(&"@../outside/nested/deeper/also-alpha.ts".to_string()));
-    assert!(!values.contains(&"@../outside/nested/deeper/zzz.ts".to_string()));
+    assert!(values.contains(&"@../outside/nested/alpha.rs".to_string()));
+    assert!(values.contains(&"@../outside/nested/deeper/also-alpha.rs".to_string()));
+    assert!(!values.contains(&"@../outside/nested/deeper/zzz.rs".to_string()));
 }
 
 #[tokio::test]
@@ -525,7 +522,7 @@ async fn returns_the_same_at_suggestions_when_the_cwd_contains_the_query() {
             "packages/coding-agent/examples/extensions/plan-mode/README.md",
             "readme",
         ),
-        ("packages/tui/docs/plan.md", "plan"),
+        ("crates/tui/docs/plan.md", "plan"),
     ];
     setup_folder(&normal_base_dir, &dirs, &files);
     setup_folder(&query_in_path_base_dir, &dirs, &files);
@@ -568,7 +565,7 @@ async fn returns_the_same_at_suggestions_when_the_cwd_contains_the_query() {
     assert!(normalized.contains(
         &"plan-mode/ :: packages/coding-agent/examples/extensions/plan-mode".to_string()
     ));
-    assert!(normalized.contains(&"plan.md :: packages/tui/docs/plan.md".to_string()));
+    assert!(normalized.contains(&"plan.md :: crates/tui/docs/plan.md".to_string()));
 }
 
 #[tokio::test]

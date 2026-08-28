@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-//! Shared harness for the ported server test suites.
 
 use std::sync::{Arc, Mutex};
 
@@ -91,7 +90,6 @@ type ListSessionsHook = Arc<
 >;
 type ListModelsHook = Arc<dyn Fn() -> BoxFuture<'static, Result<(), ServerError>> + Send + Sync>;
 
-/// Deviation class 1: TS extends `TestServerService` per test case; Rust
 /// delegates to it and overrides through optional hooks.
 #[derive(Clone, Default)]
 pub struct HookedService {

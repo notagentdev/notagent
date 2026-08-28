@@ -1,7 +1,3 @@
-//! Port of `packages/coding-agent/test/client/transcript.test.ts` (220 LOC).
-//!
-//! Same eight cases in source order, same expectations.
-
 use notagent::client::{
     apply_transcript_progress, apply_transcript_snapshot, create_transcript_state,
     select_transcript,
@@ -34,7 +30,6 @@ fn streaming_assistant(content: Vec<AssistantContent>) -> TranscriptItem {
     ))
 }
 
-/// The `snapshot(revision, text)` helper of the TS suite.
 fn snapshot(revision: u64, text: &str) -> SessionSnapshot {
     SessionSnapshot {
         id: "session-1".to_owned(),

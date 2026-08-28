@@ -1,5 +1,4 @@
 //! Scenario 2 — prompt round-trip.
-//!
 //! A prompt typed at the terminal reaches the session, the scripted answer
 //! comes back through the streaming path and both ends up in the transcript on
 //! screen. This is the interactive counterpart of the G2 evidence in
@@ -37,8 +36,6 @@ async fn a_typed_prompt_reaches_the_session_and_the_answer_reaches_the_screen() 
                 let notagent_agent::types::AgentMessage::User(user) = message else {
                     return false;
                 };
-                // `prompt()` wraps the text in a block list, as TS does
-                // (`agent-session.ts:1601-1609`: `content: [{type: "text", …}]`).
                 match &user.content {
                     notagent_ai::types::UserContent::Text(text) => text.contains("say hello"),
                     notagent_ai::types::UserContent::Blocks(blocks) => blocks.iter().any(|block| {

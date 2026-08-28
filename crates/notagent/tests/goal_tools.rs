@@ -1,10 +1,3 @@
-//! The two goal tools as a session uses them (port addition, v0.1.21).
-//!
-//! The state machine, the completion guard and the reminder texts are covered
-//! by the ported suite in `core/goal`. What runs here is what the tools do with
-//! them: the refusals, the completion guard reaching the real task list, and the
-//! two tools standing down where there is no session to hold a goal.
-
 use std::sync::{Arc, Mutex};
 
 use notagent::core::goal::{GoalState, ThreadGoal, ThreadGoalStatus};

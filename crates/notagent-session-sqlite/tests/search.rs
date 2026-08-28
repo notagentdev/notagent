@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/test/search.test.ts`.
-
 use notagent_agent::AgentMessage;
 use notagent_ai::{TextContent, TextOrImageContent, UserContent, UserMessage};
 use notagent_session_sqlite::session_types::{EntryType, SessionSearchOptions};

@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/sdk.ts` (`createAgentSession`).
-//!
-//! The one place an `Agent` is built for the app: it wires the provider path
-//! (stream function, retry budgets, timeouts, attribution headers), restores
-//! model and thinking level from the session that is being resumed, and hands
-//! the result to [`AgentSession`].
-//!
-//! Deviation (class 2): the four extension hooks the TypeScript installs on the
-//! agent — `before_provider_headers`, `before_provider_request`,
-//! `after_provider_response` and `transformContext` — are gone with the
-//! extension system (`plans/facts/extension-boundary.md` §3). Everything else
-//! the provider path does is here.
-
 use std::sync::Arc;
 
 use notagent_agent::agent::{Agent, AgentOptions};
@@ -56,7 +43,6 @@ pub struct CreateAgentSessionOptions {
     /// `"all"` starts with no tools, `"builtin"` disables the built-ins only.
     pub no_tools: Option<NoTools>,
     pub hooks: Option<Arc<HookDispatcher>>,
-    /// The pre-tool gate. In TypeScript the permission chain is a hidden inline
     /// extension the app registers ahead of every other one; here the app hands
     /// the gate in and it becomes the agent's `before_tool_call`.
     pub permissions: Option<Arc<PermissionGate>>,
@@ -481,7 +467,6 @@ fn build_stream_fn(
 }
 
 /// The transport setting is a string in settings.json and an enum here; an
-/// unknown spelling reads as unset, as the TypeScript accessor's fallback does.
 fn parse_transport(value: &str) -> Option<notagent_ai::types::Transport> {
     use notagent_ai::types::Transport;
     match value {

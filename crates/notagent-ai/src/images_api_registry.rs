@@ -1,7 +1,3 @@
-//! Registry of image API providers.
-//!
-//! 1:1 port of `packages/ai/src/images-api-registry.ts` (53 LOC).
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 

@@ -1,17 +1,3 @@
-//! AI Gateway transport over the Workers AI binding.
-//!
-//! 1:1 port of `packages/ai/src/api/cloudflare-gateway-binding.ts` (192 LOC).
-//! [`create_gateway_binding_fetch`] returns a [`FetchFunction`] that translates requests
-//! under a gateway HTTPS prefix into calls to the binding's universal endpoint,
-//! `env.AI.gateway(id).run({provider, endpoint, headers, query})`.
-//!
-//! Deviation class 3: the concrete Workers binding lives in the JavaScript runtime, so the
-//! port inverts the dependency — the caller supplies an [`AiGatewayBinding`] implementation.
-//! Deviation class 1: [`FetchRequest`] always carries a concrete method, URL, header list
-//! and byte body, so the TS branches that reconcile a `Request` input with `RequestInit`
-//! (`init.headers` replacing request headers, `body: null` / `signal: null` clearing them,
-//! one-shot stream bodies) have no counterpart; their observable outcome is the same.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -63,7 +49,6 @@ pub fn create_gateway_binding_fetch(options: GatewayBindingFetchOptions) -> Arc<
     // Prefix matching runs on URL-normalized components (origin + pathname), not raw
     // strings, so a lexical variant cannot split provider/endpoint differently.
     let (origin, path) = split_url(&options.base_url).unwrap_or_else(|| {
-        // `new URL(baseUrl)` throws for an invalid base; the port keeps the raw value so
         // every request reports the prefix mismatch instead.
         (options.base_url.clone(), String::new())
     });

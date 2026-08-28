@@ -1,9 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/utils/changelog.ts` (196 LOC).
-//!
-//! The `/changelog` command and the "what's new" block after an update read the
-//! bundled `CHANGELOG.md` through here. `getChangelogPath` lives in
-//! [`crate::config`], as it does in TypeScript.
-
 use std::path::Path;
 
 use regex::{Captures, Regex};
@@ -253,7 +247,6 @@ pub fn parse_changelog(changelog_path: &Path) -> Vec<ChangelogEntry> {
         return Vec::new();
     }
     let Ok(content) = std::fs::read_to_string(changelog_path) else {
-        // TypeScript logs the warning and returns an empty list.
         eprintln!(
             "Warning: Could not parse changelog: {}",
             changelog_path.display()
@@ -347,7 +340,6 @@ mod tests {
         }
     }
 
-    /// `test/changelog.test.ts`, first case.
     #[test]
     fn rewrites_package_relative_links_to_tag_pinned_github_source_links() {
         let markdown = [
@@ -370,7 +362,6 @@ mod tests {
         );
     }
 
-    /// `test/changelog.test.ts`, second case.
     #[test]
     fn canonicalizes_old_repository_urls_without_changing_external_links() {
         let markdown = [

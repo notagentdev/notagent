@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/testing/server.ts`.
-
 use std::sync::Arc;
 
 use crate::errors::ServerError;

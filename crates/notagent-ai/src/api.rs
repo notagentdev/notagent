@@ -1,7 +1,3 @@
-//! Provider protocol implementations.
-//!
-//! 1:1 port of `packages/ai/src/api/`.
-
 pub mod anthropic_messages;
 pub mod anthropic_params;
 pub mod azure_openai_responses;

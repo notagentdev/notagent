@@ -1,13 +1,3 @@
-//! Ported from `packages/coding-agent/test/suite/mode-block-delivery.test.ts`.
-//!
-//! How a mode switch reaches the model.
-//!
-//! The block is addressed to the model, not to the user. Someone who just
-//! switched mode knows what they switched to, and does not need the mode's whole
-//! guidance quoted back above the prompt they typed — so it travels in a message
-//! the transcript does not render, while still arriving as ordinary user content
-//! on the way to the provider.
-
 mod suite;
 
 use notagent::core::agent_session::PromptOptions;
@@ -25,6 +15,61 @@ fn reply(text: &str) -> FauxResponseStep {
 
 fn llm_text(content: &UserContent) -> String {
     user_content_text(content)
+}
+
+#[test]
+fn restores_the_last_safe_mode_and_persists_later_switches() {
+    let harness = create_harness(HarnessOptions {
+        settings: Some(serde_json::json!({ "lastMode": "auto" })),
+        ..HarnessOptions::default()
+    });
+
+    assert_eq!(
+        harness.session.active_mode().map(|mode| mode.id),
+        Some("auto".to_string())
+    );
+    harness.session.set_mode("plan").expect("plan mode");
+    assert_eq!(
+        harness.settings_manager.get_last_mode().as_deref(),
+        Some("plan")
+    );
+}
+
+#[test]
+fn persisted_yolo_is_not_restored_without_the_cli_capability() {
+    let harness = create_harness(HarnessOptions {
+        settings: Some(serde_json::json!({ "lastMode": "yolo" })),
+        ..HarnessOptions::default()
+    });
+
+    assert_eq!(
+        harness.session.active_mode().map(|mode| mode.id),
+        Some("manual".to_string())
+    );
+}
+
+#[test]
+fn yolo_only_participates_in_the_cycle_when_explicitly_enabled() {
+    let harness = create_harness(HarnessOptions::default());
+    assert_eq!(
+        harness.session.cycle_mode().map(|mode| mode.id),
+        Some("auto".into())
+    );
+    assert_eq!(
+        harness.session.cycle_mode().map(|mode| mode.id),
+        Some("plan".into())
+    );
+
+    harness.session.set_mode("manual").expect("manual mode");
+    harness.session.set_yolo_cycle_enabled(true);
+    assert_eq!(
+        harness.session.cycle_mode().map(|mode| mode.id),
+        Some("auto".into())
+    );
+    assert_eq!(
+        harness.session.cycle_mode().map(|mode| mode.id),
+        Some("yolo".into())
+    );
 }
 
 #[tokio::test]
@@ -148,7 +193,6 @@ async fn is_delivered_once_not_on_every_following_prompt() {
     assert_eq!(blocks, 1);
 }
 
-/// Not in the TypeScript suite: switching mode also switches the tool roster,
 /// which is the half of `setMode` the delivery cases never touch.
 #[tokio::test]
 async fn a_mode_switch_also_changes_which_tools_exist() {

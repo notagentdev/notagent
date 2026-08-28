@@ -1,10 +1,3 @@
-//! Terminal capability detection and image helpers.
-//!
-//! Partial port of `packages/tui/src/terminal-image.ts` (657 LOC): the parts the
-//! TUI core and both renderers need (capability detection, cell dimensions,
-//! image line detection). The image protocols, header parsers and `hyperlink()`
-//! follow with task 12 of the workstream plan.
-
 use std::sync::{Mutex, OnceLock};
 
 /// Image protocol supported by the terminal.
@@ -66,7 +59,6 @@ fn capabilities_cell() -> &'static Mutex<Option<TerminalCapabilities>> {
 }
 
 /// Whether the attached tmux client forwards OSC 8 hyperlinks.
-///
 /// tmux only re-emits them when its `client_termfeatures` lists `hyperlinks`
 /// and strips them otherwise. Any error falls back to `false`.
 fn probe_tmux_hyperlinks() -> bool {
@@ -274,7 +266,6 @@ fn kitty_image_registry() -> &'static Mutex<KittyRegistry> {
 }
 
 /// Remember the metadata of an encoded image (called by the image encoders).
-///
 /// Each registration bumps the transmission generation, which the alternate
 /// screen uses to decide whether an image has to be re-transmitted.
 pub fn register_kitty_image_metadata(metadata: KittyImageMetadata) {

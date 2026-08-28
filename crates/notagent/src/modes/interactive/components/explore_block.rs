@@ -1,10 +1,8 @@
 //! Compact block grouping consecutive exploration calls.
-//!
 //! Takeover of `ExploreBlockComponent` from ../notagent-main-rust
 //! (`crates/notagent_tui/src/explore_block.rs`), user decision 2026-08-17
 //! (v0.1.8), renamed back to the reference's "Exploring..." / "Explored"
 //! in v0.1.12.
-//!
 //! It groups every tool that only looks at the project — the searches
 //! (`grep`, `find_filesystem`, `find_codebase`), the reads (`read`,
 //! `read_minified`) and the listing (`ls`). That is exactly
@@ -12,7 +10,6 @@
 //! block: looking around is one activity, so it costs one block instead of a
 //! row per call. Anything that changes the project keeps its own row. The
 //! reference left `list_files` out; the user put it in (v0.1.12).
-//!
 //! The mechanics are the reference's: one row per call id (a call announced
 //! before its arguments stays one row), the last four rows as the collapsed
 //! preview, ctrl+o to expand, a summary line counting the kinds separately,
@@ -140,7 +137,6 @@ impl ExploreEntry {
 
 /// The line range of a read as `L{start}-{end}`, or `L{start}-` when the read
 /// runs to the end of the file. `None` when the call reads the whole file.
-///
 /// The reference reads a `range` object; our read tool takes `offset`/`limit`
 /// (`read.rs`), so the range is derived from those the same way the read
 /// renderer derives its own header.
@@ -202,7 +198,6 @@ impl ExploreBlockComponent {
     }
 
     /// Appends one search call to the block, or updates it.
-    ///
     /// A call announced before its arguments are known arrives twice: once to
     /// say it began, then again once they are. The second sighting replaces
     /// the entry rather than adding one, so a single call is a single row.
@@ -242,8 +237,6 @@ impl ExploreBlockComponent {
     }
 
     /// Fails every call that never reported back.
-    ///
-    /// The port's shape of the reference's abort path
     /// (`../notagent-main-rust/crates/notagent_main/src/interactive_mode.rs`,
     /// `pending_explore_tools.drain()` → `complete_call(&call_id, true)`):
     /// there the mode holds a call-id registry and completes each pending call

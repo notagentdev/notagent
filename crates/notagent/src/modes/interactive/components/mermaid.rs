@@ -1,10 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/mermaid.ts` (89 LOC).
-//!
-//! Replaces top-level Mermaid code blocks with Unicode terminal diagrams. The
-//! drawing itself lives in [`crate::utils::mermaid`], the substitute for the
-//! npm package `grok-mermaid` (master plan, substitution table).
-
 use std::rc::Rc;
 use std::sync::Arc;
 

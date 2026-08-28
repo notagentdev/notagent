@@ -1,10 +1,3 @@
-//! Loopback HTTP server for the llama.cpp suites.
-//!
-//! `node:http`'s `createServer` has no Rust counterpart, so the ported cases
-//! drive a real server on 127.0.0.1 (deviation class 3, as in `support/mod.rs`).
-//! It routes by method and path, records every request for later assertions and
-//! can hold an SSE connection that the handler feeds.
-
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
@@ -96,7 +89,6 @@ impl Reply {
     }
 
     /// Run `after` once a watcher is connected, then 20 ms later — the delay the
-    /// TS case expresses as `setTimeout(…, 20)`, minus its race with the SSE
     /// connection still being established.
     #[must_use]
     pub fn then_after_subscriber(self, after: AfterSubscriber) -> Self {

@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/test/package-manager.test.ts` (2 597 LOC) and
-//! `packages/coding-agent/test/package-manager-ssh.test.ts` (97 LOC).
-//!
-//! Two deviations run through the whole file:
-//!
-//! * Class 2 — the resource type `extensions` is gone. Cases that only tested
-//!   extension discovery are excluded (listed in `crates/notagent/PARITY.md`);
-//!   cases that used `extensions` merely as a vehicle for pattern or filter
-//!   logic run on `prompts`, `themes` or `skills`, which share the code path.
-//! * Class 1 — `vi.spyOn(manager, "runCommand")` becomes [`FakeRunner`], the
-//!   `CommandRunner` the manager spawns through. Spies on higher-level private
-//!   methods (`updateGit`, `getLocalGitUpdateTarget`, `getGlobalNpmRoot`) are
-//!   expressed as answers to the commands those methods run.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -36,7 +22,6 @@ use notagent::core::source_info::SourceScope;
 
 /// The suite mutates `HOME` and `NOTAGENT_OFFLINE`, which are process-wide.
 /// Rust runs tests in threads of one process, so every test holds this lock —
-/// the TypeScript gets the same isolation from one file, one process.
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -66,7 +51,6 @@ type CaptureHandler =
     Arc<dyn Fn(&str, &[String], &CommandOptions) -> Result<String, String> + Send + Sync>;
 type SyncHandler = Arc<dyn Fn(&str, &[String]) -> Result<String, String> + Send + Sync>;
 
-/// The `CommandRunner` the ported suite injects instead of spawning processes.
 #[derive(Default)]
 struct FakeRunner {
     runs: Mutex<Vec<RecordedCall>>,
@@ -233,7 +217,6 @@ impl CommandRunner for FakeRunner {
     }
 }
 
-/// `beforeEach` of the TypeScript suite.
 struct Fixture {
     _guard: MutexGuard<'static, ()>,
     _temp: tempfile::TempDir,
@@ -290,7 +273,6 @@ impl Fixture {
         }
     }
 
-    /// A second manager over the same directories (the TypeScript rebuilds one
     /// when it swaps the settings manager).
     fn manager_for(&self, cwd: &Path, settings: &Arc<SettingsManager>) -> DefaultPackageManager {
         DefaultPackageManager::new(PackageManagerOptions {
@@ -301,7 +283,6 @@ impl Fixture {
         })
     }
 
-    /// Point `HOME` at an empty directory — the cases where the TypeScript
     /// leaves `HOME` alone rely on the developer's home having no
     /// `~/.agents/skills`, which this makes true by construction.
     fn isolate_home(&self) {
@@ -357,7 +338,6 @@ fn path_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// `isEnabled(r, pathMatch)` / `isDisabled(r, pathMatch)` of the TypeScript.
 fn is_enabled(resources: &[ResolvedResource], suffix: &str) -> bool {
     resources
         .iter()
@@ -848,7 +828,6 @@ async fn does_not_apply_a_parent_gitignore_to_notagent_auto_discovery() {
 // ============================================================================
 // package resources
 //
-// The TypeScript drives these through `resolveExtensionSources([pkgDir])`,
 // which is gone with the extension system (class 2). The same collection runs
 // for a local package in the settings, so the cases move there.
 // ============================================================================
@@ -1784,7 +1763,6 @@ fn never_parses_dot_relative_paths_as_git() {
     }
 }
 
-/// The `parseSource` half of `package-manager-ssh.test.ts` and of the
 /// "HTTPS git URL parsing" block; `utils/git.rs` pins the parser itself.
 #[test]
 fn parses_every_supported_git_spelling() {
@@ -1936,7 +1914,6 @@ fn stores_project_local_packages_relative_to_the_notagent_settings_base() {
     assert_eq!(settings.packages, Some(vec![source(&expected)]));
 }
 
-/// `relative(from, to)` of `node:path`, as the TypeScript expectation spells it.
 fn pathdiff(from: &Path, to: &Path) -> String {
     let from: Vec<_> = from.components().collect();
     let to: Vec<_> = to.components().collect();
@@ -2837,7 +2814,6 @@ async fn batches_npm_updates_per_scope_and_runs_git_updates_in_parallel() {
             &format!(r#"{{"name":"{name}","version":"1.0.0"}}"#),
         );
     }
-    // The TypeScript replaces `updateGit` with a stub; here the git updates run
     // through the fake runner, so their checkouts have to exist.
     let git_root = fixture
         .agent_dir
@@ -3203,9 +3179,7 @@ async fn uses_the_npm_command_argv_for_npm_update_checks() {
     ));
 }
 
-/// `should wait for close before resolving captured stdout` — the TypeScript
 /// pins that the capture resolves on `close`, not on `exit`, so no output is
-/// lost. The port waits on the child and both pipes, which is the same
 /// guarantee; it is checked against a real process (class 1).
 #[cfg(unix)]
 #[tokio::test]

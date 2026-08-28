@@ -1,15 +1,3 @@
-//! `/bash-filter` (port addition, v0.1.20) — the command form of the
-//! reference's shell-output filter setting.
-//!
-//! The filter and its wiring into the `bash` tool are covered by
-//! `core/bash_filter` and `tests/bash_filter_tool.rs`. What runs here is the
-//! path a user takes: the typed command reaches the handler, the handler
-//! answers on screen, and the choice lands in the settings the tool reads its
-//! gate from.
-//!
-//! `wait_for` searches the accumulated scrollback, so each notice is awaited
-//! only on its first appearance; the later steps read the setting instead.
-
 use notagent::config::APP_NAME;
 
 use super::harness::{InteractiveE2e, run_local};

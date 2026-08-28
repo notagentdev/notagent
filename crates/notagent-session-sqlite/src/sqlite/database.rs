@@ -1,7 +1,3 @@
-//! Port of the node:sqlite adapter in
-//! `packages/session-backends/sqlite-node/src/index.ts` — rusqlite instead of
-//! `node:sqlite` (tech substitution from the master plan).
-
 use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
@@ -107,7 +103,6 @@ impl SqliteDatabaseFactory for RusqliteFactory {
     }
 }
 
-/// Port of `createNodeSqliteFactory()`.
 pub fn create_sqlite_factory() -> Arc<dyn SqliteDatabaseFactory> {
     Arc::new(RusqliteFactory)
 }

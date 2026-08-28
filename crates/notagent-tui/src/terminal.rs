@@ -1,10 +1,3 @@
-//! Terminal-Abstraktion.
-//!
-//! Port von `packages/tui/src/terminal.ts`. Dieser Commit enthält den Kontrakt
-//! (`Terminal`-Trait, `packages/tui/src/terminal.ts:60-102`); `ProcessTerminal`
-//! samt Raw-Mode, Kitty-Negotiation und Bracketed Paste folgt in Task 4 des
-//! Workstream-A-Plans.
-
 use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::rc::Rc;
@@ -19,32 +12,15 @@ use crate::keys::set_kitty_protocol_active;
 use crate::native_modifiers::{ModifierKey, is_native_modifier_pressed};
 use crate::stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
 
-/// Callback für eingehende Terminaldaten (`onInput`).
-///
-/// Kein `Send`: der TUI-Kern läuft wie in TS einsträngig (Komponenten sind
-/// `Rc<RefCell<…>>`); der stdin-Leser reicht Daten per Kanal an diesen Strang.
 pub type InputHandler = Box<dyn FnMut(&str)>;
-/// Callback für Größenänderungen (`onResize`).
 pub type ResizeHandler = Box<dyn FnMut()>;
 
-/// Minimales Terminal-Interface für die TUI.
-///
-/// Entspricht `interface Terminal` (`packages/tui/src/terminal.ts:60-102`).
-/// Der Alternate Screen ist bewusst **nicht** Teil des Interfaces — der
-/// Alt-Screen-Renderer schreibt die Sequenzen selbst.
 #[async_trait(?Send)]
 pub trait Terminal {
-    /// Startet das Terminal mit Input- und Resize-Handler.
     fn start(&mut self, on_input: InputHandler, on_resize: ResizeHandler);
 
-    /// Stoppt das Terminal und stellt den Zustand wieder her.
     fn stop(&mut self);
 
-    /// Leert stdin vor dem Beenden, damit Kitty-Key-Release-Events nicht über
-    /// langsame SSH-Verbindungen in die Parent-Shell lecken.
-    ///
-    /// `max_ms` (Default 1000) begrenzt die Gesamtdauer, `idle_ms` (Default 50)
-    /// beendet früh, wenn keine Eingabe mehr eintrifft.
     async fn drain_input(&mut self, max_ms: Option<u64>, idle_ms: Option<u64>);
 
     /// Schreibt Ausgabe ins Terminal.
@@ -52,28 +28,19 @@ pub trait Terminal {
 
     /// Terminalbreite in Spalten.
     fn columns(&self) -> usize;
-    /// Terminalhöhe in Zeilen.
     fn rows(&self) -> usize;
 
-    /// Ob das Kitty-Keyboard-Protokoll aktiv ist.
     fn kitty_protocol_active(&self) -> bool;
 
-    /// Bewegt den Cursor relativ: negativ = hoch, positiv = runter.
     fn move_by(&mut self, lines: isize);
 
-    /// Blendet den Cursor aus.
     fn hide_cursor(&mut self);
-    /// Blendet den Cursor ein.
     fn show_cursor(&mut self);
 
-    /// Löscht die aktuelle Zeile.
     fn clear_line(&mut self);
-    /// Löscht vom Cursor bis zum Bildschirmende.
     fn clear_from_cursor(&mut self);
-    /// Löscht den gesamten Bildschirm und setzt den Cursor auf (0,0).
     fn clear_screen(&mut self);
 
-    /// Setzt den Fenstertitel des Terminals.
     fn set_title(&mut self, title: &str);
 
     /// Fortschrittsanzeige (OSC 9;4).
@@ -162,7 +129,6 @@ pub fn normalize_apple_terminal_input(
 
 /// How long to wait for the rest of an escape sequence before dispatching a
 /// lone ESC as the Escape key.
-///
 /// Legacy Alt+key input is ESC plus another byte, so high-latency transports
 /// need a longer reassembly window.
 pub fn resolve_escape_timeout_ms() -> u64 {
@@ -171,7 +137,6 @@ pub fn resolve_escape_timeout_ms() -> u64 {
 
 /// [`resolve_escape_timeout_ms`] with an injectable environment (for tests).
 pub fn resolve_escape_timeout_ms_from(env: &dyn Fn(&str) -> Option<String>) -> u64 {
-    // TS: `Number(env.NOTAGENT_TUI_ESC_TIMEOUT)`; empty, NaN and values <= 0 fall through.
     if let Some(configured) = env("NOTAGENT_TUI_ESC_TIMEOUT")
         && let Ok(value) = configured.trim().parse::<f64>()
         && value.is_finite()
@@ -186,13 +151,9 @@ pub fn resolve_escape_timeout_ms_from(env: &dyn Fn(&str) -> Option<String>) -> u
 }
 
 /// Sink for everything the terminal writes.
-///
-/// The TS tests monkey-patch `process.stdout.write`; the Rust port injects the
-/// sink instead (deviation class 1).
 enum OutputSink {
     Stdout,
     /// Only constructed by [`ProcessTerminal::with_writer`], which the
-    /// `test-terminal` feature provides (interface request C-3).
     #[cfg(feature = "test-terminal")]
     Collector(Box<dyn FnMut(&str)>),
 }
@@ -211,8 +172,6 @@ pub enum PumpResult {
 }
 
 /// Real terminal on `process.stdin` / `process.stdout`.
-///
-/// Port of `class ProcessTerminal` (`packages/tui/src/terminal.ts:123-559`).
 pub struct ProcessTerminal {
     input_handler: Option<InputHandler>,
     resize_handler: Option<ResizeHandler>,
@@ -302,7 +261,6 @@ impl ProcessTerminal {
     }
 
     /// Query the terminal for Kitty keyboard protocol support.
-    ///
     /// Kitty's progressive enhancement detection requires requesting the desired
     /// flags before querying them. The trailing DA query is a sentinel supported
     /// by terminals that do not know the Kitty protocol; receiving DA before a
@@ -321,10 +279,7 @@ impl ProcessTerminal {
     }
 
     /// Feed a chunk of raw stdin data through the buffer and the negotiation.
-    ///
     /// Returns the sequences destined for the input handler instead of calling
-    /// it. Deviation class 1: in TS the handler runs inline
-    /// (`packages/tui/src/terminal.ts:214-233`); a Rust handler re-enters the
     /// terminal through the TUI (overlays hide the cursor, components write), so
     /// it must not run while the terminal is borrowed. The order of the
     /// forwarded sequences is unchanged; only their interleaving with the
@@ -371,7 +326,6 @@ impl ProcessTerminal {
     }
 
     /// Hand the collected sequences to the input handler.
-    ///
     /// Only for callers that own the terminal exclusively (the test helpers);
     /// the shared path forwards through [`ProcessTerminalPump`], which releases
     /// the borrow first.
@@ -642,7 +596,6 @@ fn resolve_write_log_path() -> Option<std::path::PathBuf> {
         .filter(|value| !value.is_empty())?;
     let path = std::path::PathBuf::from(&env);
     if path.is_dir() {
-        // A directory gets a timestamped file, like the TS version.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -909,7 +862,6 @@ impl Terminal for ProcessTerminal {
 
 /// On Windows add ENABLE_VIRTUAL_TERMINAL_INPUT (0x0200) to the stdin console
 /// handle so the terminal sends VT sequences for modified keys (e.g. \x1b[Z for
-/// Shift+Tab). Port of `native/win32/src/win32-console-mode.c`.
 #[cfg(windows)]
 fn enable_windows_vt_input() {
     use windows_sys::Win32::System::Console::{
@@ -955,8 +907,6 @@ pub(crate) struct DrainLease {
 }
 
 /// Swallow stdin until it stays idle for `idle_ms`, at most `max_ms`.
-///
-/// Port of the loop in `drainInput` (`packages/tui/src/terminal.ts:471-508`);
 /// it lives outside `ProcessTerminal` so the shared handle can run it without
 /// holding a borrow across the `await`.
 async fn drain_stdin(
@@ -997,14 +947,9 @@ fn normalize_forwarded_input(sequence: &str) -> String {
 }
 
 /// Drives a terminal's event loop in the caller's task.
-///
-/// Deviation class 1: TS has no counterpart — Node's event loop delivers stdin,
 /// SIGWINCH and the buffer timeouts to `ProcessTerminal` on its own
-/// (`packages/tui/src/terminal.ts:150-233`), and `createStartupTui` therefore
 /// only has to hand the terminal to `TuiMainScreen` and call `start()`
-/// (`packages/coding-agent/src/cli/startup-ui.ts:74-90`). Rust has no ambient
 /// loop, so the caller owns one; a pump is what it drives. Dispatch runs on the
-/// caller's task, so the single-threaded component model of the TS version is
 /// preserved.
 #[async_trait(?Send)]
 pub trait TerminalPump {
@@ -1014,10 +959,8 @@ pub trait TerminalPump {
 }
 
 /// [`ProcessTerminal`] shared between the TUI, which owns it, and its pump.
-///
 /// Created by [`ProcessTerminal::into_shared`]. Every method takes the borrow
 /// only for its own duration, so a handler running inside the pump can write to
-/// the terminal, read its size and open overlays exactly like the TS original.
 pub struct SharedProcessTerminal(Rc<RefCell<ProcessTerminal>>);
 
 impl SharedProcessTerminal {
@@ -1034,8 +977,6 @@ impl SharedProcessTerminal {
 
 impl ProcessTerminal {
     /// Split the terminal into the handle the TUI owns and the pump that drives
-    /// its event loop (interface request C-14).
-    ///
     /// ```no_run
     /// # use notagent_tui::terminal::{ProcessTerminal, TerminalPump};
     /// # use notagent_tui::tui_main_screen::TuiMainScreen;
@@ -1126,7 +1067,6 @@ impl Terminal for SharedProcessTerminal {
 }
 
 /// Pump of a [`SharedProcessTerminal`].
-///
 /// One `pump()` call waits for the next stdin chunk, SIGWINCH or pending
 /// timeout and dispatches it. The terminal is never borrowed across an `await`:
 /// the stdin channel and the SIGWINCH stream are lent out for the wait and the
@@ -1282,7 +1222,6 @@ impl Drop for PumpLease<'_> {
     }
 }
 
-/// Test-only access to the parts the TS suite drives through monkey-patching.
 #[cfg(feature = "test-terminal")]
 impl ProcessTerminal {
     /// Terminal whose writes go to `sink` instead of stdout.
@@ -1293,24 +1232,20 @@ impl ProcessTerminal {
         terminal
     }
 
-    /// Install the input handler (TS: private `inputHandler` field).
     pub fn set_input_handler(&mut self, handler: InputHandler) {
         self.input_handler = Some(handler);
     }
 
     /// Run the protocol negotiation without touching stdin
-    /// (TS: private `queryAndEnableKittyProtocol()`).
     pub fn begin_keyboard_protocol_negotiation(&mut self) {
         self.query_and_enable_kitty_protocol();
     }
 
-    /// Feed data as if it came from stdin (TS: the captured `data` handler).
     pub fn feed_stdin(&mut self, data: &str) {
         let forwards = self.handle_stdin_chunk(data.as_bytes());
         self.forward_to_input_handler(forwards);
     }
 
-    /// Fire the pending StdinBuffer timeout (TS: `mock.timers.tick`).
     pub fn fire_stdin_timeout(&mut self) {
         let forwards = self.flush_stdin_timeout();
         self.forward_to_input_handler(forwards);
@@ -1322,7 +1257,6 @@ impl ProcessTerminal {
         self.forward_to_input_handler(forwards);
     }
 
-    /// Pin the reported dimensions (TS test overrides `process.stdout.columns`).
     pub fn set_dimensions_for_tests(&mut self, columns: Option<usize>, rows: Option<usize>) {
         self.columns_override = columns;
         self.rows_override = rows;
@@ -1352,7 +1286,6 @@ impl SharedProcessTerminal {
 #[cfg(feature = "test-terminal")]
 impl ProcessTerminal {
     /// Attach a stdin channel the test feeds instead of the reader thread
-    /// (TS: the captured `data` handler of `process.stdin`).
     pub fn attach_test_stdin(&mut self) -> mpsc::UnboundedSender<Vec<u8>> {
         let (tx, rx) = mpsc::unbounded_channel();
         self.pump_epoch = self.pump_epoch.wrapping_add(1);

@@ -1,10 +1,3 @@
-//! A whole app runtime for the headless end-to-end suites.
-//!
-//! What `main.ts` assembles at startup, minus the process: a real model runtime
-//! with the faux provider registered natively, the real services and a session
-//! built by `create_agent_session_from_services`. Only the provider is scripted,
-//! so everything the modes touch below themselves is the production path.
-
 #![allow(dead_code)]
 
 use std::sync::Arc;

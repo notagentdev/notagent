@@ -1,7 +1,3 @@
-//! Ports of the core cases of `packages/ai/test/models-runtime.test.ts` (1 159 LOC).
-//! The remaining cases (abort behaviour of non-cooperative providers, header transform
-//! chain) follow in task 13; see PARITY.md.
-
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -417,7 +413,6 @@ fn lists_and_finds_models_per_provider() {
 }
 
 /// The network phase runs only for configured providers, so every refresh test seeds a
-/// credential (TS: "passes effective API-key credentials ... while skipping unconfigured
 /// providers").
 #[tokio::test]
 async fn refresh_updates_dynamic_providers_and_skips_static_ones() {

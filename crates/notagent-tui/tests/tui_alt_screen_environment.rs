@@ -1,9 +1,3 @@
-//! Port of the environment-dependent cases of
-//! `packages/tui/test/tui-alt-screen.test.ts`.
-//!
-//! They live in their own test binary because they mutate process-global state
-//! (environment variables), which must not race with the other cases.
-
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{Line, TuiStopOptions, component_ref};
 use notagent_tui::tui_alt_screen::{TuiAltScreen, TuiAltScreenOptions};
@@ -20,8 +14,6 @@ fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
 }
 
 /// Apply an environment for the duration of one case.
-///
-/// Deviation class 1: `std::env::set_var` is `unsafe` in edition 2024; the test
 /// binary is single-threaded here, which is the safety condition.
 fn set_environment(entries: &[(&str, &str)]) {
     unsafe {
@@ -105,7 +97,6 @@ fn invokes_the_right_click_paste_handler_only_on_windows() {
     tui.handle_terminal_input("\x1b[<2;1;1M");
     tui.handle_terminal_input("\x1b[<2;1;1m");
 
-    // Deviation class 1: the TS suite redefines `process.platform`; the Rust
     // port decides at compile time, so each platform asserts its own branch.
     if cfg!(windows) {
         assert!(tui.take_right_click_paste());

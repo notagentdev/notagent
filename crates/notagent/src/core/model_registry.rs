@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/src/core/model-registry.ts` (157 LOC).
-//!
-//! Synchronous compatibility facade exposed to extensions. Coding-agent internals
-//! use [`ModelRuntime`] directly.
-//!
-//! Deviation (class 2): the `registerProvider(name, config)` overload and
-//! `getRegisteredProviderConfig` are dropped with the extension provider API
-//! (extension-boundary §6); `register_provider` keeps the native-provider overload
-//! that the llama.cpp provider uses.
-
 use std::sync::Arc;
 
 use notagent_ai::auth::resolve::ModelsError;
@@ -158,7 +148,6 @@ impl ModelRegistry {
     }
 }
 
-/// TS reads `error.cause.message`; the Rust port folds the cause into the message
 /// (`"<context>: <cause>"`), so the marker is matched at the end (class 1).
 fn map_auth_error(error: &ModelsError, provider: &str) -> String {
     const AUTH_HEADER_MARKER: &str = "authHeader requires a resolved API key";

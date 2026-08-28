@@ -1,9 +1,3 @@
-//! Differential test of the Azure OpenAI Responses adapter.
-//!
-//! `fixtures/azure-openai-responses.jsonl` records, for each case, the request body the
-//! TS implementation builds plus the URL and headers its `AzureOpenAI` client actually
-//! sends (see `fixtures/generators`).
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -305,7 +299,6 @@ fn the_base_url_is_resolved_from_the_first_available_source() {
         assert_eq!(base_url, expected, "{name}");
     }
 
-    // Nothing at all is an error with the message the TS code spells out.
     let mut case = case_named("minimal");
     case.options.azure_base_url = None;
     case.model.base_url = String::new();
@@ -390,7 +383,6 @@ fn model_and_request_headers_are_merged() {
         headers.get("x-request").cloned().flatten().as_deref(),
         Some("from-request")
     );
-    // The TS client sends both of them.
     assert_eq!(
         case.sent_headers.get("x-model").map(String::as_str),
         Some("from-model")

@@ -1,5 +1,3 @@
-//! Port of `packages/client/src/connection.ts`.
-
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, Weak};
 
@@ -16,7 +14,6 @@ use crate::types::{ConnectionState, ConnectionStateChange};
 
 const MAX_UINT32: u64 = 0xffff_ffff;
 
-/// TS: `Exclude<ServerMessage, { type: "hello" | "hello_error" }>`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ServerNonHandshakeMessage {
     Response(ResponseEnvelope),
@@ -73,7 +70,6 @@ impl Lifecycle {
 struct Inner {
     lifecycle: Lifecycle,
     /// Replaces the object identity comparison `this.#lifecycle !== connected`
-    /// of the TS original (deviation class 1).
     epoch: u64,
     sequence: u64,
 }
@@ -194,7 +190,6 @@ impl Connection {
             )
         };
         let connection = Arc::clone(self);
-        // TS: `void this.#openTransport(id, handlers)` — fire and forget.
         tokio::spawn(async move {
             connection.open_transport(id, handlers).await;
         });

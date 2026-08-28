@@ -1,25 +1,3 @@
-//! Atomic file leases, taken over from the reference implementation
-//! (`notagent-main-rust`: `notagent_domain/src/lease.rs`,
-//! `notagent_repo/src/lease.rs`, `notagent_services/src/lease.rs`).
-//!
-//! Port addition (user decision 2026-08-17, v0.1.19), off by default and
-//! toggled with `/leases on|off`. The reference splits the feature across its
-//! domain/repo/services crates; this port has no such split, so the value
-//! type, the file-system store and the two-phase coordinator live together
-//! here — next to [`super::file_mutation_queue`], which solves the same
-//! problem one process at a time.
-//!
-//! A lease is advisory and time-bounded: [`super::file_mutation_queue`]
-//! serializes mutations of one file inside this process, a lease serializes
-//! them across cooperating agent processes sharing a workspace. The content
-//! hash taken at reservation time detects a file that changed underneath the
-//! holder before the write is committed.
-//!
-//! The store reads and writes the workspace with `tokio::fs` directly rather
-//! than through a tool's pluggable operations: a lease is a local-workspace
-//! mechanism (`<cwd>/.notagent/leases`), exactly as in the reference, where
-//! the lease repository also goes straight to the file system.
-
 use std::fmt;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -35,7 +13,6 @@ use crate::config::CONFIG_DIR_NAME;
 
 /// Reads whether atomic leases are enabled, at call time, so `/leases on|off`
 /// applies without a session restart. An absent gate means disabled, matching
-/// the reference's `is_atomic_leases_enabled` default and the port's default.
 pub type LeaseGate = Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// Extra time granted by [`LeaseCoordinator::prepare_commit`] to finish the
@@ -62,7 +39,6 @@ impl fmt::Display for LeaseStatus {
 }
 
 /// An advisory, time-bounded reservation of a single file.
-///
 /// Only one holder may modify a file at a time, and the content hash taken at
 /// reservation time (`base_hash`) detects external modifications before the
 /// write is committed. A lease expires automatically at `lease_until_ms`, so a
@@ -161,7 +137,6 @@ impl FileLease {
 }
 
 /// The lease failures a tool reports to the model.
-///
 /// The four lifecycle messages are the reference's, word for word: they are
 /// what the model reads and act on ("retry shortly"). The storage variants
 /// carry the contexts the reference attaches with `anyhow`.
@@ -213,7 +188,6 @@ fn compute_hash_bytes(content: &[u8]) -> String {
 }
 
 /// Derives the lease file name for a target path.
-///
 /// The absolute path string is hashed so the lease directory stays flat and
 /// file-system safe regardless of the target's depth or characters.
 fn compute_path_key(path: &Path) -> String {
@@ -221,7 +195,6 @@ fn compute_path_key(path: &Path) -> String {
 }
 
 /// Milliseconds since the Unix epoch.
-///
 /// If the system clock is set before 1970-01-01 (clock skew, misconfigured
 /// hardware) `duration_since` returns an error; we fall back to 0 instead of
 /// panicking so lease bookkeeping never takes the process down. A 0 value
@@ -236,7 +209,6 @@ fn now_ms() -> u64 {
 }
 
 /// Returns whether the process with the given pid is still running.
-///
 /// Used to treat leases of crashed holders as stale immediately instead of
 /// waiting out their TTL. On Unix this probes with `kill(pid, 0)`: success or
 /// `EPERM` (process exists but belongs to another user) both mean alive. On
@@ -275,7 +247,6 @@ fn is_blocking(lease: &FileLease, now_ms: u64) -> bool {
 }
 
 /// File-system backed lease store.
-///
 /// Each lease is a JSON file under the lease directory, named by the hash of
 /// the leased file's path. Atomicity comes from creating the lease file with
 /// `O_CREAT | O_EXCL` semantics: exactly one concurrent acquirer can win.
@@ -451,7 +422,6 @@ impl FileLeaseStore {
 }
 
 /// Coordinates the two-phase lease protocol used by the mutating file tools.
-///
 /// Phase one ([`Self::reserve`]) records a content hash of the target file and
 /// acquires the lease; phase two ([`Self::prepare_commit`]) re-validates
 /// ownership and content immediately before the write. Releasing is explicit

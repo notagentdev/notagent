@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/theme-detection.test.ts` (174 LOC).
-
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -14,7 +12,6 @@ use notagent::modes::interactive::theme::theme::{
 use notagent_tui::{RgbColor, TerminalCapabilities, reset_capabilities_cache, set_capabilities};
 
 /// Terminal capabilities are a process global, so the tests that stub them run
-/// serially (`afterEach(resetCapabilitiesCache)` in the TS suite).
 fn capabilities_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -197,7 +194,6 @@ async fn starts_both_queries_and_returns_the_preferred_color_scheme_result_witho
 
     let detection = detect_terminal_theme_for_auto(&ui, 100, None);
     futures::pin_mut!(detection);
-    // Rust futures are lazy: one poll is what running the TS statement does.
     assert!(futures::poll!(detection.as_mut()).is_pending());
 
     assert!(ui.background_query_started.get());

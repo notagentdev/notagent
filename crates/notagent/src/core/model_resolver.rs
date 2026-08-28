@@ -1,7 +1,3 @@
-//! Model resolution, scoping, and initial selection.
-//!
-//! Port of `packages/coding-agent/src/core/model-resolver.ts` (769 LOC).
-
 use futures::future::BoxFuture;
 use globset::GlobBuilder;
 use notagent_agent::types::ThinkingLevel;
@@ -13,8 +9,6 @@ use crate::core::defaults::DEFAULT_THINKING_LEVEL;
 use crate::core::model_runtime::ModelRuntime;
 
 /// The `ModelRuntime` surface the resolver reads.
-///
-/// Deviation (class 1): TS types the parameter as `ModelRuntime` but the suites pass
 /// structurally typed stubs. Rust has no structural typing, so the four methods the
 /// resolver actually calls form a trait that `ModelRuntime` implements.
 pub trait ModelCatalog: Send + Sync {
@@ -57,10 +51,6 @@ impl ModelCatalog for ModelRuntime {
     }
 }
 
-/// `VALID_THINKING_LEVELS` of `src/cli/args.ts`.
-///
-/// The rest of `cli/args.ts` belongs to workstream C (task 12); the level check lives
-/// here because the resolver is its only consumer in this workstream. C re-exports it
 /// rather than declaring a second copy.
 pub const VALID_THINKING_LEVELS: [&str; 7] =
     ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -160,7 +150,6 @@ fn is_alias(id: &str) -> bool {
 }
 
 /// `String.prototype.localeCompare` for the model ids used here.
-///
 /// Deviation (class 1): the ids are ASCII, where the ICU root collation that
 /// `localeCompare` uses orders like a case-insensitive comparison with a
 /// case-sensitive tiebreak; `sort((a, b) => b.id.localeCompare(a.id))` therefore
@@ -366,7 +355,6 @@ pub struct ResolveModelScopeResult {
 }
 
 /// `minimatch(value, pattern, { nocase: true })`
-///
 /// Deviation (class 3, master substitution glob/minimatch → globset): `globset` with
 /// `literal_separator(true)` keeps minimatch's rule that `*` does not cross `/`.
 fn minimatch_nocase(value: &str, pattern: &str) -> bool {
@@ -482,7 +470,6 @@ pub async fn resolve_model_scope_with_diagnostics(
 }
 
 /// `resolveModelScope(patterns, modelRuntime, options?)`
-///
 /// Deviation (class 1): the diagnostics are returned instead of written to
 /// `console.warn`, so the caller owns the output channel.
 pub async fn resolve_model_scope(
@@ -527,7 +514,6 @@ pub fn resolve_cli_model(
         };
     }
 
-    // Canonical provider lookup (case-insensitive), last write wins as in TS.
     let canonical_provider = |needle: &str| -> Option<String> {
         available_models
             .iter()
@@ -749,7 +735,6 @@ pub struct InitialModelResult {
     pub fallback_message: Option<String>,
 }
 
-/// `FindInitialModelOptions` — the TS options object.
 pub struct FindInitialModelOptions<'a> {
     pub cli_provider: Option<&'a str>,
     pub cli_model: Option<&'a str>,
@@ -762,7 +747,6 @@ pub struct FindInitialModelOptions<'a> {
 }
 
 /// `findInitialModel(options)`
-///
 /// Deviation (class 1): a CLI resolution error is returned instead of calling
 /// `process.exit(1)`; the caller (the CLI entry point) owns the exit.
 pub fn find_initial_model(
@@ -858,7 +842,6 @@ fn pick_default_available(available_models: &[Model]) -> Option<Model> {
 pub struct RestoredModel {
     pub model: Option<Model>,
     pub fallback_message: Option<String>,
-    /// The lines TS prints via `console.log`/`console.error` when
     /// `shouldPrintMessages` is set; returned so the caller owns the output channel.
     pub messages: Vec<RestoreMessage>,
 }

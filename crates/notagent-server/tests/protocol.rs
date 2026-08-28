@@ -1,5 +1,3 @@
-//! Port of `packages/server/test/protocol.test.ts`.
-
 use notagent_ai::{
     AssistantContent, AssistantMessage, StopReason, TextContent as AiTextContent,
     TextOrImageContent, ToolCall, ToolResultMessage, Usage, UsageCost, UserContent, UserMessage,
@@ -80,7 +78,6 @@ fn test_model() -> Model {
     }
 }
 
-/// Port of `assertValidServerPayload`.
 fn assert_valid_server_payload(item: TranscriptItem) {
     let hello = ServerMessage::Hello(ServerHello {
         kind: HelloTag,
@@ -218,8 +215,6 @@ fn exhaustively_maps_assistant_content_and_stop_reasons() {
 
 #[test]
 fn maps_user_and_tool_messages() {
-    // The TS case additionally feeds a circular `details` object; cycles are not
-    // representable with `serde_json::Value` (deviation class 1).
     let user = UserMessage {
         content: UserContent::Text("hello".to_owned()),
         timestamp: 1,
@@ -420,7 +415,6 @@ fn rejects_invalid_source_identifiers_and_timestamps() {
         "{error}"
     );
 
-    // TS uses `Number.NaN`; the Rust timestamp is an i64, so the equivalent
     // violation is a negative value (`!Number.isSafeInteger(value) || value < 0`).
     let user = UserMessage {
         content: UserContent::Text("hello".to_owned()),
@@ -441,4 +435,3 @@ fn rejects_invalid_source_identifiers_and_timestamps() {
 
 // `rejects lossy tool input conversions` and `rejects sparse execution data`
 // have no Rust equivalent: Infinity, bigint, undefined, cycles and array holes
-// cannot be represented by `serde_json::Value` (deviation class 1).

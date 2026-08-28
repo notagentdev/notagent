@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/find.ts` (tool half).
-
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;

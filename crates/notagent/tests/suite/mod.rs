@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/test/suite/harness.ts`.
-//!
-//! A whole session wired to the faux provider: the scripted responses are the
-//! only thing the tests have to arrange, and everything below the session is
-//! real — a real agent, a real session manager, real settings.
-//!
-//! Deviation (class 1): the model runtime is a small stand-in rather than the
-//! real one, because `model-runtime.ts` is workstream B's (interface request
-//! C-13). It answers exactly the six questions the session asks it, from the
-//! faux provider's model list.
-
 #![allow(dead_code)]
 
 use std::sync::{Arc, Mutex};
@@ -156,8 +145,6 @@ pub struct Harness {
 
 impl Harness {
     /// Wait until the run started by a spawned `prompt` is in flight.
-    ///
-    /// Interface request B-16: without a deadline the loop spins forever when
     /// the spawned run finished before the first look — `#[tokio::test]` gives
     /// a current-thread scheduler, so the whole turn can run inside the first
     /// `await`. Cases that need the window use a slowed faux provider

@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/fuzzy.test.ts` (112 LOC).
-
 use notagent_tui::fuzzy::{fuzzy_filter, fuzzy_match};
 
 // describe("fuzzyMatch")

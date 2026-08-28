@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/permissions/request.ts`.
-//!
-//! The approval request: what a user is shown when a policy asks.
-//!
-//! Presentation is kept separate from the dialog itself so the wording is
-//! testable without a terminal, and so the same request can be rendered by the
-//! TUI, by a headless runner, or in a transcript.
-//!
-//! The three things a user needs to answer are always present: which tool is
-//! asking, what it would touch, and which rule decided that asking was
-//! necessary. The last one matters most — without it an unexpected prompt has
-//! no explanation, and a user cannot tell a sensitive-file guard from an
-//! ordinary unrecognised call.
-
 use std::sync::LazyLock;
 
 use regex::Regex;

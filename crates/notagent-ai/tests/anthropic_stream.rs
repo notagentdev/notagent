@@ -1,9 +1,3 @@
-//! Port of the response-side cases of `packages/ai/test/anthropic-sse-parsing.test.ts`.
-//!
-//! The TS suite drives `stream()` with a fake SDK client that returns a canned SSE
-//! response. Here the same frames are fed through the SSE decoder into the stream state
-//! machine, which is the part that turns them into events and the final message.
-
 use notagent_ai::api::anthropic_messages::{
     ANTHROPIC_MESSAGE_EVENTS, AnthropicStreamState, map_stop_reason,
 };
@@ -36,7 +30,6 @@ fn model() -> Model {
     }
 }
 
-/// `createSseResponse(events)` of the TS suite.
 fn sse_body(events: &[(&str, Value)]) -> String {
     events
         .iter()
@@ -179,7 +172,6 @@ fn assembles_tool_calls_from_input_json_deltas() {
         "the scratch buffer must not reach the content block"
     );
 
-    // Partial snapshots parse the incomplete buffer, as parseStreamingJson does in TS.
     let first_delta = emitted
         .iter()
         .find(|event| event_name(event) == "toolcall_delta")
@@ -435,7 +427,6 @@ fn refusals_surface_as_stream_errors() {
 
 #[test]
 fn content_indices_follow_the_order_blocks_arrive_in() {
-    // Anthropic block indices need not match the content array; TS looks blocks up by
     // their index and reports the array position.
     let events = vec![
         (

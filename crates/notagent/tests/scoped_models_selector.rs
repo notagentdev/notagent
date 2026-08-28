@@ -1,11 +1,3 @@
-//! Port of the component-level cases of
-//! `packages/coding-agent/test/suite/regressions/3217-scoped-model-order.test.ts` and
-//! `.../6949-unavailable-scoped-model.test.ts`, plus the behaviour of
-//! `components/scoped-models-selector.ts` those suites do not reach.
-//!
-//! The remaining cases of both files drive `InteractiveMode` through the suite
-//! harness (workstream C, gate G3).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -158,8 +150,6 @@ fn shows_and_removes_an_enabled_model_without_a_catalog_entry() {
     selector.handle_input(CTRL_S);
     assert_eq!(*recorder.persisted.borrow(), [Some(vec![available_id])]);
 }
-
-// --- behaviour the TypeScript suites do not cover --------------------------------
 
 #[test]
 fn starts_with_every_model_enabled_and_toggles_into_an_explicit_list() {

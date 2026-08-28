@@ -1,22 +1,3 @@
-//! Port of `packages/coding-agent/test/package-command-paths.test.ts` (803 LOC),
-//! as far as it belongs to the package-manager CLI.
-//!
-//! Excluded and why (also in `crates/notagent/PARITY.md`):
-//!
-//! * The four self-update cases and the two version-check cases stub
-//!   `globalThis.fetch`. `getLatestPiRelease` talks to a fixed URL in both
-//!   languages, and Rust has no global fetch to replace, so they would need a
-//!   seam the TypeScript does not have. The offline path of the same code is
-//!   pinned below, the comparison logic in `utils::version_check`.
-//! * `refreshes only model catalogs with update --models` replaces
-//!   `ModelRuntime.create` with a spy; the argument rejection half of that
-//!   block is ported, the spy half is covered by the model-runtime suites.
-//! * `uses project_trust extensions for package commands` and the extension
-//!   half of `does not prompt ... during update` are extension-system cases
-//!   (class 2).
-//! * `cycles project package overrides in config local mode` drives A's config
-//!   selector (interface request B-6).
-
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
@@ -32,7 +13,6 @@ fn env_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
-/// The `console.log` / `console.error` spies of the TypeScript.
 #[derive(Default)]
 struct RecordingConsole {
     stdout: Mutex<Vec<String>>,
@@ -526,7 +506,6 @@ async fn suggests_the_configured_source_when_the_update_input_omits_the_npm_pref
 
 /// The offline half of the self-update path: `getLatestPiRelease` returns
 /// nothing, so the plan cannot be built and the command reports why. The
-/// online half needs a `fetch` stub the port has no seam for (see the module
 /// comment).
 #[tokio::test]
 async fn reports_that_the_latest_version_could_not_be_determined_when_offline() {

@@ -1,6 +1,5 @@
 //! The native half of the bash filter: one post-processor per supported
 //! command, each a pure function over the finished output.
-//!
 //! Nothing here starts a process, streams, or rewrites an exit code. A
 //! post-processor that cannot make sense of what it was given returns `None`,
 //! and the raw output is what the caller keeps.
@@ -166,11 +165,9 @@ pub(crate) fn detect(command: &ClassifiedCommand) -> Option<NativeFilter> {
 /// Names a filter from what the output looks like, for the runs whose command
 /// says nothing: a script, a `make` target, a wrapper, anything that reached
 /// here unclassified.
-///
 /// Only filters that read a stream are eligible. The system adapters answer
 /// from the filesystem or from flags this output never carried, so they have
 /// no place here, so the search and find adapters have no counterpart below.
-///
 /// # Arguments
 /// * `stdout` - Captured standard output of the finished command.
 pub(crate) fn detect_by_content(stdout: &str) -> Option<NativeFilter> {

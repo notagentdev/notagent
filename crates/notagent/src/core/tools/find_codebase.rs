@@ -1,16 +1,3 @@
-//! `find_codebase` — local ranked codebase search over a BM25 index.
-//!
-//! New over the TS original (user decision 2026-08-16, v0.1.7): a 1:1
-//! takeover of `cb_search` from ../notagent-main-rust — the tool service
-//! (`notagent_services/src/tool_services/cb_search.rs`: lazy shared index
-//! state, 30s refresh window, writer-lock fallback), the result XML shape
-//! (`notagent_app/src/operation.rs`), the tool description
-//! (`notagent_domain/src/tools/descriptions/cb_search.md`) and the collapsed
-//! toolbox renderer (`notagent_tui/src/tool_renderers.rs`). The search itself
-//! lives in the `notagent-index` crate, copied unchanged from the reference.
-//! Renames relative to the reference: `cb_search` → `find_codebase`,
-//! `fs_search` → `find_filesystem`, config key → `findCodebaseEnabled`.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};

@@ -1,14 +1,11 @@
 //! The synthetic `authenticate` tool a server waiting on a login offers
 //! (v0.1.22).
-//!
 //! Taken from `../kimi-code-main`. A server that answers 401 has no tools to
-//! contribute, and the reference this port otherwise follows leaves it at that:
 //! the servers are simply missing, and the model discovers the gap by planning
 //! around tools that are not there. What it needs instead is one thing it can
 //! call — a tool per waiting server, named `mcp__<server>__authenticate`, whose
 //! whole job is to run the login and bring the real tools back inside the same
 //! turn.
-//!
 //! The tool exists only where a login could actually succeed: an HTTP server,
 //! OAuth not switched off, a credential file to write to. Where it cannot, the
 //! server contributes nothing at all, because a tool that can only ever answer
@@ -36,7 +33,6 @@ use crate::core::tools::tool_definition::{
 use crate::modes::interactive::theme::theme::Theme;
 
 /// Run after a login, to put the server's real tools into the registry.
-///
 /// The session owns that rebuild; the tool only says when it is due.
 pub type McpToolsChanged = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
 

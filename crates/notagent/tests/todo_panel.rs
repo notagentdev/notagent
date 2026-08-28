@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/test/todo-panel.test.ts` (164 LOC).
-//!
-//! The task panel above the editor.
-//!
-//! Two behaviours carry the design and both are pinned here: the window is
-//! anchored so the task being worked on is the last visible row, and a list that
-//! has just gone all-green stays up briefly instead of vanishing at the moment
-//! it was finally worth looking at.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -181,7 +172,6 @@ fn shows_the_summary_only_in_standalone_mode() {
 
 // --- when the panel is up --------------------------------------------------------
 
-/// The TypeScript cases await the hide timer; the port polls it instead
 /// (timers never call back, see `plans/interface-requests.md` A-4). The sleeps
 /// keep the same shape so the epoch guard is exercised the same way.
 fn sleep(millis: u64) {

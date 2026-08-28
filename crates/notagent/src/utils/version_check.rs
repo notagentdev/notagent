@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/version-check.ts` (109 LOC).
-//!
-//! Asks notagent.dev which release is current. Pulled forward from task 16
-//! because the self-update of `package-manager-cli.ts` needs it.
-//!
-//! Deviation (class 1): `formatVersionCheckError` has no counterpart. It exists
-//! because Node hides the errno behind a generic "fetch failed" and the
-//! TypeScript has to dig through `error.cause`; `utils::management_http`
-//! already returns the message of the underlying `reqwest` error, cause chain
-//! included, so callers print that string directly.
-
 use std::time::Duration;
 
 use semver::Version;
@@ -18,8 +7,6 @@ use crate::utils::notagent_user_agent::get_pi_user_agent;
 
 const LATEST_VERSION_URL: &str = "https://notagent.dev/api/latest-version";
 
-/// Test seam. `vi.stubGlobal("fetch", …)` has no Rust counterpart, so the ported
-/// suite points the check at a loopback server instead (deviation class 3, see
 /// `crates/notagent/tests/support/mod.rs`). Unset in every other build path.
 static LATEST_VERSION_URL_OVERRIDE: std::sync::RwLock<Option<String>> =
     std::sync::RwLock::new(None);

@@ -1,8 +1,3 @@
-//! Shared building blocks of the Google Generative AI and Google Vertex adapters.
-//!
-//! 1:1 port of `packages/ai/src/api/google-shared.ts`: message and tool conversion into
-//! the Gemini `Content[]` shape, the thought-signature rules and the stop-reason mapping.
-
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
@@ -47,7 +42,6 @@ pub fn is_thinking_part(part: &Value) -> bool {
 }
 
 /// `retainThoughtSignature(existing, incoming)`
-///
 /// Some backends send `thoughtSignature` only on the first delta of a block; this keeps
 /// the last non-empty one instead of letting a later delta clear it. It never moves a
 /// signature between distinct parts.
@@ -390,7 +384,6 @@ fn json_schema_meta_declarations() -> &'static BTreeSet<&'static str> {
 /// `sanitizeForOpenApi(schema)` — drops the meta declarations, recursively.
 fn sanitize_for_openapi(schema: &Value) -> Value {
     let Some(object) = schema.as_object() else {
-        // Arrays and primitives are returned unchanged, as in TS.
         return schema.clone();
     };
     let mut result = Map::new();
@@ -404,7 +397,6 @@ fn sanitize_for_openapi(schema: &Value) -> Value {
 }
 
 /// `convertTools(tools, useParameters, supportsStrictMode)`
-///
 /// `parametersJsonSchema` carries full JSON Schema; `useParameters` switches to the
 /// legacy OpenAPI 3.03 field, which Cloud Code Assist needs for Claude models because it
 /// translates `parameters` into Anthropic's `input_schema`.
@@ -485,9 +477,6 @@ pub fn resolve_google_function_calling_mode(
 }
 
 /// `mapStopReasonString(reason)` — everything but STOP and MAX_TOKENS is an error.
-///
-/// The enum-typed `mapStopReason` of TS has the same table; both collapse into this
-/// function because the Rust port speaks to the REST API, where the reason is a string.
 pub fn map_stop_reason(reason: &str) -> StopReason {
     match reason {
         "STOP" => StopReason::Stop,

@@ -1,20 +1,15 @@
 //! A minimal MCP server that misbehaves on demand, for the MCP client tests.
-//!
 //! Written by hand against the wire format rather than built on the SDK,
 //! because most of what the tests need is a server behaving badly: hanging,
 //! dying mid-call, answering with an invalid schema, closing the transport.
 //! An SDK server is built to do none of those.
-//!
 //! The behaviour is chosen by the first argument. With none it is a
 //! well-behaved server offering one `echo` tool.
-//!
 //! ```text
 //! mcp_test_server [behaviour]
-//!
 //!   normal            answer everything correctly
 //!   hang-handshake    accept the connection, never answer initialize
 //!   hang-call*        answer initialize and tools/list, never answer a call
-//!   die-on-call       exit the moment a call arrives
 //!   close-after-call  answer one call, then exit
 //!   error-on-call     answer a call with a JSON-RPC error
 //!   invalid-schema    offer one good tool and one whose schema is not an object
@@ -23,11 +18,8 @@
 //!   noisy-stderr      write to stderr without ever reading stdin
 //!   needs-auth        fail the handshake the way an unauthenticated server does
 //!   many-tools        offer more tools than the client accepts
-//!   die-once          exit on the first call ever made, answer every later one
-//!
 //! A second argument names a journal file. Every `tools/call` appends a line to
 //! it, which is how the tests count attempts: a triage that retries where it
-//! should not shows up as two lines where there should be one. `die-once` uses
 //! the same file to know whether it has died yet, so it survives the reconnect
 //! that follows.
 //! ```
@@ -124,7 +116,6 @@ fn main() {
 }
 
 /// Appends one line to the journal and returns how many calls it now holds.
-///
 /// Without a journal there is nothing to count and nothing to remember, which
 /// is the ordinary case.
 fn record_attempt(journal: Option<&str>) -> usize {

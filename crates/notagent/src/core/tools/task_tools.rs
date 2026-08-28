@@ -1,20 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/task-tools.ts` (tool halves).
-//!
-//! The three tools that observe background work: `task_list`, `task_output`
-//! and `task_stop`.
-//!
-//! They are one file because they are one capability. A model that can list
-//! tasks but not read one has nothing useful, and a model that can stop one but
-//! not see it exists is dangerous — which is why background execution is gated
-//! on all three being present rather than on any one of them.
-//!
-//! None of them blocks. `task_output` in particular returns whatever exists
-//! right now and says whether the task has settled, because the alternative —
-//! a tool that waits — is how a model turns "I started this in the background"
-//! into a blocked turn with extra steps.
-//!
-//! `renderCall`/`renderResult` need the theme and are wired in task 13.
-
 use std::sync::Arc;
 
 use notagent_agent::types::{
@@ -39,7 +22,6 @@ use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 const OUTPUT_PREVIEW_BYTES: u64 = 32 * 1024;
 
 /// What the three tools need from the session.
-///
 /// Undefined in a session that has no task manager, such as a subagent.
 pub type TaskManagerSource = Arc<dyn Fn() -> Option<TaskManager> + Send + Sync>;
 

@@ -1,9 +1,3 @@
-//! `openaiProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/openai.ts` (15 LOC). The generated
-//! `openai.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::OpenAIResponsesApi;

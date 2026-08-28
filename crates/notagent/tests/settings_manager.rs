@@ -1,10 +1,3 @@
-//! Port of the core cases from
-//! `packages/coding-agent/test/settings-manager.test.ts`.
-//!
-//! The TS suite drives typed setters (`setTheme`, `setDefaultThinkingLevel`);
-//! this slice of the port exposes `set_global_field`/`set_project_field` with
-//! the wire names, so the tests use those.
-
 use std::path::Path;
 use std::sync::Arc;
 
@@ -305,7 +298,6 @@ fn in_memory_manager_never_touches_the_filesystem() {
 }
 
 // ---------------------------------------------------------------------------
-// Typed accessors (settings-manager.test.ts:337-587)
 // ---------------------------------------------------------------------------
 
 use notagent::core::settings_manager::{
@@ -361,7 +353,6 @@ fn http_idle_timeout_rejects_invalid_values() {
         error.contains("Invalid httpIdleTimeoutMs setting"),
         "{error}"
     );
-    // A string setting stays usable, as in TS.
     write_global(&harness, json!({ "httpIdleTimeoutMs": "disabled" }));
     assert_eq!(manager(&harness).get_http_idle_timeout_ms(), Ok(0));
     write_global(&harness, json!({ "websocketConnectTimeoutMs": " 2500 " }));
@@ -409,6 +400,19 @@ fn tui_mode_defaults_to_regular_and_persists_fullscreen() {
     manager.flush();
     assert_eq!(manager.get_tui_mode(), TuiMode::Fullscreen);
     assert_eq!(global_settings(&harness)["tuiMode"], json!("fullscreen"));
+}
+
+#[test]
+fn last_operating_mode_round_trips_through_global_settings() {
+    let harness = harness();
+    let manager = manager(&harness);
+    assert_eq!(manager.get_last_mode(), None);
+
+    manager.set_last_mode("auto");
+    manager.flush();
+
+    assert_eq!(manager.get_last_mode().as_deref(), Some("auto"));
+    assert_eq!(global_settings(&harness)["lastMode"], json!("auto"));
 }
 
 #[test]
@@ -727,7 +731,6 @@ fn enabling_analytics_generates_a_tracking_id_once() {
 
 #[test]
 fn stores_and_clears_the_subagent_model() {
-    // `/subagent-model` (port addition, v0.1.6): persisted like the default
     // model; clearing drops the keys from settings.json entirely.
     let harness = harness();
     let manager = manager(&harness);
@@ -786,7 +789,6 @@ fn writes_typed_list_and_model_settings() {
     assert!(global_settings(&harness).get("enabledModels").is_none());
 }
 
-/// Atomic file leases (port addition, v0.1.19): off unless the user turns them
 /// on, and persisted under the `atomicLeases` wire name that `/leases` writes.
 #[test]
 fn atomic_leases_are_off_until_they_are_turned_on() {
@@ -806,7 +808,6 @@ fn atomic_leases_are_off_until_they_are_turned_on() {
     assert_eq!(global_settings(&harness)["atomicLeases"], json!(false));
 }
 
-/// The bash filter (port addition, v0.1.20): off unless the user turns it on,
 /// and persisted under the `bashFilter` wire name that `/bash-filter` writes.
 #[test]
 fn the_bash_filter_is_off_until_it_is_turned_on() {

@@ -1,8 +1,3 @@
-//! Ported from `packages/coding-agent/test/suite/agent-session-queue.test.ts`.
-//!
-//! Not ported: the four cases about extension commands — dispatching one while
-//! idle and refusing to queue one (`plans/facts/extension-boundary.md`).
-
 mod suite;
 
 use std::sync::Arc;
@@ -37,7 +32,6 @@ fn custom(text: &str) -> CustomMessage {
     }
 }
 
-/// A tool that holds the turn open until it is released, as the TypeScript
 /// suite's `wait` tool does. Polling for `isStreaming` instead would be a race:
 /// a run with nothing to wait for can finish before the poll ever sees it.
 struct GateTool {
@@ -201,7 +195,6 @@ async fn delivers_several_steering_messages_in_order_one_at_a_time() {
 async fn delivers_all_steering_messages_at_once_in_all_mode() {
     let waiting = WaitingRun::create();
     let harness = &waiting.harness;
-    // The TypeScript case switches the mode through the session, which is also
     // the path that persists it.
     harness.session.set_steering_mode(QueueMode::All);
     assert_eq!(harness.session.steering_mode(), QueueMode::All);

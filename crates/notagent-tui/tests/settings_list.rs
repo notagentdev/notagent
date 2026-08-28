@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/settings-list.test.ts` (58 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 

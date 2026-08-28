@@ -1,9 +1,3 @@
-//! `notagent-ai` — OAuth login for the built-in providers.
-//!
-//! 1:1 port of `packages/ai/src/cli.ts` (119 LOC). The npm bin is declared in
-//! `package.json`; here the binary target is the crate's `src/bin/` entry (deviation
-//! class 4, distribution mechanics).
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

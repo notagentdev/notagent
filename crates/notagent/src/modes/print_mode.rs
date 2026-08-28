@@ -1,19 +1,3 @@
-//! Port of `packages/coding-agent/src/modes/print-mode.ts`.
-//!
-//! Single-shot: send the prompts, print the result, exit. `text` prints only the
-//! final assistant text, `json` streams every event as one JSON line.
-//!
-//! The exit code carries the outcome: an assistant message that ended in an
-//! error or an abort exits non-zero, because a caller piping the answer onward
-//! has no other way to notice.
-//!
-//! In `json` mode the agent waits for standard output to drain between events,
-//! so a slow reader slows the run down instead of filling memory.
-//!
-//! Deviation (class 2): the extension binding of the TypeScript is gone with the
-//! extension system; the shutdown its `session_shutdown` event stood for is the
-//! runtime's `dispose`, which runs the user's `SessionEnd` hook.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::types::AgentMessage;

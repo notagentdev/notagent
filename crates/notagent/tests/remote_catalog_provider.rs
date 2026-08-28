@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/remote-catalog-provider.test.ts` (241 LOC).
-
 mod support;
 
 use std::sync::Arc;

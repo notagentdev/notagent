@@ -1,11 +1,3 @@
-//! `core/output-guard.ts` — the ordered, non-blocking protocol writes and the
-//! stdout takeover.
-//!
-//! No TypeScript suite covers this file either; it is exercised through the RPC
-//! mode there. The queue is asserted here by pointing file descriptor 1 at a
-//! file for the duration of one case, which is the only way to read back what
-//! the writer task actually put on standard output.
-
 #![cfg(unix)]
 
 use notagent::core::output_guard::{

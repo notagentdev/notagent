@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/src/core/modes/shells.ts`.
-//!
-//! Shells: the single permission axis shared by main-agent modes and subagents.
-//!
-//! A shell decides what a session may *do*; a mode's skills only decide how it
-//! behaves. Keeping the two apart is deliberate — a skill is text the model may
-//! ignore, while a shell is a tool allowlist the runtime enforces. Both the
-//! main agent's modes and delegated children derive their tools from here, so
-//! the two can never drift apart.
-
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
@@ -22,7 +12,6 @@ pub enum ShellId {
 }
 
 /// How much runs without the user, the second axis beside the shell.
-///
 /// The shell decides which tools exist at all; the approval level decides
 /// whether an existing tool runs unattended. Ordered from most to least
 /// supervised, which is also the ring order once the read-only stop is put in
@@ -93,7 +82,6 @@ impl std::fmt::Display for ShellId {
 }
 
 /// Tools available to a read-only shell.
-///
 /// `bash` is deliberately absent. A shell is a hard gate, and a shell that can
 /// spawn arbitrary commands is not read-only in any meaningful sense — the
 /// model could write files through a shell command. Exploration is covered by
@@ -121,7 +109,6 @@ const READ_ONLY_TOOLS: &[ToolName] = &[
     // Keeping a checklist changes nothing in the workspace, and a read-only
     // session doing multi-step research wants one as much as a worker does.
     ToolName::TodoWrite,
-    // Port addition (v0.1.24). The one tool here that writes to disk, and the
     // exception is narrow enough to keep the gate meaningful: it only ever
     // creates a new file under `plans/`, never overwrites, and derives the
     // name rather than taking it. A read-only session cannot reach anything
@@ -165,7 +152,6 @@ pub struct ToolDeltaResult {
 }
 
 /// Applies a mode's optional tool delta to its shell's allowlist.
-///
 /// Entries are tool names, optionally prefixed with `+` to add or `-` to
 /// remove. Adding a mutating tool to a read-only shell is rejected: that would
 /// turn the gate into a suggestion, which is exactly what shells exist to
@@ -175,7 +161,6 @@ pub fn apply_tool_delta(
     delta: Option<&[String]>,
     known_tool_names: &HashSet<String>,
 ) -> ToolDeltaResult {
-    // A `Set` in TypeScript: insertion order decides the resulting order, and
     // adding a tool that is already there does not move it.
     let mut tools = tools_for_shell(shell);
     let mut problems: Vec<String> = Vec::new();
@@ -200,7 +185,6 @@ pub fn apply_tool_delta(
             continue;
         }
         // A name the session knows but this build has no `ToolName` for cannot
-        // enter the allowlist; `knownToolNames` is the wider set in TypeScript
         // too, since an extension could contribute one.
         let Some(tool) = ToolName::parse(name) else {
             if !remove {

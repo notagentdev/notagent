@@ -1,10 +1,3 @@
-//! `/init` as the session drives it (port addition, v0.1.35).
-//!
-//! `core::session_init` proves the brief and the reminder text. What runs here
-//! is the part neither can: that a child actually writes the file, that the
-//! session reads it back afterwards, and that the main conversation is told
-//! what it now says.
-
 mod suite;
 
 use std::path::Path;

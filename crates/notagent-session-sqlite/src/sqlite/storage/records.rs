@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/src/sqlite/storage/records.ts`.
-
 use crate::session_types::{EntryOrder, SessionError};
 use crate::sql;
 use crate::sqlite::sql::{SqlQuery, fragment, join_sql_fragments, param, text};
@@ -158,7 +156,6 @@ pub fn read_record_rows(
     Ok(rows.iter().map(record_row).collect())
 }
 
-/// TS ignores the `limit` option: a lane has at most one open operation.
 pub fn read_open_operation_rows(
     db: &dyn SqliteDatabase,
     session_id: &str,

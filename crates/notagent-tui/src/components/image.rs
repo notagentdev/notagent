@@ -1,7 +1,3 @@
-//! Inline image component.
-//!
-//! 1:1 port of `packages/tui/src/components/image.ts` (127 LOC).
-
 use std::rc::Rc;
 
 use crate::terminal_image::{

@@ -1,9 +1,3 @@
-//! `opencode_goProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/opencode-go.ts` (20 LOC). The generated
-//! `opencode-go.models.ts` is the catalog snapshot in `data/`, read through
-//! [`get_builtin_models`].
-
 use std::sync::Arc;
 
 use crate::api::streams::{AnthropicMessagesApi, OpenAICompletionsApi, OpenAIResponsesApi};

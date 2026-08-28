@@ -1,10 +1,3 @@
-//! Serde-Parität von `AgentMessage` gegen echte, von der TS-App geschriebene
-//! Session-Nachrichten.
-//!
-//! Fixture: repräsentative `message`-Einträge aus
-//! `packages/coding-agent/test/fixtures/{before-compaction,large-session}.jsonl`
-//! (17 verschiedene Feld-/Content-Signaturen, unverändert übernommen).
-
 use std::collections::BTreeSet;
 
 use notagent_agent::types::AgentMessage;
@@ -16,26 +9,23 @@ fn fixture_messages() -> Vec<Value> {
     FIXTURE
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).expect("Fixture-Zeile ist gültiges JSON"))
+        .map(|line| serde_json::from_str(line).expect("fixture line is valid JSON"))
         .collect()
 }
 
 #[test]
 fn every_fixture_message_roundtrips_without_change() {
     let messages = fixture_messages();
-    assert_eq!(messages.len(), 44, "Fixture-Umfang unerwartet");
+    assert_eq!(messages.len(), 44, "unexpected fixture size");
 
     for (index, original) in messages.iter().enumerate() {
-        let parsed: AgentMessage =
-            serde_json::from_value(original.clone()).unwrap_or_else(|error| {
-                panic!("Zeile {index}: Deserialisierung fehlgeschlagen: {error}")
-            });
-        let reserialized = serde_json::to_value(&parsed).unwrap_or_else(|error| {
-            panic!("Zeile {index}: Serialisierung fehlgeschlagen: {error}")
-        });
+        let parsed: AgentMessage = serde_json::from_value(original.clone())
+            .unwrap_or_else(|error| panic!("line {index}: deserialization failed: {error}"));
+        let reserialized = serde_json::to_value(&parsed)
+            .unwrap_or_else(|error| panic!("line {index}: serialization failed: {error}"));
         assert_eq!(
             &reserialized, original,
-            "Zeile {index}: Roundtrip verändert das JSON"
+            "line {index}: roundtrip changed the JSON"
         );
     }
 }
@@ -72,13 +62,13 @@ fn fixture_covers_all_message_roles_and_content_kinds() {
 fn llm_messages_convert_without_loss() {
     for message in fixture_messages() {
         let parsed: AgentMessage =
-            serde_json::from_value(message.clone()).expect("Deserialisierung");
+            serde_json::from_value(message.clone()).expect("deserialization");
         match &parsed {
             AgentMessage::User(_) | AgentMessage::Assistant(_) | AgentMessage::ToolResult(_) => {
-                let llm = parsed.as_llm_message().expect("LLM-Rolle");
-                assert_eq!(serde_json::to_value(&llm).expect("Serialisierung"), message);
+                let llm = parsed.as_llm_message().expect("LLM role");
+                assert_eq!(serde_json::to_value(&llm).expect("serialization"), message);
             }
-            // Custom-Rollen werden erst über `convert_to_llm` an der LLM-Grenze umgewandelt.
+            // Custom roles are converted at the LLM boundary.
             _ => assert!(parsed.as_llm_message().is_none()),
         }
     }

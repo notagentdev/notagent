@@ -1,7 +1,3 @@
-//! Behaviour of `TextInputDialogComponent`, read off
-//! `packages/coding-agent/src/modes/interactive/components/extension-editor.ts`
-//! (132 LOC) — the file has no TypeScript suite of its own.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};

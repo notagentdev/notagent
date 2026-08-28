@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/timings.ts`.
-//!
-//! Startup profiling, off unless `NOTAGENT_TIMING=1`. The measurements go to
-//! standard error, never to standard out — a `-p` run pipes its answer onward
-//! and a timing table in that stream would corrupt it.
-//!
-//! Deviation (class 2): the TypeScript knows two namespaces, `main` and
-//! `extensions`; the second one measured extension loading and goes with the
-//! extension system (`plans/facts/extension-boundary.md`).
-//!
-//! Deviation (class 1): the enabled flag is read at first use rather than at
-//! module load, because Rust has no import-time side effects. The environment
-//! is fixed by then in every path the app takes.
-
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 

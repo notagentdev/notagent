@@ -1,5 +1,3 @@
-//! Ported from `packages/coding-agent/test/suite/agent-session-bash-persistence.test.ts`.
-
 mod suite;
 
 use std::sync::Arc;
@@ -44,7 +42,6 @@ async fn records_a_bash_result_immediately_while_idle() {
 #[tokio::test]
 async fn defers_a_bash_result_while_streaming_and_flushes_it_before_the_next_prompt() {
     // Slow enough that the run is still going while the bash command runs
-    // (interface request B-16).
     let harness = create_harness(HarnessOptions {
         tokens_per_second: Some(5.0),
         ..HarnessOptions::default()

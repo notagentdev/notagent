@@ -1,10 +1,3 @@
-//! Streams returned synchronously while their setup runs behind them.
-//!
-//! 1:1 port of `packages/ai/src/api/lazy.ts` (98 LOC). `lazyApi` wraps a dynamically
-//! imported module so bundlers can split it out; Rust links statically, so only the
-//! stream-side behaviour (`lazyStream`) is needed and `lazyApi` is excluded
-//! (deviation class 4, distribution mechanics — see PARITY.md).
-
 use std::future::Future;
 
 use crate::types::{
@@ -50,7 +43,6 @@ pub async fn forward_stream(
 }
 
 /// `lazyStream(model, setup)` — returns a stream synchronously while `setup` runs.
-///
 /// Setup failures terminate the stream with an error event, so the stream contract
 /// ("nothing is thrown after the call") holds.
 pub fn lazy_stream<F, Fut>(model: Model, setup: F) -> AssistantMessageEventStream

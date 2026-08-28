@@ -1,7 +1,3 @@
-//! Port of `packages/coding-agent/test/status-indicator.test.ts` (32 LOC), plus
-//! the retry countdown behaviour the TypeScript test only observes indirectly
-//! through `requestRender`.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::modes::interactive::components::status_indicator::{
@@ -56,7 +52,6 @@ fn disposes_retry_countdown_updates() {
 
     indicator.dispose();
 
-    // TypeScript advances the fake timers by 2 s and asserts that no further
     // `requestRender` arrives; the polled port has no deadline left to fire.
     assert!(indicator.countdown_deadline().is_none());
     assert!(!indicator.tick_countdown());
@@ -66,8 +61,6 @@ fn disposes_retry_countdown_updates() {
 fn counts_the_retry_delay_down_second_by_second() {
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
-    // `app.interrupt` is an app keybinding; until workstream C registers it the
-    // hint renders empty, exactly as an unbound keybinding does in TypeScript.
     let mut indicator = StatusIndicator::retry(2, 5, 2400);
     let first = visible(&indicator.render(80).join("\n"));
     assert!(first.contains("Retrying (2/5) in 3s..."), "{first}");
@@ -183,7 +176,6 @@ fn a_retry_carries_no_second_clock() {
 }
 
 /// Every place that shows a running time writes it the same way.
-///
 /// There were three copies of this arithmetic, and one of them rounded where
 /// the others floored, so a badge and the task roster could disagree by a
 /// second about the same task.

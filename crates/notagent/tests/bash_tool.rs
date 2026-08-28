@@ -1,11 +1,3 @@
-//! Port of the `bash tool` section of `packages/coding-agent/test/tools.test.ts`
-//! and of the gate cases of `packages/coding-agent/test/bash-background.test.ts`.
-//!
-//! The manager-backed cases of `bash-background.test.ts` (foreground release,
-//! auto-backgrounding, the task log) need the real `TaskManager` and are ported
-//! with plan task 10; what is covered here is everything the shell tool decides
-//! on its own.
-
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -70,7 +62,6 @@ async fn run(
         .await
 }
 
-/// Operations scripted in the test, as `tools.test.ts` does with an inline
 /// `BashOperations` literal.
 struct ScriptedOperations {
     #[allow(clippy::type_complexity)]
@@ -179,7 +170,6 @@ async fn includes_the_full_output_path_in_truncated_timeout_and_abort_errors() {
     }
 }
 
-/// `message.match(/Full output: ([^\]\n]+)/)?.[1]` of the TS test.
 fn regex_capture(message: &str) -> Option<String> {
     assert!(
         message.contains("Full output: "),
@@ -209,7 +199,6 @@ async fn fails_when_the_working_directory_does_not_exist() {
 async fn reports_process_spawn_errors() {
     let directory = TempDir::new();
     // An executable whose interpreter is missing: `execve` fails with ENOENT,
-    // which is the case the TS test reaches by stubbing `getShellConfig` with a
     // shell path that does not exist.
     let shell = directory.path.join("broken-shell");
     std::fs::write(&shell, "#!/nonexistent-interpreter-xyz123\n").expect("write shell");
@@ -528,7 +517,6 @@ async fn executor_persists_full_output_when_truncation_happens_by_line_count_onl
     assert!(full_output.contains("2998\n2999\n3000"));
 }
 
-/// Not in the TS suite, which only scripts an `"aborted"` rejection: this
 /// covers the local escalation (terminate the process group, kill it after the
 /// grace window) against a real process.
 #[tokio::test]
@@ -567,7 +555,6 @@ async fn stops_a_running_command_when_the_signal_fires() {
 }
 
 // ---------------------------------------------------------------------------
-// The gate in front of the background flag (`test/bash-background.test.ts`).
 //
 // The gate is the part that matters. A model that can start a detached command
 // but cannot list, read or stop one has been handed a way to lose work, so the

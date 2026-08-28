@@ -1,12 +1,3 @@
-//! Port of `packages/coding-agent/src/core/modes/cycle.ts`.
-//!
-//! The mode ring.
-//!
-//! Modes are cycled with a single key, so the order must be stable and
-//! predictable. Shipped modes lead in a fixed order; user-authored modes follow
-//! alphabetically. That way adding a mode never reshuffles the positions a user
-//! has built muscle memory for.
-
 use super::{Mode, locale_compare};
 
 /// Shipped modes, in ring order: one scale ordered by how much happens without

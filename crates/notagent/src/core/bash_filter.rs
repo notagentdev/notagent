@@ -1,25 +1,3 @@
-//! The bash filter: conservative, process-free compaction of shell output
-//! before it enters the agent context.
-//!
-//! Port addition (user decision 2026-08-17, v0.1.20), off by default and
-//! toggled with `/bash-filter on|off`. Provenance of the filter inventory is
-//! recorded in the workspace `NOTICE`.
-//!
-//! Three relationships to the child process, chosen per command:
-//!
-//! - **Filter only.** The command runs as written and its output is compacted
-//!   afterwards — every declarative filter and most native ones.
-//! - **Rewrite, then filter.** The invocation is changed so the tool emits a
-//!   parseable format, then the output is compacted. What the user and the
-//!   transcript see is still the command as written.
-//! - **Execution override.** `find` and the read commands are answered from
-//!   the filesystem; no child process is spawned at all.
-//!
-//! Whatever the route, filtering never costs the caller information it would
-//! otherwise have had: an unchanged result, an empty result where raw output
-//! existed, a result that estimates larger than the raw, and a panic all send
-//! the raw streams through untouched.
-
 mod builtin_filters;
 mod command;
 mod native;
@@ -111,12 +89,9 @@ pub struct FilteredOutput {
     pub lossy: bool,
 }
 /// Conservatively classifies and, on Unix, rewrites supported single commands.
-///
 /// Unsupported, compound, redirected, substituted, or ambiguous commands are
 /// returned unchanged and later pass through filtering unchanged.
-///
 /// # Arguments
-///
 /// * `command` - Original shell command supplied by the tool caller.
 #[must_use]
 pub fn prepare(command: &str) -> PreparedInvocation {
@@ -326,12 +301,9 @@ fn rewrite(command: &ClassifiedCommand, filter: NativeFilter) -> Option<String> 
 }
 
 /// Executes a prepared filesystem-backed system command without spawning a shell.
-///
 /// Returns `None` for commands whose prepared invocation must be executed by the
 /// normal shell process path.
-///
 /// # Arguments
-///
 /// * `prepared` - Prepared invocation returned by [`prepare`].
 /// * `cwd` - Working directory used to resolve relative paths.
 #[must_use]
@@ -366,7 +338,6 @@ pub fn filter_with_cwd(
     filter_inner(prepared, cwd, stdout, stderr, exit_code)
 }
 /// Applies the prepared native or built-in TOML filter to completed output.
-///
 /// Parser failures, panics, empty filtered results with non-empty raw data, or
 /// results larger under the `ceil(UTF-8 bytes / 4)` estimate fall back to the
 /// raw streams. Exit codes and command strings are not modified.
@@ -498,7 +469,6 @@ pub fn estimate_tokens(value: &str) -> usize {
 }
 
 /// A retention comparison against a reference output.
-///
 /// How much of the reduction a reference implementation achieved on the same
 /// input this filter still achieves. Used by the fixture measurements.
 #[derive(Debug, Clone, PartialEq, Eq)]

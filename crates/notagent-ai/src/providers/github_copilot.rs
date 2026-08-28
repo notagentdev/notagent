@@ -1,8 +1,3 @@
-//! `githubCopilotProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/github-copilot.ts` (34 LOC). Copilot narrows
-//! the catalog to the model ids the OAuth credential advertises.
-
 use std::sync::Arc;
 
 use crate::api::streams::{AnthropicMessagesApi, OpenAICompletionsApi, OpenAIResponsesApi};
@@ -25,7 +20,6 @@ pub fn filter_models(models: Vec<Model>, credential: Option<&Credential>) -> Vec
     else {
         return models;
     };
-    // TS requires every entry to be a string and otherwise keeps the whole catalog;
     // `available_model_ids` would silently drop non-strings instead.
     if !available.iter().all(serde_json::Value::is_string) {
         return models;

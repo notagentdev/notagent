@@ -1,9 +1,3 @@
-//! Provider factories.
-//!
-//! 1:1 port of `packages/ai/src/providers/`. Every `*.models.ts` file is generated from
-//! the catalog snapshot in `data/` and therefore has no counterpart here; the factories
-//! read the same data through [`crate::model_catalog::get_builtin_models`].
-
 pub mod all;
 pub mod amazon_bedrock;
 pub mod ant_ling;

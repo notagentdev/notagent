@@ -1,9 +1,3 @@
-//! `googleVertexProvider()`.
-//!
-//! 1:1 port of `packages/ai/src/providers/google-vertex.ts` (100 LOC). Vertex accepts an
-//! explicit API key or Application Default Credentials; ADC additionally needs project
-//! and location, which the api module reads itself.
-
 use std::sync::Arc;
 
 use crate::api::streams::GoogleVertexApi;

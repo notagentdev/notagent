@@ -1,7 +1,3 @@
-//! Port of `packages/tui/test/layout.test.ts` (306 LOC).
-//!
-//! Includes the Kitty crop case, which needs the image encoder.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -100,7 +96,6 @@ fn does_not_render_fixed_basis_scroll_content_during_stack_measurement() {
 
 #[test]
 fn paints_only_clipped_rows_from_very_large_scroll_content() {
-    // The TS test uses a sparse 1e9 array, which JavaScript can represent
     // lazily; the property under test is the same with a dense large vector.
     let line_count = 200_000;
     let mut lines = vec![String::new(); line_count];

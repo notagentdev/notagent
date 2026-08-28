@@ -1,6 +1,5 @@
 //! End-to-end cover for the two subscription paths: the Claude plan (Anthropic OAuth)
 //! and the Codex plan (ChatGPT OAuth).
-//!
 //! Each one walks the whole way a real request takes — the stored OAuth credential is
 //! resolved through `resolveProviderAuth`, the resulting token goes into the adapter, and
 //! the outgoing HTTP request is inspected. The pieces are covered individually elsewhere;

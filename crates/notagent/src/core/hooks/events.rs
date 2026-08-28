@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/hooks/events.ts`.
-//!
-//! The lifecycle events a hook can be declared for.
-//!
-//! Taken verbatim from the reference implementation. The names are a public
-//! interface in two directions: users write them in hook files, and external
-//! supervisors watch for them to follow what the agent is doing. NotMux already
-//! recognises this vocabulary, so a rename here silently stops it seeing us —
-//! treat any change as breaking.
-//!
-//! NotMux spells the prompt event `beforeSubmitPrompt`; we emit
-//! `UserPromptSubmit`, matching the reference rather than the consumer, so
-//! there is one name rather than an alias to keep in step.
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

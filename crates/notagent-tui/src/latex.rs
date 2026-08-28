@@ -1,8 +1,3 @@
-//! Renders basic LaTeX math as terminal-friendly Unicode text.
-//!
-//! Port of `packages/tui/src/latex.ts` (1380 LOC). The symbol maps and command
-//! sets live in the generated [`crate::latex_tables`].
-
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
@@ -515,7 +510,6 @@ pub struct RenderLatexOptions {
 }
 
 /// Render a basic LaTeX math expression as Unicode text.
-///
 /// Returns `None` when the expression uses unsupported or malformed syntax.
 pub fn render_latex(source: &str, options: RenderLatexOptions) -> Option<String> {
     let mut layout_nodes: Vec<LayoutNode> = Vec::new();

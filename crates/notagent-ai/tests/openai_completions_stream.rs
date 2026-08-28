@@ -1,10 +1,3 @@
-//! Differential test of the openai-completions stream state machine.
-//!
-//! `fixtures/openai-completions-stream.jsonl` holds the event sequence the TS
-//! implementation emits for each scripted SSE body (see `fixtures/generators`). The
-//! `partial` snapshots are stripped from both sides — they are the message under
-//! construction and are compared through the final `done`/`error` message instead.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -111,8 +104,6 @@ fn normalize(event: &AssistantMessageEvent) -> Value {
 }
 
 /// Strips the same `timestamp` plus the `role` discriminator.
-///
-/// `AssistantMessage` carries `role: "assistant"` as a plain field in TS. In Rust the
 /// discriminator lives on the `Message` enum (`#[serde(tag = "role")]`), so a bare
 /// assistant message does not repeat it — adding it to the struct would emit it twice
 /// for every session entry.
@@ -450,7 +441,6 @@ async fn an_error_field_inside_a_chunk_fails_the_stream() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unparsable_chunk_ends_the_stream_with_an_error() {
-    // Deviation class 1: TS reports V8's `JSON.parse` wording, which has no counterpart
     // here; only the failure itself is part of the contract.
     let case = Case {
         name: "unparsable".to_string(),

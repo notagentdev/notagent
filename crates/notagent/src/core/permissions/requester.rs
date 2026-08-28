@@ -1,18 +1,15 @@
 //! Who is asking for permission.
-//!
 //! A delegated child runs its tool calls through the parent's permission
 //! chain — that inheritance is deliberate (`core/delegation/run.rs`), because a subagent
 //! that could write outside the chain would be a way around every rule the user
 //! set. But the chain then had no idea it was talking to a child, so an approval
 //! prompt raised by three parallel subagents was three identical prompts.
-//!
 //! The identity travels as a task-local rather than as a parameter. The hook the
 //! child inherits is the parent's own `before_tool_call` closure, built once
 //! when the session started and holding no per-call agent context; threading a
 //! requester through it would mean changing the shape of the hook for every
 //! caller, including the main agent that has nothing to put there. Wrapping the
 //! child's call in a scope keeps the change where the difference actually is.
-//!
 //! The scope covers the whole returned future, so it is still in place while the
 //! approval dialog is on screen — which is exactly when the identity is needed.
 
@@ -40,7 +37,6 @@ where
 }
 
 /// The child behind the call being evaluated, or `None` for the main agent.
-///
 /// Outside a scope — the main agent's own calls, and every test that does not
 /// set one — `try_with` fails and the answer is `None`. That is the right
 /// default: an unattributed call is the main agent's, and a prompt that named

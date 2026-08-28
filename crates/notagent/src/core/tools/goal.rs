@@ -1,18 +1,3 @@
-//! The two goal tools (port addition, user decision 2026-08-17, v0.1.21).
-//!
-//! `create_goal` starts a session's goal; `update_goal` ends it. Between the
-//! two, the agent is continued after every turn without the user re-prompting
-//! (see `core/agent_session.rs`).
-//!
-//! `update_goal` matters more than it looks: it is the *only* way out of that
-//! loop. An agent that ends a turn explaining it is stuck keeps the goal active
-//! and is continued again, which is deliberate — a loop a model can leave by
-//! saying the right sentence is a loop that ends early and often.
-//!
-//! Neither tool is offered to a subagent. A delegated agent driving its own
-//! continuation loop inside its parent's multiplies turns with nobody watching,
-//! so the roster leaves them out and both refuse a call that arrives anyway.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::types::{

@@ -1,6 +1,3 @@
-//! Port of the core cases of `packages/agent/test/agent-loop.test.ts` (1 607 LOC)
-//! plus the parallelism proof the workstream plan requires.
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

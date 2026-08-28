@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/errors.ts`.
-
 use notagent_protocol::{JsonValue, ProtocolErrorCode};
 
 /// `Extract<ProtocolErrorCode, "busy" | "session_locked" | "not_found" | "invalid_request" | "not_implemented">`
@@ -79,8 +77,6 @@ impl PiServerError {
 }
 
 /// Every error that can reach the protocol boundary.
-///
-/// Deviation class 1: TS distinguishes error classes at runtime
 /// (`PiServerError`, `InternalServerError`, `ProtocolValidationError`, plain
 /// `Error`); Rust models the same distinction as variants of one enum.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -92,7 +88,6 @@ pub enum ServerError {
     Internal { cause: String },
     #[error("{0}")]
     ProtocolValidation(String),
-    /// Any other failure (TS: a plain `Error`).
     #[error("{0}")]
     Other(String),
 }

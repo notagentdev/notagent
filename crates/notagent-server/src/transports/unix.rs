@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/transports/unix/index.ts`.
-
 mod listener;
 mod preset;
 mod types;

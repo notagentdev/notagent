@@ -35,7 +35,6 @@ struct ParsedToken {
 
 /// The leading command of a shell line, with everything the shell does around
 /// it set aside rather than thrown away.
-///
 /// A pipeline is not rejected: its first stage is what a filter is chosen from,
 /// and the rest travels in [`Self::suffix`] so an execution rewrite can put the
 /// line back together.
@@ -54,7 +53,6 @@ pub(crate) struct ClassifiedCommand {
     /// commands. Appended verbatim to an execution rewrite.
     pub suffix: String,
     /// Whether a pipe, an operator, a background `&`, or a subshell follows.
-    ///
     /// Such a line still yields a filter for its captured output, but nothing
     /// may be rewritten into it: the stages behind the pipe read what the
     /// first one writes, and changing that changes their meaning.
@@ -162,7 +160,6 @@ fn contains_substitution(command: &str) -> bool {
 
 /// Whether a redirect sends output to a file rather than duplicating or closing
 /// a descriptor.
-///
 /// `2>&1` and `2>&-` rearrange descriptors and leave the output where a filter
 /// can still reach it; `> out.txt` does not. `/dev/null` is a discard, not a
 /// file the caller means to read back.

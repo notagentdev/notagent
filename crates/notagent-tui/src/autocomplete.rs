@@ -1,8 +1,3 @@
-//! Autocomplete providers for the editor.
-//!
-//! Port of `packages/tui/src/autocomplete.ts` (786 LOC): slash commands, file
-//! path completion from the file system and fuzzy `@` file search through `fd`.
-
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -155,7 +150,6 @@ fn build_completion_value(path: &str, is_at_prefix: bool, is_quoted_prefix: bool
     format!("{prefix}\"{path}\"")
 }
 
-/// Cancellation flag; the port of the `AbortSignal` the TS API passes around.
 #[derive(Clone, Debug, Default)]
 pub struct AbortSignal(Rc<std::cell::Cell<bool>>);
 
@@ -949,7 +943,6 @@ async fn walk_directory_with_fd(
     };
     tokio::pin!(read);
 
-    // The TS version kills the process from an `abort` listener; the port polls
     // the flag, since the signal has no callback registry.
     let (stdout, status) = loop {
         tokio::select! {

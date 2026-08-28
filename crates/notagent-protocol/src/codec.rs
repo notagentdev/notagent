@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/src/codec.ts`.
-
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -17,7 +15,6 @@ pub struct ProtocolValidationError {
 }
 
 impl ProtocolValidationError {
-    /// The second TS parameter (`_value`) is deliberately not stored: errors
     /// must not retain rejected payloads.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
@@ -30,8 +27,6 @@ impl ProtocolValidationError {
     }
 }
 
-/// Port of `isProtocolValue` + `Check(Schema, value)`.
-///
 /// `isProtocolValue` only allows JSON values. Byte strings are not protocol
 /// values; cycles, `undefined` and non-plain objects cannot be represented by
 /// `CborValue`.
@@ -265,8 +260,6 @@ pub fn create_server_message_decoder(
     ServerMessageDecoder::new(options)
 }
 
-/// TS additionally checks `Number.isInteger(version)`; in Rust `version` is
-/// already an integer (deviation class 1).
 pub fn is_supported_protocol_version(version: u64) -> bool {
     version == PROTOCOL_VERSION
 }

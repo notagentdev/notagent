@@ -1,6 +1,5 @@
 //! Regression — an all-completed todo list hides after five seconds and the
 //! editor keeps accepting input after the turn.
-//!
 //! Both halves broke in v0.1.1: `TodoVisibility::hide_deadline` only woke the
 //! loop (nothing called `tick`), so a finished list stayed on screen forever —
 //! the same missing-half pattern as the autocomplete pump. The user report
@@ -21,8 +20,8 @@ async fn a_completed_todo_list_hides_after_five_seconds() {
                 "todo_write",
                 "call-1",
                 json!({ "todos": [
-                    { "content": "Check ausführen", "activeForm": "Führe Check aus", "status": "completed" },
-                    { "content": "Aufräumen", "activeForm": "Räume auf", "status": "completed" },
+                    { "content": "Run checks", "activeForm": "Running checks", "status": "completed" },
+                    { "content": "Clean up", "activeForm": "Cleaning up", "status": "completed" },
                 ] }),
             ),
             reply("Alles erledigt."),
@@ -34,7 +33,7 @@ async fn a_completed_todo_list_hides_after_five_seconds() {
         // The all-completed list arrives from the tool call and is shown once
         // — in the dock panel only: since 2026-08-16 `todo_write` gets no
         // transcript row (user decision, like notagent-main-rust).
-        driver.wait_for("Aufräumen").await;
+        driver.wait_for("Clean up").await;
         driver.wait_for("Alles erledigt.").await;
         assert!(
             !driver.screen().contains("todo_write"),

@@ -1,7 +1,3 @@
-//! Token estimation for contexts and messages.
-//!
-//! 1:1 port of `packages/ai/src/utils/estimate.ts` (143 LOC).
-
 use std::collections::BTreeSet;
 
 use serde_json::Value;
@@ -27,7 +23,6 @@ pub struct ContextUsageEstimate {
 }
 
 /// `calculateContextTokens(usage)` — `usage.totalTokens || input + output + cacheRead + cacheWrite`.
-///
 /// `0` is falsy in JS, so a reported zero falls back to the sum just like a missing field.
 pub fn calculate_context_tokens(usage: &Usage) -> u64 {
     match usage.total_tokens {
@@ -180,7 +175,6 @@ pub fn estimate_context_tokens(context: &Context) -> ContextUsageEstimate {
                     .collect()
             })
             .unwrap_or_default();
-        // TS passes the filtered array through unconditionally; an empty array yields 0.
         let added_tool_tokens = if context.tools.is_some() {
             estimate_tools_tokens(Some(&added_tools))
         } else {

@@ -1,10 +1,3 @@
-//! Provider error bodies reach the assistant message.
-//!
-//! Ports `packages/ai/test/provider-error-body-regression.test.ts` (213) and
-//! `provider-error-body-passthrough.test.ts` (78). The TS suites mock the SDKs so a
-//! non-2xx response carries a body the SDK message hides; the port answers the injected
-//! `fetch` with exactly that response, which is what the adapters see.
-
 use std::sync::Arc;
 
 use notagent_ai::api::openai_completions::stream as stream_completions;

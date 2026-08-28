@@ -1,20 +1,3 @@
-//! Port of `packages/coding-agent/src/modes/rpc/rpc-mode.ts`.
-//!
-//! Headless operation over stdin and stdout: commands in, responses and events
-//! out, one JSON record per line. This is how another program embeds the agent.
-//!
-//! Two details carry the protocol. `prompt` answers as soon as preflight
-//! accepted the message — a queued prompt is a success even though its run is
-//! still going — and every other command answers after it finished. And the
-//! agent waits for standard output to drain between events, so a slow reader
-//! slows the run down instead of filling memory.
-//!
-//! Deviation (class 2): the extension UI bridge of the TypeScript (dialogs,
-//! widgets, editor control over the wire) is gone with the extension system
-//! (`plans/facts/extension-boundary.md` §3), and with it the
-//! `extension_ui_request`/`extension_ui_response` records and the shutdown
-//! handler an extension could install. What remains is the command surface.
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value, json};
@@ -35,8 +18,6 @@ use crate::modes::rpc::jsonl::{JsonlLineSplitter, serialize_json_line};
 use crate::modes::rpc::rpc_types::*;
 use crate::utils::shell::kill_tracked_detached_children;
 
-/// Where a record goes. The protocol writes to standard output; the ported
-/// suites pass a sink instead, as the TypeScript tests mock the output guard.
 pub type RpcOutputSink = Arc<dyn Fn(&Value) + Send + Sync>;
 
 fn stdout_sink() -> RpcOutputSink {

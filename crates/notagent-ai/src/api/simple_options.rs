@@ -1,7 +1,3 @@
-//! Shared option building for the `streamSimple` entry points.
-//!
-//! 1:1 port of `packages/ai/src/api/simple-options.ts` (86 LOC).
-
 use crate::types::{
     Context, Model, SimpleStreamOptions, StreamOptions, ThinkingBudgets, ThinkingLevel,
 };
@@ -18,7 +14,6 @@ pub fn clamp_max_tokens_to_context(model: &Model, context: &Context, max_tokens:
     if model.context_window == 0 {
         return max_tokens.max(MIN_MAX_TOKENS);
     }
-    // TS computes in signed arithmetic, so an overlong context yields a negative value
     // that `Math.max(MIN_MAX_TOKENS, ...)` lifts back to 1.
     let used = estimate_context_tokens(context).tokens as i128 + CONTEXT_SAFETY_TOKENS as i128;
     let available = model.context_window as i128 - used;
@@ -72,7 +67,6 @@ pub fn build_base_options(
         websocket_connect_timeout_ms: base.websocket_connect_timeout_ms,
         metadata: base.metadata.clone(),
         base: crate::types::ProviderRequestOptions {
-            // An explicitly passed key wins, as `apiKey || options?.apiKey` does in TS.
             api_key: api_key
                 .filter(|key| !key.is_empty())
                 .or(base.base.api_key.clone()),
@@ -97,7 +91,6 @@ pub struct AdjustedThinking {
 }
 
 /// `adjustMaxTokensForThinking(baseMaxTokens, modelMaxTokens, reasoningLevel, customBudgets?)`
-///
 /// `base_max_tokens` of `None` means the caller set no cap: the model cap is used and
 /// thinking has to fit inside it.
 pub fn adjust_max_tokens_for_thinking(

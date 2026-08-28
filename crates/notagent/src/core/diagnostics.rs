@@ -1,23 +1,6 @@
-//! Port of `packages/coding-agent/src/core/diagnostics.ts`.
-//!
-//! What a resource loader reports about the files it walked past. The loaders
-//! never throw on a bad skill or an unreadable theme — one broken file in a
-//! directory would otherwise take every sibling with it — so a diagnostic is
-//! how the problem still reaches the user.
-//!
-//! `collision` is the interesting case: two resources claiming the same name is
-//! not an error, because one of them does win and the session works. Recording
-//! which one lost, and where it lives, is what lets the UI explain why the
-//! skill the user just wrote is not the one being loaded.
-//!
-//! `diagnostics.ts` also carries the startup timing view, which belongs to plan
-//! task 12; only the two records the loaders need are here.
-
 use serde::{Deserialize, Serialize};
 
 /// Which kind of resource collided. The extension variant is retained because
-/// session files and package manifests written by the TypeScript app still name
-/// it; nothing in this port produces one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceKind {

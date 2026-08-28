@@ -1,7 +1,3 @@
-//! Tests for `components/skill-invocation-message.ts`, which has no TypeScript
-//! suite: what the component renders is only asserted through the interactive
-//! mode there. The cases pin both states of `updateDisplay`.
-
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use notagent::core::agent_session::ParsedSkillBlock;
@@ -13,7 +9,6 @@ use notagent_tui::keybindings::set_keybindings;
 use notagent_tui::tui::Component;
 
 /// The theme, the block style and the keybindings registry are process
-/// globals; the TS-parity cases pin the standard layout, the badge cases set
 /// Badge themselves.
 fn test_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

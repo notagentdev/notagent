@@ -1,6 +1,5 @@
 //! The declarative half of the bash filter: one regex per command, then an
 //! eight-stage line pipeline over its output.
-//!
 //! Built-in filters only. The definitions and their inline fixtures are data,
 //! embedded by [`super::builtin_filters`]; nothing is read from the filesystem,
 //! so a filter cannot be added or changed without a rebuild.
@@ -205,7 +204,6 @@ fn parse(content: &str) -> Result<ParsedFilters, String> {
 }
 
 /// The compiled built-in filters, in file order.
-///
 /// A document that fails to parse yields no filters rather than a panic: the
 /// filter is an optimisation, and no filters means raw output, which is what
 /// the caller would have had anyway. The inventory tests below are what makes
@@ -362,7 +360,6 @@ pub(crate) fn apply(filter: &CompiledFilter, output: &str) -> (String, PipelineL
 mod tests {
     use super::*;
 
-    /// The reference asserts this in a build script; this port has none, so the
     /// same three guarantees are tests: one file per filter, the expected
     /// count, and no name claimed twice.
     #[test]
@@ -479,7 +476,6 @@ mod tests {
             never_worse_passthrough,
         );
         // Raw is one token below the reference's 6206: the `brew-install`
-        // fixture's sample output named a package this port does not name, and
         // the replacement is three bytes shorter. Every other number is the
         // reference's, and that is the point of pinning them.
         let expected = (154, 6205, 3238, 3199, 105, 37, 12);

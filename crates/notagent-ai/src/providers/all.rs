@@ -1,10 +1,3 @@
-//! The built-in provider set.
-//!
-//! 1:1 port of the runtime half of `packages/ai/src/providers/all.ts` (155 LOC). The
-//! catalog-facing half (`getBuiltinModel`, `getBuiltinProviders`, `getBuiltinModels`,
-//! `getBuiltinModelDataGeneratedAt`) lives in [`crate::model_catalog`], next to the data
-//! snapshot it reads.
-
 use std::sync::Arc;
 
 use crate::images_models::{ImagesModels, ImagesProvider};
@@ -16,7 +9,6 @@ pub use crate::model_catalog::{
     get_builtin_providers,
 };
 
-/// `radiusProvider()` — re-exported by `all.ts`; the default options mirror the TS
 /// signature's `options: RadiusProviderOptions = {}`.
 pub fn default_radius_provider() -> Arc<RadiusProvider> {
     radius_provider(RadiusProviderOptions::default())

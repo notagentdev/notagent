@@ -1,5 +1,3 @@
-//! Port of `packages/tui/test/select-list.test.ts` (116 LOC).
-
 use std::rc::Rc;
 
 use notagent_tui::components::select_list::{
@@ -128,7 +126,6 @@ fn allows_overriding_primary_truncation_while_preserving_description_alignment()
             min_primary_column_width: Some(12),
             max_primary_column_width: Some(12),
             truncate_primary: Some(Rc::new(|context| {
-                // TS compares `text.length` (UTF-16 units); the fixtures are ASCII.
                 if context.text.chars().count() <= context.max_width {
                     return context.text.to_string();
                 }

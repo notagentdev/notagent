@@ -1,6 +1,5 @@
 //! The MTPLX provider sources its model list from the server it talks to, so it
 //! must keep its own refresh instead of the shared notagent.dev catalog overlay.
-//!
 //! The overlay replaces `refresh_models` outright rather than chaining to the
 //! provider it wraps, so wrapping MTPLX would leave it permanently without
 //! models — and silently, because an empty list looks the same as a server that

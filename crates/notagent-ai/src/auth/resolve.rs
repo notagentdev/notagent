@@ -1,9 +1,3 @@
-//! Provider auth resolution shared by the model collections.
-//!
-//! 1:1 port of `packages/ai/src/auth/resolve.ts` (205 LOC). A stored credential owns
-//! the provider: ambient/env sources are consulted only when nothing is stored, and
-//! there is no silent env fallback after a failed refresh.
-
 use std::sync::Arc;
 use std::time::Duration;
 

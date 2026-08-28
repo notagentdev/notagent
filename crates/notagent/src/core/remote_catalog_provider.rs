@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/core/remote-catalog-provider.ts` (132 LOC).
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::auth::resolve::{ModelsError, now_ms};
@@ -34,8 +32,6 @@ fn merge_models(baseline: Vec<Model>, dynamic: &[Model]) -> Vec<Model> {
 }
 
 /// `parseCatalog(providerId, value)`
-///
-/// Deviation (class 1): TS spreads whatever object it finds, so a malformed entry
 /// travels on as an invalid `Model`. Rust must deserialize, so entries that are not
 /// valid models are skipped instead of being carried along broken.
 fn parse_catalog(provider_id: &str, value: Value) -> Result<Vec<Model>, String> {

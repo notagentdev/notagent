@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/dynamic-border.ts` (25 LOC).
-
 use notagent_tui::components::markdown::StyleFn;
 use notagent_tui::tui::{Component, Line};
 
@@ -13,9 +10,6 @@ pub struct DynamicBorder {
 
 impl DynamicBorder {
     /// New border; `None` uses the theme's `borderMuted` colour, read per call
-    /// from the global theme like the TypeScript default parameter.
-    ///
-    /// Deviation from the TS original (user decision 2026-08-17, v0.1.11),
     /// which used `border` — the accent blue. A dialog's rules are furniture,
     /// not a signal, and the blue read as one; `borderMuted` is the grey the
     /// input frame already draws itself in, so the two now match.

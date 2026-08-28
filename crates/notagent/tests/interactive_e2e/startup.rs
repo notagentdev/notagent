@@ -1,12 +1,3 @@
-//! Scenario 1 — startup.
-//!
-//! What the master plan asks for: the interactive mode comes up over the
-//! virtual terminal and paints its screen. The evidence is the built-in header
-//! (`interactive-mode.ts:925-977`: the logo `APP_NAME v<version>` plus the
-//! compact hint line, shown unless `quietStartup` is set — it defaults to
-//! `false`) and an editor that has the focus, which shows by the typed text
-//! appearing on screen.
-
 use notagent::config::APP_NAME;
 
 use super::harness::{InteractiveE2e, KEY_CTRL_C, run_local};
@@ -37,7 +28,6 @@ async fn puts_the_terminal_into_raw_mode_and_hands_it_back_on_exit() {
         let mut driver = e2e.start().await;
         driver.wait_for(APP_NAME).await;
 
-        // `Terminal::start` turns bracketed paste on (`terminal.ts`), which is
         // the visible half of taking the terminal over.
         assert!(
             driver.writes().contains("\x1b[?2004h"),
@@ -46,7 +36,6 @@ async fn puts_the_terminal_into_raw_mode_and_hands_it_back_on_exit() {
         );
 
         // Ctrl+C twice is the documented way out of an empty editor
-        // (`interactive-mode.ts`, hint "to exit").
         driver.send_keys(KEY_CTRL_C).await;
         driver.send_keys(KEY_CTRL_C).await;
 

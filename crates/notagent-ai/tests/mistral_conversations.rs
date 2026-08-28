@@ -1,9 +1,3 @@
-//! Differential test of the Mistral Chat Completions adapter.
-//!
-//! `fixtures/mistral-conversations.jsonl` records, for each case, the URL, the headers
-//! and the body the TS implementation puts on the wire plus the event sequence it emits
-//! for a scripted SSE body (see `fixtures/generators`).
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::mistral_conversations::{
@@ -279,7 +273,7 @@ async fn every_captured_event_sequence_is_reproduced() {
 }
 
 #[test]
-fn derives_tool_call_ids_like_the_typescript_normalizer() {
+fn derives_stable_tool_call_ids() {
     // A nine-character alphanumeric id passes through unchanged.
     assert_eq!(derive_mistral_tool_call_id("abcdefghi", 0), "abcdefghi");
     // Everything else is hashed down to nine characters.
@@ -311,7 +305,7 @@ fn selects_the_reasoning_style_per_model() {
 }
 
 #[test]
-fn builds_the_url_and_headers_of_the_typescript_adapter() {
+fn builds_the_expected_url_and_headers() {
     let cases = cases();
     let mut model = cases[0].model.clone();
     assert_eq!(

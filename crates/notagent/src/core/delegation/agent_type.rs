@@ -1,16 +1,13 @@
 //! The two subagent types.
-//!
 //! Delegation used to take a *mode*, and the four shipped modes are `auto`,
 //! `manual`, `plan` and `yolo`. Three of those are worker shells that differ only in how
 //! often the user is asked — an axis that means nothing to a child, because the
 //! child is not the one being asked. Presenting them as three roles gave the
 //! model a choice with no content, which is why it kept choosing `plan`: the
 //! only entry that visibly differed.
-//!
 //! So the roster is the one distinction that survives contact with a subagent:
 //! may it change the workspace or not. Everything else a child needs in order to
 //! be good at something arrives as a skill, loaded at the start of its run.
-//!
 //! Keeping this an enumeration rather than a loadable roster is the design, not
 //! a shortcut. A loadable agent type carries its own prompt, which can disagree
 //! with the skill it loads, and the user then has two places to look when a
@@ -54,7 +51,6 @@ impl SubagentType {
     }
 
     /// What the type is for, as the delegating model reads it.
-    ///
     /// Says what the child can accomplish rather than which tools it holds. The
     /// tool list was what made the old four-mode listing unreadable — a wall of
     /// names that is identical between the entries a model has to tell apart.
@@ -82,7 +78,6 @@ impl std::fmt::Display for SubagentType {
 }
 
 /// Whether a parent in `parent` may delegate to `child`.
-///
 /// The approval level is no longer part of this question — a child's level is
 /// copied from its parent at every call rather than chosen, so there is nothing
 /// to escalate. What remains is the shell: a read-only session must not be able

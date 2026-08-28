@@ -1,11 +1,3 @@
-//! Badge-style properties of the tool renderers (user decisions 2026-08-18):
-//! results stack directly under the badge line without a blank row, diffs
-//! close with a summary line, a written file previews as an added-lines diff,
-//! and a failed skill says so.
-//!
-//! The standard style stays the TS original and is pinned by
-//! `tool_render_oracle.rs`; these cases pin the badge deviations.
-
 use notagent::core::tools::tool_definition::{
     ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
 };
@@ -92,7 +84,10 @@ fn a_patch_result_starts_with_the_diff_and_closes_with_the_summary() {
         "patch_minified",
         json!({"path": "/tmp/x.rs"}),
         "ok",
-        Some(json!({"diff": diff})),
+        Some(json!({
+            "diff": diff,
+            "warnings": ["Normalized replacement text into minified form before applying indentation expansion."]
+        })),
         false,
     );
     assert!(
@@ -103,6 +98,10 @@ fn a_patch_result_starts_with_the_diff_and_closes_with_the_summary() {
         lines.last().map(String::as_str),
         Some("Added 1 line, removed 1 line"),
         "{lines:?}"
+    );
+    assert!(
+        lines.iter().all(|line| !line.contains("Normalized")),
+        "tool warnings belong to the agent result, not below the visible diff: {lines:?}"
     );
 }
 

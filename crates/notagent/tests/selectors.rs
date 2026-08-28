@@ -1,7 +1,3 @@
-//! Behaviour of the batch-3 selectors that the TypeScript suites do not cover.
-//! Expectations are taken from
-//! `packages/coding-agent/src/modes/interactive/components/*-selector.ts`.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -38,8 +34,6 @@ const ESCAPE: &str = "\x1b";
 const ENTER: &str = "\r";
 const ARROW_DOWN: &str = "\x1b[B";
 const ARROW_UP: &str = "\x1b[A";
-
-// --- list selector (extension-selector.ts) ------------------------------------
 
 #[test]
 fn moves_the_cursor_and_confirms_the_selected_option() {
@@ -294,10 +288,7 @@ fn reports_an_empty_message_list() {
     );
 }
 
-// --- oauth selector (oauth-selector.ts) ---------------------------------------
-// Port of the component cases of `packages/coding-agent/test/oauth-selector.test.ts`;
 // the suite's first case exercises `InteractiveMode.getLoginProviderOptions`,
-// which belongs to workstream C.
 
 fn auth_provider(
     id: &str,
@@ -521,11 +512,6 @@ fn cancels_on_escape_and_ignores_navigation_without_providers() {
     selector.handle_input(ESCAPE);
     assert_eq!(*cancelled.borrow(), 1);
 }
-
-// --- first-time setup (first-time-setup.ts) -----------------------------------
-// The TypeScript suites `first-time-setup.test.ts` and `first-time-setup-fork.test.ts`
-// cover `cli/startup-ui.ts` and the settings manager (workstream C); the dialog
-// itself has no TypeScript test, so the cases below follow the source.
 
 #[test]
 fn starts_on_the_detected_theme_and_previews_while_moving() {

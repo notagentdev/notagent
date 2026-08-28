@@ -1,11 +1,3 @@
-//! Alternate-screen renderer with an application-owned viewport.
-//!
-//! Port of `packages/tui/src/tui-alt-screen.ts` (1291 LOC). This stage covers
-//! the renderer core: enter/exit sequences, the CUP+2K line diff, the Kitty
-//! placement cache with LRU eviction, scrolling, flash messages and writing the
-//! document into the scrollback on exit. Mouse handling and transcript search
-//! follow in the next stages (see PARITY.md).
-
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -96,7 +88,6 @@ pub struct TuiAltScreenOptions {
     pub search_match_style: Rc<dyn Fn(&str) -> String>,
     /// Style of the current search match.
     pub search_current_match_style: Rc<dyn Fn(&str) -> String>,
-    /// Whether right click pastes the clipboard (TS `onRightClickPaste`).
     pub right_click_paste: bool,
 }
 
@@ -239,7 +230,6 @@ const FOCUS_OUT: &str = "\x1b[O";
 /// Interval of the selection auto-scroll timer.
 const SELECTION_AUTO_SCROLL_INTERVAL_MS: u64 = 50;
 
-/// Renders the mounted children; the implicit document of the TS version.
 struct ImplicitDocument {
     core: TuiCore,
 }
@@ -359,7 +349,6 @@ impl TuiAltScreen {
     }
 
     /// Route a wheel event through the scroll views under the pointer.
-    ///
     /// Nested views consume the delta first; a view with `overscroll: contain`
     /// stops the chain, and any remainder falls back to the primary view.
     fn route_wheel(&mut self, direction: i64, x: i64, y: i64) {
@@ -488,7 +477,6 @@ impl TuiAltScreen {
         self.core.request_render();
     }
 
-    /// Adopt a new query from the search input (TS `onQueryChange`).
     fn update_search_query(&mut self, query: String) {
         let scroll_top = self.primary_scroll_state().borrow().scroll_top();
         let Some(search) = &mut self.active_search else {
@@ -825,8 +813,6 @@ impl TuiAltScreen {
                 };
                 scroll_view.borrow_mut().scroll_to_line(scroll_top, false);
             }
-            // Deviation class 1: the TS scroll view repaints through its
-            // `requestRender` callback; the port requests the frame here.
             self.core.request_render();
             return true;
         }
@@ -914,7 +900,6 @@ impl TuiAltScreen {
         self.selection_auto_scroll_deadline
     }
 
-    /// Advance one auto-scroll step (the TS `setInterval` callback).
     pub fn auto_scroll_selection(&mut self) {
         let scroll_view = self
             .selection_anchor
@@ -953,7 +938,6 @@ impl TuiAltScreen {
         self.selection_drag_pointer = None;
     }
 
-    /// Right-click paste (Windows only, as in the TS version); returns `true`
     /// when consumed. The caller retrieves the request via
     /// [`Self::take_right_click_paste`].
     fn handle_right_click_paste(&mut self, event: SgrMouseEvent) -> bool {
@@ -964,7 +948,6 @@ impl TuiAltScreen {
         true
     }
 
-    /// Whether a right click asked for a clipboard paste (TS `onRightClickPaste`).
     pub fn take_right_click_paste(&mut self) -> bool {
         std::mem::take(&mut self.right_click_paste_requested)
     }
@@ -1467,14 +1450,11 @@ impl TuiAltScreen {
         self.core.request_render();
     }
 
-    /// URL activated by the last primary click, if any (TS calls `openUrl`).
     pub fn take_clicked_url(&mut self) -> Option<String> {
         self.clicked_url.take()
     }
 
     /// Handle viewport input (wheel events for now); returns `true` when consumed.
-    ///
-    /// The TS version registers this as an input listener in the constructor;
     /// here the renderer's input handler calls it before the component dispatch
     /// because the listener needs `&mut self`.
     pub fn handle_viewport_input(&mut self, data: &str) -> bool {
@@ -1639,8 +1619,6 @@ impl TuiAltScreen {
     }
 
     /// Adopt a query the search input changed while handling the last input.
-    ///
-    /// Deviation class 1: the TS component reports changes through an
     /// `onQueryChange` callback, which would need `&mut` access to the renderer
     /// while the component itself is borrowed.
     fn poll_search_query(&mut self) {
@@ -1917,7 +1895,6 @@ impl TuiAltScreen {
     }
 
     /// Render the frame the render loop reported as due.
-    ///
     /// Counterpart of [`TuiCore::wait_until_render_due`]: it consumes the
     /// pending request, so a loop that waits and then calls this cannot spin.
     pub fn render_pending_frame(&mut self) {
@@ -1927,7 +1904,6 @@ impl TuiAltScreen {
     }
 
     /// Render the pending frame once its throttle deadline has passed.
-    ///
     /// Unlike [`TuiCore::wait_until_render_due`] it returns right away when no
     /// frame is pending.
     pub async fn wait_for_render(&mut self) {

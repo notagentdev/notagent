@@ -1,9 +1,3 @@
-//! Default in-memory credential store.
-//!
-//! 1:1 port of `packages/ai/src/auth/credential-store.ts` (67 LOC). Writes are
-//! serialized per provider id; in TS through a promise chain, here through a per-id
-//! async mutex that is held for the whole read-modify-write.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 

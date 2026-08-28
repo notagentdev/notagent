@@ -1,11 +1,3 @@
-//! Sequence diagram layout.
-//!
-//! Port of `grok-mermaid/src/layout-seq.ts` (203 LOC). Participants get one
-//! column each, with lifelines running the full height and a box repeated at
-//! top and bottom. Column gaps are solved from the widest thing that has to fit
-//! between any two columns — a message label, a note, a self-message stub —
-//! then items stack down the canvas in source order.
-
 use super::canvas::{Canvas, D, L, R, U, draw_text_over_edges};
 use super::graph::Shape;
 use super::labels::{WRAP_WIDTH, fit_label};

@@ -1,8 +1,3 @@
-//! Image-generation providers and their runtime collection.
-//!
-//! 1:1 port of `packages/ai/src/images-models.ts` (275 LOC): the image-side counterpart
-//! of `models.rs`.
-
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -106,7 +101,6 @@ impl ImagesProvider for BuiltImagesProvider {
 
     fn refresh_models(&self) -> Option<RefreshImagesFuture> {
         let refresh = self.refresh_models.clone()?;
-        // The TS version dedupes concurrent calls through one in-flight promise; the
         // port keeps the same observable contract (a failed refresh leaves the stored
         // list untouched and a later call retries) — see `models.rs` for the same shape.
         let models = self.models.clone();
@@ -407,7 +401,6 @@ fn merge_env(
 // Built-in image providers
 // ---------------------------------------------------------------------------
 
-/// `openrouterImagesProvider()` of `packages/ai/src/providers/openrouter-images.ts`.
 pub fn openrouter_images_provider() -> Arc<BuiltImagesProvider> {
     create_images_provider(CreateImagesProviderOptions {
         id: "openrouter".to_string(),

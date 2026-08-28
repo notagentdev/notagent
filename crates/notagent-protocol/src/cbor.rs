@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/src/cbor/index.ts`.
-
 mod decoder;
 mod encoder;
 mod options;

@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/mime.ts`.
-
 const IMAGE_TYPE_SNIFF_BYTES: usize = 4100;
 const PNG_SIGNATURE: [u8; 8] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -29,7 +27,6 @@ pub async fn detect_supported_image_mime_type_from_file(file_path: &str) -> Opti
     let mut file = tokio::fs::File::open(file_path).await.ok()?;
     let mut buffer = vec![0u8; IMAGE_TYPE_SNIFF_BYTES];
     let mut filled = 0usize;
-    // A single read may return less than requested; TS reads once but Node fills
     // the buffer for regular files.
     while filled < buffer.len() {
         match file.read(&mut buffer[filled..]).await {

@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/frontmatter.ts`.
-//!
-//! Markdown files that carry structured attributes — modes, skills, prompt
-//! templates — put them in a YAML block delimited by `---` at the top of the
-//! file. Everything after the block is the body, which is what the model gets
-//! to see.
-
 use serde_yaml_ng::Value;
 
 /// The frontmatter mapping and the body below it.
@@ -35,7 +28,6 @@ fn normalize_newlines(value: &str) -> String {
 }
 
 /// Splits the YAML block from the body, both already newline-normalized.
-///
 /// An unterminated block is not an error: the file is treated as having no
 /// frontmatter at all, so a document that merely opens with a horizontal rule
 /// is still readable.
@@ -56,7 +48,6 @@ fn extract_frontmatter(content: &str) -> (Option<String>, String) {
     (Some(yaml), body)
 }
 
-/// Parses the frontmatter block. Invalid YAML is an error, as in TypeScript
 /// where the parse throws — a mode or skill whose attributes cannot be read
 /// must not silently load with none of them.
 pub fn parse_frontmatter(content: &str) -> Result<ParsedFrontmatter, FrontmatterError> {
@@ -73,7 +64,6 @@ pub fn parse_frontmatter(content: &str) -> Result<ParsedFrontmatter, Frontmatter
     // the line break back is a no-op for every other document shape.
     let parsed: Value = serde_yaml_ng::from_str(&format!("{yaml}\n"))
         .map_err(|error| FrontmatterError(error.to_string()))?;
-    // `parse` returns null for an empty or comment-only block; the TypeScript
     // turns that into `{}` so callers never have to check.
     let frontmatter = if parsed.is_null() {
         Value::Mapping(Default::default())
@@ -91,8 +81,6 @@ pub fn strip_frontmatter(content: &str) -> Result<String, FrontmatterError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Ported from `packages/coding-agent/test/frontmatter.test.ts`.
 
     #[test]
     fn parses_keys_strips_quotes_and_returns_body() {
@@ -113,7 +101,6 @@ mod tests {
 
     #[test]
     fn fails_on_invalid_yaml_frontmatter() {
-        // TypeScript throws with the `yaml` package's message, which names the
         // position ("at line 1, column 10"); the Rust parser's message differs
         // in wording, so only the failure itself is pinned.
         let error = parse_frontmatter("---\nfoo: [bar\n---\nBody").unwrap_err();

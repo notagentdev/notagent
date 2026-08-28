@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Interactive coding agent (binary) — port of packages/coding-agent."
+description = "Interactive terminal coding agent."
 # `cargo run -p notagent` (notagent-test.sh) means the app, not the MCP test
 # server that ships as a second binary for the integration tests.
 default-run = "notagent"
@@ -40,7 +40,7 @@ ignore = { workspace = true }
 image = { workspace = true }
 dirs = { workspace = true }
 libc = { workspace = true }
-# notify: OS file watcher behind the theme live reload (interface request A-6).
+# OS file watcher behind theme live reload.
 notify = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
@@ -86,9 +86,9 @@ globset = { workspace = true }
 
 [dev-dependencies]
 dirs = { workspace = true }
-# Needed by the ported theme suites in tests/ (workstream A, plan task 15).
+# Theme integration tests use futures-based helpers.
 futures = { workspace = true }
-# test-terminal: VirtualTerminal for the ported custom-editor suite.
+# VirtualTerminal support for interactive component tests.
 notagent-tui = { workspace = true, features = ["test-terminal"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }

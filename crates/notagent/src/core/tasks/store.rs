@@ -1,19 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tasks/store.ts`.
-//!
-//! Where a task's record and its log live between runs.
-//!
-//! Everything here exists for one moment: the next start, when the process that
-//! owned these tasks is gone and something has to say what became of them. A
-//! record still marked running at that point is the whole reason the `lost`
-//! status exists, and it can only be found if the record was written while the
-//! task was alive.
-//!
-//! Records are written atomically because the alternative is a truncated file
-//! standing in for a task nobody can account for. Task ids are validated before
-//! they become path segments — they are generated here, never supplied by a
-//! model, but a validated id costs nothing and an id that escaped its directory
-//! would be a way to write anywhere.
-
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 
@@ -25,8 +9,6 @@ const RECORD_SUFFIX: &str = ".json";
 const LOG_NAME: &str = "output.log";
 
 /// `{prefix}-{8 chars}`. The prefix is open so a new kind needs no change here.
-///
-/// Deviation (class 3): the TS regex `^[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-z]{8}$` is
 /// checked by hand rather than through the `regex` crate — it is three
 /// character-class tests and runs on every path built from an id.
 pub fn is_valid_task_id(task_id: &str) -> bool {
@@ -68,7 +50,6 @@ impl TaskStore {
         &self.dir
     }
 
-    /// Deviation (class 1): TS throws on an invalid id; the port returns the
     /// same message as an error, since a path is a value here.
     pub fn log_path(&self, task_id: &str) -> Result<PathBuf, String> {
         assert_task_id(task_id)?;
@@ -111,7 +92,6 @@ impl TaskStore {
     }
 
     /// Every readable record in this session's directory.
-    ///
     /// Anything unreadable is skipped rather than reported: a record that cannot
     /// be parsed carries nothing recoverable beyond its filename, and failing
     /// the whole listing over one such file would hide every task beside it.
@@ -177,7 +157,6 @@ impl TaskStore {
     }
 
     /// Reads a byte window of the log.
-    ///
     /// Byte-addressed rather than line-addressed because that is how it is
     /// stored, and because a tail of a log with one enormous line must still be
     /// bounded by what the caller asked for.
@@ -216,12 +195,9 @@ impl TaskStore {
 }
 
 /// A record read back from disk.
-///
 /// `detached` is filled in because a record written before the field existed
 /// describes a task nothing can be waiting on any more — the process that held
 /// the tool call is gone by definition.
-///
-/// Deviation (class 1): TS spreads the parsed object, so unknown keys survive a
 /// round trip; serde drops them. Nothing but this app writes these records.
 fn normalize_record(text: &str) -> Option<TaskInfo> {
     let mut info: TaskInfo = serde_json::from_str(text).ok()?;

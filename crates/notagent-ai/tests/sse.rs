@@ -1,11 +1,3 @@
-//! Differential test of the SSE decoder against the TypeScript original.
-//!
-//! The fixture was generated in the TS repo from the decoder functions of
-//! `packages/ai/src/api/anthropic-messages.ts` (`/tmp/gen-sse-fixture.cjs`): 16
-//! payloads — plain events, multi-line data, comments, CR/LF/CRLF, missing colons,
-//! trailing events without a blank line — each fed as a whole and split at every
-//! possible position (355 cases).
-
 use notagent_ai::api::sse::{ServerSentEvent, SseDecoder};
 
 const FIXTURE: &str = include_str!("fixtures/sse-decoder.jsonl");
@@ -34,7 +26,7 @@ fn decode(chunks: &[String]) -> Vec<ServerSentEvent> {
 }
 
 #[test]
-fn matches_typescript_for_every_fixture_case() {
+fn decodes_every_fixture_case() {
     let cases: Vec<Case> = FIXTURE
         .lines()
         .filter(|line| !line.is_empty())

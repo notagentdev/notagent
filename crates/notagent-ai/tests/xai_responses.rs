@@ -1,13 +1,3 @@
-//! Port of `packages/ai/test/xai-responses.test.ts` (117 LOC).
-//!
-//! TS spies on `globalThis.fetch`; the port injects a `FetchFn` that records the request
-//! and answers with a completed Responses stream (substitution class 3).
-//!
-//! TS reaches the payload through `xaiProvider().stream(model, context, options)` with
-//! api-specific `OpenAIResponsesOptions`. The Rust dispatch form is the generic
-//! `StreamOptions` (types.rs ledger, class 1), so the api-specific options go straight to
-//! the module the xAI provider registers for `openai-responses` — the same code TS runs.
-
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::openai_responses::{OpenAIResponsesOptions, stream};
@@ -178,7 +168,6 @@ async fn uses_responses_with_bearer_auth_and_xai_compatible_request_fields() {
     assert_eq!(captured.body["store"], json!(false));
     assert_eq!(captured.body["stream"], json!(true));
     assert_eq!(captured.body["prompt_cache_key"], "notagent-session-123");
-    // TS asserts with `toMatchObject`, which allows the `summary` the builder always adds.
     assert_eq!(captured.body["reasoning"]["effort"], "medium");
     assert_eq!(
         captured.body["include"],

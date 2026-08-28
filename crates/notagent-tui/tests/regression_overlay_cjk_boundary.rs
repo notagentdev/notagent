@@ -1,5 +1,3 @@
-//! Port von `packages/tui/test/regression-overlay-cjk-boundary.test.ts` (46 LOC).
-//!
 use notagent_tui::tui::composite_tui_line;
 use notagent_tui::{extract_segments, slice_by_column, visible_width};
 

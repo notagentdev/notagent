@@ -1,13 +1,3 @@
-//! Serialised background work with an awaitable drain point.
-//!
-//! New file (deviation class 1). Two places in `core/tasks/` chain writes onto a
-//! promise instead of awaiting them — `OutputRetention.writeQueue` in
-//! `output.ts` and `ManagedTask.recordQueue` in `manager.ts` — so that an
-//! append stays cheap while a later reader can still wait for everything issued
-//! so far to have reached the disk. A JS promise chain gives both properties for
-//! free; in Rust the same two properties are a worker task fed by a channel plus
-//! a ticket the caller can wait on.
-
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;

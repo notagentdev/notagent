@@ -1,14 +1,3 @@
-//! 1:1 port of `packages/coding-agent/src/cli/config-selector.ts` (56 LOC) —
-//! the driver that shows workstream A's `ConfigSelectorComponent` for
-//! `notagent config`.
-//!
-//! Like the startup dialogs it runs on the pump seam of interface request A-20:
-//! `run_until` renders and pumps while the component waits for its close or
-//! exit callback. Where TypeScript resolves a `Promise` from the callback and
-//! lets `process.exit(0)` end the run on the exit path, the port sends on a
-//! `oneshot` and reports the exit through the return value (deviation class 1,
-//! the same shape the interactive mode uses for its own shutdown).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -34,9 +23,7 @@ pub struct ConfigSelectorOptions<'a> {
 }
 
 /// `selectConfig(options)` — returns when the selector closed.
-///
 /// The `bool` reports which callback ended it: `true` for the exit path, which
-/// TypeScript takes straight to `process.exit(0)`.
 pub async fn select_config(options: ConfigSelectorOptions<'_>) -> bool {
     init_theme(options.settings_manager.get_theme().as_deref(), true);
 

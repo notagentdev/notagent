@@ -1,8 +1,3 @@
-//! Container with padding and background.
-//!
-//! 1:1 port of `packages/tui/src/components/box.ts` (137 LOC). The module is
-//! named `box_component` because `box` is a Rust keyword.
-
 use crate::components::text::BackgroundFn;
 use crate::tui::{Component, ComponentRef, Container, Line, shared_lines};
 use crate::utils::{apply_background_to_line, visible_width};
@@ -25,7 +20,6 @@ pub struct BoxComponent {
 }
 
 impl BoxComponent {
-    /// New box (TS defaults: padding 1/1, no background).
     pub fn new(padding_x: usize, padding_y: usize, bg_fn: Option<BackgroundFn>) -> Self {
         Self {
             container: Container::new(),
@@ -55,14 +49,11 @@ impl BoxComponent {
     }
 
     /// Set the background function.
-    ///
     /// Deliberately does not invalidate: a changed background is detected by
-    /// sampling its output, exactly like the TS version.
     pub fn set_bg_fn(&mut self, bg_fn: Option<BackgroundFn>) {
         self.bg_fn = bg_fn;
     }
 
-    /// Change the padding. Port addition for the badge block style, which
     /// sheds the vertical padding rows of an already-built box.
     pub fn set_padding(&mut self, padding_x: usize, padding_y: usize) {
         if self.padding_x == padding_x && self.padding_y == padding_y {

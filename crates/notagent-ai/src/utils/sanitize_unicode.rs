@@ -1,12 +1,3 @@
-//! Removal of unpaired Unicode surrogates.
-//!
-//! 1:1 port of `packages/ai/src/utils/sanitize-unicode.ts` (25 LOC).
-//!
-//! Rust strings are always valid UTF-8 and therefore cannot contain unpaired
-//! surrogates at all, so this function is the identity for every `&str`. It exists so
-//! the call sites of the TS original keep their shape; the guard lives in the decoding
-//! layer, which rejects invalid UTF-8 before a `String` is built.
-
 /// `sanitizeSurrogates(text)`
 pub fn sanitize_surrogates(text: &str) -> String {
     text.to_string()

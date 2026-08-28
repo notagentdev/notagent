@@ -1,7 +1,3 @@
-//! Header conversions.
-//!
-//! 1:1 port of `packages/ai/src/utils/headers.ts` (18 LOC).
-
 use std::collections::BTreeMap;
 
 use crate::types::ProviderHeaders;

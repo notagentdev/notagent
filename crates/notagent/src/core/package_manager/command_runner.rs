@@ -1,11 +1,3 @@
-//! The child-process half of `packages/coding-agent/src/core/package-manager.ts`.
-//!
-//! Deviation (class 1): the TypeScript suite reaches into the manager and
-//! replaces `runCommand`, `runCommandCapture` and `runCommandSync` with spies.
-//! Rust has no such seam, so the three methods live behind [`CommandRunner`];
-//! the manager holds one, production wires [`ProcessCommandRunner`], and the
-//! ported suite wires a recording fake.
-
 use std::collections::BTreeMap;
 use std::process::Stdio;
 
@@ -52,9 +44,7 @@ pub trait CommandRunner: Send + Sync {
 }
 
 /// `getEnv()`
-///
 /// On Linux an empty `process.env` means the environment was stripped; the
-/// TypeScript then reads `/proc/self/environ` instead.
 fn get_env() -> BTreeMap<String, String> {
     let env: BTreeMap<String, String> = std::env::vars().collect();
     if !cfg!(target_os = "linux") || !env.is_empty() {
@@ -110,7 +100,6 @@ impl CommandRunner for ProcessCommandRunner {
         Box::pin(async move {
             let mut child = Self::base_command(&command, &args, &options);
             // `stdio: "inherit"` — the `isStdoutTakenOver()` branch that routes
-            // stdout to stderr waits on C's `core/output-guard.ts` (request B-4).
             child
                 .stdin(Stdio::null())
                 .stdout(Stdio::inherit())

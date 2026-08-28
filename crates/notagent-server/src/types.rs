@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/types.ts`.
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -52,7 +50,6 @@ pub struct CreateSessionOptions {
     pub thinking_level: Option<ThinkingLevel>,
 }
 
-// Boxing the variants would change the public shape compared to the TS original
 // (CONVENTIONS.md §9); runtime events are constructed and matched directly.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
@@ -63,7 +60,6 @@ pub enum PiSessionRuntimeEvent {
 }
 
 pub type RuntimeEventListener = Arc<dyn Fn(&PiSessionRuntimeEvent) + Send + Sync>;
-/// TS returns an unsubscribe function.
 pub type Unsubscribe = Box<dyn FnOnce() + Send + Sync>;
 
 /// One acquired durable session. Conflicting operations must reject rather than queue.

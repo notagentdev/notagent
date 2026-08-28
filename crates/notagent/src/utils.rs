@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/`.
-
 pub mod abort;
 pub mod ansi;
 pub mod atomic_write;

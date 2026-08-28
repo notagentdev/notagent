@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/test/llama-extension.test.ts` (295 LOC), minus
-//! the first case ("registers a native provider and /llama command"), which
-//! exercises `extensions/llama/index.ts` and stays with the app workstream.
-//!
-//! `createServer` from `node:http` has no Rust counterpart, so the suites run
-//! against a small loopback server (deviation class 3, as in `tests/support`).
-//! Its only behavioural addition: the delayed SSE events of the load and
-//! download cases wait until the watcher has subscribed, which removes the race
-//! the 20 ms timer papers over in Node.
-
 #[path = "support/llama_server.rs"]
 mod llama_server;
 
@@ -39,7 +29,6 @@ fn model_info(id: &str, status: &str) -> Value {
     json!({ "id": id, "status": { "value": status } })
 }
 
-/// `AuthContext` of the TS `emptyContext`.
 struct EmptyAuthContext;
 
 impl AuthContext for EmptyAuthContext {
@@ -52,7 +41,6 @@ impl AuthContext for EmptyAuthContext {
     }
 }
 
-/// `interaction.prompt` answering from a fixed script, as in the TS case.
 struct ScriptedInteraction {
     answers: Mutex<std::collections::VecDeque<String>>,
     signal: CancellationToken,
@@ -549,10 +537,9 @@ async fn downloads_with_byte_progress_and_returns_the_refreshed_catalog() {
     );
 }
 
-/// Extra coverage for the byte formatter behind the `detail` line: TS reads it
 /// off `Number.prototype.toFixed`, which rounds ties away from zero.
 #[test]
-fn formats_bytes_like_the_typescript_helper() {
+fn formats_bytes_with_stable_units() {
     assert_eq!(format_bytes(0.0), "0 B");
     assert_eq!(format_bytes(1023.0), "1023 B");
     assert_eq!(format_bytes(1024.0), "1.00 KiB");

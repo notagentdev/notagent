@@ -1,9 +1,3 @@
-//! Port of `packages/ai/test/bedrock-convert-messages.test.ts` (410 LOC).
-//!
-//! TS mocks the AWS SDK and reads the command input through `onPayload`; the port calls
-//! `build_command_input` (the function that produces exactly that input) and drives the
-//! stream state machine directly for the tool-argument case.
-
 use notagent_ai::api::bedrock_converse_stream::{
     BedrockOptions, BedrockStreamState, build_command_input,
 };
@@ -195,10 +189,8 @@ fn preserves_empty_property_names_in_streamed_tool_arguments() {
 // bedrock convertMessages skips unknown content types
 // ---------------------------------------------------------------------------
 
-// The four "unknown content type" cases of the TS suite cast `{ type: "unknown" }` past
 // the type system. `AssistantContent` and `TextOrImageContent` are closed enums in Rust
 // and reject such a block at deserialization, so those states are unrepresentable and the
-// cases have no counterpart (class 1; see PARITY.md). What they guard — a message left
 // empty by conversion being replaced or skipped — is covered here and by the blank and
 // surrogate cases below, which reach the same code paths.
 
@@ -232,7 +224,6 @@ fn filters_blank_user_text_blocks_when_other_content_remains() {
     assert_eq!(messages[0]["content"], json!([{ "text": "hello" }]));
 }
 
-// The two surrogate cases of the TS suite build their input from a lone high surrogate
 // (`String.fromCharCode(0xd83d)`), which a Rust `String` cannot hold — `sanitize_surrogates`
 // is the identity here for exactly that reason (class 1, see the `sanitize_unicode.rs`
 // ledger row). The branch they reach — a text block that converts to nothing — is covered

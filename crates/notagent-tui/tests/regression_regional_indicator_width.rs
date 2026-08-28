@@ -1,11 +1,7 @@
-//! Port von `packages/tui/test/regression-regional-indicator-width.test.ts` (52 LOC).
-
 use notagent_tui::{visible_width, wrap_text_with_ansi};
 
 #[test]
 fn treats_partial_flag_grapheme_as_full_width_to_avoid_streaming_render_drift() {
-    // Beim Streaming erscheint "🇨🇳" oft zuerst als "🇨". Wird "🇨" als Breite 1
-    // gemessen, das Terminal rendert aber 2, driftet das differenzielle Rendering.
     let partial_flag = "🇨";
     let list_line = "      - 🇨";
 
@@ -15,7 +11,6 @@ fn treats_partial_flag_grapheme_as_full_width_to_avoid_streaming_render_drift() 
 
 #[test]
 fn wraps_intermediate_partial_flag_list_line_before_overflow() {
-    // Breite 9 kann "      - 🇨" nicht fassen, wenn 🇨 Breite 2 hat (8 + 2 = 10).
     let wrapped = wrap_text_with_ansi("      - 🇨", 9);
 
     assert_eq!(wrapped.len(), 2);

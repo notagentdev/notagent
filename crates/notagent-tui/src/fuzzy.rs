@@ -1,9 +1,3 @@
-//! Fuzzy matching.
-//!
-//! 1:1 port of `packages/tui/src/fuzzy.ts` (137 LOC). A query matches when all
-//! its characters appear in order (not necessarily consecutively); a **lower**
-//! score is a better match.
-
 /// Result of [`fuzzy_match`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FuzzyMatch {
@@ -151,7 +145,6 @@ fn swap_alpha_numeric(query: &str) -> Option<String> {
 }
 
 /// Filter and sort items by match quality (best first).
-///
 /// Whitespace- and slash-separated tokens all have to match.
 pub fn fuzzy_filter<T: Clone>(items: &[T], query: &str, get_text: impl Fn(&T) -> String) -> Vec<T> {
     if query.trim().is_empty() {

@@ -1,5 +1,3 @@
-//! Port of `packages/protocol/test/protocol.test.ts`.
-
 use notagent_protocol::{
     CborValue, ClientHello, ClientMessage, ClientMessageDecoder, Command, FrameDecoder,
     FrameDecoderOptions, HelloTag, ListCommand, ListTag, PROTOCOL_VERSION, ProtocolError,
@@ -358,7 +356,6 @@ fn rejects_inconsistent_tool_items() {
 }
 
 // `rejects cyclic protocol values` is dropped: cycles cannot be represented by
-// `CborValue` (deviation class 1).
 
 #[test]
 fn validation_errors_do_not_retain_rejected_payloads() {

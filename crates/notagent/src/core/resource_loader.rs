@@ -1,24 +1,3 @@
-//! Port of `packages/coding-agent/src/core/resource-loader.ts`.
-//!
-//! Everything a session loads from disk that is not code: skills, prompt
-//! templates, themes, the project context files, and the system prompt
-//! overrides. One object owns all of it so `/reload` is a single call and so
-//! the session can be handed a different set in tests.
-//!
-//! The one piece of real logic here is context-file discovery. Files are
-//! collected from the agent directory and then from every ancestor of the
-//! working directory, nearest last, so a project's own `AGENTS.md` has the last
-//! word over a parent directory's. The shadowing rule exists for linked
-//! worktrees nested inside their main repository: both directories are the same
-//! logical project, and loading both would apply the same instructions twice.
-//!
-//! Deviation (class 2): everything extension-shaped is gone — the loader no
-//! longer loads extensions, resolves inline factories, or reports extension
-//! conflicts (`plans/facts/extension-boundary.md` §3). Deviation (class 1): the
-//! installed-package half sits behind [`PackageResources`], which workstream B's
-//! package manager implements (interface request C-11); without one, only the
-//! explicit paths are loaded.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -55,7 +34,6 @@ pub struct ResolvedResource {
 }
 
 /// What the package manager resolved, by resource type. The `extensions` list
-/// of the TypeScript shape is gone with the extension system.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResolvedResources {
     pub skills: Vec<ResolvedResource>,
@@ -64,9 +42,6 @@ pub struct ResolvedResources {
 }
 
 /// The installed-package half of resource discovery.
-///
-/// Implemented by `core::package_manager::DefaultPackageManager` (workstream B,
-/// interface request C-11). The loader works without one — it then sees only
 /// the paths the caller named.
 pub trait PackageResources: Send + Sync {
     fn resolve(&self) -> BoxFuture<'_, ResolvedResources>;
@@ -98,7 +73,6 @@ fn resolve_prompt_input(input: Option<&str>) -> Option<String> {
         return match std::fs::read_to_string(input) {
             Ok(content) => Some(content),
             // A file that exists but cannot be read falls back to the literal
-            // text, exactly as in TypeScript.
             Err(_) => Some(input.to_string()),
         };
     }
@@ -128,11 +102,9 @@ fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
 
 /// The main repository's context file that a nested linked worktree's own copy
 /// shadows.
-///
 /// Both occupy the same logical repository scope, so loading both would apply
 /// that context twice. Returns `None` when nothing is shadowed, leaving normal
 /// ancestor inheritance alone.
-///
 /// The result is canonicalized, because `git worktree add` writes the `.git`
 /// file's `gitdir:` target in realpath form while the working directory may
 /// still be reached through a symlink (macOS `/tmp` → `/private/tmp`).

@@ -1,13 +1,3 @@
-//! The `afterToolCall` seam of `_installAgentHooks` (`agent-session.ts:567-597`).
-//!
-//! Without the extension runner two things are left at that point: the
-//! `PostToolUse`/`PostToolUseFailure` hook — which the extension mapped from
-//! its `tool_result` event (`plans/facts/extension-boundary.md` §2.2) — and
-//! `normalizeToolResultImages`, which runs after it. `tests/hook_dispatch.rs`
-//! pins the payloads of the hook itself and `tests/tool_result_images.rs` the
-//! normalisation; what is asserted here is that a tool result of a real session
-//! goes through both.
-
 #![cfg(unix)]
 
 mod suite;

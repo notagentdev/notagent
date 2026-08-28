@@ -1,9 +1,3 @@
-//! Spinner with a message.
-//!
-//! 1:1 port of `packages/tui/src/components/loader.ts` (92 LOC). The animation
-//! interval becomes a deadline the caller drives (deviation class 1); TS extends
-//! `Text`, the Rust port owns one.
-
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -50,7 +44,6 @@ pub struct Loader {
 }
 
 impl Loader {
-    /// New loader (TS default message: `"Loading..."`).
     pub fn new(
         spinner_color_fn: ColorFn,
         message_color_fn: ColorFn,
@@ -80,7 +73,6 @@ impl Loader {
     }
 
     /// Animate the message itself instead of drawing a spinner beside it.
-    ///
     /// `palette` is `None` when the terminal cannot render the fade; the
     /// spinner still goes, and the message is drawn once and left alone.
     pub fn set_shimmer(&mut self, palette: Option<ShimmerPalette>) {

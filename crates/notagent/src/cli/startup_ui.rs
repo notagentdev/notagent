@@ -1,21 +1,3 @@
-//! Port of `packages/coding-agent/src/cli/startup-ui.ts`.
-//!
-//! The dialogs that run before the interactive mode exists: first-time setup,
-//! the startup selector and the session picker's screen. What is ported here is
-//! the decision half — whether first-time setup runs at all — because it is
-//! reached from the headless paths too.
-//!
-//! The dialog half runs over the pump seam workstream A delivered for C-14
-//! (interface request A-20): the terminal is split into a handle the TUI owns
-//! and a pump the loop drives, and `run_until` renders and pumps until the
-//! dialog resolves. Where TypeScript builds a `new Promise` whose callbacks
-//! resolve while the Node event loop keeps rendering, the port sends on a
-//! `oneshot` and waits for it in `run_until` (deviation class 1, same shape).
-//!
-//! Deviation (class 2): `showStartupInput` and its `ExtensionInputComponent`
-//! went with the extension system — the only caller was the extension half of
-//! the project-trust context (`plans/facts/extension-boundary.md` §3).
-
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -50,10 +32,8 @@ const OFFICIAL_APP_NAME: &str = "notagent";
 const OFFICIAL_CONFIG_DIR_NAME: &str = ".notagent";
 
 /// Whether this build is the official distribution rather than a fork.
-///
 /// Deviation (class 1): the arguments are explicit instead of read from the
 /// module constants, because a Rust test cannot swap a `const` the way the
-/// TypeScript suite mocks the config module.
 pub fn is_official_distribution(package_name: &str, app_name: &str, config_dir_name: &str) -> bool {
     package_name == OFFICIAL_PACKAGE_NAME
         && app_name == OFFICIAL_APP_NAME
@@ -86,9 +66,6 @@ pub fn should_run_first_time_setup(settings_path: Option<&Path>) -> bool {
 // ============================================================================
 
 /// A startup dialog's screen together with the pump its loop drives.
-///
-/// TypeScript hands `createStartupTui` a `ProcessTerminal` and lets the Node
-/// event loop pump it; here the terminal is split in two (interface request
 /// A-20), and both halves travel together.
 pub struct StartupTui {
     pub ui: TuiMainScreen,
@@ -170,11 +147,7 @@ pub async fn create_startup_tui(settings_manager: &SettingsManager) -> StartupTu
 }
 
 /// `startStartupTui(ui, settingsManager)`
-///
-/// TypeScript starts the screen and leaves the theme detection running in the
-/// background (`void applyDetectedStartupTheme`). The port awaits it inside the
 /// render loop, so the dialog is already drawn and reacting while the terminal
-/// answers (deviation class 1; the detection is capped at 100 ms either way).
 pub(crate) async fn start_startup_tui(tui: &mut StartupTui, settings_manager: &SettingsManager) {
     tui.ui.start();
     let theme_setting = settings_manager.get_theme_setting();
@@ -214,9 +187,6 @@ async fn clear_startup_tui(tui: &mut StartupTui) {
 }
 
 /// `showStartupSelector(settingsManager, title, options)`
-///
-/// Deviation (class 1): the TypeScript version is generic over the value behind
-/// each label and hands it back; the port returns the chosen label, which every
 /// caller maps itself — a generic parameter would have to travel through the
 /// selector's boxed callbacks for no gain.
 pub async fn show_startup_selector(
@@ -319,7 +289,7 @@ mod tests {
         ResolvedResource {
             path: path.to_owned(),
             metadata: PathMetadata {
-                source: "oracle".to_owned(),
+                source: "test-source".to_owned(),
                 scope: SourceScope::User,
                 origin: SourceOrigin::TopLevel,
                 base_dir: None,
@@ -343,10 +313,10 @@ mod tests {
             theme_json["name"] = serde_json::json!(name);
             theme_json.to_string()
         };
-        let first = write("one.json", &named("oracle-one"));
-        let duplicate = write("two.json", &named("oracle-one"));
+        let first = write("one.json", &named("source-one"));
+        let duplicate = write("two.json", &named("source-one"));
         let broken = write("broken.json", "{ not json");
-        let disabled = write("disabled.json", &named("oracle-off"));
+        let disabled = write("disabled.json", &named("source-off"));
 
         let themes = load_themes(&[
             resource(&first, true),
@@ -356,6 +326,6 @@ mod tests {
         ]);
 
         let names: Vec<Option<String>> = themes.into_iter().map(|theme| theme.name).collect();
-        assert_eq!(names, vec![Some("oracle-one".to_owned())]);
+        assert_eq!(names, vec![Some("source-one".to_owned())]);
     }
 }

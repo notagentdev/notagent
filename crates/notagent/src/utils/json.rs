@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/json.ts` (6 LOC).
-
 use regex::{Captures, Regex};
 use std::sync::LazyLock;
 

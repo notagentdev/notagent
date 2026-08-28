@@ -1,5 +1,4 @@
 //! The harness under test.
-//!
 //! The scenarios wait for C task 13, so nothing else would exercise the driver
 //! and it would rot before its first real run. These cases drive every method
 //! of [`InteractiveDriver`] against a real `TuiMainScreen` over the virtual
@@ -16,7 +15,6 @@ use notagent_tui::tui_main_screen::TuiMainScreen;
 use super::harness::{InteractiveDriver, KEY_DOWN, KEY_ENTER, LIST_CURSOR, run_local};
 
 /// Lines behind a handle, so a case can change them after mounting (the same
-/// trick `packages/tui/test/tui-render.test.ts` plays with a plain object).
 #[derive(Clone, Default)]
 struct Lines(Rc<RefCell<Vec<String>>>);
 

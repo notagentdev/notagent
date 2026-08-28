@@ -1,8 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/tools-manager.ts`.
-//!
-//! Makes `fd` and `rg` available: prefer a system binary, otherwise download the
-//! matching release archive into the managed bin directory.
-
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 

@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-//! Port of `packages/coding-agent/test/client/support.ts` (111 LOC).
-//!
 //! The in-memory server speaks the real wire format, so the client layer is
 //! exercised through the same encode/decode path as in production. The byte
 //! server mirrors the one in `crates/notagent-client/tests/support/mod.rs`.
@@ -133,7 +131,6 @@ pub fn server_snapshot() -> ServerSnapshot {
     }
 }
 
-/// `sessionSnapshot` — the overrides of the TS helper are plain field writes.
 pub fn session_snapshot(id: &str) -> SessionSnapshot {
     SessionSnapshot {
         id: id.to_owned(),

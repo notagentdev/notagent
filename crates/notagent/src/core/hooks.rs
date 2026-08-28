@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/hooks/hooks.ts`.
-//!
-//! Hook declarations: what a user writes, and what survives validation.
-//!
-//! A hook is an event, an optional matcher, a shell command and an optional
-//! timeout — the reference shape, so an existing hook file ports over
-//! unchanged. Declarations are read from the user agent directory and the
-//! project directory, the same two-level precedence modes already use.
-//!
-//! Everything rejected here is reported rather than dropped. A hook that
-//! silently does not run is worse than one that never existed, because the
-//! author believes it is in force.
-
 pub mod dispatch;
 pub mod events;
 pub mod payload;
@@ -56,7 +43,6 @@ pub struct LoadHooksResult {
 }
 
 /// `String(value)` for the values a declaration can carry, so a diagnostic
-/// quotes what was written the way the TypeScript does.
 fn describe_value(value: Option<&Value>) -> String {
     match value {
         None => "undefined".to_string(),

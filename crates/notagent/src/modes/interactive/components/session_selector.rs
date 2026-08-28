@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/session-selector.ts` (1 031 LOC).
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
@@ -55,7 +52,6 @@ fn shorten_path(path: &str) -> String {
 fn format_session_date(modified_ms: i64, now_ms: i64) -> String {
     let diff_ms = now_ms - modified_ms;
     // `Math.floor` on a negative difference rounds away from zero, which is what
-    // a clock skew would produce in TypeScript as well.
     let floor_div = |value: i64, divisor: i64| (value as f64 / divisor as f64).floor() as i64;
     let diff_mins = floor_div(diff_ms, 60_000);
     let diff_hours = floor_div(diff_ms, 3_600_000);
@@ -122,7 +118,6 @@ pub struct SessionSelectorHeader {
     show_path: bool,
     confirming_delete_path: Option<String>,
     status_message: Option<StatusMessage>,
-    /// `setTimeout` of `setStatusMessage`; timers never call back in this port,
     /// so the deadline is polled (`status_deadline`/`tick_status`).
     status_deadline: Option<Instant>,
     show_rename_hint: bool,
@@ -354,7 +349,6 @@ struct FlatSessionNode {
 /// Build a tree structure from sessions based on parentSessionPath.
 /// Returns root nodes sorted by modified date (descending).
 fn build_session_tree(sessions: &[SessionInfo]) -> Vec<SessionTreeNode> {
-    // The TypeScript version links `SessionTreeNode` objects through a map; the
     // port builds the same shape by index, which avoids the shared mutable
     // references Rust would otherwise need.
     let canonical: Vec<String> = sessions
@@ -456,8 +450,6 @@ fn flatten_session_tree(roots: &[SessionTreeNode]) -> Vec<FlatSessionNode> {
 // --- session list ------------------------------------------------------------------
 
 /// Requests the list raises that only the selector can carry out.
-///
-/// TypeScript wires these to callbacks that close over the selector; the port
 /// records them and the selector drains them right after dispatch (class 1,
 /// same shape as the tree selector).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -495,12 +487,10 @@ pub struct SessionList {
     pub on_select: Option<SessionPathCallback>,
     /// Invoked on cancel.
     pub on_cancel: Option<Box<dyn FnMut()>>,
-    /// Wired by the selector; never invoked by the list in TypeScript either.
     pub on_exit: Option<Box<dyn FnMut()>>,
     /// Invoked when the delete confirmation is raised or dropped.
     pub on_delete_confirmation_change: Option<DeleteConfirmationCallback>,
     /// Replaces the selector's own deletion when set — `SessionList.onDeleteSession`
-    /// holds one handler, and whoever sets it last wins (TypeScript sets it from
     /// the selector's constructor, tests overwrite it).
     pub on_delete_session: Option<SessionPathCallback>,
     /// Invoked when the path column is toggled.
@@ -768,7 +758,6 @@ impl Component for SessionList {
             let prefix_width = visible_width(&prefix);
             let right_width = visible_width(&right_part) + 2; // +2 for spacing
             // `width - 2 - prefixWidth - rightWidth` can go negative in
-            // TypeScript; the `Math.max(10, …)` below absorbs it.
             let available_for_msg =
                 width as isize - 2 - prefix_width as isize - right_width as isize; // -2 for cursor
 
@@ -867,7 +856,6 @@ impl Component for SessionList {
             return;
         }
 
-        // The only lookup TypeScript makes through the injected manager rather
         // than the global registry.
         if self
             .keybindings
@@ -1007,9 +995,6 @@ pub struct DeleteOutcome {
 }
 
 /// Delete a session file, trying the `trash` CLI first, then falling back to unlink
-///
-/// `spawnSync` and the awaited `unlink` are both blocking in TypeScript too, so
-/// the port stays synchronous.
 pub fn delete_session_file(session_path: &str) -> DeleteOutcome {
     // Try `trash` first (if installed)
     let trash_args: Vec<&str> = if session_path.starts_with('-') {
@@ -1100,8 +1085,6 @@ pub enum LoadReason {
 }
 
 /// A load the caller has to run.
-///
-/// TypeScript awaits the loader inside the component; the port hands the request
 /// out and takes the result back, which keeps every state transition (scope and
 /// sequence checks included) inside the component (class 1).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1118,9 +1101,6 @@ pub struct LoadRequest {
 #[derive(Default)]
 pub struct SessionSelectorOptions {
     /// Renames a session; `None` disables the rename mode.
-    ///
-    /// Synchronous, unlike the TypeScript promise: session writes are
-    /// synchronous throughout this port.
     pub rename_session: Option<RenameSessionCallback>,
     /// Overrides whether the rename hint is shown.
     pub show_rename_hint: Option<bool>,
@@ -1309,7 +1289,6 @@ impl SessionSelectorComponent {
         self.container.add_child(border());
     }
 
-    /// The list; the TypeScript tests reach for it to drive the component.
     pub fn get_session_list(&self) -> &Rc<RefCell<SessionList>> {
         &self.session_list
     }

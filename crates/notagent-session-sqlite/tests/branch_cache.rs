@@ -1,5 +1,3 @@
-//! Port of `packages/session-backends/sqlite-node/test/branch-cache.test.ts`.
-
 use notagent_agent::AgentMessage;
 use notagent_ai::{TextContent, TextOrImageContent, UserContent, UserMessage};
 use notagent_session_sqlite::session_types::{
@@ -81,7 +79,6 @@ async fn append_compaction(session: &Session, summary: &str, tokens_before: i64)
     entry.id().to_owned()
 }
 
-/// Port of `getSqliteBranch`: the newest window up to the first compaction, oldest first.
 fn branch(
     session: &Session,
 ) -> Result<Vec<String>, notagent_session_sqlite::session_types::SessionError> {

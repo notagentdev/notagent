@@ -1,16 +1,3 @@
-//! Ported from `packages/coding-agent/test/compaction.test.ts`,
-//! `compaction-serialization.test.ts` and `compaction-summary-reasoning.test.ts`.
-//!
-//! Not ported: `compaction-extensions*.test.ts` and `trigger-compact-extension.test.ts`
-//! (extension system), and the two `describe.skipIf(!ANTHROPIC_OAUTH_TOKEN)` cases,
-//! which need a real provider key. The `buildSessionContext` cases of
-//! `compaction.test.ts` live with the session manager, where they were ported
-//! with plan task 6.
-//!
-//! Deviation (class 1): where the TypeScript mocks `completeSimple`, the cases
-//! below hand in a recording stream function — the same seam the session uses in
-//! production, so the assertions run through the real request path.
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -107,7 +94,6 @@ fn assistant(text: &str) -> AgentMessage {
     AgentMessage::Assistant(assistant_message(text, mock_usage(100, 50, 0, 0)))
 }
 
-/// Builds entries the way the TypeScript helpers do: sequential ids, each one
 /// parented on the last.
 #[derive(Default)]
 struct EntryBuilder {

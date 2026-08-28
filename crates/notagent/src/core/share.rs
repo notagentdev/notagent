@@ -1,11 +1,3 @@
-//! The TUI-free half of `/share` —
-//! `packages/coding-agent/src/modes/interactive/interactive-mode.ts:6140-6236`
-//! (`handleShareCommand`) plus `getShareViewerUrl` from `config.ts`.
-//!
-//! What stays in the interactive mode: the cancellable loader, the editor
-//! swap and the status lines. What is here: the `gh` calls, the gist id and the
-//! viewer URL (interface request B-9).
-
 use std::path::{Path, PathBuf};
 
 use futures::future::BoxFuture;
@@ -22,7 +14,6 @@ pub struct SharedGist {
     pub viewer_url: String,
 }
 
-/// The failures the command reports, with the TypeScript's wording.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ShareError {
     #[error("GitHub CLI is not logged in. Run 'gh auth login' first.")]
@@ -45,7 +36,6 @@ pub struct GhOutput {
 }
 
 /// The two `gh` calls, behind a seam so the suite can drive them without a
-/// GitHub CLI (deviation class 1, the same seam the package manager uses).
 pub trait ShareCommandRunner: Send + Sync {
     /// `spawnSync("gh", ["auth", "status"])` — the exit status, or `None` when
     /// the process produced none (missing binary included).
@@ -60,9 +50,7 @@ pub fn share_temp_html_path() -> PathBuf {
 }
 
 /// The `gh auth status` gate.
-///
 /// Bug compatibility: `spawnSync` does not throw when `gh` is missing, it
-/// returns a result without a status, so the TypeScript falls into the
 /// "not logged in" branch rather than the "not installed" one it has ready.
 /// [`ShareError::NotInstalled`] therefore stays unreachable from here, exactly
 /// as in the original.
@@ -133,7 +121,6 @@ impl ShareCommandRunner for ProcessShareCommandRunner {
                     stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
                     code: output.status.code(),
                 },
-                // A spawn failure is what the TypeScript sees as a closed process
                 // without an exit code.
                 Err(error) => GhOutput {
                     stdout: String::new(),

@@ -1,10 +1,3 @@
-//! Compatibility resolution for OpenAI-compatible completions endpoints.
-//!
-//! 1:1 port of `detectCompat`/`getCompat` from
-//! `packages/ai/src/api/openai-completions.ts:1444-1577`. The workstream plan names this
-//! matrix (24 fields, 11 thinking formats) as the biggest risk of the OpenAI family, so
-//! it is ported and tested on its own before the request builder uses it.
-
 use serde_json::{Map, Value};
 
 use crate::types::{
@@ -206,7 +199,6 @@ fn resolve_compat(
             .requires_reasoning_content_on_assistant_messages
             .unwrap_or(detected.requires_reasoning_content_on_assistant_messages),
         thinking_format: compat.thinking_format.unwrap_or(detected.thinking_format),
-        // TS falls back to `{}` here, not to the detected value.
         open_router_routing: compat.open_router_routing.clone().unwrap_or_default(),
         vercel_gateway_routing: compat
             .vercel_gateway_routing

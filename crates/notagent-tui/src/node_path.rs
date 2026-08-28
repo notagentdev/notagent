@@ -1,5 +1,4 @@
 //! Node.js `path` and `os.homedir()` semantics.
-//!
 //! The autocomplete provider builds display paths with `path.join`,
 //! `path.dirname` and `path.basename` and relies on their normalization (`.`
 //! and `..` resolution, collapsed separators). `std::path` does not normalize,

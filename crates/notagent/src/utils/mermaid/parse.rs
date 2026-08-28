@@ -1,9 +1,3 @@
-//! Port of `grok-mermaid/src/parse.ts` (1 150 LOC).
-//!
-//! Complete: statement splitting, the diagram-kind header test and all five
-//! grammars (`graph`/`flowchart`, `stateDiagram`, `classDiagram`, `erDiagram`,
-//! `sequenceDiagram`).
-
 use super::graph::{
     ClassInfo, Dir, Edge, Graph, Head, LineKind, MAX_EDGES, MAX_GROUP_DEPTH, MAX_GROUPS,
     MAX_MEMBERS, MAX_NODES, Shape, empty_class_info, parse_dir,
@@ -21,7 +15,6 @@ fn flush_statement(cur: &mut String, out: &mut Vec<String>) {
 }
 
 /// Split one source line into statements on `;`, stopping at a `%%` comment.
-///
 /// Quoted spans are opaque, so a label may contain `;` and `%%`.
 pub fn split_statements(line: &str, out: &mut Vec<String>) {
     let chars: Vec<char> = line.chars().collect();
@@ -90,7 +83,6 @@ pub enum DiagramKind {
 
 /// The kind of diagram `src` declares, or `None` if its header names no type
 /// this renderer draws.
-///
 /// Reads the header only — it says nothing about whether the body parses.
 pub fn diagram_kind(src: &str) -> Option<DiagramKind> {
     let kind = header_kind(&statements_of(src))?;
@@ -180,7 +172,6 @@ fn parse_subgraph_decl(rest: &str) -> (String, String) {
 }
 
 /// A chain of `node link node link node ...`, each link fanning out over `&`.
-///
 /// Parses as far as it can and keeps the prefix, matching upstream and
 /// mermaid.js. Whatever it could not read is recorded in `graph.warnings`.
 fn parse_statement(statement: &str, graph: &mut Graph) {
@@ -334,7 +325,6 @@ fn read_shape_at(chars: &[char], index: usize) -> Shaped {
 }
 
 /// Read label text up to `closer`.
-///
 /// Quoting is decided by the first non-space character: inside a quoted label
 /// the closer is ignored until the quote closes, so `A["a] b"]` is one node.
 /// An unquoted label ends at the first closer, so `A[5" pipe]` keeps its quote.
@@ -394,7 +384,6 @@ struct Link {
 }
 
 /// Read a link operator and its label.
-///
 /// Labels come in two forms: `-->|text|` and the inline `-- text -->`, the
 /// latter only when the first operator carried no head.
 fn parse_link(chars: &[char], start: usize) -> Option<Link> {

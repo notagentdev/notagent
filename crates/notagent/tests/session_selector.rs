@@ -1,6 +1,3 @@
-//! Port of `packages/coding-agent/test/session-selector-path-delete.test.ts` (354 LOC)
-//! and `packages/coding-agent/test/session-selector-rename.test.ts` (111 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -56,7 +53,6 @@ fn keybindings() -> Rc<RefCell<KeybindingsManager>> {
 }
 
 /// Builds a selector and settles the initial `current` load, which is what
-/// `await flushPromises()` does in the TypeScript suites.
 fn selector_with(
     sessions: Vec<SessionInfo>,
     options: SessionSelectorOptions,

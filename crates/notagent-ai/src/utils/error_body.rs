@@ -1,10 +1,3 @@
-//! Normalization of provider HTTP error objects.
-//!
-//! 1:1 port of `packages/ai/src/utils/error-body.ts` (149 LOC). The TS version probes
-//! SDK-specific field names (Mistral, openai, @google/genai, AWS Bedrock); the Rust
-//! port receives the same information from the HTTP layer as an explicit struct
-//! (deviation class 3: provider SDKs are replaced by reqwest).
-
 use serde_json::Value;
 
 pub const MAX_PROVIDER_ERROR_BODY_CHARS: usize = 4000;

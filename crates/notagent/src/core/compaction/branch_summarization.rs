@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/core/compaction/branch-summarization.ts`.
-//!
-//! When the user navigates to a different point in the session tree, the branch
-//! being left is summarized so the work done there is not silently lost. The
-//! summary is attached at the destination, not at the abandoned branch: it is
-//! context for what happens next, not a footnote on what was left.
-
 use notagent_agent::types::{AgentMessage, StreamFn, ThinkingLevel};
 use notagent_ai::types::{Model, StopReason, Usage};
 use notagent_ai::utils::retry::{RetryCallbacks, RetryPolicy};
@@ -92,7 +85,6 @@ pub struct GenerateBranchSummaryOptions {
 
 /// Collects the entries that would be abandoned by navigating from `old_leaf_id`
 /// to `target_id`.
-///
 /// Compaction boundaries are not stopped at: their summaries are content in
 /// their own right and belong in what the branch summary sees.
 pub fn collect_entries_for_branch_summary(
@@ -147,9 +139,7 @@ pub fn collect_entries_for_branch_summary(
 
 /// Like the compaction module's version, but compaction entries do contribute
 /// here: their summary is the only record of what came before them.
-///
 /// Deviation (class 1): a branch-summary entry whose summary is empty
-/// contributes nothing, where TypeScript contributes an empty message. Both
 /// estimate to zero tokens and serialize to nothing.
 fn message_from_entry(entry: &SessionEntry) -> Option<AgentMessage> {
     match session_entry_to_context_messages(entry).into_iter().next() {
@@ -161,7 +151,6 @@ fn message_from_entry(entry: &SessionEntry) -> Option<AgentMessage> {
 
 /// Selects the messages that fit the budget, newest first, and collects file
 /// operations from every entry regardless of what fits.
-///
 /// The two passes are deliberate: the file lists are cumulative across nested
 /// branch summaries, and truncating them with the message budget would make a
 /// long branch forget which files it had touched.
@@ -174,7 +163,6 @@ pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> Br
         let SessionEntry::BranchSummary(entry) = entry else {
             continue;
         };
-        // Only summaries this port wrote carry details it can read.
         if entry.from_hook == Some(true) {
             continue;
         }
@@ -375,8 +363,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// The TypeScript suite exercises these two through
-    /// `agent-session-tree-navigation.test.ts`, which needs a whole session.
     /// The collection and budgeting rules are cheap to pin directly.
     struct Tree {
         entries: Vec<SessionEntry>,
@@ -509,7 +495,6 @@ mod tests {
         assert!(prepared.file_ops.edited.contains("/written.rs"));
     }
 
-    /// A summary an extension produced carries details this port cannot read.
     #[test]
     fn ignores_the_details_of_a_summary_it_did_not_write() {
         let mut entry = branch_summary_entry("s", None, json!({ "readFiles": ["/read.rs"] }));

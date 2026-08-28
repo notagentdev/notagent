@@ -1,25 +1,8 @@
-//! Port of `packages/coding-agent/src/core/tasks/types.ts`.
-//!
-//! The record every piece of background work is described by.
-//!
-//! There is deliberately one shape here rather than one per kind. A shell
-//! command and a delegated subagent differ in how they are started and in what
-//! they carry as extras, and in nothing else that matters to the machinery
-//! around them: both are registered, listed, persisted, waited on, stopped, and
-//! announced when they settle.
-//!
-//! Deviation (class 1): TS models a task as an object literal with methods; the
-//! port uses the [`BackgroundTask`] trait behind an `Arc`, because the manager
-//! hands the same task to a spawned tokio task and keeps reading `to_info` from
-//! it. A task that mutates while it runs (a shell task learning its pid) needs
-//! interior mutability for the same reason.
-
 use notagent_agent::types::BoxFuture;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 /// Where a task stands.
-///
 /// `lost` is not reachable while the process that owns a task is alive: it is
 /// assigned during reconciliation to a record that was still marked running
 /// when the process holding it exited.
@@ -246,7 +229,6 @@ impl TaskInfo {
 }
 
 /// What a running task is given by the manager.
-///
 /// A task never touches the record, the log or the notification path directly.
 /// It reports output, watches the signal, and settles exactly once; everything
 /// that follows from settling is the manager's.
@@ -279,7 +261,6 @@ pub trait TaskSinkTarget: Send + Sync {
 }
 
 /// One piece of background work.
-///
 /// `force_stop` is separate from cancelling the signal because a graceful stop
 /// is a request the work may ignore. The manager signals first, waits, and only
 /// then reaches for this — a shell task kills its process group here, and a
@@ -289,8 +270,6 @@ pub trait BackgroundTask: Send + Sync {
     /// Leading segment of the generated id, so an id says what it is.
     fn id_prefix(&self) -> &str;
     fn description(&self) -> String;
-    /// Deviation (class 1): a TS `throw` out of `start` becomes `Err`; the
-    /// manager settles such work exactly as the TS `catch` does.
     fn start<'a>(&'a self, sink: TaskSink) -> BoxFuture<'a, Result<(), String>>;
     /// Called when a foreground task is moved to the background.
     fn on_detach(&self) {}

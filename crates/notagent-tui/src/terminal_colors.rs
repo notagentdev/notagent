@@ -1,9 +1,3 @@
-//! Parsers for terminal color queries.
-//!
-//! 1:1 port of `packages/tui/src/terminal-colors.ts` (73 LOC). Pulled forward
-//! from task 12 of the workstream plan because the TUI core (task 5) consumes
-//! both parsers in its input dispatch.
-
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -106,7 +100,6 @@ fn strip_rgb_prefix(value: &str) -> &str {
 }
 
 /// Parse a `CSI ? 997 ; n` color-scheme report.
-///
 /// Repeated reports keep the last value, exactly like the JavaScript capture
 /// group semantics of the original.
 pub fn parse_terminal_color_scheme_report(data: &str) -> Option<TerminalColorScheme> {

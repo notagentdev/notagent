@@ -1,10 +1,3 @@
-//! Ports of `packages/ai/test/tokens.test.ts` (365 LOC) and
-//! `packages/ai/test/total-tokens.test.ts` (882 LOC).
-//!
-//! `tokens` checks what usage survives an abort per provider family; `total-tokens`
-//! checks that `usage.totalTokens` equals the sum of its components after two requests
-//! with a cacheable prefix. One test per TS `describe` block, gated as in TS.
-
 mod e2e_support;
 
 use e2e_support::*;
@@ -12,7 +5,6 @@ use notagent_ai::types::*;
 use tokio_util::sync::CancellationToken;
 
 // ---------------------------------------------------------------------------
-// tokens.test.ts
 // ---------------------------------------------------------------------------
 
 /// `testTokensOnAbort(llm, options)`
@@ -228,7 +220,6 @@ async fn tokens_azure_openai_responses_provider() {
 #[tokio::test(flavor = "multi_thread")]
 async fn tokens_cerebras_provider() {
     skip_unless!(env("CEREBRAS_API_KEY").is_some(), "CEREBRAS_API_KEY");
-    // TS walks the whole Cerebras catalog here.
     for llm in notagent_ai::model_catalog::get_builtin_models("cerebras") {
         test_tokens_on_abort(&llm, &simple_options(None)).await;
     }
@@ -312,10 +303,8 @@ async fn tokens_amazon_bedrock_provider() {
 }
 
 // ---------------------------------------------------------------------------
-// total-tokens.test.ts
 // ---------------------------------------------------------------------------
 
-/// The long prefix TS uses to trigger caching (>2k bytes for most providers).
 fn long_system_prompt() -> String {
     let filler = std::iter::repeat_n(
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.",

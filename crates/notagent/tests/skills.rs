@@ -1,5 +1,3 @@
-//! Ported from `packages/coding-agent/test/skills.test.ts`.
-
 use std::path::{Path, PathBuf};
 
 use notagent::core::skills::{
@@ -492,7 +490,6 @@ fn keeps_the_first_skill_of_a_name_collision() {
     assert!(collision_warnings[0].contains("name collision"));
 }
 
-/// The real collision path of `loadSkills`, which the TypeScript test only
 /// simulates: the loser is reported as a diagnostic and the winner survives.
 #[test]
 fn reports_a_collision_diagnostic_and_keeps_the_first_skill() {

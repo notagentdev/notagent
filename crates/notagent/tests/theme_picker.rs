@@ -1,5 +1,3 @@
-//! Port of `packages/coding-agent/test/theme-picker.test.ts` (51 LOC).
-
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 

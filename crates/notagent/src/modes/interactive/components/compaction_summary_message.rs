@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/compaction-summary-message.ts` (59 LOC).
-
 use std::rc::Rc;
 
 use notagent_agent::CompactionSummaryMessage;

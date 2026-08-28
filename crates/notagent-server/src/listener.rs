@@ -1,5 +1,3 @@
-//! Port of `packages/server/src/listener.ts`.
-
 use std::sync::Arc;
 
 use async_trait::async_trait;

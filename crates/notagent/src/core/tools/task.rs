@@ -1,31 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tools/task.ts` (tool half).
-//!
-//! The `task` tool: delegates work to subagents.
-//!
-//! A subagent here is the same unified agent under one of two types —
-//! `read-only` or `worker` — specialised by the skills it is told to load. It
-//! used to target a *mode* instead, and that was the wrong axis: `auto`, `manual` and `yolo` are worker shells that differ
-//! only in how often the *user* is asked, which is nothing a child can act on.
-//! Offering them as three roles gave the model a choice with no content.
-//!
-//! A delegated run is a background task like any other. That is not a detail of
-//! the implementation: it is what lets a subagent be moved out of the turn that
-//! started it, appear in the same list as a running command, be stopped the same
-//! way, and announce its own result.
-//!
-//! Four things are enforced rather than asked for. A child's tools come from its
-//! type's shell, so guidance it ignores still cannot make it write. A read-only
-//! parent may only reach a read-only child. A child has neither the delegation
-//! tool nor the tools that observe background work. And a child's approval level
-//! is the parent's, read live at every call rather than declared — so delegating
-//! can never move work out from under the rules the user set.
-//!
-//! Every child also carries a star name (`core/delegation/aliases.rs`). A uuid
-//! is the right handle for continuing a child and the wrong one for showing it:
-//! with three running, the user needs to know which of them is asking.
-//!
-//! `renderCall`/`renderResult` need the theme and are wired in task 13.
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -59,7 +31,6 @@ use crate::core::tools::tool_definition::{
 use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 /// A skill this session can hand to a child, as the tool reads it.
-///
 /// Carries the description because that is what the delegating model now
 /// chooses on: with two types and a skill catalogue, the skill is the part that
 /// says what the child will be good at.
@@ -95,17 +66,11 @@ pub struct TaskToolSources {
     pub resolve_tool: Option<crate::core::delegation::run::ResolveToolFn>,
     pub tool_options: Option<Arc<dyn Fn() -> Option<ToolsOptions> + Send + Sync>>,
     /// Where the transcripts of this session's children are kept.
-    ///
-    /// Part of the sources because TS keys its `WeakMap` on the sources object:
     /// a mode switch rebuilds the tool but keeps the sources, and a subagent
     /// started before the switch stays continuable after it.
     pub transcripts: TaskTranscriptStore,
-    /// The working directory a child reads from. TS reads `process.cwd()`
-    /// directly at the call; the port takes it from the session, which is the
-    /// same value and testable (deviation class 1).
     pub cwd: Option<Arc<dyn Fn() -> String + Send + Sync>>,
     /// The model children run on instead of the parent's, when the user pinned
-    /// one with `/subagent-model` (addition over the TS original, user
     /// decision 2026-08-16, v0.1.6). Queried at spawn time, so a mid-session
     /// change applies to the next delegation; `None` inherits.
     pub subagent_model: Option<Arc<dyn Fn() -> Option<Model> + Send + Sync>>,
@@ -132,8 +97,6 @@ impl Default for TaskToolSources {
 }
 
 /// Transcripts of children started in this session, for continuation.
-///
-/// Deviation (class 1): TS keys a `WeakMap` on the sources object; the port
 /// hands the same map around explicitly, so it outlives a rebuilt tool exactly
 /// as the `WeakMap` entry does.
 #[derive(Clone, Default)]
@@ -151,12 +114,10 @@ struct KeptTranscript {
 }
 
 /// The types this session may delegate to.
-///
 /// Two filters, and they answer different questions. The shell is the hard one:
 /// a read-only session must not reach a worker, or delegation would be a way out
 /// of the gate. The parent mode's `subagents` list is the soft one — every
 /// candidate is permitted and the author wanted only some of them offered.
-///
 /// The `subagents` frontmatter field names agent types. A list naming none of
 /// them leaves nothing to delegate to, which is reported as such rather than
 /// silently ignored.
@@ -187,7 +148,6 @@ fn describe_agent_types(types: &[SubagentType]) -> String {
 }
 
 /// The skill catalogue, as the delegating model reads it.
-///
 /// Only names and descriptions. A path would invite the model to reason about
 /// where the skill lives, which is the child's business and not the caller's.
 fn describe_skills(skills: &[DelegatableSkill]) -> String {
@@ -226,7 +186,6 @@ fn render_background_result(
 
 pub struct TaskToolDefinition {
     sources: TaskToolSources,
-    /// Deviation (class 1): the TS getter builds a fresh string on every read,
     /// but a Rust `&str` has to outlive the call. Every distinct description
     /// this tool has ever advertised is therefore kept — appended, never
     /// replaced — so the reference stays valid for as long as the tool. The
@@ -364,12 +323,10 @@ impl TaskToolDefinition {
     }
 
     /// Reads the skills a call asked for, off this session's catalogue.
-    ///
     /// An unknown name is refused rather than skipped. A child that silently
     /// started without the skill it was supposed to follow would produce work
     /// that looks right and was done under the wrong guidance — the one failure
     /// mode where a loud error is cheaper than a quiet one.
-    ///
     /// A skill whose file cannot be read is the same case, so it is reported
     /// with the path rather than handed over as an empty body.
     fn resolve_skills(&self, params: &Value) -> Result<Vec<ChildSkill>, ToolExecutionError> {

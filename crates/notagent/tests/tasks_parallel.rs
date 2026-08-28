@@ -1,13 +1,3 @@
-//! New suite (no TS counterpart): background work runs in parallel in wall-clock
-//! time.
-//!
-//! The TS reference runs its tasks on one event loop, so "parallel" there means
-//! interleaved awaits. The master plan requires the port to run them as real
-//! tokio tasks, and the difference is only visible on the clock: eight commands
-//! that each take half a second must finish in about half a second in total, not
-//! four. These cases measure exactly that, once through the shell tool with real
-//! child processes and once through the manager with delegated work.
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

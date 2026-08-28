@@ -1,5 +1,3 @@
-//! Port of `packages/client/test/unix.test.ts`.
-
 mod support;
 
 use std::sync::Arc;
@@ -286,7 +284,6 @@ async fn rejects_connection_errors() {
         Arc::new(|_: PiError| {}),
     );
     let error = factory(handlers).await.err().expect("rejects");
-    // TS checks `code: "ENOENT"`; Rust passes the operating system message through.
     assert!(
         error.message().to_lowercase().contains("no such file"),
         "{}",

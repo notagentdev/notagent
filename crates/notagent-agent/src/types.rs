@@ -1,7 +1,3 @@
-//! Kerntypen des Agent-Loops.
-//!
-//! 1:1-Port von `packages/agent/src/types.ts` (443 LOC).
-
 use std::collections::BTreeSet;
 use std::fmt;
 use std::future::Future;
@@ -21,12 +17,9 @@ use crate::harness::messages::{
     BashExecutionMessage, BranchSummaryMessage, CompactionSummaryMessage, CustomMessage,
 };
 
-/// Abkürzung für die geboxten Futures der Loop-Callbacks.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// `StreamFn` — vom Agent-Loop benutzte Stream-Funktion; `Models.streamSimple` erfüllt sie.
-///
-/// Vertrag: wirft nicht; Fehler werden im Strom als `error`-Event mit einer
+/// Streaming function used by the agent loop.
 /// `AssistantMessage` (`stopReason` `error`/`aborted` plus `errorMessage`) kodiert.
 pub type StreamFn = Arc<
     dyn Fn(
@@ -54,7 +47,6 @@ pub enum QueueMode {
     OneAtATime,
 }
 
-/// `AgentToolCall` — ein `toolCall`-Block aus einer Assistant-Nachricht.
 pub type AgentToolCall = ToolCall;
 
 /// `BeforeToolCallResult { block?, reason?, terminate? }`
@@ -64,20 +56,15 @@ pub struct BeforeToolCallResult {
     pub block: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    /// Frühzeitiger Abbruch greift nur, wenn ausnahmslos jedes finalisierte Ergebnis
-    /// des Batches `terminate: true` meldet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminate: Option<bool>,
 }
 
-/// `AfterToolCallResult` — feldweise Überschreibung des ausgeführten Tool-Ergebnisses.
-/// Kein Deep-Merge: gesetzte Felder ersetzen den Originalwert vollständig.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AfterToolCallResult {
     pub content: Option<Vec<TextOrImageContent>>,
     pub details: Option<Value>,
     pub is_error: Option<bool>,
-    /// Usage der finalen Tool-Ausführung; zählt nicht zum LLM-Kontext.
     pub usage: Option<Usage>,
     pub terminate: Option<bool>,
 }
@@ -87,7 +74,6 @@ pub struct AfterToolCallResult {
 pub struct BeforeToolCallContext {
     pub assistant_message: AssistantMessage,
     pub tool_call: AgentToolCall,
-    /// Validierte Tool-Argumente für das Zielschema.
     pub args: Value,
     pub context: AgentContext,
 }
@@ -98,7 +84,6 @@ pub struct AfterToolCallContext {
     pub assistant_message: AssistantMessage,
     pub tool_call: AgentToolCall,
     pub args: Value,
-    /// Das ausgeführte Ergebnis vor allen `after_tool_call`-Overrides.
     pub result: AgentToolResult,
     pub is_error: bool,
     pub context: AgentContext,
@@ -108,17 +93,14 @@ pub struct AfterToolCallContext {
 #[derive(Debug, Clone)]
 pub struct ShouldStopAfterTurnContext {
     pub message: AssistantMessage,
-    /// Tool-Ergebnisse aus dem vorangegangenen `turn_end`-Event.
     pub tool_results: Vec<ToolResultMessage>,
     pub context: AgentContext,
-    /// Nachrichten, die dieser Loop-Aufruf zurückgeben würde, wenn er hier endet.
     pub new_messages: Vec<AgentMessage>,
 }
 
 /// `PrepareNextTurnContext extends ShouldStopAfterTurnContext`
 pub type PrepareNextTurnContext = ShouldStopAfterTurnContext;
 
-/// `AgentLoopTurnUpdate` — Ersatzzustand vor der nächsten Provider-Anfrage.
 #[derive(Debug, Clone, Default)]
 pub struct AgentLoopTurnUpdate {
     pub context: Option<AgentContext>,
@@ -126,7 +108,6 @@ pub struct AgentLoopTurnUpdate {
     pub thinking_level: Option<ThinkingLevel>,
 }
 
-/// `convertToLlm` — Pflicht-Callback; darf nicht fehlschlagen (TS: „must not throw").
 pub type ConvertToLlmFn =
     Arc<dyn Fn(Vec<AgentMessage>) -> BoxFuture<'static, Vec<Message>> + Send + Sync>;
 
@@ -137,7 +118,7 @@ pub type TransformContextFn = Arc<
         + Sync,
 >;
 
-/// `getApiKey?` — je Turn neu aufgelöst (kurzlebige OAuth-Tokens).
+/// Resolves the API key for each turn so short-lived credentials can refresh.
 pub type GetApiKeyFn = Arc<dyn Fn(String) -> BoxFuture<'static, Option<String>> + Send + Sync>;
 
 /// `shouldStopAfterTurn?`
@@ -173,15 +154,11 @@ pub type AfterToolCallFn = Arc<
 >;
 
 /// `AgentLoopConfig extends SimpleStreamOptions`.
-///
-/// Alle Callbacks unterliegen dem TS-Vertrag „must not throw or reject".
 #[derive(Clone)]
 pub struct AgentLoopConfig {
     pub base: SimpleStreamOptions,
     pub model: Model,
-    /// Wandelt `AgentMessage[]` vor jedem LLM-Aufruf in LLM-taugliche `Message[]`.
     pub convert_to_llm: ConvertToLlmFn,
-    /// Transformation auf AgentMessage-Ebene vor `convert_to_llm`.
     pub transform_context: Option<TransformContextFn>,
     pub get_api_key: Option<GetApiKeyFn>,
     pub should_stop_after_turn: Option<ShouldStopAfterTurnFn>,
@@ -222,8 +199,6 @@ impl fmt::Debug for AgentLoopConfig {
 }
 
 /// `ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"`
-///
-/// Eigene sieben-wertige Variante des Agent-Pakets (entspricht `ModelThinkingLevel` in ai).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThinkingLevel {
@@ -268,12 +243,7 @@ impl ThinkingLevel {
 }
 
 /// `AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages]`
-///
-/// Abweichung Klasse 1: Rust kennt kein Declaration Merging. Die vier Custom-Rollen
-/// sind in `packages/agent/src/harness/messages.ts:55-62` und identisch in
-/// `packages/coding-agent/src/core/messages.ts:69-76` deklariert und daher fest Teil
-/// dieser Aufzählung.
-// Boxen der Varianten würde die 1:1-Form der TS-Union verändern (CONVENTIONS.md §9).
+/// Agent message variants understood by the loop.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "camelCase")]
@@ -298,7 +268,6 @@ impl From<Message> for AgentMessage {
 }
 
 impl AgentMessage {
-    /// Die drei LLM-Rollen; alles andere muss über `convert_to_llm` umgewandelt werden.
     pub fn as_llm_message(&self) -> Option<Message> {
         match self {
             AgentMessage::User(message) => Some(Message::User(message.clone())),
@@ -321,10 +290,7 @@ impl AgentMessage {
     }
 }
 
-/// `AgentState` — öffentlicher Agent-Zustand.
-///
-/// In TS kopieren die Setter von `tools`/`messages` das Top-Level-Array; in Rust
-/// übernimmt der Agent die Werte per Move/Clone, was dasselbe Verhalten ergibt.
+/// Public agent state.
 #[derive(Clone)]
 pub struct AgentState {
     pub system_prompt: String,
@@ -332,10 +298,8 @@ pub struct AgentState {
     pub thinking_level: ThinkingLevel,
     pub tools: Vec<Arc<dyn AgentTool>>,
     pub messages: Vec<AgentMessage>,
-    /// Bleibt true, bis die erwarteten `agent_end`-Listener abgeschlossen sind.
     pub is_streaming: bool,
     pub streaming_message: Option<AgentMessage>,
-    /// IDs der gerade laufenden Tool-Calls.
     pub pending_tool_calls: BTreeSet<String>,
     pub error_message: Option<String>,
 }
@@ -364,22 +328,16 @@ impl fmt::Debug for AgentState {
     }
 }
 
-/// `AgentToolResult<T>` — finales oder partielles Tool-Ergebnis.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AgentToolResult {
     pub content: Vec<TextOrImageContent>,
-    /// TS `details: T` — kann zur Laufzeit `undefined` sein und wird dann in der
-    /// Tool-Result-Nachricht weggelassen.
     pub details: Option<Value>,
     pub usage: Option<Usage>,
-    /// Namen der Tools, die durch dieses Ergebnis verfügbar werden.
     pub added_tool_names: Option<Vec<String>>,
-    /// Abbruchhinweis; greift nur, wenn jedes Ergebnis des Batches ihn setzt.
     pub terminate: Option<bool>,
 }
 
 impl AgentToolResult {
-    /// Textergebnis mit leeren Details (TS: `{ content: [{type:"text",...}], details: {} }`).
     pub fn text(text: impl Into<String>) -> Self {
         AgentToolResult {
             content: vec![TextOrImageContent::Text(TextContent::new(text))],
@@ -388,7 +346,6 @@ impl AgentToolResult {
         }
     }
 
-    /// Bildinhalt für Tool-Ergebnisse.
     pub fn image(data: impl Into<String>, mime_type: impl Into<String>) -> TextOrImageContent {
         TextOrImageContent::Image(ImageContent {
             data: data.into(),
@@ -397,11 +354,8 @@ impl AgentToolResult {
     }
 }
 
-/// `AgentToolUpdateCallback` — Streaming von Zwischenständen aus `execute()`.
-/// Aufrufe nach dem Settlement des Tools werden ignoriert.
 pub type AgentToolUpdateCallback = Arc<dyn Fn(AgentToolResult) + Send + Sync>;
 
-/// Fehler einer Tool-Ausführung (TS: `execute` wirft).
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct ToolExecutionError {
@@ -416,22 +370,17 @@ impl ToolExecutionError {
     }
 }
 
-/// `AgentTool extends Tool` — Tool-Definition der Agent-Laufzeit.
 pub trait AgentTool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
-    /// JSON-Schema der Parameter (Substitution für TypeBox-`TSchema`).
     fn parameters(&self) -> &Value;
     fn constrained_sampling(&self) -> Option<&notagent_ai::types::ConstrainedSampling> {
         None
     }
-    /// Anzeigename für die UI.
     fn label(&self) -> &str;
-    /// `prepareArguments?` — Kompatibilitäts-Shim vor der Schemavalidierung.
     fn prepare_arguments(&self, args: Value) -> Value {
         args
     }
-    /// Führt den Tool-Call aus. Fehler werden als `Err` gemeldet (TS: throw).
     fn execute<'a>(
         &'a self,
         tool_call_id: &'a str,
@@ -439,11 +388,9 @@ pub trait AgentTool: Send + Sync {
         signal: Option<CancellationToken>,
         on_update: Option<AgentToolUpdateCallback>,
     ) -> BoxFuture<'a, Result<AgentToolResult, ToolExecutionError>>;
-    /// Ausführungsmodus dieses Tools; ohne Angabe gilt der Default des Loops.
     fn execution_mode(&self) -> Option<ToolExecutionMode> {
         None
     }
-    /// Sicht des LLM-Layers auf dieses Tool.
     fn to_tool(&self) -> Tool {
         Tool {
             name: self.name().to_string(),
@@ -455,13 +402,11 @@ pub trait AgentTool: Send + Sync {
 }
 
 /// Moves `required` ahead of `properties` at every level of a JSON schema.
-///
 /// A model reads the schema in the order it arrives and commits to the shape of
 /// the call early; a `required` list it reaches only after the whole property
 /// block has gone by arrives too late to steer what it is already writing.
 /// Serialisation here preserves insertion order, so the order in the map is the
 /// order on the wire.
-///
 /// Applied at the one place every tool passes through rather than in each
 /// schema, so a tool added later cannot forget it and a schema that arrives
 /// from an MCP server — which nobody here wrote — is covered too.
@@ -502,7 +447,6 @@ pub fn required_first(schema: &Value) -> Value {
     Value::Object(reordered)
 }
 
-/// `AgentContext` — Kontext-Snapshot für den Low-Level-Loop.
 #[derive(Clone, Default)]
 pub struct AgentContext {
     pub system_prompt: String,
@@ -529,11 +473,6 @@ impl fmt::Debug for AgentContext {
     }
 }
 
-/// `AgentEvent` — die zehn vom Agent emittierten Ereignisse (`types.ts:428-443`).
-///
-/// `agent_end` ist das letzte Ereignis eines Runs; der Agent wird erst idle, wenn die
-/// erwarteten Listener dieses Ereignisses abgeschlossen sind.
-// Die Ereignisse tragen die Nachrichten direkt, wie im TS-Original (CONVENTIONS.md §9).
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentEvent {
@@ -549,7 +488,6 @@ pub enum AgentEvent {
     MessageStart {
         message: AgentMessage,
     },
-    /// Nur für Assistant-Nachrichten während des Streamings.
     MessageUpdate {
         message: AgentMessage,
         assistant_message_event: AssistantMessageEvent,
@@ -577,7 +515,6 @@ pub enum AgentEvent {
 }
 
 impl AgentEvent {
-    /// Der `type`-Diskriminator aus dem TS-Original.
     pub fn type_name(&self) -> &'static str {
         match self {
             AgentEvent::AgentStart => "agent_start",

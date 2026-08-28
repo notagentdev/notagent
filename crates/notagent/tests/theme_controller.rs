@@ -1,14 +1,3 @@
-//! Behaviour of `InteractiveThemeController`, read off
-//! `packages/coding-agent/src/modes/interactive/theme/theme-controller.ts`
-//! (139 LOC) — the file has no TypeScript suite of its own.
-//!
-//! What the end-to-end path already covers lives in
-//! `tests/interactive_e2e/theme_switch.rs` (the settings menu switching the
-//! theme through this controller). These cases pin the controller's own
-//! decisions: which theme a setting resolves to, that a preview does not
-//! persist, and that `apply_from_settings` follows the terminal only for an
-//! automatic setting.
-
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use notagent::core::settings_manager::{SettingsManager, SettingsManagerCreateOptions};

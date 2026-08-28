@@ -1,6 +1,3 @@
-//! Port of `packages/ai/test/faux-provider.test.ts` plus the deferred-response cases
-//! from `deferred-tools.test.ts` that the faux provider is the only implementation of.
-
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 

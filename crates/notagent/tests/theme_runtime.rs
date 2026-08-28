@@ -1,8 +1,3 @@
-//! Runtime behaviour of the theme module that no TypeScript test covers:
-//! the chalk replacement, the 256-colour quantisation, the global theme
-//! lifecycle and the live-reload path. Every expected value was taken from the
-//! TypeScript implementation (`npx tsx` against `theme.ts` and `chalk`).
-
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
@@ -29,7 +24,6 @@ fn dark_theme() -> serde_json::Value {
 
 /// The dark theme's accent as the sequence a slot holds, read from the theme
 /// rather than written out again.
-///
 /// A literal here is a second copy of a value that lives in `dark.json`, and it
 /// goes stale the moment the colour is changed — which is a change to how the
 /// app looks, not to what any of these cases are about.
@@ -146,7 +140,7 @@ fn styles_text_exactly_like_chalk() {
 // --- 256 colour quantisation ---------------------------------------------------
 
 #[test]
-fn quantises_hex_colors_like_the_typescript_cube_search() {
+fn quantises_hex_colors_with_cube_search() {
     let _guard = global_lock();
     const EXPECTED: [(&str, u16); 40] = [
         ("#000000", 16),
@@ -398,12 +392,9 @@ async fn does_not_reload_after_the_watcher_stopped() {
     );
 }
 
-// Port of `test/suite/regressions/2791-fswatch-error-crash.test.ts`. The
-// TypeScript test spawns a child process, digs the `FSWatcher` out of
 // `process._getActiveHandles()` and emits a synthetic `error` on it: without a
 // listener, `EventEmitter.emit("error")` throws and takes the process down.
 // `notify` has no such rule — it hands the failure to the same closure as a
-// change — so the port asserts what the fix is for: the failure is absorbed and
 // the live reload stops instead of running on a broken watch.
 #[allow(clippy::await_holding_lock)]
 #[tokio::test]

@@ -1,9 +1,3 @@
-//! Serde-Parität der Kerntypen: Die JSON-Form muss dem TS-Original entsprechen
-//! (camelCase, optionale Felder weggelassen statt `null`).
-//!
-//! Oracle sind die Feldnamen aus `packages/ai/src/types.ts` und die von der TS-App
-//! geschriebenen Session-Dateien.
-
 use notagent_ai::auth::types::{AuthType, Credential, OAuthCredential};
 use notagent_ai::types::*;
 use serde_json::json;
@@ -14,7 +8,7 @@ where
 {
     let parsed: T = serde_json::from_value(value.clone()).expect("Deserialisierung");
     let reserialized = serde_json::to_value(&parsed).expect("Serialisierung");
-    assert_eq!(reserialized, value, "Roundtrip verändert das JSON");
+    assert_eq!(reserialized, value, "roundtrip changed the JSON");
 }
 
 #[test]
@@ -258,7 +252,6 @@ fn model_compat_is_selected_by_api() {
         Some(true)
     );
 
-    // APIs ohne Compat-Zuordnung behalten den Rohwert (TS-Typ `never`, Laufzeit erhält ihn).
     let google: Model =
         serde_json::from_value(model_json("google-generative-ai", json!({"foo": 1}))).unwrap();
     assert!(matches!(google.compat, Some(ModelCompat::Other(_))));
@@ -463,8 +456,6 @@ fn content_discriminator_does_not_leak_into_extra() {
 
 #[test]
 fn aborted_tool_call_keeps_partial_json_scratch_field() {
-    // bug-compat: Bricht ein Stream vor `content_block_stop` ab, löscht die TS-Implementierung
-    // `partialJson` nicht mehr (anthropic-messages.ts:698) — die Session-Datei enthält es dann.
     let original = json!({
         "type": "toolCall", "id": "toolu_1", "name": "bash",
         "arguments": {}, "partialJson": "{\"command\": \"ls"
@@ -482,7 +473,6 @@ fn aborted_tool_call_keeps_partial_json_scratch_field() {
 
 #[test]
 fn usage_without_total_tokens_roundtrips_unchanged() {
-    // Historische Session-Dateien der TS-App enthalten `totalTokens` nicht.
     let original = json!({
         "input": 4, "output": 1, "cacheRead": 148801, "cacheWrite": 255,
         "cost": {"input": 0.000012, "output": 0.000015, "cacheRead": 0.0446403,
@@ -493,11 +483,9 @@ fn usage_without_total_tokens_roundtrips_unchanged() {
     assert_eq!(serde_json::to_value(usage).unwrap(), original);
 }
 
-/// The wire format of `auth.json` (interface request C-4): `Credential` and
 /// `AuthType` serialize OAuth as `"oauth"`, exactly like
-/// `packages/ai/src/auth/types.ts:33` and `:114`.
 #[test]
-fn credentials_use_the_typescript_oauth_tag() {
+fn credentials_use_the_oauth_tag() {
     let credential = Credential::OAuth(OAuthCredential {
         refresh: "refresh-token".to_string(),
         access: "access-token".to_string(),
@@ -514,7 +502,6 @@ fn credentials_use_the_typescript_oauth_tag() {
         })
     );
 
-    // A file written by the TypeScript app has to parse.
     let parsed: Credential = serde_json::from_value(serde_json::json!({
         "type": "oauth",
         "refresh": "refresh-token",
@@ -538,11 +525,9 @@ fn credentials_use_the_typescript_oauth_tag() {
     );
 }
 
-/// Port of `packages/ai/test/lax-message-content.test.ts` (67). TS normalizes `null`
 /// content at the `transformMessages` choke point, because hand-built histories and old
 /// session files carry it (issues #6259, #6276). The Rust types make an absent content
 /// unrepresentable, so the leniency moves to deserialization: `null` and a missing field
-/// both become empty content, which is the state TS reaches before a request.
 #[test]
 fn null_or_missing_message_content_deserializes_as_empty() {
     use notagent_ai::types::{AssistantContent, Message, TextOrImageContent, UserContent};

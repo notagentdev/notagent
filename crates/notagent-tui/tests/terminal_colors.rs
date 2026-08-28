@@ -1,5 +1,3 @@
-//! Port of the parser part of `packages/tui/test/terminal-colors.test.ts` (252 LOC).
-//!
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -68,7 +66,6 @@ fn parses_color_scheme_reports() {
     assert_eq!(parse_terminal_color_scheme_report("x\x1b[?997;1n"), None);
 }
 
-/// `class InputRecorder` of the TS suite.
 #[derive(Clone, Default)]
 struct InputRecorder {
     inputs: Rc<RefCell<Vec<String>>>,

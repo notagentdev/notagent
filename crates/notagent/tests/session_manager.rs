@@ -1,19 +1,14 @@
-//! Port of `packages/coding-agent/test/session-manager/` (tree traversal, append,
-//! branching, migrations and custom entries).
-
 use notagent::core::session_manager::{
     FileEntry, SessionEntry, SessionManager, SessionManagerError, migrate_session_entries,
 };
 use notagent_agent::types::AgentMessage;
 use serde_json::{Value, json};
 
-/// `userMsg` from `test/utilities.ts`.
 fn user_msg(text: &str) -> AgentMessage {
     serde_json::from_value(json!({ "role": "user", "content": text, "timestamp": 1 }))
         .expect("user message")
 }
 
-/// `assistantMsg` from `test/utilities.ts`.
 fn assistant_msg(text: &str) -> AgentMessage {
     serde_json::from_value(json!({
         "role": "assistant",
@@ -494,7 +489,6 @@ fn build_session_context_returns_messages_from_the_current_branch_only() {
 }
 
 // ---------------------------------------------------------------------------
-// custom entries (save-entry.test.ts)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -532,7 +526,6 @@ fn saves_custom_entries_and_includes_them_in_tree_traversal() {
 }
 
 // ---------------------------------------------------------------------------
-// migrations (migration.test.ts)
 // ---------------------------------------------------------------------------
 
 fn file_entries(values: Vec<Value>) -> Vec<FileEntry> {
@@ -652,7 +645,6 @@ fn migration_resolves_the_compaction_index_into_an_id() {
 }
 
 // ---------------------------------------------------------------------------
-// file operations (file-operations.test.ts)
 // ---------------------------------------------------------------------------
 
 use notagent::core::session_manager::{find_most_recent_session, load_entries_from_file};
@@ -800,7 +792,6 @@ fn opens_compatible_sessions_beyond_the_discovery_scan_limit() {
 
 #[test]
 fn opens_session_files_with_gaps_larger_than_the_read_buffer() {
-    // The TS case guards against Node's max string length; the Rust reader has no
     // such limit, so this exercises the same incremental read loop with gaps that
     // span several 1 MiB buffers.
     use std::io::{Seek, SeekFrom, Write};
@@ -1008,7 +999,6 @@ fn opening_a_non_session_file_fails_and_preserves_it() {
 }
 
 // ---------------------------------------------------------------------------
-// createBranchedSession on disk (tree-traversal.test.ts)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1214,7 +1204,6 @@ fn preserves_tool_and_summary_usage_across_a_file_backed_reload() {
 }
 
 // ---------------------------------------------------------------------------
-// buildSessionContext (build-context.test.ts)
 // ---------------------------------------------------------------------------
 
 use notagent::core::session_manager::{LeafSelector, build_context_entries, build_session_context};
@@ -1720,7 +1709,6 @@ fn build_session_context_handles_missing_leaves_and_orphans() {
 }
 
 // ---------------------------------------------------------------------------
-// labels (labels.test.ts)
 // ---------------------------------------------------------------------------
 
 fn label_entries(session: &SessionManager) -> Vec<notagent::core::session_manager::LabelEntry> {
@@ -1959,7 +1947,6 @@ fn labeling_a_non_existent_entry_fails() {
 }
 
 // ---------------------------------------------------------------------------
-// custom session ids (custom-session-id.test.ts)
 // ---------------------------------------------------------------------------
 
 use notagent::core::session_manager::NewSessionOptions;
@@ -2183,7 +2170,6 @@ fn fork_from_generates_or_uses_the_session_id() {
 }
 
 // ---------------------------------------------------------------------------
-// SessionInfo.modified (session-info-modified-timestamp.test.ts)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -2277,7 +2263,6 @@ async fn session_info_reports_names_first_messages_and_parents() {
 }
 
 // ---------------------------------------------------------------------------
-// Round-trip against the TS session fixtures
 // ---------------------------------------------------------------------------
 
 fn fixture(name: &str) -> String {
@@ -2300,7 +2285,7 @@ fn fixture_lines(path: &str) -> Vec<Value> {
 }
 
 #[test]
-fn reads_and_reserializes_the_typescript_session_fixtures_losslessly() {
+fn reads_and_reserializes_session_fixtures_losslessly() {
     for name in ["before-compaction.jsonl", "large-session.jsonl"] {
         let path = fixture(name);
         let original = fixture_lines(&path);
@@ -2335,7 +2320,7 @@ fn reads_and_reserializes_the_typescript_session_fixtures_losslessly() {
 }
 
 #[test]
-fn opens_continues_and_forks_a_typescript_session_fixture() {
+fn opens_continues_and_forks_a_session_fixture() {
     let directory = TempDir::new();
     let source = directory.join("before-compaction.jsonl");
     std::fs::copy(fixture("before-compaction.jsonl"), &source).expect("copy fixture");

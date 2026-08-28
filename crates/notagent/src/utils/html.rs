@@ -1,10 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/html.ts`.
-//!
-//! Just enough HTML entity decoding to read back what a highlighter wrote.
-//! The syntax highlighter renders to HTML and then walks that HTML to apply
-//! terminal colors (see `utils::syntax_highlight`), so every `&amp;` it emitted
-//! has to become an `&` again.
-
 /// A decoded entity and how many bytes of input it occupied, including `&` and `;`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedHtmlEntity {
@@ -13,11 +6,9 @@ pub struct DecodedHtmlEntity {
 }
 
 /// `Number.parseInt(text, radix)` for the two radixes the entity syntax uses.
-///
 /// JavaScript's `parseInt` is deliberately sloppy: it skips leading whitespace,
 /// takes an optional sign, accepts an `0x` prefix for radix 16 and stops at the
 /// first character that is not a digit instead of failing. `&#41.5;` therefore
-/// decodes to `)` in the TypeScript, and does so here as well.
 fn js_parse_int(text: &str, radix: u32) -> Option<i64> {
     let rest = text.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
     let (negative, rest) = match rest.strip_prefix('-') {
@@ -82,8 +73,6 @@ pub fn decode_html_entity(entity: &str) -> Option<String> {
 }
 
 /// Decodes the entity starting at byte `index` (which must point at an `&`).
-///
-/// The 16-character ceiling is the TypeScript's cheap guard against scanning
 /// half the document for a semicolon that belongs to something else.
 pub fn decode_html_entity_at(html: &str, index: usize) -> Option<DecodedHtmlEntity> {
     let after_ampersand = index + 1;

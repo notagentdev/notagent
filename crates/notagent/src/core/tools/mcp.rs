@@ -1,17 +1,3 @@
-//! An MCP tool as this port's registry holds one (v0.1.22).
-//!
-//! `ToolName` here is a closed enum of the built-ins, inherited from the
-//! TypeScript original's closed union, and modes are typed against it. MCP tool
-//! names are not known until a server has been asked. Widening the enum would
-//! push knowledge of servers that may not exist into every mode file, so MCP
-//! tools live beside the enum-named built-ins as ordinary name-keyed registry
-//! entries instead: outside the mode allowlist, gated by the permission chain,
-//! which matches on the tool name as text.
-//!
-//! A built-in always wins a name collision. A server that offered a tool
-//! qualifying to `read` or `bash` would otherwise take over a tool the model
-//! trusts, which is a hijack rather than a configuration choice.
-
 use std::sync::Arc;
 
 use notagent_agent::types::{
@@ -186,7 +172,6 @@ fn text_of(content: &[TextOrImageContent]) -> String {
 }
 
 /// Builds the registry entries for a set of discovered tools.
-///
 /// `taken` is every name already spoken for — the built-ins first, then each
 /// tool accepted here — so a collision drops the newcomer rather than the
 /// incumbent.

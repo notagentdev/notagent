@@ -1,18 +1,3 @@
-//! Port of the settings-facing half of
-//! `packages/coding-agent/src/core/http-dispatcher.ts` (111 LOC).
-//!
-//! Ownership handed to workstream A with interface request O-6, which covers
-//! `HTTP_IDLE_TIMEOUT_CHOICES` and `formatHttpIdleTimeoutMs` — the two items
-//! the settings selector reads. `DEFAULT_HTTP_IDLE_TIMEOUT_MS` and
-//! `parseHttpIdleTimeoutMs` were pulled forward into
-//! `core::settings_manager` with workstream C's task 5 (the settings manager
-//! cannot load without them) and are re-exported here so the module mirrors
-//! the public surface of the TypeScript file.
-//!
-//! The dispatcher half itself (`configureHttpDispatcher`,
-//! `applyHttpProxySettings`, the undici plumbing) stays with workstream C: it
-//! configures the HTTP client of the process, not a setting.
-
 pub use crate::core::settings_manager::{DEFAULT_HTTP_IDLE_TIMEOUT_MS, parse_http_idle_timeout_ms};
 
 /// One entry of `HTTP_IDLE_TIMEOUT_CHOICES`.
@@ -68,7 +53,6 @@ mod tests {
 
     #[test]
     fn labels_the_offered_timeouts() {
-        // Values from `formatHttpIdleTimeoutMs` in http-dispatcher.ts.
         assert_eq!(format_http_idle_timeout_ms(30_000), "30 sec");
         assert_eq!(format_http_idle_timeout_ms(60_000), "1 min");
         assert_eq!(format_http_idle_timeout_ms(120_000), "2 min");

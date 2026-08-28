@@ -1,16 +1,3 @@
-//! Port of `packages/coding-agent/src/core/permissions/policy.ts`.
-//!
-//! The permission policy contract.
-//!
-//! Approval is decided by an ordered list of policies, evaluated in sequence
-//! until one of them decides. Position in that list carries the meaning: a
-//! user-authored denial placed ahead of auto-approval is what stops auto mode
-//! from overriding a restriction the user set deliberately.
-//!
-//! A policy returns `None` to abstain, which is different from approving.
-//! Abstaining lets evaluation continue to the next policy; approving stops it.
-//! Most policies abstain most of the time.
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -87,7 +74,6 @@ pub struct PermissionEvaluation {
 }
 
 /// Evaluates policies in order, first decision wins.
-///
 /// Returns `None` only when every policy abstained. Callers must treat
 /// that as unresolved rather than as permission — the chain is expected to end
 /// in a policy that always decides, and a missing one is a configuration error,
@@ -116,7 +102,6 @@ pub struct ResolvedWithoutDialog {
 }
 
 /// Collapses a decision into what the runtime can currently carry out.
-///
 /// The tool-call gate can allow or block; there is no channel yet for waiting
 /// on a user's answer. Until that exists, `ask` must resolve to a refusal: a
 /// prompt that cannot be shown but lets the call through would look like

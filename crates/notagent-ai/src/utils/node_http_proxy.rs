@@ -1,9 +1,3 @@
-//! Proxy resolution for provider requests.
-//!
-//! 1:1 port of `packages/ai/src/utils/node-http-proxy.ts` (112 LOC). The TS module
-//! builds undici proxy agents; in Rust the resolved URL is handed to reqwest
-//! (substitution class 3 of the master plan).
-
 use crate::types::ProviderEnv;
 use crate::utils::provider_env::get_provider_env_value;
 
@@ -50,7 +44,6 @@ struct TargetUrl {
     port: u16,
 }
 
-/// Minimal URL split; the TS code uses the WHATWG `URL` parser.
 fn parse_proxy_target_url(target_url: &str) -> Option<TargetUrl> {
     let (protocol, rest) = target_url.split_once("://")?;
     if protocol.is_empty() || rest.is_empty() {

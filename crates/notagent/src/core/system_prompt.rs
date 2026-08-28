@@ -1,14 +1,3 @@
-//! Port of `packages/coding-agent/src/core/system-prompt.ts`.
-//!
-//! Assembles the system prompt. The order of the sections is the contract: a
-//! provider caches on prefixes, so anything that changes between turns has to
-//! sit behind everything that does not. Tools, guidelines and the documentation
-//! pointers are stable for a session; the appended prompt, the project context
-//! files, the skills index and finally the working directory follow.
-//!
-//! A custom prompt replaces the whole built-in body but keeps the same tail, so
-//! a user who supplies one still gets project context, skills and the cwd.
-
 use crate::config::{get_docs_path, get_examples_path, get_readme_path};
 use crate::core::skills::{Skill, format_skills_for_prompt};
 

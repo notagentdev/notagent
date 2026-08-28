@@ -1,14 +1,3 @@
-//! A borrowed call against a real session (port addition, v0.1.22).
-//!
-//! `tests/mcp_lend.rs` proves the endpoint: what it lists, what it refuses, what
-//! a token means. This proves the half that matters more — that a call arriving
-//! over that endpoint meets the session's permission chain.
-//!
-//! It has to be a separate binary rather than another case in that file. The
-//! endpoint is process-wide and its server runs on whichever runtime started it,
-//! so two `#[tokio::test]`s in one binary take each other's server down; two
-//! binaries have a process each.
-
 mod suite;
 
 use std::sync::Arc;

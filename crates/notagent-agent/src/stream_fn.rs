@@ -1,7 +1,3 @@
-//! Global konfigurierbare Default-StreamFn.
-//!
-//! 1:1-Port von `packages/agent/src/stream-fn.ts` (20 LOC).
-
 use std::sync::{Mutex, OnceLock};
 
 use crate::types::StreamFn;
@@ -11,7 +7,6 @@ fn slot() -> &'static Mutex<Option<StreamFn>> {
     DEFAULT_STREAM_FN.get_or_init(|| Mutex::new(None))
 }
 
-/// Fehler von [`get_default_stream_fn`] (TS: geworfener `Error`).
 #[derive(Debug, thiserror::Error)]
 #[error(
     "No default stream function configured. Pass streamFn explicitly or call setDefaultStreamFn()."

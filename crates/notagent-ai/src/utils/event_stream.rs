@@ -1,9 +1,3 @@
-//! Push-Queue mit Waiter-Liste, asynchron iterierbar, plus Ergebnis-Future.
-//!
-//! 1:1-Port von `packages/ai/src/utils/event-stream.ts` (88 LOC). Die TS-Klasse
-//! kombiniert eine Warteschlange mit einer Liste wartender Konsumenten und einem
-//! `result()`-Promise; in Rust übernimmt `Notify` die Waiter-Liste.
-
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
@@ -27,9 +21,6 @@ struct Shared<T, R> {
     extract_result: ExtractResult<T, R>,
 }
 
-/// `EventStream<T, R>` — generischer Ereignisstrom mit Endergebnis.
-///
-/// Klonen liefert ein weiteres Handle auf denselben Strom (TS: dieselbe Objektreferenz).
 pub struct EventStream<T, R> {
     shared: Arc<Shared<T, R>>,
 }
@@ -61,7 +52,6 @@ impl<T, R> EventStream<T, R> {
         }
     }
 
-    /// `push(event)` — nach dem Abschluss-Ereignis werden weitere Pushes ignoriert.
     pub fn push(&self, event: T) {
         let mut state = self
             .shared
@@ -80,7 +70,6 @@ impl<T, R> EventStream<T, R> {
         self.shared.notify.notify_waiters();
     }
 
-    /// `end(result?)` — beendet den Strom; ein übergebenes Ergebnis löst `result()` auf.
     pub fn end(&self, result: Option<R>) {
         let mut state = self
             .shared
@@ -95,7 +84,6 @@ impl<T, R> EventStream<T, R> {
         self.shared.notify.notify_waiters();
     }
 
-    /// Nächstes Ereignis; `None`, sobald der Strom beendet und die Queue geleert ist.
     pub async fn next(&self) -> Option<T> {
         loop {
             // `notified()` only registers the waiter once the future is polled,
@@ -122,10 +110,6 @@ impl<T, R> EventStream<T, R> {
         }
     }
 
-    /// `result(): Promise<R>` — wartet auf das Abschluss-Ereignis.
-    ///
-    /// Abweichung Klasse 1: TS gibt dieselbe Objektreferenz an jeden Awaiter; in Rust wird
-    /// je Aufruf geklont. Beobachtbarer Wert identisch.
     pub async fn result(&self) -> R
     where
         R: Clone,
@@ -149,7 +133,6 @@ impl<T, R> EventStream<T, R> {
         }
     }
 
-    /// True, sobald das Abschluss-Ereignis verarbeitet oder `end()` aufgerufen wurde.
     pub fn is_done(&self) -> bool {
         self.shared
             .state
@@ -159,7 +142,6 @@ impl<T, R> EventStream<T, R> {
     }
 }
 
-/// `AssistantMessageEventStream` — vollständig bei `done`/`error`.
 pub type AssistantMessageEventStream = EventStream<AssistantMessageEvent, AssistantMessage>;
 
 /// `createAssistantMessageEventStream()`
@@ -174,7 +156,6 @@ pub fn create_assistant_message_event_stream() -> AssistantMessageEventStream {
         |event| match event {
             AssistantMessageEvent::Done { message, .. } => message.clone(),
             AssistantMessageEvent::Error { error, .. } => error.clone(),
-            // TS wirft hier; unerreichbar, weil `is_complete` genau diese beiden Varianten prüft.
             _ => unreachable!("Unexpected event type for final result"),
         },
     )

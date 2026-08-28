@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/core/permissions/hook.ts`.
-//!
-//! The tool-call handler that enforces the policy chain.
-//!
-//! This is where the pieces meet: the chain decides, the coordinator asks when
-//! the decision is to ask, and the result is turned into the block-or-allow
-//! shape the gate understands. The agent loop awaits it before running a tool,
-//! so holding the call open until the user answers is the intended use of that
-//! seam.
-//!
-//! Every path that is not an explicit approval blocks. That includes an
-//! exhausted chain and a failed presenter: an undecided call is a
-//! configuration error, not permission.
-
 use std::sync::Arc;
 
 use futures::future::BoxFuture;

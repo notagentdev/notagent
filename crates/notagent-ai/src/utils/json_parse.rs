@@ -1,14 +1,3 @@
-//! Parsing of possibly incomplete JSON from streaming tool-call arguments.
-//!
-//! 1:1 port of `packages/ai/src/utils/json-parse.ts` (124 LOC) including the
-//! `partial-json` npm package it delegates to (`node_modules/partial-json/dist/index.js`,
-//! 220 LOC, always called with the default `Allow.ALL`). Substitution class 3 of the
-//! master plan: "partial-json -> own port of parseStreamingJson incl. repairJson".
-//!
-//! Indices follow the JavaScript implementation, but count Unicode scalar values
-//! instead of UTF-16 code units. Every structural character JSON uses is ASCII, so
-//! tokenization is unaffected.
-
 use serde_json::{Map, Value};
 
 use crate::utils::js_number::normalize_json_numbers;
@@ -101,7 +90,6 @@ pub fn repair_json(json: &str) -> String {
 }
 
 /// `parseJsonWithRepair` — plain parse, then one repaired retry.
-///
 /// Numbers are normalized to JavaScript semantics (see [`normalize_json_numbers`]).
 pub fn parse_json_with_repair(json: &str) -> Result<Value, serde_json::Error> {
     let mut value = match serde_json::from_str(json) {
@@ -165,7 +153,6 @@ pub fn partial_parse(json: &str) -> Result<Value, PartialJsonError> {
 
 /// Like [`partial_parse`], but also reports whether the root value came from a
 /// non-finite literal (`NaN`, `Infinity`, `-Infinity`).
-///
 /// JavaScript can hold those as numbers; `serde_json::Value` cannot, so they are mapped
 /// to `null` — the same thing `JSON.stringify` writes for them. The flag keeps them
 /// apart from a literal `null`, which `parseStreamingJson` replaces with `{}` via `??`.
@@ -334,7 +321,6 @@ impl PartialParser {
         self.skip_blank();
         let mut object = Map::new();
 
-        // The outer `try` of the TS implementation: with Allow.OBJ every failure yields
         // the object parsed so far.
         loop {
             if self.at(self.index) == Some('}') {
@@ -346,7 +332,6 @@ impl PartialParser {
             }
             let key = match self.parse_str() {
                 Ok(Value::String(key)) => key,
-                // A non-string key cannot occur in JSON; TS would use the coerced value.
                 Ok(other) => other.to_string(),
                 Err(_) => return Ok(Value::Object(object)),
             };

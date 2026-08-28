@@ -1,5 +1,3 @@
-//! Port von `packages/tui/test/tab-width.test.ts` (88 LOC).
-//!
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{
     Component, Line, OverlayOptions, SizeValue, TuiStopOptions, component_ref,
@@ -7,7 +5,6 @@ use notagent_tui::tui::{
 use notagent_tui::tui_main_screen::TuiMainScreen;
 use notagent_tui::{extract_segments, normalize_terminal_output, slice_with_width, visible_width};
 
-/// `class FullViewportContent` of the TS suite.
 struct FullViewportContent;
 
 impl Component for FullViewportContent {
@@ -21,7 +18,6 @@ impl Component for FullViewportContent {
     fn invalidate(&mut self) {}
 }
 
-/// `class TabStatusOverlay` of the TS suite.
 struct TabStatusOverlay;
 
 impl Component for TabStatusOverlay {

@@ -1,10 +1,7 @@
 //! The `chalk` styles the CLI paths use, as direct ANSI sequences.
-//!
-//! Deviation (class 3): `chalk` is a Node dependency; the master plan
 //! substitutes direct escape sequences for it. Only the four styles the CLI and
 //! the app entry point use are here — the styling inside the TUI goes through
 //! the theme instead.
-//!
 //! Colour support is decided the way chalk decides it: `NO_COLOR` wins, then
 //! `FORCE_COLOR`, then whether standard output is a terminal. chalk asks about
 //! standard output even for text that goes to standard error, and so does this.

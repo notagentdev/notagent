@@ -1,13 +1,3 @@
-//! Port of `packages/coding-agent/src/core/compaction/utils.ts`.
-//!
-//! What compaction and branch summarization share: which files a run touched,
-//! and how a conversation is flattened into something a model will summarize
-//! rather than continue.
-//!
-//! The flattening is the point. Handing the transcript over as messages invites
-//! the model to answer the last one; handing it over as a single block of
-//! labelled text does not.
-
 use std::collections::BTreeSet;
 
 use notagent_agent::types::AgentMessage;
@@ -57,7 +47,6 @@ pub fn extract_file_ops_from_message(message: &AgentMessage, file_ops: &mut File
 }
 
 /// Orders two strings the way `Array.prototype.sort` does: by UTF-16 code unit.
-///
 /// It differs from Rust's byte order only above the BMP, but the file lists end
 /// up in a summary the next session reads, and a stable order across the two
 /// implementations is worth four lines.
@@ -137,7 +126,6 @@ pub struct OperationRecord {
 const COMMAND_MAX_CHARS: usize = 120;
 
 /// Most lines the outline will carry.
-///
 /// Measured on a 377k-token session, keeping only the last operation per target
 /// took 457 operations down to 259; the file operations among them cost about
 /// 5.9k tokens while the shell commands cost 10.4k, which is why commands are
@@ -146,7 +134,6 @@ const OUTLINE_MAX_LINES: usize = 200;
 
 /// What a stretch of conversation did, in order, with each target's last
 /// operation winning.
-///
 /// This is derived from the recorded tool calls rather than written by a model,
 /// so unlike the summary it cannot invent a path.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -225,7 +212,6 @@ fn shorten_command(command: &str) -> String {
 }
 
 /// Renders the outline as the section appended to a summary.
-///
 /// When the cap bites it says so, because an outline that silently stops is
 /// read as a complete record of a session that did less than it did.
 pub fn format_operation_outline(outline: &OperationOutline) -> String {
@@ -265,7 +251,6 @@ fn truncate_for_summary(text: &str, max_chars: usize) -> String {
 }
 
 /// Serializes LLM messages to one block of labelled text.
-///
 /// Call `convert_to_llm` first so custom message types are already folded in.
 pub fn serialize_conversation(messages: &[Message]) -> String {
     serialize_parts(messages).join("\n\n")
@@ -287,7 +272,6 @@ fn fragment_tokens(text: &str) -> u64 {
 }
 
 /// Serializes a conversation, dropping the oldest messages until it fits.
-///
 /// The alternative is to send the whole thing and let the provider reject it.
 /// Both ways of reacting to that rejection are bad: shrinking by a fixed ratio
 /// throws away far more than necessary, and dropping one message per rejection
@@ -295,7 +279,6 @@ fn fragment_tokens(text: &str) -> u64 {
 /// 190k target one message at a time took 440 attempts to land within 1,716
 /// tokens of where a single ratio step landed in two. Since the size is
 /// knowable before sending, it is computed here and cut once.
-///
 /// A budget of zero means no limit.
 pub fn serialize_conversation_within(messages: &[Message], budget: u64) -> SerializedConversation {
     let parts = serialize_parts(messages);

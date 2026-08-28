@@ -1,46 +1,35 @@
 //! Repaint cost of an unchanged transcript.
-//!
 //! Taken from `../notagent-main-rust/crates/notagent_tui/tests/render_cost.rs`.
 //! Deliberately names no line type, so the same file compiles against both the
 //! owned and the shared representation and the two can be compared directly.
-//!
 //! `cargo test -p notagent-tui --release --test render_cost -- --ignored --nocapture`
-//!
 //! The second case measures no time but the share of lines that could come from
 //! a component with a cache. That is the ceiling for the gain from settling the
 //! diff by pointer identity: lines rebuilt every frame gain nothing there and
 //! cost the pointer comparison on top.
-//!
 //! Baseline (steps 1 and 2 applied, owned lines, release, Apple M series):
-//!
 //! ```text
 //!   50 blocks,   150 lines:    10.5 us/frame ( 0.07 us/line)
 //!  200 blocks,   600 lines:    29.5 us/frame ( 0.05 us/line)
 //!  800 blocks,  2400 lines:   112.5 us/frame ( 0.05 us/line)
 //!  600 of 600 lines unchanged across two frames (100.0 %)
 //! ```
-//!
 //! Read the numbers as an order of magnitude, not as an assertion; the
 //! comparison run after the change belongs beside them.
-//!
 //! Threshold for that comparison, fixed in advance: if the time per frame at 800
 //! blocks stays above 90 us — less than a fifth faster than here — the type
 //! change does not pay for itself and steps 5 to 7 are to be taken back. The
 //! 100 % above is the ceiling of what is possible: every line of this transcript
 //! could be settled by pointer identity.
-//!
 //! After step 5 (shared lines, cache hits are refcount bumps; the diff still
 //! compares by content):
-//!
 //! ```text
 //!   50 blocks,   150 lines:     4.2 us/frame ( 0.03 us/line)
 //!  200 blocks,   600 lines:    14.1 us/frame ( 0.02 us/line)
 //!  800 blocks,  2400 lines:    55.0 us/frame ( 0.02 us/line)
 //! ```
-//!
 //! 55 us is well below the 90 us threshold; the type change carries itself
 //! before the pointer-identity diff (step 7) lands.
-//!
 //! After steps 7 and 8 the numbers are unchanged (55.0 us/frame at 800
 //! blocks), as they must be: this harness measures `render()` only, and those
 //! steps act in the paint path — the screen diff settles an unchanged shared

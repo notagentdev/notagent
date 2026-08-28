@@ -1,10 +1,3 @@
-//! Differential test of `parse_streaming_json` against the TypeScript implementation.
-//!
-//! The fixture was generated in the TS repo from the original `json-parse.ts` chain on
-//! top of the installed `partial-json` package (`/tmp/gen-partial-json-fixture.cjs`):
-//! every prefix of eight representative tool-argument payloads plus malformed and
-//! repair cases — 513 inputs with the exact `JSON.stringify` output of the TS chain.
-
 use notagent_ai::utils::json_parse::{parse_streaming_json, repair_json};
 use serde_json::Value;
 
@@ -17,7 +10,7 @@ struct Case {
 }
 
 #[test]
-fn matches_typescript_for_every_fixture_input() {
+fn parses_every_partial_json_fixture_input() {
     let cases: Vec<Case> = FIXTURE
         .lines()
         .filter(|line| !line.is_empty())

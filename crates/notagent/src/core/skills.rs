@@ -1,19 +1,3 @@
-//! Port of `packages/coding-agent/src/core/skills.ts`.
-//!
-//! Skills are markdown files with a name and a description in their
-//! frontmatter. Only those two lines reach the system prompt; the body is
-//! loaded on demand by the `skill` tool. That split is the whole point — a
-//! dozen skills cost a dozen lines of context instead of a dozen documents.
-//!
-//! Discovery has one rule worth stating: a directory containing `SKILL.md` *is*
-//! a skill, and the walk stops there. Recursing into it would turn a skill's
-//! own supporting documents into skills of their own.
-//!
-//! A file whose description is missing is not loaded at all. Everything else —
-//! a name that is too long, a name with capitals — is a warning attached to a
-//! skill that still loads, because refusing to load it would punish the user
-//! for a cosmetic problem.
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
@@ -49,7 +33,6 @@ fn to_posix_path(path: &Path) -> String {
 }
 
 /// The accumulating matcher.
-///
 /// The npm `ignore` package takes patterns one batch at a time and keeps them
 /// in order; the `ignore` crate compiles a fixed set. Keeping the ordered
 /// pattern list and recompiling on every addition preserves last-match-wins
@@ -252,7 +235,6 @@ fn create_skill_source_info(file_path: &str, base_dir: &str, source: &str) -> So
 }
 
 /// Loads skills from a directory.
-///
 /// Discovery rules:
 /// - a directory containing `SKILL.md` is a skill root; the walk does not descend further
 /// - otherwise direct `.md` children of the root are loaded
@@ -475,7 +457,6 @@ fn escape_xml(text: &str) -> String {
 
 /// Formats skills for inclusion in a system prompt, in the XML shape the Agent
 /// Skills standard describes (<https://agentskills.io/integrate-skills>).
-///
 /// Skills marked `disable-model-invocation` are left out: they exist to be
 /// invoked explicitly with `/skill:name`, and listing them would invite the
 /// model to load them anyway.
@@ -548,7 +529,6 @@ fn is_under_path(target: &str, root: &str) -> bool {
 
 /// Loads skills from every configured location, plus the diagnostics collected
 /// on the way.
-///
 /// Precedence is first-wins by name: the user directory is walked before the
 /// project directory, and explicit paths come last. A file reached twice
 /// through a symlink is skipped silently rather than reported as a collision —

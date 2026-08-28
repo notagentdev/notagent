@@ -1,26 +1,3 @@
-//! Port of `packages/coding-agent/src/core/tasks/manager.ts`.
-//!
-//! The one place a piece of background work has a lifecycle.
-//!
-//! Tools start work and read results; they own none of what happens in between.
-//! That is deliberate and it is the reason foreground and background are not two
-//! mechanisms here: a shell command and a delegated subagent are registered the
-//! same way, differing only in whether a tool call is still waiting, and every
-//! rule about deadlines, stopping, persistence and announcing a result is
-//! written once.
-//!
-//! Two behaviours are worth reading before the code. A foreground task that
-//! reaches its deadline is *not* killed when the session allows backgrounding —
-//! it is detached and given a fresh deadline. And stopping is three steps, not
-//! one: signal, wait, then force.
-//!
-//! Deviations (class 1), all of them the same translation applied consistently:
-//! every JS promise that more than one caller awaits becomes a flag or a watch
-//! channel (`lifecycle`, `release`, the settle waiters), `setTimeout` becomes a
-//! spawned sleep cancelled through a token, and the abort *reason* of
-//! `AbortController` has no `CancellationToken` equivalent — the reason is kept
-//! on the record, which is where every reader of it looks.
-
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -136,7 +113,6 @@ struct ManagedState {
     notification_suppressed: Option<bool>,
     timed_out: bool,
     terminal_fired: bool,
-    /// TS reads `entry.release === undefined`; the flag says the same thing.
     detached: bool,
     /// Cancels the armed deadline, standing in for `clearTimeout`.
     deadline: Option<CancellationToken>,
@@ -740,7 +716,6 @@ impl TaskManager {
     }
 
     /// The output of a task, preferring the complete log when one exists.
-    ///
     /// The distinction is reported rather than hidden: a reader that receives a
     /// memory tail needs to know no fuller copy exists, because that changes
     /// what it can do about a truncation.
@@ -909,7 +884,6 @@ impl TaskManager {
     }
 
     /// Stops a task from announcing itself when it settles.
-    ///
     /// Used when the result is being handed back directly — stopping a task from
     /// a tool call, or ending the session — so the model is never told twice.
     pub async fn suppress_notification(&self, task_id: &str) {

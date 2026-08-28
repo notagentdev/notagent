@@ -1,18 +1,3 @@
-//! Port of the reference test module `minify_multi_edit_tests.rs` plus a
-//! deterministic run of the minified-edit testbench
-//! (`notagent-main-rust/minified-edit-testbench/`).
-//!
-//! End-to-end checks that several sequential minified edits on one file stay
-//! clean — no indentation corruption, comments survive, and the result keeps
-//! parsing. This mirrors what `multi_patch_minified` does: every edit is
-//! applied to the output of the previous one, re-minifying in between.
-//!
-//! The testbench itself is a prompt for a model under test; what is
-//! deterministic about it is the file, the ten edits it asks for and the
-//! grading rules. Those are reproduced here as a regression test, so the
-//! property the benchmark measures (correct indentation, byte-identical string
-//! literals, surviving comments) is checked on every run rather than by hand.
-
 use std::path::Path;
 
 use notagent::core::mini_read::{apply_minified_edit, minify_for_path};
@@ -273,7 +258,6 @@ fn view_line(content: &str, marker: &str, keep_comments: bool) -> String {
 
 /// One edit of the benchmark: take the view line holding `marker` and swap
 /// `from` for `to` inside it, which is what the prompt asks the model to do.
-///
 /// The search text is the line without its view indentation — the form a model
 /// sends when it quotes the line it wants changed. Sending it *with* the view
 /// indentation is only equivalent for lines the view re-indents: a `///` doc

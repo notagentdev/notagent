@@ -1,16 +1,3 @@
-//! Ported from `packages/coding-agent/test/footer-data-provider.test.ts`.
-//!
-//! Deviation (class 1): the TypeScript suite mocks `child_process` so it can
-//! assert whether git was consulted. Rust has no module mocking, and a fake
-//! `git` on `PATH` would mean mutating the process environment while other
-//! tests run. The fixtures do the same job instead: a repository whose `.git`
-//! holds nothing but a HEAD file is one real git refuses to open, so a branch
-//! that still comes back proves the file was read and git was not asked, while
-//! the reftable cases use repositories real git does open.
-//!
-//! Not ported: "retries git watchers 5 seconds after an async fs.watch error",
-//! which drives the watcher's `error` event by hand through the mocked handle.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

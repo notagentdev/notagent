@@ -1,9 +1,3 @@
-//! Port of the image cases of `packages/tui/test/tui-alt-screen.test.ts`.
-//!
-//! They live in their own test binary because they replace the global terminal
-//! capabilities and the Kitty image registry, which must not race with the
-//! other cases.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -60,7 +54,6 @@ fn use_capabilities(images: ImageProtocol) {
     });
 }
 
-/// `{ render: () => lines, invalidate: () => {} }` of the TS suite.
 struct Lines(Vec<String>);
 
 impl Component for Lines {

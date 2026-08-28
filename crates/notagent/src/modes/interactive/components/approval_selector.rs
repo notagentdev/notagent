@@ -1,6 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/approval-selector.ts` (84 LOC).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -17,7 +14,6 @@ use crate::modes::interactive::theme::theme::{ThemeColor, get_select_list_theme,
 use super::dynamic_border::DynamicBorder;
 
 /// Asks the user to approve one tool call.
-///
 /// Built on the same selector pattern as the model and theme pickers. Two
 /// details differ deliberately: the deciding policy is always shown, so an
 /// unexpected prompt can be traced to its rule, and cancelling resolves to a
@@ -161,13 +157,11 @@ pub struct PendingApproval {
 impl PendingApproval {
     /// Answer the request. Repeated answers are ignored rather than panicking:
     /// a double keypress must not turn into a failure in the middle of a tool
-    /// call (`resolve` in TypeScript drops its `settle` reference the same way).
     pub fn resolve(&mut self, value: ApprovalAnswer) {
         let Some(settle) = self.settle.take() else {
             return;
         };
         // The receiver may be gone if the caller stopped waiting; that is the
-        // TypeScript case of a settled promise nobody holds any more.
         let _ = settle.send(value);
     }
 }

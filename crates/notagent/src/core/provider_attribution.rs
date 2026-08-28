@@ -1,11 +1,3 @@
-//! Port of `packages/coding-agent/src/core/provider-attribution.ts`.
-//!
-//! The headers a few providers want so they can attribute traffic. They are
-//! opt-out with the install telemetry, because that is what they are: an
-//! identification of the client, sent to the provider the user chose.
-//!
-//! The session header is separate and is not telemetry — opencode routes on it.
-
 use notagent_ai::types::{Model, ProviderHeaders};
 
 use crate::core::settings_manager::SettingsManager;
@@ -18,7 +10,6 @@ const CLOUDFLARE_AI_GATEWAY_HOST: &str = "gateway.ai.cloudflare.com";
 const OPENCODE_HOST: &str = "opencode.ai";
 
 /// `new URL(baseUrl).hostname === expectedHost`, with a parse failure reading
-/// as "no match" the way the TypeScript `try`/`catch` does.
 fn matches_host(base_url: &str, expected_host: &str) -> bool {
     let Some(rest) = base_url.split_once("://").map(|(_, rest)| rest) else {
         return false;
@@ -103,7 +94,6 @@ fn session_headers(model: &Model, session_id: Option<&str>) -> Vec<(String, Stri
 }
 
 /// Merges the attribution headers with whatever the caller already had, later
-/// sources winning — exactly the spread order of the TypeScript.
 pub fn merge_provider_attribution_headers(
     model: &Model,
     settings_manager: &SettingsManager,

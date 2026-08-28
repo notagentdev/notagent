@@ -1,7 +1,3 @@
-//! Port of `packages/tui/test/editor-history-keybindings.test.ts` (43 LOC).
-//!
-//! Its own test binary because it replaces the global keybindings manager.
-
 use std::rc::Rc;
 
 use notagent_tui::components::editor::{Editor, EditorOptions, EditorTheme};

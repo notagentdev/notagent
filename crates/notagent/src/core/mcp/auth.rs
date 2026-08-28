@@ -1,27 +1,10 @@
-//! OAuth for the HTTP transports, and where the tokens live (v0.1.22).
+//! OAuth for HTTP transports and persistent MCP credentials.
 //!
-//! The flow itself belongs to `rmcp`: metadata discovery, dynamic client
-//! registration, PKCE, the CSRF state, the code exchange and the refresh grant
-//! are all its state machine. What this module owns is the two ends of it — the
-//! file the tokens are kept in, and the loopback listener the browser comes back
-//! to.
-//!
-//! Two deviations from the reference this port otherwise follows:
-//!
-//! - The callback listens on a port the operating system picks, not on a fixed
-//!   8765. A second session authenticating at the same time, or any unrelated
-//!   process holding that port, made the reference's login fail with a bind
-//!   error the user could do nothing about. A configured `redirect_uri` is still
-//!   honoured exactly: a provider validates the URI it has registered.
-//! - The listener is bound *before* the authorization URL is built, so the port
-//!   in the URL is a port that is already held. The reference builds the URL
-//!   first and binds after, which leaves a window in which the port it just
-//!   promised the provider can be taken by someone else.
-//!
-//! The credential file is written the way `auth.json` is: through a temporary
-//! file and a rename, 0600, under the lock every process shares, and re-read
-//! inside that lock. A session that saves one server's tokens must not erase
-//! another's, and a crash mid-write must not lose all of them.
+//! The callback listener normally uses an operating-system-assigned loopback
+//! port. Explicit redirect URIs are honored for providers that require a
+//! registered address. Credential updates use an inter-process lock, a
+//! temporary file, an atomic rename, and mode 0600 so concurrent sessions do
+//! not overwrite each other or expose bearer tokens.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -42,7 +25,6 @@ use crate::utils::lockfile::{LockOptions, lock_with_retry};
 const CREDENTIAL_FILE_MODE: u32 = 0o600;
 
 /// How long the browser has to come back before the login is abandoned.
-///
 /// Long enough for a login that needs a password manager and a second factor,
 /// short enough that an abandoned tab does not hold a port for the session.
 pub const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
@@ -97,7 +79,6 @@ pub struct McpCredentialStore {
 
 impl McpCredentialStore {
     /// Reads the file, treating anything unreadable as empty.
-    ///
     /// A corrupt credential file must not stop a session from starting: the
     /// worst it costs is a login, and refusing to start costs the whole run.
     pub fn load(path: &Path) -> Self {
@@ -108,7 +89,6 @@ impl McpCredentialStore {
     }
 
     /// Applies a change against the file's current contents, under the lock.
-    ///
     /// The read happens inside the lock, so a change to one server's entry
     /// cannot roll back another's — the failure mode of every caller holding
     /// its own snapshot and writing the whole file back.
@@ -203,7 +183,6 @@ impl McpTokenStorage {
     }
 
     /// Forgets this server's tokens, keeping any registration.
-    ///
     /// A rejected token and an unregistered client are different problems: the
     /// first needs a login, the second needs the provider to be asked for a new
     /// client, which is slower and which some providers rate-limit.
@@ -353,7 +332,6 @@ fn now_seconds() -> u64 {
 }
 
 /// A token that can be presented now, refreshed if it had gone stale.
-///
 /// `None` means there is nothing stored, or that what was stored can no longer
 /// be turned into a token — both of which are answered by logging in, so the
 /// caller treats them alike.
@@ -431,7 +409,6 @@ pub async fn forget(server_url: &str, path: &Path) -> Result<(), String> {
 }
 
 /// Forgets every server's credentials.
-///
 /// The file is emptied rather than deleted, so its mode and its place stay put
 /// and the next login does not have to re-create either.
 pub async fn forget_all(path: &Path) -> Result<usize, String> {
@@ -448,7 +425,6 @@ pub struct McpAuthPrompt {
 }
 
 /// Runs the login from end to end and returns a usable access token.
-///
 /// `announce` is called once, with the URL, at the moment the browser is opened
 /// — before the wait, so the user sees where to go even when the browser did not
 /// come up.
@@ -527,7 +503,6 @@ struct CallbackListener {
 }
 
 /// What came back on the redirect.
-///
 /// Deliberately not `Debug`: the code is a one-time credential, and a struct
 /// that can be printed ends up printed.
 struct Callback {

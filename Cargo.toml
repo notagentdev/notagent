@@ -8,11 +8,10 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT"
 
-# Zentrale Versionsverwaltung. Jede Crate übernimmt Abhängigkeiten per
-# `dep = { workspace = true }`, damit die Root-Cargo.toml die einzige Stelle
-# bleibt, an der Versionen stehen (siehe CONVENTIONS.md).
+# Dependency versions live here. Crates inherit them with
+# `dep = { workspace = true }`.
 [workspace.dependencies]
-# --- interne Crates (Abhängigkeitsgraph identisch zum TS-Monorepo) ---
+# --- Internal crates ---
 notagent-agent = { path = "crates/notagent-agent" }
 notagent-ai = { path = "crates/notagent-ai" }
 notagent-client = { path = "crates/notagent-client" }
@@ -22,7 +21,7 @@ notagent-session-sqlite = { path = "crates/notagent-session-sqlite" }
 notagent-telemetry = { path = "crates/notagent-telemetry" }
 notagent-tui = { path = "crates/notagent-tui" }
 
-# --- Laufzeit / Async ---
+# --- Runtime / async ---
 tokio = { version = "1.53", features = [
     "macros",
     "rt-multi-thread",
@@ -41,20 +40,17 @@ futures = "0.3"
 async-trait = "0.1"
 bytes = "1"
 
-# --- Serialisierung ---
-# preserve_order: JSON-Objekte behalten ihre Einfügereihenfolge wie in
-# JavaScript (nötig für byte-identische Tool-Schemas und Settings-Rewrites).
-# raw_value: JS-kompatible Zahlformatierung (Interface-Request B-2).
+# --- Serialization ---
+# preserve_order keeps schemas and settings rewrites deterministic.
+# raw_value permits precise number serialization.
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
-# Ersatz für das npm-Paket `yaml` (Frontmatter von Modes, Skills und
-# Prompt-Templates); gepflegte Fortführung von serde_yaml mit gleicher API.
+# Maintained YAML support for mode, skill, and prompt-template frontmatter.
 serde_yaml_ng = "0.10"
 
-# --- Netzwerk ---
-# rustls direkt nur für CryptoProvider::install_default in den Binaries: im
-# Prozess stecken ring (reqwest) UND aws-lc-rs (aws-sdk) — ohne expliziten
-# Default panict rustls beim ersten TLS-Aufbau (Laufzeitfund nach v0.1.0).
+# --- Network ---
+# Binaries install an explicit rustls crypto provider because reqwest and the
+# AWS SDK enable different providers in the same process.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
@@ -69,12 +65,11 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 aws-config = { version = "1.10", features = ["behavior-version-latest"] }
 aws-sdk-bedrockruntime = { version = "1.139", features = ["behavior-version-latest"] }
 
-# --- Persistenz ---
+# --- Persistence ---
 rusqlite = { version = "0.40", features = ["bundled"] }
 fs4 = { version = "1.1", features = ["sync"] }
 
-# --- Codebase-Index (notagent-index, 1:1 aus ../notagent-main-rust; Versionen
-# --- exakt wie dort gepinnt, damit BM25/Chunking byte-identisch rechnen) ---
+# --- Codebase index ---
 notagent-index = { path = "crates/notagent-index" }
 bincode = "1.3"
 dashmap = "7.0.0-rc2"
@@ -85,7 +80,7 @@ tantivy = "0.22"
 tracing = "0.1.44"
 twox-hash = "2"
 
-# --- Text / Unicode / Diff / Suche ---
+# --- Text / Unicode / diff / search ---
 unicode-normalization = "0.1"
 unicode-segmentation = "1.13"
 unicode-width = "0.2"
@@ -109,14 +104,14 @@ rmcp = { version = "0.10.0", features = [
     "server",
     "transport-streamable-http-server",
 ] }
-# oauth2: rmcp's OAuth types are this crate's, and the credential store this
-# port keeps on disk has to be converted into and out of them.
+# oauth2: rmcp's OAuth types are this crate's, and stored credentials have to
+# be converted into and out of them.
 oauth2 = "5.0"
 # axum: the HTTP server rmcp's streamable-http server transport mounts into.
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 regex = "1"
 
-# --- tree-sitter (Versionen aus plans/facts/rust-minify-reference.md) ---
+# --- tree-sitter ---
 tree-sitter = "0.26.9"
 tree-sitter-bash = "0.25.1"
 tree-sitter-c = "0.24.2"
@@ -133,14 +128,13 @@ tree-sitter-ruby = "0.23.1"
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 
-# --- Sonstiges ---
+# --- Miscellaneous ---
 anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 image = "0.25"
-# notify: A-6 (Theme-Live-Reload, fs-watch.ts-Ersatz); Version 6 wie in der
-# lokal erprobten Rust-Referenz (notagent-main-rust, Cargo.lock: 6.1.1).
+# notify drives theme and configuration live reload.
 notify = "6"
 rand = "0.10"
 semver = "1"
@@ -148,19 +142,16 @@ sha2 = "0.11"
 thiserror = "2"
 uuid = { version = "1.24", features = ["v4", "v7", "serde"] }
 
-# --- Plattform ---
+# --- Platform ---
 libc = "0.2"
 windows-sys = "0.61"
 
-# --- Test-Hilfen ---
+# --- Test helpers ---
 tempfile = "3"
-# VT-Emulator fuer das virtuelle Test-Terminal (Ersatz fuer @xterm/headless,
-# Auswahl durch WS-A begruendet in plans/interface-requests.md A-1).
+# VT emulator used by the virtual test terminal.
 vt100 = "0.16"
 
-# Debug-Info auf Zeilentabellen reduziert (O-10): volle DWARF-Symbole blaehten
-# jedes Worktree-target auf 50-70 GB (ENOSPC-Stillstand am 2026-08-15).
-# line-tables-only behaelt file:line in Panic-Backtraces — die brauchen die
-# Workstreams zur Testdiagnose; Debugger-Stepping braucht niemand.
+# Line tables retain file and line information in panic backtraces without the
+# storage cost of full DWARF debug information.
 [profile.dev]
 debug = "line-tables-only"

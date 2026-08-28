@@ -1,9 +1,3 @@
-//! Provider-scoped environment lookup.
-//!
-//! 1:1 port of `packages/ai/src/utils/provider-env.ts` (52 LOC). The Bun sandbox
-//! fallback (`/proc/self/environ`) is a workaround for oven-sh/bun#27802 and has no
-//! counterpart in Rust (deviation class 4, distribution mechanics).
-
 use crate::types::ProviderEnv;
 
 /// `getProviderEnvValue(name, env)` — scoped override first, then the process

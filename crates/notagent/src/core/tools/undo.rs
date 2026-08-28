@@ -1,10 +1,8 @@
 //! Puts a file back the way it was before the last change.
-//!
 //! Every mutating tool copies a file into the snapshot store before touching it
 //! (`core/snapshots.rs`). This restores the newest copy and consumes it, so
 //! calling it again steps back another change — the history is walked one step
 //! at a time rather than jumped through.
-//!
 //! Nothing here asks for permission, and that is deliberate. The only state
 //! undo can produce is one the workspace already had, on a path this agent
 //! already changed; asking to take a change back would be asking about the
@@ -51,7 +49,6 @@ const DESCRIPTION: &str = concat!(
 );
 
 /// How long an undo expects to hold its lease.
-///
 /// The same as a write, which is what this is — the reference takes no lease
 /// here at all (`fs_undo.rs`), but our subagents can write the same file
 /// concurrently, and restoring underneath one of them would lose its work

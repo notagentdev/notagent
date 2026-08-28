@@ -1,8 +1,3 @@
-//! 1:1 port of
-//! `packages/coding-agent/src/modes/interactive/components/keybinding-hints.ts` (48 LOC).
-//!
-//! Utilities for formatting keybinding hints in the UI.
-
 use notagent_tui::keybinding_keys;
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};

@@ -1,12 +1,3 @@
-//! Payload snapshot tests for the Anthropic request builder.
-//!
-//! The fixtures were produced by the real TypeScript implementation: a script runs
-//! `stream()` from `packages/ai/src/api/anthropic-messages.ts` against a fake client and
-//! captures the request body through the `onPayload` hook
-//! (`/tmp/gen-anthropic-payloads.mts`, run with `node --experimental-strip-types`).
-//! Each case below rebuilds the same request in Rust and must produce the identical
-//! body — the "payload snapshot" verification the workstream plan asks for.
-
 use notagent_ai::api::anthropic_params::*;
 use notagent_ai::types::*;
 use serde_json::{Map, Value, json};
@@ -111,7 +102,7 @@ fn check(name: &str, model: &Model, context: &Context, options: AnthropicOptions
     assert_eq!(
         actual,
         expected(name),
-        "payload for {name} differs from the TypeScript body"
+        "payload for {name} differs from the expected payload"
     );
 }
 
@@ -121,7 +112,7 @@ fn the_fixture_covers_every_case() {
 }
 
 #[test]
-fn plain_text_request_matches_typescript() {
+fn plain_text_request_matches_fixture() {
     let context = Context {
         system_prompt: Some("sys".to_string()),
         messages: vec![user("hello", 1)],
@@ -136,7 +127,7 @@ fn plain_text_request_matches_typescript() {
 }
 
 #[test]
-fn cache_retention_variants_match_typescript() {
+fn cache_retention_variants_match_fixture() {
     let context = Context {
         system_prompt: None,
         messages: vec![user("hi", 1)],
@@ -163,7 +154,7 @@ fn cache_retention_variants_match_typescript() {
 }
 
 #[test]
-fn tool_definitions_match_typescript() {
+fn tool_definitions_match_fixture() {
     let context = Context {
         system_prompt: None,
         messages: vec![user("hi", 1)],
@@ -178,7 +169,7 @@ fn tool_definitions_match_typescript() {
 }
 
 #[test]
-fn thinking_modes_match_typescript() {
+fn thinking_modes_match_fixture() {
     let context = Context {
         system_prompt: None,
         messages: vec![user("hi", 1)],
@@ -244,7 +235,7 @@ fn temperature_is_dropped_when_thinking_is_enabled() {
 }
 
 #[test]
-fn tool_choice_and_metadata_match_typescript() {
+fn tool_choice_and_metadata_match_fixture() {
     let context = Context {
         system_prompt: None,
         messages: vec![user("hi", 1)],
@@ -282,7 +273,7 @@ fn tool_choice_and_metadata_match_typescript() {
 }
 
 #[test]
-fn image_content_matches_typescript() {
+fn image_content_matches_fixture() {
     let context = Context {
         system_prompt: None,
         messages: vec![Message::User(UserMessage {
@@ -324,7 +315,7 @@ fn image_content_matches_typescript() {
 }
 
 #[test]
-fn assistant_turns_and_tool_results_match_typescript() {
+fn assistant_turns_and_tool_results_match_fixture() {
     let context = Context {
         system_prompt: None,
         messages: vec![
@@ -364,7 +355,7 @@ fn assistant_turns_and_tool_results_match_typescript() {
 }
 
 #[test]
-fn thinking_replay_matches_typescript() {
+fn thinking_replay_matches_fixture() {
     let signed = Context {
         system_prompt: None,
         messages: vec![
@@ -420,7 +411,7 @@ fn thinking_replay_matches_typescript() {
 }
 
 #[test]
-fn strict_tools_and_eager_streaming_compat_match_typescript() {
+fn strict_tools_and_eager_streaming_compat_match_fixture() {
     let strict_tool = Tool {
         constrained_sampling: Some(ConstrainedSampling::Config(
             ConstrainedSamplingConfig::JsonSchema {

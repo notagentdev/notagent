@@ -1,17 +1,3 @@
-//! Port of `packages/coding-agent/src/utils/clipboard-image.ts` (300 LOC) —
-//! reading an image out of the system clipboard for `app.clipboard.pasteImage`.
-//!
-//! **Deviation (class 3), the same one `utils/clipboard.rs` documents:** the
-//! native addon `@mariozechner/clipboard` is gone, so the two paths that went
-//! through it are replaced by the platform's own tools — `osascript` on macOS
-//! (which is what the addon calls underneath) and the same PowerShell script
-//! the TypeScript already uses for WSL on Windows. The Linux paths (wl-paste,
-//! xclip, PowerShell under WSL) are ported as they are.
-//!
-//! **Deviation (class 3):** `photon` becomes `image` for the format
-//! conversion, as the master substitution table sets out; the shared helper is
-//! `crate::utils::image::convert_image_bytes_to_png`.
-
 use std::path::PathBuf;
 
 use crate::utils::clipboard::{ClipboardOperations, Platform, SystemClipboard, is_wayland_session};
@@ -99,7 +85,6 @@ impl ClipboardImageOperations for SystemClipboardImages {
     fn run(&self, command: &str, args: &[&str], timeout_ms: u64) -> Option<Vec<u8>> {
         // `spawnSync`'s timeout has no direct equivalent in `std::process`; the
         // child is spawned and waited for, and the timeout is enforced by a
-        // watchdog that kills it (deviation class 1, same observable result).
         use std::process::{Command, Stdio};
         let child = Command::new(command)
             .args(args)
@@ -304,7 +289,6 @@ fn read_via_powershell_windows(images: &dyn ClipboardImageOperations) -> Option<
 }
 
 /// The macOS counterpart of the native addon.
-///
 /// `osascript` writes the clipboard's PNG rendition to a file; the addon calls
 /// the same AppKit pasteboard underneath.
 fn read_via_osascript(images: &dyn ClipboardImageOperations) -> Option<ClipboardImage> {

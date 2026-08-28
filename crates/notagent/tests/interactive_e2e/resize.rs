@@ -1,5 +1,4 @@
 //! Scenario 6 — resize.
-//!
 //! A SIGWINCH reaches the TUI as the resize handler of the terminal; the screen
 //! is laid out again at the new width and nothing wraps past the edge. The
 //! renderer's own resize behaviour is pinned in the TUI crate
