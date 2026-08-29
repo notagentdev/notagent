@@ -1,3 +1,4 @@
+pub mod lifecycle;
 pub mod manager;
 pub mod notification;
 pub mod output;

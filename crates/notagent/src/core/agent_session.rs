@@ -67,6 +67,7 @@ use crate::core::source_info::{
     SourceInfo, SyntheticSourceInfoOptions, create_synthetic_source_info,
 };
 use crate::core::system_prompt::{BuildSystemPromptOptions, ContextFile, build_system_prompt};
+use crate::core::tasks::lifecycle::{TASK_LIFECYCLE_ENTRY_TYPE, TaskLifecycleRecord};
 use crate::core::tasks::manager::{RegisterTaskOptions, TaskManager, TaskManagerOptions};
 use crate::core::tasks::notification::{
     NOTIFICATION_PREVIEW_BYTES, NotificationOutput, TaskNotificationDelivery,
@@ -1991,13 +1992,29 @@ impl AgentSession {
         }
 
         let this = self.this();
-        let weak = Arc::downgrade(&this);
+        let started_session = Arc::downgrade(&this);
+        let terminated_session = Arc::downgrade(&this);
+        let task_session_id = session_id.clone();
+        let terminated_session_id = session_id.clone();
         let manager = Arc::new(TaskManager::new(
             Arc::new(TaskStore::new(get_session_tasks_dir(&session_id))),
             TaskManagerOptions {
+                on_started: Some(Arc::new(move |info| {
+                    let Some(session) = started_session.upgrade() else {
+                        return;
+                    };
+                    session.append_task_lifecycle_entry(
+                        &task_session_id,
+                        TaskLifecycleRecord::started(info),
+                    );
+                })),
                 on_terminated: Some(Arc::new(move |info, _reason| {
-                    let notifier = weak.upgrade().and_then(|session| {
-                        session.tasks.lock().expect("poisoned").notifier.clone()
+                    let notifier = terminated_session.upgrade().and_then(|session| {
+                        session.append_task_lifecycle_entry(
+                            &terminated_session_id,
+                            TaskLifecycleRecord::ended(info.clone()),
+                        );
+                        session.tasks.lock().ok()?.notifier.clone()
                     });
                     let Some(notifier) = notifier else {
                         return;
@@ -2021,20 +2038,63 @@ impl AgentSession {
             let mut tasks = self.tasks.lock().expect("poisoned");
             tasks.manager = Some(Arc::clone(&manager));
             tasks.notifier = Some(Arc::clone(&notifier));
-            tasks.session_id = Some(session_id);
+            tasks.session_id = Some(session_id.clone());
         }
 
         // Whatever the previous process left running is reported once, here,
         // rather than silently disappearing between one start and the next.
         let reconcile_manager = Arc::clone(&manager);
         let reconcile_notifier = Arc::clone(&notifier);
+        let reconcile_session = Arc::downgrade(&this);
+        let reconcile_session_id = session_id.clone();
         tokio::spawn(async move {
             for info in reconcile_manager.reconcile().await {
+                if let Some(session) = reconcile_session.upgrade() {
+                    session.append_task_lifecycle_entry(
+                        &reconcile_session_id,
+                        TaskLifecycleRecord::ended(info.clone()),
+                    );
+                }
                 reconcile_notifier.notify(&info).await;
             }
         });
 
         Some(manager)
+    }
+
+    /// Adds one immutable task line to the session and tells transcript UIs to
+    /// append it. The session id guards callbacks from a manager being shut
+    /// down after the user has already switched conversations.
+    fn append_task_lifecycle_entry(&self, expected_session_id: &str, record: TaskLifecycleRecord) {
+        let Ok(data) = serde_json::to_value(record) else {
+            return;
+        };
+        let entry = {
+            let Ok(mut manager) = self.session_manager.lock() else {
+                return;
+            };
+            if manager.get_session_id() != expected_session_id {
+                return;
+            }
+            let previous_leaf = manager.get_leaf_id().map(str::to_owned);
+            let _ = manager.append_custom_entry(TASK_LIFECYCLE_ENTRY_TYPE, Some(data));
+            manager
+                .get_leaf_entry()
+                .filter(|entry| {
+                    previous_leaf.as_deref() != Some(entry.id())
+                        && matches!(
+                            entry,
+                            SessionEntry::Custom(custom)
+                                if custom.custom_type == TASK_LIFECYCLE_ENTRY_TYPE
+                        )
+                })
+                .cloned()
+        };
+        if let Some(entry) = entry {
+            self.emit(AgentSessionEvent::EntryAppended {
+                entry: Box::new(entry),
+            });
+        }
     }
 
     /// The post-compaction reminder, consumed once.

@@ -1,19 +1,64 @@
-//! The transcript lines that report what background work did.
-//! The panels show what is running and drop a task the moment it settles, so
-//! without these lines a background job simply vanishes and the user is left
-//! guessing whether it worked. What is pinned here is which lines appear, that
-//! none appears twice, and that work from a previous session stays quiet.
+//! The immutable transcript record around background work.
 
-use std::sync::{Mutex, MutexGuard, OnceLock};
+mod suite;
 
-use notagent::core::tasks::types::{
-    ShellTaskInfo, SubagentTaskInfo, TaskInfo, TaskInfoBase, TaskStatus,
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+
+use notagent::core::agent_session::AgentSessionEvent;
+use notagent::core::session_manager::{SessionManager, session_entry_to_context_messages};
+use notagent::core::tasks::lifecycle::{
+    TASK_LIFECYCLE_ENTRY_TYPE, TaskLifecyclePhase, TaskLifecycleRecord,
 };
-use notagent::modes::interactive::components::task_lifecycle::TaskAnnouncer;
-use notagent::modes::interactive::theme::theme::{init_theme, theme};
+use notagent::core::tasks::manager::RegisterTaskOptions;
+use notagent::core::tasks::types::{
+    BackgroundTask, ShellTaskInfo, SubagentTaskInfo, TaskInfo, TaskInfoBase, TaskKind,
+    TaskSettlement, TaskSettlementStatus, TaskSink, TaskStatus,
+};
+use notagent::modes::interactive::components::task_lifecycle::{
+    is_background_bash_call, task_lifecycle_line,
+};
+use notagent::modes::interactive::theme::theme::{ThemeBg, badge, init_theme, theme};
 use notagent::utils::ansi::strip_ansi;
+use notagent_agent::types::BoxFuture;
+use serde_json::json;
+use suite::{HarnessOptions, create_harness};
 
-/// The global theme is a process global.
+const UNSTREAMED_OUTPUT: &str = "background output stays in the task log";
+
+struct ImmediateShell;
+
+impl BackgroundTask for ImmediateShell {
+    fn kind(&self) -> TaskKind {
+        TaskKind::Shell
+    }
+
+    fn id_prefix(&self) -> &str {
+        "shell"
+    }
+
+    fn description(&self) -> String {
+        "finish immediately".to_owned()
+    }
+
+    fn start<'a>(&'a self, sink: TaskSink) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            sink.append_output(UNSTREAMED_OUTPUT);
+            sink.settle(TaskSettlement::new(TaskSettlementStatus::Completed))
+                .await;
+            Ok(())
+        })
+    }
+
+    fn to_info(&self, base: TaskInfoBase) -> TaskInfo {
+        TaskInfo::Shell(ShellTaskInfo {
+            base,
+            command: "true".to_owned(),
+            pid: 42,
+            exit_code: Some(0),
+        })
+    }
+}
+
 fn theme_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     let guard = LOCK
@@ -24,182 +69,206 @@ fn theme_lock() -> MutexGuard<'static, ()> {
     guard
 }
 
-fn base(task_id: &str, status: TaskStatus, detached: bool) -> TaskInfoBase {
+fn base(task_id: &str, status: TaskStatus) -> TaskInfoBase {
     TaskInfoBase {
-        task_id: task_id.to_string(),
-        description: "do the thing".to_string(),
+        task_id: task_id.to_owned(),
+        description: "inspect the lifecycle".to_owned(),
         status,
-        detached: Some(detached),
-        started_at: 0,
-        ended_at: Some(3_000),
+        detached: Some(true),
+        started_at: 1_000,
+        ended_at: (status != TaskStatus::Running).then_some(4_000),
         stop_reason: None,
         notification_suppressed: None,
         timeout_ms: None,
     }
 }
 
-fn subagent(task_id: &str, status: TaskStatus) -> TaskInfo {
+fn subagent(status: TaskStatus) -> TaskInfo {
     TaskInfo::Subagent(SubagentTaskInfo {
-        base: base(task_id, status, true),
-        tokens: 0,
-        session_id: format!("session-{task_id}"),
-        agent: "read-only".to_string(),
-        alias: "Vega".to_string(),
+        base: base("agent-1", status),
+        tokens: 12,
+        session_id: "session-1".to_owned(),
+        agent: "read-only".to_owned(),
+        alias: "Vega".to_owned(),
     })
 }
 
-fn shell(task_id: &str, status: TaskStatus, exit_code: Option<i32>) -> TaskInfo {
+fn shell(status: TaskStatus, exit_code: Option<i32>) -> TaskInfo {
     TaskInfo::Shell(ShellTaskInfo {
-        base: base(task_id, status, true),
-        command: "cargo test --all".to_string(),
-        pid: 4242,
+        base: base("shell-1", status),
+        command: "cargo test --all".to_owned(),
+        pid: 42,
         exit_code,
     })
 }
 
-fn observe(announcer: &mut TaskAnnouncer, tasks: &[TaskInfo]) -> Vec<String> {
-    announcer
-        .observe(tasks, &theme(), false)
-        .into_iter()
-        .map(|line| strip_ansi(&line).trim().to_string())
-        .collect()
+fn line(record: &TaskLifecycleRecord, badge_style: bool) -> String {
+    strip_ansi(&task_lifecycle_line(record, &theme(), badge_style))
+        .trim()
+        .to_owned()
 }
 
-// ── a detached command ────────────────────────────────────────────────
-
-/// The case that prompted all of this: a background command finishes and the
-/// transcript says so. The panel cannot, because a settled task is gone from it.
 #[test]
-fn reports_a_background_command_that_finished() {
+fn a_background_subagent_gets_separate_start_and_end_lines() {
     let _guard = theme_lock();
-    let mut announcer = TaskAnnouncer::new();
+    let started = TaskLifecycleRecord::started(subagent(TaskStatus::Running));
+    let ended = TaskLifecycleRecord::ended(subagent(TaskStatus::Completed));
 
-    let running = observe(
-        &mut announcer,
-        &[shell("shell-1", TaskStatus::Running, None)],
+    let start_line = line(&started, true);
+    let end_line = line(&ended, true);
+
+    assert!(start_line.contains("BG-SUBAGENT"), "{start_line}");
+    assert!(start_line.contains("Vega"), "{start_line}");
+    assert!(start_line.contains("agent-1 started"), "{start_line}");
+    assert!(end_line.contains("BG-SUBAGENT"), "{end_line}");
+    assert!(end_line.contains("Vega"), "{end_line}");
+    assert!(end_line.contains("agent-1 done"), "{end_line}");
+    assert_ne!(start_line, end_line, "the outcome is a new transcript line");
+}
+
+#[test]
+fn a_background_bash_gets_separate_start_and_end_lines() {
+    let _guard = theme_lock();
+    let started = TaskLifecycleRecord::started(shell(TaskStatus::Running, None));
+    let ended = TaskLifecycleRecord::ended(shell(TaskStatus::Failed, Some(101)));
+
+    let start_line = line(&started, false);
+    let end_line = line(&ended, false);
+
+    assert!(start_line.contains("[BG-Bash]"), "{start_line}");
+    assert!(start_line.contains("shell-1 started"), "{start_line}");
+    assert!(start_line.contains("cargo test --all"), "{start_line}");
+    assert!(end_line.contains("[BG-Bash]"), "{end_line}");
+    assert!(end_line.contains("shell-1 failed"), "{end_line}");
+    assert!(end_line.contains("exit 101"), "{end_line}");
+}
+
+#[test]
+fn every_background_badge_uses_the_compaction_colour() {
+    let _guard = theme_lock();
+    let current_theme = theme();
+    for (label, record) in [
+        (
+            "BG-Bash",
+            TaskLifecycleRecord::started(shell(TaskStatus::Running, None)),
+        ),
+        (
+            "BG-Subagent",
+            TaskLifecycleRecord::ended(subagent(TaskStatus::Completed)),
+        ),
+    ] {
+        let rendered = task_lifecycle_line(&record, &current_theme, true);
+        let expected = badge(&current_theme, ThemeBg::CustomMessageBg, label);
+        assert!(
+            rendered.starts_with(&expected),
+            "{label} must use the same badge fill as compaction: {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn a_background_bash_call_uses_only_the_lifecycle_rows() {
+    assert!(is_background_bash_call(
+        "bash",
+        &json!({ "command": "serve", "run_in_background": true })
+    ));
+    assert!(!is_background_bash_call(
+        "bash",
+        &json!({ "command": "serve" })
+    ));
+}
+
+#[test]
+fn lifecycle_entries_survive_resume_without_entering_model_context() {
+    let record = TaskLifecycleRecord::started(shell(TaskStatus::Running, None));
+    let data = serde_json::to_value(&record)
+        .unwrap_or_else(|error| panic!("the lifecycle record must be serializable: {error}"));
+    let mut manager = SessionManager::in_memory(Some("/workspace"), None)
+        .unwrap_or_else(|error| panic!("the in-memory session must open: {error}"));
+    manager
+        .append_custom_entry(TASK_LIFECYCLE_ENTRY_TYPE, Some(data))
+        .unwrap_or_else(|error| panic!("the lifecycle entry must append: {error}"));
+
+    let entries = manager.get_branch(None);
+    assert_eq!(entries.len(), 1, "one chat fact was stored: {entries:?}");
+    assert_eq!(
+        TaskLifecycleRecord::from_session_entry(entries[0]),
+        Some(record),
+        "resume can rebuild the exact chat line"
     );
     assert!(
-        running.is_empty(),
-        "the launch is already in the tool block: {running:?}"
+        session_entry_to_context_messages(entries[0]).is_empty(),
+        "a display record must not become another instruction to the model"
     );
-
-    let done = observe(
-        &mut announcer,
-        &[shell("shell-1", TaskStatus::Completed, Some(0))],
-    );
-    assert_eq!(done.len(), 1, "{done:?}");
-    assert!(done[0].contains("background done"), "{}", done[0]);
-    assert!(done[0].contains("cargo test --all"), "{}", done[0]);
 }
 
-/// A non-zero exit is the difference between "it ran" and "it worked", so it
-/// goes in the line rather than waiting to be looked up.
-#[test]
-fn names_the_exit_code_of_a_command_that_failed() {
-    let _guard = theme_lock();
-    let mut announcer = TaskAnnouncer::new();
-    observe(
-        &mut announcer,
-        &[shell("shell-1", TaskStatus::Running, None)],
-    );
+#[tokio::test(flavor = "multi_thread")]
+async fn a_fast_background_terminal_emits_one_ordered_session_pair() {
+    let harness = create_harness(HarnessOptions::default());
+    let manager = harness
+        .session
+        .task_manager()
+        .unwrap_or_else(|| panic!("the harness session must have a task manager"));
+    let task_id = manager
+        .register(Arc::new(ImmediateShell), RegisterTaskOptions::default())
+        .unwrap_or_else(|error| panic!("the task must register: {error}"));
+    let settled = manager.wait(&task_id, 2_000, None).await;
+    assert!(settled.is_some(), "the immediate task must settle");
 
-    let failed = observe(
-        &mut announcer,
-        &[shell("shell-1", TaskStatus::Failed, Some(101))],
-    );
-    assert_eq!(failed.len(), 1, "{failed:?}");
-    assert!(failed[0].contains("background failed"), "{}", failed[0]);
-    assert!(failed[0].contains("exit 101"), "{}", failed[0]);
-}
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let (stored, emitted) = loop {
+        let stored = harness.session.with_session_manager(|session| {
+            session
+                .get_branch(None)
+                .into_iter()
+                .filter_map(TaskLifecycleRecord::from_session_entry)
+                .collect::<Vec<_>>()
+        });
+        let emitted = harness
+            .events()
+            .into_iter()
+            .filter_map(|event| match event {
+                AgentSessionEvent::EntryAppended { entry } => {
+                    TaskLifecycleRecord::from_session_entry(&entry)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if stored.len() == 2 && emitted.len() == 2 {
+            break (stored, emitted);
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the session never delivered both lifecycle entries; stored={stored:?}, emitted={emitted:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    };
 
-/// A foreground command hands its result back into the block that ran it.
-#[test]
-fn stays_quiet_about_a_foreground_command() {
-    let _guard = theme_lock();
-    let mut announcer = TaskAnnouncer::new();
-    let attached = TaskInfo::Shell(ShellTaskInfo {
-        base: base("shell-1", TaskStatus::Running, false),
-        command: "ls".to_string(),
-        pid: 1,
-        exit_code: None,
-    });
-    observe(&mut announcer, &[attached]);
-
-    let settled = TaskInfo::Shell(ShellTaskInfo {
-        base: base("shell-1", TaskStatus::Completed, false),
-        command: "ls".to_string(),
-        pid: 1,
-        exit_code: Some(0),
-    });
-    assert!(observe(&mut announcer, &[settled]).is_empty());
-}
-
-// ── a subagent ────────────────────────────────────────────────────────
-
-#[test]
-fn reports_both_ends_of_a_subagents_life() {
-    let _guard = theme_lock();
-    let mut announcer = TaskAnnouncer::new();
-
-    let started = observe(&mut announcer, &[subagent("agent-1", TaskStatus::Running)]);
-    assert_eq!(started.len(), 1, "{started:?}");
-    assert!(started[0].contains("subagent started"), "{}", started[0]);
-    assert!(started[0].contains("Vega"), "{}", started[0]);
-
-    let ended = observe(
-        &mut announcer,
-        &[subagent("agent-1", TaskStatus::Completed)],
-    );
-    assert_eq!(ended.len(), 1, "{ended:?}");
-    assert!(ended[0].contains("subagent done"), "{}", ended[0]);
-    assert!(ended[0].contains("Vega"), "{}", ended[0]);
-}
-
-#[test]
-fn marks_a_subagent_that_ended_badly_as_failed() {
-    let _guard = theme_lock();
-    let mut announcer = TaskAnnouncer::new();
-    observe(&mut announcer, &[subagent("agent-1", TaskStatus::Running)]);
-    let ended = observe(&mut announcer, &[subagent("agent-1", TaskStatus::Killed)]);
-    assert_eq!(ended.len(), 1, "{ended:?}");
-    assert!(ended[0].contains("subagent failed"), "{}", ended[0]);
-}
-
-// ── saying it once ────────────────────────────────────────────────────
-
-/// The snapshot arrives every second, and a settled task stays in it.
-#[test]
-fn says_each_thing_exactly_once() {
-    let _guard = theme_lock();
-    let mut announcer = TaskAnnouncer::new();
-    let running = [
-        subagent("agent-1", TaskStatus::Running),
-        shell("shell-1", TaskStatus::Running, None),
-    ];
-    assert_eq!(observe(&mut announcer, &running).len(), 1);
-    assert!(observe(&mut announcer, &running).is_empty());
-
-    let settled = [
-        subagent("agent-1", TaskStatus::Completed),
-        shell("shell-1", TaskStatus::Completed, Some(0)),
-    ];
-    assert_eq!(observe(&mut announcer, &settled).len(), 2);
-    assert!(observe(&mut announcer, &settled).is_empty());
-    assert!(observe(&mut announcer, &settled).is_empty());
-}
-
-/// A task that was already over the first time it was seen ran in a previous
-/// session. Announcing it would tell the user about work they did not start.
-#[test]
-fn stays_quiet_about_work_from_a_previous_session() {
-    let _guard = theme_lock();
-    let mut announcer = TaskAnnouncer::new();
-    let restored = [
-        subagent("agent-1", TaskStatus::Completed),
-        shell("shell-1", TaskStatus::Completed, Some(0)),
-    ];
-    assert!(
-        observe(&mut announcer, &restored).is_empty(),
-        "{restored:?}"
-    );
+    for (source, records) in [("session", stored), ("events", emitted)] {
+        let serialized = serde_json::to_string(&records)
+            .unwrap_or_else(|error| panic!("the records must serialize: {error}"));
+        assert!(
+            !serialized.contains(UNSTREAMED_OUTPUT),
+            "{source} must not stream bash output into lifecycle chat rows"
+        );
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.phase)
+                .collect::<Vec<_>>(),
+            vec![TaskLifecyclePhase::Started, TaskLifecyclePhase::Ended],
+            "{source} must contain one immutable start/end pair: {records:?}"
+        );
+        assert_eq!(
+            records[0].task.status(),
+            TaskStatus::Running,
+            "{source} must capture the start before the task can settle"
+        );
+        assert!(
+            records
+                .iter()
+                .all(|record| record.task.task_id() == task_id),
+            "{source} must keep both lines attached to {task_id}: {records:?}"
+        );
+    }
 }

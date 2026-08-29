@@ -15,7 +15,7 @@ mod llama_server;
 
 use std::time::Duration;
 
-use app_runtime::{HeadlessApp, reply};
+use app_runtime::{HeadlessApp, reply, tool_call_reply};
 use notagent::modes::interactive::interactive_mode::{
     InteractiveModeHandle, InteractiveModeOptions, InteractiveTerminal, create_interactive_mode,
 };
@@ -278,6 +278,51 @@ async fn a_submitted_prompt_reaches_the_provider_and_the_answer_reaches_the_tran
         assert_eq!(
             app.session().get_last_assistant_text().as_deref(),
             Some("Answer from the faux provider")
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_background_bash_uses_only_purple_lifecycle_rows() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let command =
+            r#"sleep 0.2; printf '\123\124\122\105\101\115\105\104\137\123\105\103\122\105\124\n'"#;
+        app.faux().set_responses(vec![
+            tool_call_reply(
+                "bash",
+                "background-bash-call",
+                serde_json::json!({
+                    "command": command,
+                    "run_in_background": true,
+                    "description": "quiet background command"
+                }),
+            ),
+            reply("Background command launched"),
+            reply("Background command finished"),
+        ]);
+        let terminal = VirtualTerminal::new(120, 40);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("Run the background command").await;
+        driver.wait_for("Background command finished").await;
+
+        let screen = driver.terminal.get_viewport().join("\n");
+        assert_eq!(
+            screen.matches("BG-BASH").count(),
+            2,
+            "the transcript needs one start and one end row: {screen}"
+        );
+        assert_eq!(
+            screen.matches("sleep 0.2").count(),
+            1,
+            "the ordinary bash tool row must not duplicate the lifecycle start: {screen}"
+        );
+        assert!(
+            !screen.contains("STREAMED_SECRET"),
+            "background output must stay out of the chat: {screen}"
         );
     })
     .await;

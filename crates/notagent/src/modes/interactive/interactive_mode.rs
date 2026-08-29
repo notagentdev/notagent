@@ -50,7 +50,7 @@ use crate::core::diagnostics::{DiagnosticLevel, ResourceDiagnostic};
 use crate::core::hooks::runtime::{HookReportLevel, HookReporter};
 use crate::core::http_dispatcher::format_http_idle_timeout_ms;
 use crate::core::keybindings::KeybindingsManager;
-use crate::core::messages::create_compaction_summary_message;
+use crate::core::messages::{CustomMessage, create_compaction_summary_message};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::agent_session_runtime::SessionOpenError;
@@ -71,6 +71,7 @@ use crate::core::session_manager::{
 use crate::core::settings_manager::{DoubleEscapeAction, FullscreenExitOutput, TuiMode};
 use crate::core::slash_commands::BUILTIN_SLASH_COMMANDS;
 use crate::core::source_info::{SourceInfo, SourceScope};
+use crate::core::tasks::lifecycle::{TASK_LIFECYCLE_ENTRY_TYPE, TaskLifecycleRecord};
 use crate::core::tasks::manager::TaskManager;
 use crate::core::tasks::types::{TaskInfo, TaskStatus};
 use crate::core::todos::Todo;
@@ -120,7 +121,9 @@ use crate::modes::interactive::components::status_indicator::{
     CompactionStatusReason, IdleStatus, StatusIndicator, StatusIndicatorKind,
 };
 use crate::modes::interactive::components::subagent_panel::SubagentPanel;
-use crate::modes::interactive::components::task_lifecycle::TaskAnnouncer;
+use crate::modes::interactive::components::task_lifecycle::{
+    is_background_bash_call, task_lifecycle_line,
+};
 use crate::modes::interactive::components::tasks_browser::{
     TasksBrowserComponent, TasksBrowserProps, TasksFilter,
 };
@@ -1107,11 +1110,6 @@ pub struct InteractiveMode {
     /// Visible thinking/text of the streaming message at the last update, so
     /// growth — the reference's reasoning/message moment — closes the block.
     streaming_visible_chars: usize,
-    /// Subagent lifecycle entries already written to the transcript, keyed by
-    /// task id (user decision 2026-08-17, v0.1.8: one "started" and one
-    /// "done"/"failed" line per subagent).
-    /// What the transcript has already said about background work.
-    task_announcer: TaskAnnouncer,
     /// Every expandable child of the transcript (`app.tools.expand`).
     chat_expandables: Vec<Rc<RefCell<dyn Expandable>>>,
     last_escape_time: Option<Instant>,
@@ -1381,7 +1379,6 @@ impl InteractiveMode {
             explore_block: None,
             chat_explore_blocks: Vec::new(),
             streaming_visible_chars: 0,
-            task_announcer: TaskAnnouncer::new(),
             chat_expandables: Vec::new(),
             last_escape_time: None,
             bash_component: None,
@@ -3227,7 +3224,6 @@ impl InteractiveMode {
             .map(|manager| manager.list(false, None))
             .unwrap_or_default();
         self.refresh_subagent_panel(&all_tasks);
-        self.announce_task_transitions(&all_tasks);
 
         self.has_foreground_tasks.set(
             all_tasks
@@ -3261,17 +3257,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// Appends the transcript lines the current snapshot is due (user decision
-    /// 2026-08-17, v0.1.8). Which lines those are lives in
-    /// `components/task_lifecycle.rs`; this only puts them on screen.
-    fn announce_task_transitions(&mut self, tasks: &[TaskInfo]) {
-        let badge_style = block_style() == BlockStyle::Badge;
-        let lines = self.task_announcer.observe(tasks, &theme(), badge_style);
-        for line in lines {
-            self.append_task_entry(line);
-        }
-    }
-
     /// Appends one lifecycle line to the transcript. It is a non-search
     /// addition, so it also ends an open search block.
     fn append_task_entry(&mut self, line: String) {
@@ -3283,6 +3268,11 @@ impl InteractiveMode {
         chat.add_child(component_ref(Text::new(line, 0, 0)));
         drop(chat);
         self.ui.request_render();
+    }
+
+    fn append_task_lifecycle(&mut self, record: &TaskLifecycleRecord) {
+        let line = task_lifecycle_line(record, &theme(), block_style() == BlockStyle::Badge);
+        self.append_task_entry(line);
     }
 
     fn refresh_subagent_panel(&mut self, tasks: &[TaskInfo]) {
@@ -8270,15 +8260,19 @@ impl InteractiveMode {
                     self.streaming_visible_chars = visible;
                     for content in message.content.iter() {
                         if let notagent_ai::types::AssistantContent::ToolCall(call) = content {
+                            let args = serde_json::Value::Object(call.arguments.clone());
+                            // A streamed bash call does not reveal whether it
+                            // is background work until its later arguments
+                            // arrive. Wait for ToolExecutionStart, where the
+                            // complete arguments let us omit background bash
+                            // without ever painting a transient tool row.
+                            if call.name == "bash" {
+                                self.remove_tool_component(&call.id);
+                                continue;
+                            }
                             match self.tool_component(&call.id) {
-                                Some(component) => component
-                                    .borrow_mut()
-                                    .update_args(serde_json::Value::Object(call.arguments.clone())),
-                                None => self.add_tool_component(
-                                    &call.name,
-                                    &call.id,
-                                    serde_json::Value::Object(call.arguments.clone()),
-                                ),
+                                Some(component) => component.borrow_mut().update_args(args),
+                                None => self.add_tool_component(&call.name, &call.id, args),
                             }
                         }
                     }
@@ -8349,6 +8343,11 @@ impl InteractiveMode {
                 tool_name,
                 args,
             }) => {
+                if is_background_bash_call(&tool_name, &args) {
+                    self.remove_tool_component(&tool_call_id);
+                    self.ui.request_render();
+                    return;
+                }
                 if self.tool_component(&tool_call_id).is_none() {
                     self.add_tool_component(&tool_name, &tool_call_id, args);
                 }
@@ -8529,8 +8528,12 @@ impl InteractiveMode {
                 self.footer.borrow_mut().invalidate();
                 self.update_editor_border_color();
             }
-            // Queueing, compaction, retries and the custom entries arrive with
-            // the slices that own them.
+            AgentSessionEvent::EntryAppended { entry } => {
+                if let Some(record) = TaskLifecycleRecord::from_session_entry(&entry) {
+                    self.append_task_lifecycle(&record);
+                }
+            }
+            // Other session bookkeeping arrives with the slices that own it.
             _ => {}
         }
     }
@@ -8542,12 +8545,29 @@ impl InteractiveMode {
             .map(|(_, component)| Rc::clone(component))
     }
 
+    fn remove_tool_component(&mut self, tool_call_id: &str) {
+        let Some(index) = self
+            .pending_tools
+            .iter()
+            .position(|(id, _)| id == tool_call_id)
+        else {
+            return;
+        };
+        let (_, component) = self.pending_tools.remove(index);
+        let child = Rc::clone(&component) as ComponentRef;
+        self.chat_container.borrow_mut().remove_child(&child);
+        self.chat_tool_rows
+            .retain(|candidate| !Rc::ptr_eq(candidate, &component));
+        let expandable = component as Rc<RefCell<dyn Expandable>>;
+        self.chat_expandables
+            .retain(|candidate| !Rc::ptr_eq(candidate, &expandable));
+    }
+
     fn add_tool_component(&mut self, tool_name: &str, tool_call_id: &str, args: serde_json::Value) {
-        // notagent-main-rust): `todo_write` gets no transcript row — the dock
-        // panel below the chat already shows the resulting list, and a row
-        // would say the same twice. The execution-end handler feeds the panel
-        // regardless of whether a row exists.
-        if tool_name == "todo_write" {
+        // `todo_write` already has the dock panel. A background bash is
+        // represented by immutable lifecycle rows; keeping its ordinary tool
+        // component would stream a second copy into the transcript.
+        if tool_name == "todo_write" || is_background_bash_call(tool_name, &args) {
             return;
         }
         // Consecutive search calls collapse into one "Searching…/Searched"
@@ -8682,6 +8702,16 @@ impl InteractiveMode {
     fn render_session_entries(&mut self, entries: &[SessionEntry], populate_history: bool) {
         let mut items: Vec<AgentMessage> = Vec::new();
         for entry in entries {
+            if let Some(record) = TaskLifecycleRecord::from_session_entry(entry) {
+                items.push(AgentMessage::Custom(CustomMessage {
+                    custom_type: TASK_LIFECYCLE_ENTRY_TYPE.to_owned(),
+                    content: UserContent::Text(String::new()),
+                    display: true,
+                    details: serde_json::to_value(&record).ok(),
+                    timestamp: record.task.base().started_at,
+                }));
+                continue;
+            }
             items.extend(session_entry_to_context_messages(entry));
         }
         self.render_session_items(&items, populate_history);
@@ -8711,6 +8741,10 @@ impl InteractiveMode {
                         if call.name == "todo_write" {
                             continue;
                         }
+                        let args = serde_json::Value::Object(call.arguments.clone());
+                        if is_background_bash_call(&call.name, &args) {
+                            continue;
+                        }
                         // Restored searches group like live ones; the block is
                         // replayed history and closes at the end of the items.
                         if is_explore_tool(&call.name) {
@@ -8729,11 +8763,9 @@ impl InteractiveMode {
                             continue;
                         }
                         self.close_explore_block();
-                        let component = Rc::new(RefCell::new(self.create_tool_component(
-                            &call.name,
-                            &call.id,
-                            serde_json::Value::Object(call.arguments.clone()),
-                        )));
+                        let component = Rc::new(RefCell::new(
+                            self.create_tool_component(&call.name, &call.id, args),
+                        ));
                         component
                             .borrow_mut()
                             .set_expanded(self.tool_output_expanded);
@@ -8914,7 +8946,15 @@ impl InteractiveMode {
                 chat.add_child(component as ComponentRef);
             }
             AgentMessage::Custom(message) => {
-                if message.display {
+                if message.custom_type == TASK_LIFECYCLE_ENTRY_TYPE {
+                    if let Some(record) = message
+                        .details
+                        .clone()
+                        .and_then(|details| serde_json::from_value(details).ok())
+                    {
+                        self.append_task_lifecycle(&record);
+                    }
+                } else if message.display {
                     let component = Rc::new(RefCell::new(CustomMessageComponent::new(
                         message.clone(),
                         Some(get_markdown_theme()),
