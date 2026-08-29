@@ -8,6 +8,8 @@ pub enum HookEvent {
     PermissionRequest,
     PermissionResult,
     UserPromptSubmit,
+    UserPromptQueued,
+    TurnStarted,
     Stop,
     StopFailure,
     Interrupt,
@@ -15,18 +17,21 @@ pub enum HookEvent {
     SessionEnd,
     SubagentStart,
     SubagentStop,
+    TaskStarted,
     PreCompact,
     PostCompact,
     Notification,
 }
 
-pub const HOOK_EVENTS: [HookEvent; 16] = [
+pub const HOOK_EVENTS: [HookEvent; 19] = [
     HookEvent::PreToolUse,
     HookEvent::PostToolUse,
     HookEvent::PostToolUseFailure,
     HookEvent::PermissionRequest,
     HookEvent::PermissionResult,
     HookEvent::UserPromptSubmit,
+    HookEvent::UserPromptQueued,
+    HookEvent::TurnStarted,
     HookEvent::Stop,
     HookEvent::StopFailure,
     HookEvent::Interrupt,
@@ -34,6 +39,7 @@ pub const HOOK_EVENTS: [HookEvent; 16] = [
     HookEvent::SessionEnd,
     HookEvent::SubagentStart,
     HookEvent::SubagentStop,
+    HookEvent::TaskStarted,
     HookEvent::PreCompact,
     HookEvent::PostCompact,
     HookEvent::Notification,
@@ -48,6 +54,8 @@ impl HookEvent {
             HookEvent::PermissionRequest => "PermissionRequest",
             HookEvent::PermissionResult => "PermissionResult",
             HookEvent::UserPromptSubmit => "UserPromptSubmit",
+            HookEvent::UserPromptQueued => "UserPromptQueued",
+            HookEvent::TurnStarted => "TurnStarted",
             HookEvent::Stop => "Stop",
             HookEvent::StopFailure => "StopFailure",
             HookEvent::Interrupt => "Interrupt",
@@ -55,6 +63,7 @@ impl HookEvent {
             HookEvent::SessionEnd => "SessionEnd",
             HookEvent::SubagentStart => "SubagentStart",
             HookEvent::SubagentStop => "SubagentStop",
+            HookEvent::TaskStarted => "TaskStarted",
             HookEvent::PreCompact => "PreCompact",
             HookEvent::PostCompact => "PostCompact",
             HookEvent::Notification => "Notification",
@@ -81,11 +90,9 @@ impl HookEvent {
         )
     }
 
-    /// Events not emitted yet because the feature that would raise them does not
-    /// exist. Declaring one is accepted and reported, rather than silently doing
-    /// nothing.
-    pub fn is_unemitted(self) -> bool {
-        matches!(self, HookEvent::SubagentStart | HookEvent::SubagentStop)
+    /// Events whose commands run before the guarded action and may refuse it.
+    pub fn is_blocking(self) -> bool {
+        matches!(self, HookEvent::PreToolUse | HookEvent::UserPromptSubmit)
     }
 }
 
@@ -94,10 +101,6 @@ impl std::fmt::Display for HookEvent {
         formatter.write_str(self.as_str())
     }
 }
-
-/// The only event whose hook can refuse a call. Blocking anywhere else has no
-/// meaning: the action has already happened, or there is nothing to stop.
-pub const BLOCKING_EVENT: HookEvent = HookEvent::PreToolUse;
 
 /// `HOOK_EVENTS.join(", ")`, for the diagnostic that lists what is valid.
 pub fn hook_event_list() -> String {

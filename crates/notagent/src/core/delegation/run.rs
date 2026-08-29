@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Instant;
 
 use notagent_agent::agent::{Agent, AgentOptions};
 use notagent_agent::types::{AgentEvent, AgentMessage, AgentTool};
@@ -8,7 +9,9 @@ use notagent_ai::uuidv7;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::delegation::agent_type::SubagentType;
+use crate::core::hooks::dispatch::{HookDispatcher, SubagentHookInfo};
 use crate::core::permissions::requester::{Requester, with_requester};
+use crate::core::tasks::types::TaskStatus;
 use crate::core::tools::{ToolName, ToolsOptions, create_tool};
 
 /// Tools a child never gets, whatever its mode allows.
@@ -37,8 +40,8 @@ const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 7] = [
 /// Longest a child may run before it is stopped.
 /// Nothing else bounds it: a child has no user watching it and no turn ceiling
 /// of its own, so a model that loops in a subagent loops until the provider
-/// refuses. Two hours matches the reference and is far longer than any task
-/// worth delegating, which is the point — this is a backstop, not a schedule.
+/// refuses. Two hours is deliberately far longer than ordinary delegated work:
+/// this is a backstop, not a schedule.
 pub const DELEGATION_TIMEOUT_MS: u64 = 2 * 60 * 60 * 1000;
 
 /// Env override for the deadline. Zero means no deadline at all.
@@ -185,9 +188,8 @@ fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
-/// `text.slice(0, limit)` on UTF-16 code units, never splitting a surrogate
-/// pair (JS would; a lone surrogate cannot be represented in a Rust `String`,
-/// and the cut lands one unit earlier instead).
+/// Slices by UTF-16 code units without splitting a surrogate pair. When the
+/// limit falls inside a pair, the cut lands one unit earlier.
 fn slice_utf16(text: &str, limit: usize) -> String {
     let mut units = 0;
     let mut end = text.len();
@@ -388,6 +390,43 @@ pub async fn run_delegation(options: DelegationOptions) -> DelegationRun {
     watchers.cancel();
     if let Some(unsubscribe) = unsubscribe {
         unsubscribe();
+    }
+    result
+}
+
+/// Runs the child inside the lifecycle boundary shared by foreground and
+/// detached delegation. The start event completes before provider work begins,
+/// and every returned result is observed before it reaches the task manager.
+pub async fn run_delegation_with_hooks(
+    options: DelegationOptions,
+    hooks: Option<Arc<HookDispatcher>>,
+    hook_info: SubagentHookInfo,
+) -> DelegationRun {
+    if let Some(hooks) = hooks.as_ref() {
+        hooks.subagent_started(&hook_info).await;
+    }
+    let started = Instant::now();
+    let signal = options.signal.clone();
+    let result = run_delegation(options).await;
+    let cancelled = signal.as_ref().is_some_and(CancellationToken::is_cancelled);
+    let status = if cancelled {
+        TaskStatus::Killed
+    } else if result.failed {
+        TaskStatus::Failed
+    } else {
+        TaskStatus::Completed
+    };
+    let duration_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+    if let Some(hooks) = hooks {
+        hooks
+            .subagent_stopped(
+                &hook_info,
+                status,
+                duration_ms,
+                cancelled.then_some("cancelled"),
+                Some(&result.text),
+            )
+            .await;
     }
     result
 }

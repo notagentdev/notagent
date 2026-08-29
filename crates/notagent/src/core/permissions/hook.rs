@@ -41,13 +41,20 @@ impl Default for PermissionSessionState {
 
 pub type PermissionStateSource = Arc<dyn Fn() -> PermissionSessionState + Send + Sync>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PermissionCall {
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub input: Map<String, Value>,
+}
+
 /// Runs the user's PreToolUse hooks. Called for every tool call, before the
 /// chain, because PreToolUse is also how a supervisor sees that a tool was
 /// attempted — a hook that only fired when the chain reached its slot would
 /// be a partial signal, and worse, the run would then depend on which mode
 /// the user happened to be in.
 pub type PermissionDecideHook =
-    Arc<dyn Fn(String, Map<String, Value>) -> BoxFuture<'static, HookVerdict> + Send + Sync>;
+    Arc<dyn Fn(PermissionCall) -> BoxFuture<'static, HookVerdict> + Send + Sync>;
 
 pub struct PermissionHookOptions {
     pub policies: Vec<Arc<dyn PermissionPolicy>>,
@@ -69,18 +76,18 @@ pub fn create_permission_handler(options: PermissionHookOptions) -> PermissionHa
 impl PermissionHandler {
     pub async fn call(
         &self,
-        tool_name: &str,
-        input: &Map<String, Value>,
+        call: PermissionCall,
         signal: Option<&CancellationToken>,
     ) -> Option<PermissionHookResult> {
         let session = (self.options.state)();
         let hook_verdict = match &self.options.decide {
-            Some(decide) => Some(decide(tool_name.to_string(), input.clone()).await),
+            Some(decide) => Some(decide(call.clone()).await),
             None => None,
         };
         let context = PermissionContext {
-            tool_name: tool_name.to_string(),
-            input: input.clone(),
+            tool_call_id: call.tool_call_id,
+            tool_name: call.tool_name,
+            input: call.input,
             mode_id: session.mode_id,
             shell: session.shell,
             approval: session.approval,

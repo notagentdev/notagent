@@ -37,6 +37,7 @@ const ARROW_UP: &str = "\x1b[A";
 
 fn request() -> ApprovalRequest {
     ApprovalRequest {
+        tool_call_id: "call-test".to_string(),
         tool_name: "write".to_string(),
         target: Some(".env".to_string()),
         policy_name: "sensitive-file-access-ask".to_string(),

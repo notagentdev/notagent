@@ -4,12 +4,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use notagent::core::hooks::dispatch::{
-    HookDispatcher, RunOutcome, create_approval_observer, outcome_of, render_hook_context,
+    HookDispatcher, RunOutcome, SubagentHookInfo, create_approval_observer, outcome_of,
+    render_hook_context,
 };
+use notagent::core::hooks::events::HookEvent;
 use notagent::core::hooks::payload::HookSessionContext;
-use notagent::core::hooks::runtime::{HookRuntime, HookRuntimeOptions};
+use notagent::core::hooks::runtime::{HookContextOutput, HookRuntime, HookRuntimeOptions};
 use notagent::core::hooks::{HOOKS_FILE_NAME, load_hooks};
 use notagent::core::permissions::request::{ApprovalAnswer, ApprovalRequest};
+use notagent::core::tasks::types::{SubagentTaskInfo, TaskInfo, TaskInfoBase, TaskStatus};
 use notagent_agent::types::AgentMessage;
 use notagent_ai::types::{
     AssistantMessage, StopReason, TextContent, TextOrImageContent, Usage, UsageCost,
@@ -17,7 +20,7 @@ use notagent_ai::types::{
 use serde_json::{Map, Value, json};
 
 /// Every event the dispatcher can raise, each appending its payload to one log.
-const WATCHED_EVENTS: [&str; 13] = [
+const WATCHED_EVENTS: [&str; 18] = [
     "SessionStart",
     "SessionEnd",
     "UserPromptSubmit",
@@ -31,6 +34,11 @@ const WATCHED_EVENTS: [&str; 13] = [
     "PostCompact",
     "PermissionRequest",
     "PermissionResult",
+    "TurnStarted",
+    "UserPromptQueued",
+    "TaskStarted",
+    "SubagentStart",
+    "SubagentStop",
 ];
 
 struct Wire {
@@ -192,9 +200,12 @@ async fn maps_a_shutdown_to_the_end_of_the_session() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn the_prompt_event_fires_under_the_references_name() {
+async fn the_prompt_event_fires_before_the_model_starts() {
     let wire = Wire::new();
-    wire.dispatcher().before_agent_start("do the thing").await;
+    assert_eq!(
+        wire.dispatcher().before_agent_start("do the thing").await,
+        Ok(None)
+    );
     assert_eq!(wire.names(), vec!["UserPromptSubmit"]);
     assert_eq!(
         wire.fields_of("UserPromptSubmit"),
@@ -209,10 +220,21 @@ async fn the_prompt_event_fires_under_the_references_name() {
 async fn what_the_prompt_hooks_wrote_comes_back_wrapped_for_the_model() {
     let wire = Wire::new();
     // The log hook writes nothing to standard output, so there is no context.
-    assert_eq!(wire.dispatcher().before_agent_start("x").await, None);
+    assert_eq!(wire.dispatcher().before_agent_start("x").await, Ok(None));
     assert_eq!(
-        render_hook_context(&["branch: main".to_string(), "dirty".to_string()]),
-        "<hook_context>\nbranch: main\n\ndirty\n</hook_context>"
+        render_hook_context(&[
+            HookContextOutput {
+                event: HookEvent::UserPromptSubmit,
+                declaration: 1,
+                text: "branch: main".to_string(),
+            },
+            HookContextOutput {
+                event: HookEvent::UserPromptSubmit,
+                declaration: 2,
+                text: "dirty".to_string(),
+            },
+        ]),
+        "<hook_context>\n<hook_result event=\"UserPromptSubmit\" declaration=\"1\">\nbranch: main\n</hook_result>\n\n<hook_result event=\"UserPromptSubmit\" declaration=\"2\">\ndirty\n</hook_result>\n</hook_context>"
     );
 }
 
@@ -310,14 +332,14 @@ fn tool_input() -> Map<String, Value> {
 async fn separates_a_failed_call_from_a_successful_one() {
     let ok = Wire::new();
     ok.dispatcher()
-        .tool_result("write", &tool_input(), &tool_content(), false)
+        .tool_result("call-ok", "write", &tool_input(), &tool_content(), false)
         .await;
     assert_eq!(ok.names(), vec!["PostToolUse"]);
 
     let failed = Wire::new();
     failed
         .dispatcher()
-        .tool_result("write", &tool_input(), &tool_content(), true)
+        .tool_result("call-failed", "write", &tool_input(), &tool_content(), true)
         .await;
     assert_eq!(failed.names(), vec!["PostToolUseFailure"]);
 }
@@ -326,11 +348,12 @@ async fn separates_a_failed_call_from_a_successful_one() {
 async fn carries_the_tool_its_arguments_and_what_came_back() {
     let wire = Wire::new();
     wire.dispatcher()
-        .tool_result("write", &tool_input(), &tool_content(), false)
+        .tool_result("call-1", "write", &tool_input(), &tool_content(), false)
         .await;
     assert_eq!(
         wire.fields_of("PostToolUse"),
         json!({
+            "tool_call_id": "call-1",
             "tool_name": "write",
             "tool_input": { "path": "a.ts" },
             "tool_response": { "success": true, "output": "wrote a.ts" },
@@ -338,6 +361,33 @@ async fn carries_the_tool_its_arguments_and_what_came_back() {
         .as_object()
         .cloned()
         .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn caps_multibyte_tool_output_including_the_truncation_marker() {
+    let wire = Wire::new();
+    let content = vec![TextOrImageContent::Text(TextContent {
+        text: "é".repeat(3_000),
+        ..TextContent::default()
+    })];
+    wire.dispatcher()
+        .tool_result("call-long", "write", &tool_input(), &content, false)
+        .await;
+    let response = wire
+        .fields_of("PostToolUse")
+        .remove("tool_response")
+        .and_then(|value| value.as_object().cloned())
+        .expect("tool response");
+    let output = response
+        .get("output")
+        .and_then(Value::as_str)
+        .expect("output");
+    assert_eq!(output.encode_utf16().count(), 2_000);
+    assert!(output.ends_with('…'));
+    assert_eq!(
+        response.get("truncated").and_then(Value::as_bool),
+        Some(true)
     );
 }
 
@@ -369,11 +419,11 @@ async fn passes_the_tool_name_for_matching_so_a_matcher_can_narrow_it() {
     }));
     let dispatcher = HookDispatcher::new(runtime);
     dispatcher
-        .tool_result("write", &tool_input(), &tool_content(), false)
+        .tool_result("call-write", "write", &tool_input(), &tool_content(), false)
         .await;
     assert!(!log.exists());
     dispatcher
-        .tool_result("edit", &tool_input(), &tool_content(), false)
+        .tool_result("call-edit", "edit", &tool_input(), &tool_content(), false)
         .await;
     assert!(log.exists());
 }
@@ -398,7 +448,7 @@ async fn fires_before_and_after_compaction_telling_manual_from_automatic() {
 }
 
 #[tokio::test]
-async fn keeps_our_own_reason_alongside_the_references_coarser_one() {
+async fn keeps_the_exact_reason_alongside_the_coarser_trigger() {
     let wire = Wire::new();
     wire.dispatcher()
         .session_before_compact("manual", Some("keep the plan"))
@@ -421,18 +471,130 @@ async fn keeps_our_own_reason_alongside_the_references_coarser_one() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn subagent_events_are_never_emitted() {
+async fn emits_turn_queue_task_and_subagent_lifecycle_payloads() {
     let wire = Wire::new();
     let dispatcher = wire.dispatcher();
-    dispatcher.session_start("startup").await;
-    dispatcher.agent_end(&[]);
-    dispatcher.agent_settled().await;
+    dispatcher.turn_started().await;
+    dispatcher.turn_started().await;
     dispatcher
-        .tool_result("read", &Map::new(), &[], false)
+        .user_prompt_queued("next", "follow_up", 2, 3)
         .await;
-    let names = wire.names();
-    assert!(!names.iter().any(|name| name == "SubagentStart"));
-    assert!(!names.iter().any(|name| name == "SubagentStop"));
+    let task = TaskInfo::Subagent(SubagentTaskInfo {
+        base: TaskInfoBase {
+            task_id: "task-1".to_string(),
+            description: "inspect hooks".to_string(),
+            status: TaskStatus::Completed,
+            detached: Some(true),
+            started_at: 1_000,
+            ended_at: Some(1_250),
+            stop_reason: Some("done".to_string()),
+            notification_suppressed: None,
+            timeout_ms: Some(5_000),
+        },
+        tokens: 42,
+        session_id: "child-1".to_string(),
+        agent: "worker".to_string(),
+        alias: "reader".to_string(),
+    });
+    let subagent = SubagentHookInfo {
+        task_id: Some("task-1".to_string()),
+        child_session_id: "child-1".to_string(),
+        agent: "worker".to_string(),
+        alias: "reader".to_string(),
+        description: "inspect hooks".to_string(),
+        prompt: "Inspect every hook boundary.".to_string(),
+        detached: true,
+    };
+    dispatcher.task_started(&task).await;
+    dispatcher.subagent_started(&subagent).await;
+    dispatcher
+        .subagent_stopped(
+            &subagent,
+            TaskStatus::Completed,
+            250,
+            Some("done"),
+            Some("finished output"),
+        )
+        .await;
+
+    assert_eq!(
+        wire.names(),
+        vec![
+            "TurnStarted",
+            "TurnStarted",
+            "UserPromptQueued",
+            "TaskStarted",
+            "SubagentStart",
+            "SubagentStop",
+        ]
+    );
+    let turns = wire
+        .payloads()
+        .into_iter()
+        .filter(|payload| {
+            payload.get("hook_event_name").and_then(Value::as_str) == Some("TurnStarted")
+        })
+        .filter_map(|payload| payload.get("turn_number").and_then(Value::as_u64))
+        .collect::<Vec<_>>();
+    assert_eq!(turns, vec![1, 2]);
+    assert_eq!(
+        wire.fields_of("UserPromptQueued"),
+        json!({
+            "prompt": "next",
+            "queue": "follow_up",
+            "image_count": 2,
+            "queue_length": 3,
+        })
+        .as_object()
+        .cloned()
+        .unwrap()
+    );
+    let stopped = wire.fields_of("SubagentStop");
+    assert_eq!(
+        wire.fields_of("SubagentStart")
+            .get("prompt")
+            .and_then(Value::as_str),
+        Some("Inspect every hook boundary.")
+    );
+    assert_eq!(
+        stopped.get("duration_ms").and_then(Value::as_i64),
+        Some(250)
+    );
+    assert_eq!(
+        stopped.get("status").and_then(Value::as_str),
+        Some("completed")
+    );
+    assert_eq!(
+        stopped
+            .get("result")
+            .and_then(Value::as_object)
+            .and_then(|result| result.get("output"))
+            .and_then(Value::as_str),
+        Some("finished output")
+    );
+}
+
+#[tokio::test]
+async fn a_child_without_a_task_manager_carries_no_fake_task_id() {
+    let wire = Wire::new();
+    wire.dispatcher()
+        .subagent_started(&SubagentHookInfo {
+            task_id: None,
+            child_session_id: "child-only".to_string(),
+            agent: "worker".to_string(),
+            alias: "reader".to_string(),
+            description: "inspect hooks".to_string(),
+            prompt: "Inspect every hook boundary.".to_string(),
+            detached: false,
+        })
+        .await;
+
+    let fields = wire.fields_of("SubagentStart");
+    assert_eq!(fields.get("task_id"), Some(&Value::Null));
+    assert_eq!(
+        fields.get("child_session_id").and_then(Value::as_str),
+        Some("child-only")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +626,7 @@ async fn runs_the_command_a_project_declared_with_the_event_on_its_input() {
 
 fn approval_request() -> ApprovalRequest {
     ApprovalRequest {
+        tool_call_id: "call-approval".to_string(),
         tool_name: "bash".to_string(),
         target: Some("rm -rf build".to_string()),
         policy_name: "fallback-ask".to_string(),
@@ -490,6 +653,12 @@ async fn reports_the_request_under_both_names() {
         notification.get("message").and_then(Value::as_str),
         Some("Approval needed: bash rm -rf build")
     );
+    assert_eq!(
+        wire.fields_of("PermissionRequest")
+            .get("tool_call_id")
+            .and_then(Value::as_str),
+        Some("call-approval")
+    );
 }
 
 #[tokio::test]
@@ -500,6 +669,10 @@ async fn reports_the_answer_and_whether_it_permitted_the_call() {
         .resolved(approval_request(), ApprovalAnswer::Deny)
         .await;
     let denied = wire.fields_of("PermissionResult");
+    assert_eq!(
+        denied.get("tool_call_id").and_then(Value::as_str),
+        Some("call-approval")
+    );
     assert_eq!(denied.get("answer").and_then(Value::as_str), Some("deny"));
     assert_eq!(denied.get("allowed").and_then(Value::as_bool), Some(false));
 

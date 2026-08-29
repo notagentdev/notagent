@@ -5,7 +5,18 @@ use notagent::core::delegation::agent_type::SubagentType;
 use notagent::core::delegation::run::ChildSkill;
 use notagent::core::delegation::run::{
     DelegationOptions, MAX_ANSWER_CHARS, child_tool_names, render_child_prompt, run_delegation,
+    run_delegation_with_hooks,
 };
+#[cfg(unix)]
+use notagent::core::hooks::Hook;
+#[cfg(unix)]
+use notagent::core::hooks::dispatch::{HookDispatcher, SubagentHookInfo};
+#[cfg(unix)]
+use notagent::core::hooks::events::HookEvent;
+#[cfg(unix)]
+use notagent::core::hooks::payload::HookSessionContext;
+#[cfg(unix)]
+use notagent::core::hooks::runtime::{HookRuntime, HookRuntimeOptions};
 use notagent::core::modes::shells::ShellId;
 use notagent_agent::agent::{Agent, AgentOptions};
 use notagent_agent::types::{AgentMessage, BeforeToolCallResult, BoxFuture};
@@ -220,6 +231,141 @@ fn options(parent: Arc<Agent>, spec: ChildSpec, task: &str) -> DelegationOptions
         model_override: None,
         on_tokens: None,
     }
+}
+
+#[cfg(unix)]
+fn lifecycle_dispatcher(log: &std::path::Path) -> Arc<HookDispatcher> {
+    let command = format!("cat >> {}", log.display());
+    let hooks = [HookEvent::SubagentStart, HookEvent::SubagentStop]
+        .into_iter()
+        .map(|event| Hook {
+            event,
+            matcher: None,
+            command: command.clone(),
+            timeout_ms: 10_000,
+            source: "test".to_string(),
+        })
+        .collect();
+    Arc::new(HookDispatcher::new(Arc::new(HookRuntime::new(
+        HookRuntimeOptions {
+            hooks,
+            diagnostics: Vec::new(),
+            context: Arc::new(|| HookSessionContext {
+                session_id: "parent".to_string(),
+                transcript_path: None,
+                cwd: "/tmp/project".to_string(),
+            }),
+            report: None,
+            signal: None,
+        },
+    ))))
+}
+
+#[cfg(unix)]
+fn lifecycle_info(detached: bool) -> SubagentHookInfo {
+    SubagentHookInfo {
+        task_id: Some("agent-12345678".to_string()),
+        child_session_id: "child-1".to_string(),
+        agent: "read-only".to_string(),
+        alias: "Vega".to_string(),
+        description: "inspect hooks".to_string(),
+        prompt: "Inspect the hook lifecycle.".to_string(),
+        detached,
+    }
+}
+
+#[cfg(unix)]
+fn lifecycle_payloads(log: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(log)
+        .expect("lifecycle log")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("hook payload"))
+        .collect()
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn lifecycle_hooks_enclose_a_successful_child_run() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let log = directory.path().join("events.jsonl");
+    let answer = "complete answer ".repeat(20);
+    let mut run_options = options(
+        parent_agent(assistant(&answer), Arc::new(Mutex::new(Vec::new()))),
+        child("plan", ShellId::ReadOnly, ""),
+        "inspect hooks",
+    );
+    run_options.session_id = Some("child-1".to_string());
+
+    let result = run_delegation_with_hooks(
+        run_options,
+        Some(lifecycle_dispatcher(&log)),
+        lifecycle_info(false),
+    )
+    .await;
+    assert!(!result.failed);
+    let payloads = lifecycle_payloads(&log);
+    assert_eq!(payloads.len(), 2);
+    assert_eq!(payloads[0]["hook_event_name"], "SubagentStart");
+    assert_eq!(payloads[0]["prompt"], "Inspect the hook lifecycle.");
+    assert_eq!(payloads[1]["hook_event_name"], "SubagentStop");
+    assert_eq!(payloads[1]["status"], "completed");
+    assert_eq!(payloads[1]["result"]["output"], answer.trim_end());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn lifecycle_hooks_report_a_failed_child_run() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let log = directory.path().join("events.jsonl");
+    let mut run_options = options(
+        broken_parent(),
+        child("plan", ShellId::ReadOnly, ""),
+        "inspect hooks",
+    );
+    run_options.session_id = Some("child-1".to_string());
+
+    let result = run_delegation_with_hooks(
+        run_options,
+        Some(lifecycle_dispatcher(&log)),
+        lifecycle_info(true),
+    )
+    .await;
+    assert!(result.failed);
+    let payloads = lifecycle_payloads(&log);
+    assert_eq!(payloads.len(), 2);
+    assert_eq!(payloads[1]["status"], "failed");
+    assert_eq!(payloads[1]["detached"], true);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn lifecycle_hooks_report_a_cancelled_child_run() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let log = directory.path().join("events.jsonl");
+    let signal = CancellationToken::new();
+    let mut run_options = options(
+        hanging_parent(),
+        child("plan", ShellId::ReadOnly, ""),
+        "inspect hooks",
+    );
+    run_options.session_id = Some("child-1".to_string());
+    run_options.signal = Some(signal.clone());
+    let run = run_delegation_with_hooks(
+        run_options,
+        Some(lifecycle_dispatcher(&log)),
+        lifecycle_info(false),
+    );
+    let cancel = async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        signal.cancel();
+    };
+
+    let (result, ()) = tokio::join!(run, cancel);
+    assert!(result.failed);
+    let payloads = lifecycle_payloads(&log);
+    assert_eq!(payloads.len(), 2);
+    assert_eq!(payloads[1]["status"], "killed");
+    assert_eq!(payloads[1]["stop_reason"], "cancelled");
 }
 
 // ── what a child may do ───────────────────────────────────────────────

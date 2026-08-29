@@ -16,6 +16,8 @@ pub enum PermissionDecision {
 /// Everything a policy may consider. Deliberately read-only.
 #[derive(Debug, Clone, Default)]
 pub struct PermissionContext {
+    /// Stable identity shared by permission and tool lifecycle events.
+    pub tool_call_id: String,
     /// Name of the tool being called.
     pub tool_name: String,
     /// Validated tool arguments.
@@ -50,6 +52,7 @@ impl PermissionContext {
         cwd: impl Into<String>,
     ) -> Self {
         Self {
+            tool_call_id: String::new(),
             tool_name: tool_name.into(),
             input,
             cwd: cwd.into(),

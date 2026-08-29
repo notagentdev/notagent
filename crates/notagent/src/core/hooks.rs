@@ -4,28 +4,29 @@ pub mod payload;
 pub mod runner;
 pub mod runtime;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use events::{BLOCKING_EVENT, HookEvent, hook_event_list};
+use events::{HookEvent, hook_event_list};
 
 /// File holding hook declarations, in the agent and project directories.
 pub const HOOKS_FILE_NAME: &str = "hooks.json";
 
 /// Default ceiling for a hook, so an omitted timeout is still bounded.
-pub const DEFAULT_HOOK_TIMEOUT_MS: f64 = 30_000.0;
+pub const DEFAULT_HOOK_TIMEOUT_MS: u64 = 30_000;
 
 /// Upper bound a declaration may not exceed, however it is written.
-pub const MAX_HOOK_TIMEOUT_MS: f64 = 300_000.0;
+pub const MAX_HOOK_TIMEOUT_MS: u64 = 300_000;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hook {
     pub event: HookEvent,
     /// Restricts a tool-scoped hook to matching tool names.
     pub matcher: Option<String>,
     pub command: String,
-    pub timeout_ms: f64,
+    pub timeout_ms: u64,
     /// File the declaration came from, for reporting.
     pub source: String,
 }
@@ -52,23 +53,6 @@ fn describe_value(value: Option<&Value>) -> String {
     }
 }
 
-/// `Number(value)`: the coercion JavaScript applies before the range checks.
-fn js_number(value: &Value) -> f64 {
-    match value {
-        Value::Number(number) => number.as_f64().unwrap_or(f64::NAN),
-        Value::Bool(true) => 1.0,
-        Value::Bool(false) | Value::Null => 0.0,
-        Value::String(text) => {
-            let trimmed = text.trim();
-            if trimmed.is_empty() {
-                return 0.0;
-            }
-            trimmed.parse::<f64>().unwrap_or(f64::NAN)
-        }
-        _ => f64::NAN,
-    }
-}
-
 fn validate_entry(
     raw: &Value,
     source: &str,
@@ -81,6 +65,25 @@ fn validate_entry(
         });
         return None;
     };
+
+    let mut unknown = entry
+        .keys()
+        .filter(|key| !matches!(key.as_str(), "event" | "matcher" | "command" | "timeout_ms"))
+        .cloned()
+        .collect::<Vec<_>>();
+    unknown.sort();
+    if !unknown.is_empty() {
+        let message = if unknown.iter().any(|key| key == "timeout") {
+            "hook field \"timeout\" is not supported; use \"timeout_ms\"".to_string()
+        } else {
+            format!("hook has unknown field(s): {}", unknown.join(", "))
+        };
+        diagnostics.push(HookDiagnostic {
+            source: source.to_string(),
+            message,
+        });
+        return None;
+    }
 
     let Some(event) = entry
         .get("event")
@@ -107,58 +110,50 @@ fn validate_entry(
         return None;
     }
 
-    let mut matcher: Option<String> = None;
-    if let Some(declared) = entry.get("matcher") {
-        match declared.as_str() {
-            Some(value) if !value.trim().is_empty() => {
-                if event.is_tool_scoped() {
-                    matcher = Some(value.trim().to_string());
-                } else {
-                    // A matcher on an event that carries no tool name would never apply,
-                    // so saying so beats letting the hook quietly never run.
-                    diagnostics.push(HookDiagnostic {
-                        source: source.to_string(),
-                        message: format!(
-                            "hook for {event} declares a matcher, but only tool events carry a tool name"
-                        ),
-                    });
-                }
+    let matcher = match entry.get("matcher") {
+        None => None,
+        Some(declared) => match declared.as_str() {
+            Some(value) if !value.trim().is_empty() && event.is_tool_scoped() => {
+                Some(value.trim().to_string())
             }
-            _ => diagnostics.push(HookDiagnostic {
-                source: source.to_string(),
-                message: format!("hook for {event} has an empty matcher"),
-            }),
-        }
-    }
+            Some(value) if !value.trim().is_empty() => {
+                diagnostics.push(HookDiagnostic {
+                    source: source.to_string(),
+                    message: format!(
+                        "hook for {event} declares a matcher, but only tool events carry a tool name"
+                    ),
+                });
+                return None;
+            }
+            _ => {
+                diagnostics.push(HookDiagnostic {
+                    source: source.to_string(),
+                    message: format!("hook for {event} has an empty matcher"),
+                });
+                return None;
+            }
+        },
+    };
 
     let mut timeout_ms = DEFAULT_HOOK_TIMEOUT_MS;
-    if let Some(declared) = entry.get("timeout") {
-        let requested = js_number(declared);
-        if !requested.is_finite() || requested <= 0.0 {
+    if let Some(declared) = entry.get("timeout_ms") {
+        let Some(requested) = declared.as_u64() else {
             diagnostics.push(HookDiagnostic {
                 source: source.to_string(),
-                message: format!("hook for {event} has an invalid timeout"),
+                message: format!("hook for {event} has an invalid timeout_ms"),
             });
-        } else if requested > MAX_HOOK_TIMEOUT_MS {
+            return None;
+        };
+        if requested == 0 || requested > MAX_HOOK_TIMEOUT_MS {
             diagnostics.push(HookDiagnostic {
                 source: source.to_string(),
                 message: format!(
-                    "hook for {event} requests {requested}ms, capped at {MAX_HOOK_TIMEOUT_MS}ms"
+                    "hook for {event} has timeout_ms {requested}; expected an integer from 1 through {MAX_HOOK_TIMEOUT_MS}"
                 ),
             });
-            timeout_ms = MAX_HOOK_TIMEOUT_MS;
-        } else {
-            timeout_ms = requested;
+            return None;
         }
-    }
-
-    if event.is_unemitted() {
-        diagnostics.push(HookDiagnostic {
-            source: source.to_string(),
-            message: format!(
-                "hook for {event} is accepted but never fires yet: the feature that raises it does not exist"
-            ),
-        });
+        timeout_ms = requested;
     }
 
     Some(Hook {
@@ -226,6 +221,27 @@ pub fn load_hooks(dirs: &[PathBuf]) -> LoadHooksResult {
         }
         hooks.extend(load_file(&file_path, &mut diagnostics));
     }
+    let mut first_source: HashMap<(HookEvent, Option<String>, String, u64), String> =
+        HashMap::new();
+    for hook in &hooks {
+        let key = (
+            hook.event,
+            hook.matcher.clone(),
+            hook.command.clone(),
+            hook.timeout_ms,
+        );
+        if let Some(first) = first_source.get(&key) {
+            diagnostics.push(HookDiagnostic {
+                source: hook.source.clone(),
+                message: format!(
+                    "duplicate hook for {} also declared in {first}; both declarations will run",
+                    hook.event
+                ),
+            });
+        } else {
+            first_source.insert(key, hook.source.clone());
+        }
+    }
     LoadHooksResult { hooks, diagnostics }
 }
 
@@ -263,5 +279,5 @@ pub fn matches_tool(matcher: &str, tool_name: &str) -> bool {
 
 /// Whether a hook may refuse the call it is called for.
 pub fn is_blocking_hook(hook: &Hook) -> bool {
-    hook.event == BLOCKING_EVENT
+    hook.event.is_blocking()
 }

@@ -137,10 +137,135 @@ overridden per field.
 
 ## Permissions & containerization
 
-notagent has no built-in permission system for restricting filesystem,
-process, network, or credential access. It runs with the permissions of the
-user and process that launched it. If you need stronger boundaries, run it in
-a container or sandbox.
+notagent's permission rules and hooks can refuse agent actions, but they are
+not an operating-system security boundary. The process still has the
+permissions of the user that launched it. If you need stronger boundaries,
+run it in a container or sandbox.
+
+## Hooks
+
+Hooks are shell commands attached to agent lifecycle events. User declarations
+live in the agent configuration directory's `hooks.json`; project declarations
+live in `.notagent/hooks.json`. User hooks run first and project hooks are
+appended. A file can be a plain array or an object with a `hooks` array:
+
+```json
+[
+  {
+    "event": "PreToolUse",
+    "matcher": "write,edit",
+    "command": "check-change",
+    "timeout_ms": 30000
+  }
+]
+```
+
+```json
+{
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "command": "record-session-start",
+      "timeout_ms": 5000
+    }
+  ]
+}
+```
+
+`event` and `command` are required. `timeout_ms` is an integer from 1 through
+300000 and defaults to 30000. `matcher` is an exact, comma-separated list of
+tool names; `*` matches every tool. It is valid only for `PreToolUse`,
+`PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, and
+`PermissionResult`. Matchers are not regular expressions. Unknown fields,
+empty matchers, invalid timeouts, and matchers on other events reject that
+declaration without discarding valid sibling declarations. Exact duplicates
+are reported but both still run.
+
+This contract is intentionally strict: the old `timeout` field is invalid and
+is not interpreted as seconds or milliseconds.
+
+Every hook receives one JSON object on standard input. All payloads contain
+`session_id`, `cwd`, and `hook_event_name`; `transcript_path` is present once a
+session has a file on disk. Event-specific fields are:
+
+| Events | Additional fields |
+| --- | --- |
+| `SessionStart`, `SessionEnd` | `source`; `reason` |
+| `TurnStarted` | `turn_number` |
+| `UserPromptSubmit` | `prompt` |
+| `UserPromptQueued` | `prompt`, `queue`, `image_count`, `queue_length` |
+| `PreToolUse` | `tool_call_id`, `tool_name`, `tool_input` |
+| `PostToolUse`, `PostToolUseFailure` | `tool_call_id`, `tool_name`, `tool_input`, `tool_response` |
+| `PermissionRequest` | `tool_call_id`, `tool_name`, `target`, `policy`, `reason`, `mode` |
+| `PermissionResult` | `tool_call_id`, `tool_name`, `target`, `policy`, `answer`, `allowed` |
+| `TaskStarted` | `task_id`, `kind`, `description`, `detached` |
+| `SubagentStart` | `task_id` (null without a task manager), `child_session_id`, `agent`, `alias`, `description`, `prompt`, `detached` |
+| `SubagentStop` | `task_id` (null without a task manager), `child_session_id`, `agent`, `alias`, `status`, `duration_ms`, `stop_reason`, `result`, `detached` |
+| `PreCompact`, `PostCompact` | `trigger`, `reason`; `PreCompact` also has `custom_instructions` |
+| `Stop`, `StopFailure`, `Interrupt` | `stop_hook_active` |
+| `Notification` | `notification_type`, `message`, and, for permission prompts, `tool_name` |
+
+Hook commands run sequentially in declaration order. `PreToolUse` and
+`UserPromptSubmit` are blocking; every other event is observational. Exit code
+2 or a timeout refuses a blocking event. Other non-zero exits are reported as
+faults. Cancelling a turn cancels its hook without manufacturing a denial.
+Timeout and cancellation terminate the hook's process tree. `Stop` is only a
+notification and cannot continue or restart the agent.
+
+After an ordinary hook exit, a deliberately detached descendant with redirected
+standard streams is left running. If a descendant retains the hook's captured
+stdout or stderr pipe, the runner waits two seconds for those readers, then
+terminates the owned process tree so the hook invocation cannot hang forever.
+
+A decision or explicitly marked context uses exactly one structured-output
+shape:
+
+```json
+{
+  "hook_output": {
+    "decision": "deny",
+    "reason": "The requested operation is outside the approved path.",
+    "context": "Optional context for the model."
+  }
+}
+```
+
+`decision` is optional and accepts `allow`, `ask`, or `deny`; `reason` and
+`context` are optional strings. The entire trimmed standard output must be
+this JSON document. Mixed log lines followed by JSON are plain output, and
+top-level `decision` or `permission` fields are invalid. JSON-shaped malformed
+output is reported and refuses a blocking event. On observational events a
+decision is reported and ignored. `ask` enters the existing approval flow for
+`PreToolUse`, but is invalid and refuses `UserPromptSubmit`.
+
+Successful plain stdout is context where the event consumes context;
+structured JSON contributes only its `context` field. Stdout, stderr, and
+structured context are capped at 4000 UTF-16 code units including the
+truncation marker. Tool responses and subagent result summaries are capped at
+2000. Commands should write diagnostics to stderr. For an exit-code refusal,
+structured `reason` takes precedence, then stderr, then plain stdout.
+
+A read-only prompt guard can reject an oversized submission before it reaches
+the transcript or model:
+
+```json
+{
+  "event": "UserPromptSubmit",
+  "command": "jq -e '.prompt | length <= 2000' >/dev/null || { echo 'Prompt is too long' >&2; exit 2; }",
+  "timeout_ms": 5000
+}
+```
+
+An observational hook can append a bounded audit record after a tool finishes:
+
+```json
+{
+  "event": "PostToolUse",
+  "matcher": "write,edit",
+  "command": "jq -c '{id: .tool_call_id, tool: .tool_name, success: .tool_response.success}' >> .notagent/hook-audit.jsonl",
+  "timeout_ms": 5000
+}
+```
 
 ## Experimental
 

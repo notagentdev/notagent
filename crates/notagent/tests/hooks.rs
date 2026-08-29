@@ -6,10 +6,11 @@ use std::sync::{Arc, Mutex};
 use notagent::core::hooks::events::{HOOK_EVENTS, HookEvent};
 use notagent::core::hooks::payload::HookSessionContext;
 use notagent::core::hooks::runner::{
-    HookVerdict, decide_tool_call, describe_refusal, is_hook_fault, read_verdict, run_hook,
-    run_hooks,
+    HookVerdict, decide_hooks, describe_refusal, is_hook_fault, read_verdict, run_hook, run_hooks,
 };
-use notagent::core::hooks::runtime::{HookReportLevel, HookRuntime, HookRuntimeOptions};
+use notagent::core::hooks::runtime::{
+    HookContextOutput, HookReportLevel, HookRuntime, HookRuntimeOptions,
+};
 use notagent::core::hooks::{
     DEFAULT_HOOK_TIMEOUT_MS, HOOKS_FILE_NAME, Hook, HookDiagnostic, MAX_HOOK_TIMEOUT_MS,
     is_blocking_hook, load_hooks, matches_tool, select_hooks,
@@ -60,12 +61,12 @@ fn hook(command: &str) -> Hook {
         event: HookEvent::PreToolUse,
         matcher: None,
         command: command.to_string(),
-        timeout_ms: 10_000.0,
+        timeout_ms: 10_000,
         source: "test".to_string(),
     }
 }
 
-fn hook_with(command: &str, event: HookEvent, timeout_ms: f64, matcher: Option<&str>) -> Hook {
+fn hook_with(command: &str, event: HookEvent, timeout_ms: u64, matcher: Option<&str>) -> Hook {
     Hook {
         event,
         matcher: matcher.map(str::to_string),
@@ -83,17 +84,90 @@ fn messages(diagnostics: &[HookDiagnostic]) -> String {
         .join(" ")
 }
 
+async fn wait_for_file(path: &std::path::Path) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !path.exists() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "hook child did not publish its pid"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+fn process_is_alive(pid: i32) -> bool {
+    // Signal zero only queries the process table and does not affect the child.
+    let result = unsafe { libc::kill(pid, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+async fn wait_for_process_exit(pid: i32) -> bool {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while process_is_alive(pid) {
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    true
+}
+
 // ---------------------------------------------------------------------------
 // event vocabulary
 // ---------------------------------------------------------------------------
 
 #[test]
-fn carries_all_sixteen_reference_events_each_once() {
-    assert_eq!(HOOK_EVENTS.len(), 16);
-    let mut names: Vec<&str> = HOOK_EVENTS.iter().map(|event| event.as_str()).collect();
-    names.sort_unstable();
-    names.dedup();
-    assert_eq!(names.len(), 16);
+fn carries_every_supported_event_once() {
+    assert_eq!(
+        HOOK_EVENTS.map(HookEvent::as_str),
+        [
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "PermissionRequest",
+            "PermissionResult",
+            "UserPromptSubmit",
+            "UserPromptQueued",
+            "TurnStarted",
+            "Stop",
+            "StopFailure",
+            "Interrupt",
+            "SessionStart",
+            "SessionEnd",
+            "SubagentStart",
+            "SubagentStop",
+            "TaskStarted",
+            "PreCompact",
+            "PostCompact",
+            "Notification",
+        ]
+    );
+}
+
+#[test]
+fn pins_blocking_and_tool_scoped_capabilities_separately() {
+    assert_eq!(
+        HOOK_EVENTS
+            .into_iter()
+            .filter(|event| event.is_blocking())
+            .map(HookEvent::as_str)
+            .collect::<Vec<_>>(),
+        vec!["PreToolUse", "UserPromptSubmit"]
+    );
+    assert_eq!(
+        HOOK_EVENTS
+            .into_iter()
+            .filter(|event| event.is_tool_scoped())
+            .map(HookEvent::as_str)
+            .collect::<Vec<_>>(),
+        vec![
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "PermissionRequest",
+            "PermissionResult",
+        ]
+    );
 }
 
 #[test]
@@ -133,11 +207,48 @@ fn applies_the_default_timeout_when_none_is_given() {
 }
 
 #[test]
-fn caps_an_excessive_timeout_and_says_so() {
-    let directory = dir_with(json!([declaration(json!({ "timeout": 999_999 }))]));
+fn rejects_an_excessive_timeout() {
+    let directory = dir_with(json!([declaration(json!({ "timeout_ms": 999_999 }))]));
     let result = load_hooks(std::slice::from_ref(&directory.path));
-    assert_eq!(result.hooks[0].timeout_ms, MAX_HOOK_TIMEOUT_MS);
-    assert!(messages(&result.diagnostics).contains("capped"));
+    assert!(result.hooks.is_empty());
+    assert!(messages(&result.diagnostics).contains(&MAX_HOOK_TIMEOUT_MS.to_string()));
+}
+
+#[test]
+fn rejects_a_fractional_timeout() {
+    let directory = dir_with(json!([declaration(json!({ "timeout_ms": 1.5 }))]));
+    let result = load_hooks(std::slice::from_ref(&directory.path));
+    assert!(result.hooks.is_empty());
+    assert!(messages(&result.diagnostics).contains("invalid timeout_ms"));
+}
+
+#[test]
+fn rejects_the_old_timeout_field_and_names_the_supported_field() {
+    let directory = dir_with(json!([declaration(json!({ "timeout": 30 }))]));
+    let result = load_hooks(std::slice::from_ref(&directory.path));
+    assert!(result.hooks.is_empty());
+    assert!(messages(&result.diagnostics).contains("timeout_ms"));
+}
+
+#[test]
+fn rejects_an_unknown_field_without_losing_other_declarations() {
+    let directory = dir_with(json!([
+        declaration(json!({ "mystery": true })),
+        declaration(json!({ "command": "second" })),
+    ]));
+    let result = load_hooks(std::slice::from_ref(&directory.path));
+    assert_eq!(result.hooks.len(), 1);
+    assert_eq!(result.hooks[0].command, "second");
+    assert!(messages(&result.diagnostics).contains("mystery"));
+}
+
+#[test]
+fn reports_duplicate_declarations_but_keeps_both() {
+    let duplicate = declaration(json!({ "command": "same" }));
+    let directory = dir_with(json!([duplicate.clone(), duplicate]));
+    let result = load_hooks(std::slice::from_ref(&directory.path));
+    assert_eq!(result.hooks.len(), 2);
+    assert!(messages(&result.diagnostics).contains("duplicate"));
 }
 
 #[test]
@@ -188,24 +299,13 @@ fn appends_across_directories_instead_of_replacing() {
 }
 
 #[test]
-fn warns_that_a_matcher_on_a_non_tool_event_can_never_apply() {
+fn rejects_a_matcher_on_a_non_tool_event() {
     let directory = dir_with(json!([declaration(
         json!({ "event": "SessionStart", "matcher": "write" })
     )]));
     let result = load_hooks(std::slice::from_ref(&directory.path));
-    assert!(messages(&result.diagnostics).contains("only tool events"));
-}
-
-#[test]
-fn accepts_an_unemitted_event_but_says_it_will_not_fire() {
-    let event = HOOK_EVENTS
-        .iter()
-        .find(|event| event.is_unemitted())
-        .expect("one is unemitted");
-    let directory = dir_with(json!([declaration(json!({ "event": event.as_str() }))]));
-    let result = load_hooks(std::slice::from_ref(&directory.path));
-    assert_eq!(result.hooks.len(), 1);
-    assert!(messages(&result.diagnostics).contains("never fires yet"));
+    assert!(result.hooks.is_empty());
+    assert!(messages(&result.diagnostics).contains("only tool events carry a tool name"));
 }
 
 // ---------------------------------------------------------------------------
@@ -252,15 +352,16 @@ fn selects_by_event_and_narrows_by_tool() {
 }
 
 #[test]
-fn marks_only_the_pre_tool_event_as_able_to_refuse() {
+fn marks_both_preflight_events_as_able_to_refuse() {
     let directory = dir_with(json!([
         declaration(json!({})),
+        declaration(json!({ "event": "UserPromptSubmit" })),
         declaration(json!({ "event": "PostToolUse" })),
     ]));
     let hooks = load_hooks(std::slice::from_ref(&directory.path)).hooks;
     assert_eq!(
         hooks.iter().map(is_blocking_hook).collect::<Vec<_>>(),
-        vec![true, false]
+        vec![true, true, false]
     );
 }
 
@@ -276,6 +377,28 @@ async fn succeeds_on_a_zero_exit_and_captures_output() {
     assert!(result.ok);
     assert_eq!(result.exit_code, Some(0));
     assert_eq!(result.stdout.trim(), "hello");
+}
+
+#[tokio::test]
+async fn an_exited_hook_leaves_a_redirected_background_process_running() {
+    let result = run_hook(&hook("sleep 30 >/dev/null 2>&1 & echo $!"), &EMPTY, None).await;
+    assert!(
+        result.ok,
+        "the hook itself must exit successfully: {result:?}"
+    );
+    let pid = result.stdout.trim().parse::<i32>().expect("background pid");
+    assert!(
+        process_is_alive(pid),
+        "a detached process with redirected streams must survive normal hook exit"
+    );
+
+    unsafe {
+        libc::kill(pid, libc::SIGKILL);
+    }
+    assert!(
+        wait_for_process_exit(pid).await,
+        "test background process {pid} did not stop during cleanup"
+    );
 }
 
 #[tokio::test]
@@ -299,7 +422,7 @@ async fn delivers_the_payload_as_json_on_standard_input() {
 #[tokio::test]
 async fn kills_a_hook_that_exceeds_its_timeout_and_reports_the_timeout() {
     let result = run_hook(
-        &hook_with("sleep 30", HookEvent::PreToolUse, 200.0, None),
+        &hook_with("sleep 30", HookEvent::PreToolUse, 200, None),
         &EMPTY,
         None,
     )
@@ -324,9 +447,66 @@ async fn does_not_wedge_when_the_hook_ignores_its_input() {
 }
 
 #[tokio::test]
+async fn caps_multibyte_output_including_the_truncation_marker() {
+    let command = format!("printf '%s' '{}'", "é".repeat(5_000));
+    let result = run_hook(&hook(&command), &EMPTY, None).await;
+    assert!(result.ok);
+    assert_eq!(result.stdout.encode_utf16().count(), 4_000);
+    assert!(result.stdout.ends_with('…'));
+}
+
+#[tokio::test]
+async fn timeout_removes_the_hook_process_and_its_descendant() {
+    let directory = TempDir::new("hook-tree-");
+    let pid_file = directory.path.join("child.pid");
+    let command = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
+    let result = run_hook(
+        &hook_with(&command, HookEvent::PreToolUse, 200, None),
+        &EMPTY,
+        None,
+    )
+    .await;
+    let pid = std::fs::read_to_string(&pid_file)
+        .expect("child pid")
+        .trim()
+        .parse::<i32>()
+        .expect("numeric pid");
+    assert!(result.timed_out);
+    assert!(
+        wait_for_process_exit(pid).await,
+        "descendant {pid} survived the hook timeout"
+    );
+}
+
+#[tokio::test]
+async fn cancellation_removes_the_hook_process_and_its_descendant() {
+    let directory = TempDir::new("hook-tree-");
+    let pid_file = directory.path.join("child.pid");
+    let command = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
+    let token = CancellationToken::new();
+    let declaration = hook_with(&command, HookEvent::PreToolUse, 30_000, None);
+    let run = run_hook(&declaration, &EMPTY, Some(&token));
+    let cancel = async {
+        wait_for_file(&pid_file).await;
+        token.cancel();
+    };
+    let (result, ()) = tokio::join!(run, cancel);
+    let pid = std::fs::read_to_string(&pid_file)
+        .expect("child pid")
+        .trim()
+        .parse::<i32>()
+        .expect("numeric pid");
+    assert!(result.cancelled);
+    assert!(
+        wait_for_process_exit(pid).await,
+        "descendant {pid} survived hook cancellation"
+    );
+}
+
+#[tokio::test]
 async fn stops_early_when_the_run_is_aborted() {
     let token = CancellationToken::new();
-    let hook = hook_with("sleep 30", HookEvent::PreToolUse, 30_000.0, None);
+    let hook = hook_with("sleep 30", HookEvent::PreToolUse, 30_000, None);
     let run = run_hook(&hook, &EMPTY, Some(&token));
     let abort = async {
         tokio::task::yield_now().await;
@@ -334,6 +514,9 @@ async fn stops_early_when_the_run_is_aborted() {
     };
     let (result, ()) = tokio::join!(run, abort);
     assert!(!result.ok);
+    assert!(result.cancelled);
+    assert!(!result.timed_out);
+    assert_eq!(read_verdict(&result), HookVerdict::Abstain);
     assert!(result.duration_ms < 10_000);
 }
 
@@ -414,9 +597,9 @@ async fn separates_a_fault_from_a_decision() {
 }
 
 #[tokio::test]
-async fn still_denies_on_a_timeout_deliberately_unlike_the_reference() {
+async fn denies_on_a_timeout_for_a_blocking_event() {
     let result = run_hook(
-        &hook_with("sleep 30", HookEvent::PreToolUse, 200.0, None),
+        &hook_with("sleep 30", HookEvent::PreToolUse, 200, None),
         &EMPTY,
         None,
     )
@@ -427,8 +610,10 @@ async fn still_denies_on_a_timeout_deliberately_unlike_the_reference() {
 
 #[tokio::test]
 async fn lets_a_broken_hook_still_state_a_decision_it_managed_to_print() {
-    let verdict =
-        verdict_of("echo '{\"permission\":\"deny\",\"reason\":\"policy\"}'; exit 127").await;
+    let verdict = verdict_of(
+        "echo '{\"hook_output\":{\"decision\":\"deny\",\"reason\":\"policy\"}}'; exit 127",
+    )
+    .await;
     assert_eq!(
         verdict,
         HookVerdict::Deny {
@@ -440,11 +625,12 @@ async fn lets_a_broken_hook_still_state_a_decision_it_managed_to_print() {
 #[tokio::test]
 async fn reads_a_stated_decision_from_json_on_standard_output() {
     assert_eq!(
-        verdict_of("echo '{\"permission\":\"allow\"}'").await,
+        verdict_of("echo '{\"hook_output\":{\"decision\":\"allow\"}}'").await,
         HookVerdict::Allow { reason: None }
     );
     assert_eq!(
-        verdict_of("echo '{\"permission\":\"ask\",\"reason\":\"check first\"}'").await,
+        verdict_of("echo '{\"hook_output\":{\"decision\":\"ask\",\"reason\":\"check first\"}}'",)
+            .await,
         HookVerdict::Ask {
             reason: Some("check first".to_string())
         }
@@ -452,43 +638,38 @@ async fn reads_a_stated_decision_from_json_on_standard_output() {
 }
 
 #[tokio::test]
-async fn accepts_the_reference_spellings() {
-    assert_eq!(
-        verdict_of("echo '{\"decision\":\"approve\"}'").await,
-        HookVerdict::Allow { reason: None }
-    );
-    assert_eq!(
-        verdict_of("echo '{\"decision\":\"block\",\"reason\":\"no\"}'").await,
-        HookVerdict::Deny {
-            reason: "no".to_string()
-        }
-    );
+async fn rejects_legacy_top_level_decisions() {
+    let result = run_hook(&hook("echo '{\"permission\":\"allow\"}'"), &EMPTY, None).await;
+    assert!(matches!(read_verdict(&result), HookVerdict::Deny { .. }));
+    assert!(is_hook_fault(&result));
 }
 
 #[tokio::test]
-async fn finds_the_decision_after_other_output() {
-    let verdict =
-        verdict_of("echo working; echo '{\"permission\":\"deny\",\"reason\":\"nope\"}'").await;
-    assert_eq!(
-        verdict,
-        HookVerdict::Deny {
-            reason: "nope".to_string()
-        }
-    );
+async fn does_not_search_plain_output_for_a_trailing_decision() {
+    let result = run_hook(
+        &hook("echo working; echo '{\"hook_output\":{\"decision\":\"deny\",\"reason\":\"nope\"}}'"),
+        &EMPTY,
+        None,
+    )
+    .await;
+    assert_eq!(read_verdict(&result), HookVerdict::Abstain);
+    assert!(!is_hook_fault(&result));
 }
 
 #[tokio::test]
 async fn lets_a_stated_denial_override_a_zero_exit() {
-    let verdict = verdict_of("echo '{\"permission\":\"deny\",\"reason\":\"no\"}'; exit 0").await;
+    let verdict =
+        verdict_of("echo '{\"hook_output\":{\"decision\":\"deny\",\"reason\":\"no\"}}'; exit 0")
+            .await;
     assert!(matches!(verdict, HookVerdict::Deny { .. }));
 }
 
 #[tokio::test]
-async fn abstains_on_output_that_is_not_a_decision() {
-    assert_eq!(
+async fn rejects_json_shaped_output_that_does_not_match_the_envelope() {
+    assert!(matches!(
         verdict_of("echo '{\"unrelated\":true}'").await,
-        HookVerdict::Abstain
-    );
+        HookVerdict::Deny { .. }
+    ));
     assert_eq!(
         verdict_of("echo not json at all").await,
         HookVerdict::Abstain
@@ -503,14 +684,14 @@ async fn abstains_on_output_that_is_not_a_decision() {
 async fn abstains_when_every_hook_abstains() {
     let first = hook("true");
     let second = hook("true");
-    let outcome = decide_tool_call(&[&first, &second], &EMPTY, None).await;
+    let outcome = decide_hooks(&[&first, &second], &EMPTY, None).await;
     assert_eq!(outcome.verdict, HookVerdict::Abstain);
 }
 
 #[tokio::test]
 async fn denies_on_a_refusal_and_names_the_hook() {
     let refusing = hook("echo not allowed >&2; exit 2");
-    let outcome = decide_tool_call(&[&refusing], &EMPTY, None).await;
+    let outcome = decide_hooks(&[&refusing], &EMPTY, None).await;
     let HookVerdict::Deny { reason } = &outcome.verdict else {
         panic!("expected a denial")
     };
@@ -528,42 +709,42 @@ async fn denies_on_a_refusal_and_names_the_hook() {
 async fn skips_later_hooks_once_one_refused() {
     let refusing = hook("exit 2");
     let never = hook("echo never");
-    let outcome = decide_tool_call(&[&refusing, &never], &EMPTY, None).await;
+    let outcome = decide_hooks(&[&refusing, &never], &EMPTY, None).await;
     assert!(matches!(outcome.verdict, HookVerdict::Deny { .. }));
     assert_eq!(outcome.results.len(), 1);
 }
 
 #[tokio::test]
 async fn keeps_going_past_an_allow_so_an_earlier_hook_cannot_suppress_a_later_denial() {
-    let allowing = hook("echo '{\"permission\":\"allow\"}'");
+    let allowing = hook("echo '{\"hook_output\":{\"decision\":\"allow\"}}'");
     let refusing = hook("exit 2");
-    let outcome = decide_tool_call(&[&allowing, &refusing], &EMPTY, None).await;
+    let outcome = decide_hooks(&[&allowing, &refusing], &EMPTY, None).await;
     assert!(matches!(outcome.verdict, HookVerdict::Deny { .. }));
     assert_eq!(outcome.results.len(), 2);
 }
 
 #[tokio::test]
 async fn lets_asking_beat_allowing_whichever_came_first() {
-    let allowing = hook("echo '{\"permission\":\"allow\"}'");
-    let asking = hook("echo '{\"permission\":\"ask\"}'");
-    let allow_then_ask = decide_tool_call(&[&allowing, &asking], &EMPTY, None).await;
+    let allowing = hook("echo '{\"hook_output\":{\"decision\":\"allow\"}}'");
+    let asking = hook("echo '{\"hook_output\":{\"decision\":\"ask\"}}'");
+    let allow_then_ask = decide_hooks(&[&allowing, &asking], &EMPTY, None).await;
     assert!(matches!(allow_then_ask.verdict, HookVerdict::Ask { .. }));
-    let ask_then_allow = decide_tool_call(&[&asking, &allowing], &EMPTY, None).await;
+    let ask_then_allow = decide_hooks(&[&asking, &allowing], &EMPTY, None).await;
     assert!(matches!(ask_then_allow.verdict, HookVerdict::Ask { .. }));
 }
 
 #[tokio::test]
 async fn ignores_hooks_declared_for_other_events() {
-    let other = hook_with("exit 2", HookEvent::PostToolUse, 10_000.0, None);
-    let outcome = decide_tool_call(&[&other], &EMPTY, None).await;
+    let other = hook_with("exit 2", HookEvent::PostToolUse, 10_000, None);
+    let outcome = decide_hooks(&[&other], &EMPTY, None).await;
     assert_eq!(outcome.verdict, HookVerdict::Abstain);
     assert!(outcome.results.is_empty());
 }
 
 #[tokio::test]
 async fn denies_on_a_timeout_rather_than_letting_the_call_through() {
-    let slow = hook_with("sleep 30", HookEvent::PreToolUse, 200.0, None);
-    let outcome = decide_tool_call(&[&slow], &EMPTY, None).await;
+    let slow = hook_with("sleep 30", HookEvent::PreToolUse, 200, None);
+    let outcome = decide_hooks(&[&slow], &EMPTY, None).await;
     let HookVerdict::Deny { reason } = &outcome.verdict else {
         panic!("expected a denial")
     };
@@ -578,6 +759,12 @@ async fn denies_on_a_timeout_rather_than_letting_the_call_through() {
 async fn prefers_what_the_hook_wrote() {
     let result = run_hook(&hook("echo because reasons >&2; exit 1"), &EMPTY, None).await;
     assert!(describe_refusal(&result).contains("because reasons"));
+}
+
+#[tokio::test]
+async fn a_plain_stdout_reason_survives_an_exit_code_refusal() {
+    let result = run_hook(&hook("echo plain refusal; exit 2"), &EMPTY, None).await;
+    assert!(describe_refusal(&result).contains("plain refusal"));
 }
 
 #[tokio::test]
@@ -661,11 +848,33 @@ impl Capture {
 }
 
 fn post(command: &str) -> Hook {
-    hook_with(command, HookEvent::PostToolUse, 10_000.0, None)
+    hook_with(command, HookEvent::PostToolUse, 10_000, None)
 }
 
 fn fields(entries: Value) -> Map<String, Value> {
     entries.as_object().cloned().unwrap_or_default()
+}
+
+fn context_texts(outputs: Vec<HookContextOutput>) -> Vec<String> {
+    outputs.into_iter().map(|output| output.text).collect()
+}
+
+async fn decide_tool(
+    runtime: &HookRuntime,
+    tool_name: &str,
+    tool_input: Map<String, Value>,
+) -> notagent::core::hooks::runner::HookVerdictOutcome {
+    runtime
+        .decide(
+            HookEvent::PreToolUse,
+            fields(json!({
+                "tool_call_id": "call-1",
+                "tool_name": tool_name,
+                "tool_input": tool_input,
+            })),
+            Some(tool_name),
+        )
+        .await
 }
 
 #[tokio::test]
@@ -673,7 +882,7 @@ async fn runs_the_hooks_declared_for_an_event_and_nothing_else() {
     let capture = Capture::new();
     let (runtime, _reports) = runtime(vec![
         post(&capture.command()),
-        hook_with("exit 1", HookEvent::SessionStart, 10_000.0, None),
+        hook_with("exit 1", HookEvent::SessionStart, 10_000, None),
     ]);
     runtime
         .emit(
@@ -726,7 +935,7 @@ async fn narrows_by_tool_name_so_a_matcher_restricts_what_runs() {
     let (runtime, _reports) = runtime(vec![hook_with(
         &capture.command(),
         HookEvent::PostToolUse,
-        10_000.0,
+        10_000,
         Some("edit"),
     )]);
     runtime
@@ -786,7 +995,7 @@ async fn reports_a_timeout_as_such_rather_than_as_an_exit_status() {
     let (runtime, reports) = runtime(vec![hook_with(
         "sleep 30",
         HookEvent::PostToolUse,
-        200.0,
+        200,
         None,
     )]);
     runtime.emit(HookEvent::PostToolUse, Map::new(), None).await;
@@ -798,34 +1007,52 @@ async fn what_a_hook_writes_comes_back_as_context() {
     let (runtime, _reports) = runtime(vec![hook_with(
         "echo 'branch: main'",
         HookEvent::UserPromptSubmit,
-        10_000.0,
+        10_000,
         None,
     )]);
     assert_eq!(
-        runtime
-            .emit(HookEvent::UserPromptSubmit, Map::new(), None)
-            .await,
+        context_texts(
+            runtime
+                .emit(HookEvent::UserPromptSubmit, Map::new(), None)
+                .await
+        ),
         vec!["branch: main".to_string()]
     );
+}
+
+#[tokio::test]
+async fn structured_context_is_returned_without_the_envelope() {
+    let (runtime, _reports) = runtime(vec![post(
+        "echo '{\"hook_output\":{\"context\":\"branch: main\"}}'",
+    )]);
+    let outputs = runtime.emit(HookEvent::PostToolUse, Map::new(), None).await;
+    assert_eq!(context_texts(outputs), vec!["branch: main".to_string()]);
 }
 
 #[tokio::test]
 async fn collects_from_every_hook_that_had_something_to_say() {
     let (runtime, _reports) = runtime(vec![post("echo first"), post("true"), post("echo second")]);
     assert_eq!(
-        runtime.emit(HookEvent::PostToolUse, Map::new(), None).await,
+        context_texts(runtime.emit(HookEvent::PostToolUse, Map::new(), None).await),
         vec!["first".to_string(), "second".to_string()]
     );
 }
 
 #[tokio::test]
 async fn ignores_a_stated_decision_which_is_not_information_for_the_model() {
-    let (runtime, _reports) = runtime(vec![post("echo '{\"permission\":\"allow\"}'")]);
+    let (runtime, reports) = runtime(vec![post(
+        "echo '{\"hook_output\":{\"decision\":\"allow\"}}'",
+    )]);
     assert!(
         runtime
             .emit(HookEvent::PostToolUse, Map::new(), None)
             .await
             .is_empty()
+    );
+    assert!(
+        reports.lock().expect("reports")[0]
+            .0
+            .contains("decision ignored")
     );
 }
 
@@ -855,7 +1082,7 @@ async fn returns_nothing_when_no_hook_is_declared() {
 #[tokio::test]
 async fn a_broken_pre_tool_use_hook_is_reported() {
     let (runtime, reports) = runtime(vec![hook("this-command-does-not-exist-xyz")]);
-    let outcome = runtime.decide("write", &Map::new()).await;
+    let outcome = decide_tool(&runtime, "write", Map::new()).await;
     assert_eq!(outcome.verdict, HookVerdict::Abstain);
     assert_eq!(reports.lock().expect("reports").len(), 1);
 }
@@ -863,7 +1090,7 @@ async fn a_broken_pre_tool_use_hook_is_reported() {
 #[tokio::test]
 async fn a_deliberate_refusal_is_not_reported_as_broken() {
     let (runtime, reports) = runtime(vec![hook("exit 2")]);
-    let outcome = runtime.decide("write", &Map::new()).await;
+    let outcome = decide_tool(&runtime, "write", Map::new()).await;
     assert!(matches!(outcome.verdict, HookVerdict::Deny { .. }));
     assert!(reports.lock().expect("reports").is_empty());
 }
@@ -887,9 +1114,7 @@ fn load_diagnostics_are_shown_once_the_user_can_see_them() {
 async fn deciding_passes_the_tool_name_and_arguments_to_the_hook() {
     let capture = Capture::new();
     let (runtime, _reports) = runtime(vec![hook(&capture.command())]);
-    runtime
-        .decide("write", &fields(json!({ "path": "a.ts" })))
-        .await;
+    decide_tool(&runtime, "write", fields(json!({ "path": "a.ts" }))).await;
     let payload = capture.read().expect("payload");
     assert_eq!(
         payload.get("hook_event_name").and_then(Value::as_str),
@@ -900,6 +1125,10 @@ async fn deciding_passes_the_tool_name_and_arguments_to_the_hook() {
         Some("write")
     );
     assert_eq!(payload.get("tool_input"), Some(&json!({ "path": "a.ts" })));
+    assert_eq!(
+        payload.get("tool_call_id").and_then(Value::as_str),
+        Some("call-1")
+    );
 }
 
 #[tokio::test]
@@ -907,10 +1136,10 @@ async fn deciding_abstains_without_running_anything_when_no_hook_matches() {
     let (runtime, _reports) = runtime(vec![hook_with(
         "exit 2",
         HookEvent::PreToolUse,
-        10_000.0,
+        10_000,
         Some("edit"),
     )]);
-    let outcome = runtime.decide("write", &Map::new()).await;
+    let outcome = decide_tool(&runtime, "write", Map::new()).await;
     assert_eq!(outcome.verdict, HookVerdict::Abstain);
     assert!(outcome.results.is_empty());
 }

@@ -42,23 +42,35 @@ pub fn build_payload(
 /// text is capped and the truncation is stated rather than hidden.
 pub const MAX_RESPONSE_CHARS: usize = 2_000;
 
-pub fn summarize_tool_response(content: &str, is_error: bool) -> Map<String, Value> {
-    let units: Vec<u16> = content.encode_utf16().collect();
-    let truncated = units.len() > MAX_RESPONSE_CHARS;
+pub fn summarize_output(content: &str) -> Map<String, Value> {
+    let truncated = content.encode_utf16().count() > MAX_RESPONSE_CHARS;
     let output = if truncated {
-        format!(
-            "{}…",
-            String::from_utf16_lossy(&units[..MAX_RESPONSE_CHARS])
-        )
+        let mut output = String::new();
+        let mut units = 0;
+        for character in content.chars() {
+            let width = character.len_utf16();
+            if units + width + 1 > MAX_RESPONSE_CHARS {
+                break;
+            }
+            output.push(character);
+            units += width;
+        }
+        output.push('…');
+        output
     } else {
         content.to_string()
     };
     let mut response = Map::new();
-    response.insert("success".to_string(), json!(!is_error));
     response.insert("output".to_string(), json!(output));
     if truncated {
         response.insert("truncated".to_string(), json!(true));
     }
+    response
+}
+
+pub fn summarize_tool_response(content: &str, is_error: bool) -> Map<String, Value> {
+    let mut response = summarize_output(content);
+    response.insert("success".to_string(), json!(!is_error));
     let mut fields = Map::new();
     fields.insert("tool_response".to_string(), Value::Object(response));
     fields

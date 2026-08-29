@@ -33,12 +33,12 @@ use crate::core::compaction::{
 };
 use crate::core::delegation::agent_type::SubagentType;
 use crate::core::delegation::aliases::AliasRegistry;
-use crate::core::delegation::run::{DelegationOptions, DelegationRun, run_delegation};
+use crate::core::delegation::run::{DelegationOptions, DelegationRun, run_delegation_with_hooks};
 use crate::core::goal::{
     GOAL_REMINDER_CONTINUATION, GOAL_REMINDER_KIND, GOAL_REMINDER_TYPE, GOAL_REMINDER_WRAP_UP,
     GoalNudge, GoalState, ThreadGoal,
 };
-use crate::core::hooks::dispatch::HookDispatcher;
+use crate::core::hooks::dispatch::{HookDispatcher, SubagentHookInfo};
 use crate::core::mcp::manager::{McpManager, McpToolInfo};
 use crate::core::mcp::{
     McpConfigFile, McpServerConfig, McpTrustResponse, ServerName, load_mcp_trust_store,
@@ -295,7 +295,7 @@ pub struct AgentSessionConfig {
     /// wrapped into minimal definitions so the registry stays definition-first
     /// even when a caller hands over plain tools.
     pub base_tools_override: Option<Vec<Arc<dyn AgentTool>>>,
-    /// The user's hooks, dispatched at the points the extension runner emitted.
+    /// The user's hooks, dispatched at lifecycle boundaries before related state mutates.
     pub hooks: Option<Arc<HookDispatcher>>,
     /// The permission chain. It is installed on the agent as `before_tool_call`
     /// and also kept here, because a tool call can arrive from outside the agent
@@ -497,7 +497,8 @@ pub struct AgentSession {
     todo_store: Arc<Mutex<TodoStore>>,
     /// The session's goal and the guard that judges its completion claims
     goal_state: Arc<Mutex<GoalState>>,
-    /// v0.1.22). Empty when no `.mcp.json` was found or none was trusted.
+    /// The active MCP manager. It contains no servers when configuration is
+    /// absent or no declared server was trusted.
     mcp: Mutex<Arc<McpManager>>,
     /// The tools those servers offered, as of the last discovery. Held apart
     /// from the manager so the registry can be rebuilt without awaiting.
@@ -772,8 +773,7 @@ impl AgentSession {
         }
     }
 
-    /// The hook dispatch points, at exactly the places the extension runner
-    /// emitted from (`plans/facts/extension-boundary.md` §2.2).
+    /// Dispatches lifecycle hooks while preserving event order within a turn.
     async fn dispatch_hooks(self: &Arc<Self>, event: &AgentEvent) {
         let Some(hooks) = self.hooks.as_ref() else {
             // Even without hooks, the end of a turn with no tool results is
@@ -792,6 +792,7 @@ impl AgentSession {
         };
 
         match event {
+            AgentEvent::TurnStart => hooks.turn_started().await,
             AgentEvent::AgentEnd { messages } => hooks.agent_end(messages),
             // No tool results means no further tool calls, which is the point
             // the run would end. That is exactly when open todos have to be
@@ -836,11 +837,8 @@ impl AgentSession {
             })
     }
 
-    /// minus the extension runner: what is left is the `PostToolUse` hook —
-    /// which the extension mapped from its `tool_result` event
-    /// (`plans/facts/extension-boundary.md` §2.2) — and the image
-    /// normalisation that runs after it, so images a hook could have replaced
-    /// are normalised too.
+    /// Runs `PostToolUse` before image normalisation so any hook-produced image
+    /// content is normalised by the same path as the original tool result.
     fn install_agent_after_tool_call(self: &Arc<Self>) {
         let weak = Arc::downgrade(self);
         self.agent.update_options(|options| {
@@ -868,6 +866,7 @@ impl AgentSession {
                         };
                         hooks
                             .tool_result(
+                                &context.tool_call.id,
                                 &context.tool_call.name,
                                 &input,
                                 &content,
@@ -1469,8 +1468,7 @@ impl AgentSession {
         self.set_active_tools_by_name(&next_active);
     }
 
-    /// from the extension context; the four fields the built-ins actually use
-    /// are the same (`plans/facts/extension-boundary.md` §2.4).
+    /// Builds the live session context shared by built-in tool definitions.
     fn tool_context_factory(&self) -> Arc<dyn Fn() -> ToolContext + Send + Sync> {
         let weak = self.weak_self.lock().expect("poisoned").clone();
         Arc::new(move || {
@@ -1804,6 +1802,7 @@ impl AgentSession {
                         .and_then(|session| session.resolve_child_tool(name.as_str()))
                 })
             }),
+            hooks: self.hooks.clone(),
             subagent_model: Some({
                 let weak = Arc::downgrade(self);
                 Arc::new(move || weak.upgrade().and_then(|session| session.subagent_model()))
@@ -1903,8 +1902,9 @@ impl AgentSession {
     }
 
     /// The `find_codebase` gate, read from settings at call time so `/index
-    /// on|off` applies without a session restart. Absent session → enabled,
-    /// matching the reference default.
+    /// on|off` applies without a session restart. An unavailable session keeps
+    /// the tool enabled rather than turning a dropped weak reference into a
+    /// settings change.
     fn find_codebase_options(&self) -> crate::core::tools::find_codebase::FindCodebaseToolOptions {
         crate::core::tools::find_codebase::FindCodebaseToolOptions {
             enabled: Some({
@@ -1992,6 +1992,7 @@ impl AgentSession {
         }
 
         let this = self.this();
+        let registered_session = Arc::downgrade(&this);
         let started_session = Arc::downgrade(&this);
         let terminated_session = Arc::downgrade(&this);
         let task_session_id = session_id.clone();
@@ -1999,6 +2000,16 @@ impl AgentSession {
         let manager = Arc::new(TaskManager::new(
             Arc::new(TaskStore::new(get_session_tasks_dir(&session_id))),
             TaskManagerOptions {
+                on_registered: Some(Arc::new(move |info| {
+                    let hooks = registered_session
+                        .upgrade()
+                        .and_then(|session| session.hooks.clone());
+                    Box::pin(async move {
+                        if let Some(hooks) = hooks {
+                            hooks.task_started(&info).await;
+                        }
+                    })
+                })),
                 on_started: Some(Arc::new(move |info| {
                     let Some(session) = started_session.upgrade() else {
                         return;
@@ -2008,20 +2019,26 @@ impl AgentSession {
                         TaskLifecycleRecord::started(info),
                     );
                 })),
-                on_terminated: Some(Arc::new(move |info, _reason| {
-                    let notifier = terminated_session.upgrade().and_then(|session| {
+                on_terminated: Some(Arc::new(move |info, _result| {
+                    let Some(session) = terminated_session.upgrade() else {
+                        return;
+                    };
+                    let notifier = {
                         session.append_task_lifecycle_entry(
                             &terminated_session_id,
                             TaskLifecycleRecord::ended(info.clone()),
                         );
-                        session.tasks.lock().ok()?.notifier.clone()
-                    });
-                    let Some(notifier) = notifier else {
-                        return;
+                        session
+                            .tasks
+                            .lock()
+                            .ok()
+                            .and_then(|tasks| tasks.notifier.clone())
                     };
                     if tokio::runtime::Handle::try_current().is_ok() {
                         tokio::spawn(async move {
-                            notifier.notify(&info).await;
+                            if let Some(notifier) = notifier {
+                                notifier.notify(&info).await;
+                            }
                         });
                     }
                 })),
@@ -2686,9 +2703,8 @@ impl AgentSession {
         Arc::clone(&self.model_runtime)
     }
 
-    /// The model delegated children run on: the `subagentModel` setting when
-    /// it names a model that exists right now, otherwise `None` — the child
-    /// decision 2026-08-16, v0.1.6); set and cleared via `/subagent-model`.
+    /// The model delegated children run on when the configured provider and
+    /// model still exist. `None` lets the child inherit its parent's model.
     pub fn subagent_model(&self) -> Option<Model> {
         let id = self.settings_manager.get_subagent_model()?;
         match self.settings_manager.get_subagent_provider() {
@@ -2893,9 +2909,25 @@ impl AgentSession {
                         .to_string(),
                 );
             };
-            match behavior {
-                QueueBehavior::FollowUp => self.queue_follow_up(&expanded, &options.images),
-                QueueBehavior::Steer => self.queue_steer(&expanded, &options.images),
+            let queue = match behavior {
+                QueueBehavior::FollowUp => {
+                    self.queue_follow_up(&expanded, &options.images);
+                    "follow_up"
+                }
+                QueueBehavior::Steer => {
+                    self.queue_steer(&expanded, &options.images);
+                    "steer"
+                }
+            };
+            if let Some(hooks) = self.hooks.as_ref() {
+                hooks
+                    .user_prompt_queued(
+                        &expanded,
+                        queue,
+                        options.images.len(),
+                        self.pending_message_count(),
+                    )
+                    .await;
             }
             report(true);
             return Ok(());
@@ -2927,6 +2959,17 @@ impl AgentSession {
         if let Some(last_assistant) = self.find_last_assistant_message() {
             self.check_compaction(&last_assistant, false).await;
         }
+
+        let hook_context = match self.hooks.as_ref() {
+            Some(hooks) => match hooks.before_agent_start(&expanded).await {
+                Ok(context) => context,
+                Err(reason) => {
+                    report(false);
+                    return Err(reason);
+                }
+            },
+            None => None,
+        };
 
         let mut messages: Vec<AgentMessage> = Vec::new();
 
@@ -2968,11 +3011,7 @@ impl AgentSession {
             messages.push(AgentMessage::Custom(reminder));
         }
 
-        // The user's UserPromptSubmit hooks run here; their output is injected
-        // as a hidden hook_context message (extension-boundary §2.2).
-        if let Some(hooks) = self.hooks.as_ref()
-            && let Some(context) = hooks.before_agent_start(&expanded).await
-        {
+        if let Some(context) = hook_context {
             messages.push(AgentMessage::Custom(CustomMessage {
                 custom_type: "hook_context".to_string(),
                 content: UserContent::Blocks(vec![TextOrImageContent::Text(TextContent::new(
@@ -4958,11 +4997,42 @@ impl AgentSession {
             model_override: self.subagent_model(),
         };
 
+        let task_id = if let Some(manager) = self.task_manager() {
+            let cancel_controller = controller.clone();
+            let task: Arc<dyn BackgroundTask> = Arc::new(SubagentTask::new(SubagentTaskOptions {
+                description: "Write AGENTS.md".to_string(),
+                tokens: Some(Arc::new(move || {
+                    tokens.load(std::sync::atomic::Ordering::SeqCst)
+                })),
+                session_id: session_id.clone(),
+                agent: SubagentType::Worker.as_str().to_string(),
+                alias: alias.clone(),
+                run: run_receiver,
+                cancel: Arc::new(move || cancel_controller.cancel()),
+            }));
+            manager
+                .register(task, RegisterTaskOptions::default())
+                .await
+                .ok()
+        } else {
+            None
+        };
+
+        let hook_info = SubagentHookInfo {
+            task_id,
+            child_session_id: session_id,
+            agent: SubagentType::Worker.as_str().to_string(),
+            alias: alias.clone(),
+            description: "Write AGENTS.md".to_string(),
+            prompt: INIT_PROMPT.to_string(),
+            detached: true,
+        };
         let aliases = self.subagent_aliases.clone();
-        let released = alias.clone();
+        let released = alias;
+        let hooks = self.hooks.clone();
         let (done_sender, done_receiver) = tokio::sync::oneshot::channel::<DelegationRun>();
         tokio::spawn(async move {
-            let run = run_delegation(delegation).await;
+            let run = run_delegation_with_hooks(delegation, hooks, hook_info).await;
             aliases.release(&released);
             let _ = run_sender.send(SubagentRunResult {
                 text: run.text.clone(),
@@ -4970,22 +5040,6 @@ impl AgentSession {
             });
             let _ = done_sender.send(run);
         });
-
-        if let Some(manager) = self.task_manager() {
-            let cancel_controller = controller.clone();
-            let task: Arc<dyn BackgroundTask> = Arc::new(SubagentTask::new(SubagentTaskOptions {
-                description: "Write AGENTS.md".to_string(),
-                tokens: Some(Arc::new(move || {
-                    tokens.load(std::sync::atomic::Ordering::SeqCst)
-                })),
-                session_id,
-                agent: SubagentType::Worker.as_str().to_string(),
-                alias,
-                run: run_receiver,
-                cancel: Arc::new(move || cancel_controller.cancel()),
-            }));
-            let _ = manager.register(task, RegisterTaskOptions::default());
-        }
 
         let run = done_receiver
             .await
@@ -5250,8 +5304,16 @@ impl crate::core::mcp::lend::LentToolSource for SessionLentTools {
                 ));
             };
             let input = arguments.as_object().cloned().unwrap_or_default();
+            let call_id = uuid::Uuid::new_v4().simple().to_string();
             if let Some(block) = permissions
-                .before_tool_call(tool, &input, Some(&signal))
+                .before_tool_call(
+                    crate::core::permissions::hook::PermissionCall {
+                        tool_call_id: call_id.clone(),
+                        tool_name: tool.to_string(),
+                        input,
+                    },
+                    Some(&signal),
+                )
                 .await
             {
                 return Ok(crate::core::mcp::lend::LentCallOutcome {
@@ -5266,7 +5328,6 @@ impl crate::core::mcp::lend::LentToolSource for SessionLentTools {
             // captured: the factory reads the session live, so there is nothing
             // to keep in step.
             let context = (session.tool_context_factory())();
-            let call_id = uuid::Uuid::new_v4().simple().to_string();
             let outcome = definition
                 .execute(&call_id, arguments, Some(signal), None, Some(context))
                 .await;

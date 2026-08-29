@@ -142,6 +142,7 @@ async fn eight_delegated_subagents_run_at_once() {
         task_ids.push(
             manager
                 .register(task, RegisterTaskOptions::default())
+                .await
                 .expect("registered"),
         );
     }
@@ -332,6 +333,7 @@ async fn one_task_call_runs_its_eight_subagents_at_once() {
         background_allowed: Some(Arc::new(|| true)),
         resolve_tool: None,
         tool_options: None,
+        hooks: None,
         transcripts: Default::default(),
         cwd: None,
         subagent_model: None,

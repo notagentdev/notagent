@@ -72,6 +72,7 @@ pub struct TaskLimitError {
 }
 
 pub type MaxRunningTasksFn = Arc<dyn Fn() -> Option<usize> + Send + Sync>;
+pub type TaskRegisteredFn = Arc<dyn Fn(TaskInfo) -> BoxFuture<'static, ()> + Send + Sync>;
 pub type TaskStartedFn = Arc<dyn Fn(TaskInfo) + Send + Sync>;
 pub type TaskTerminatedFn = Arc<dyn Fn(TaskInfo, Option<String>) + Send + Sync>;
 
@@ -79,6 +80,8 @@ pub type TaskTerminatedFn = Arc<dyn Fn(TaskInfo, Option<String>) + Send + Sync>;
 pub struct TaskManagerOptions {
     /// Cap on simultaneously running detached tasks. Unset means none.
     pub max_running_tasks: Option<MaxRunningTasksFn>,
+    /// Fired once after registration is accepted and before work begins.
+    pub on_registered: Option<TaskRegisteredFn>,
     /// Fired when a task becomes visible as background work.
     pub on_started: Option<TaskStartedFn>,
     /// Fired once when a task settles, with a bounded tail of its output.
@@ -429,14 +432,14 @@ impl TaskSinkTarget for ManagedTask {
 }
 
 struct ManagerInner {
-    /// Deviation (class 1): a `Vec` rather than a hash map, because `list()`
-    /// walks the tasks in registration order as the JS `Map` does and the
-    /// number of live tasks is bounded by `maxRunningTasks`.
+    /// A `Vec` preserves registration order for `list()`, and the configured
+    /// running-task ceiling keeps the live collection bounded.
     tasks: Mutex<Vec<Arc<ManagedTask>>>,
     /// Records restored from disk, with no live work behind them.
     restored: Mutex<Vec<TaskInfo>>,
     store: Arc<TaskStore>,
     max_running_tasks: Option<MaxRunningTasksFn>,
+    on_registered: Option<TaskRegisteredFn>,
     on_started: Option<TaskStartedFn>,
     on_terminated: Option<TaskTerminatedFn>,
 }
@@ -454,6 +457,7 @@ impl TaskManager {
                 restored: Mutex::new(Vec::new()),
                 store,
                 max_running_tasks: options.max_running_tasks,
+                on_registered: options.on_registered,
                 on_started: options.on_started,
                 on_terminated: options.on_terminated,
             }),
@@ -466,7 +470,7 @@ impl TaskManager {
 
     // ── registration ───────────────────────────────────────────────────
 
-    pub fn register(
+    pub async fn register(
         &self,
         task: Arc<dyn BackgroundTask>,
         options: RegisterTaskOptions,
@@ -556,6 +560,14 @@ impl TaskManager {
             .expect("poisoned")
             .retain(|info| info.task_id() != task_id);
 
+        entry.install_foreground_signal();
+        if let Some(on_registered) = &self.inner.on_registered {
+            on_registered(entry.to_info()).await;
+        }
+        if entry.is_terminal() {
+            return Ok(task_id);
+        }
+
         entry.arm_deadline(timeout_ms);
 
         let sink = TaskSink::new(
@@ -595,8 +607,6 @@ impl TaskManager {
             }
             lifecycle_entry.lifecycle.set();
         });
-
-        entry.install_foreground_signal();
 
         if entry.is_detached() {
             entry.enqueue_persist();
@@ -954,15 +964,18 @@ impl TaskManager {
 /// The shell tool talks to the manager through this trait so that it can be
 /// built and tested without one (`core/tools/bash.rs`).
 impl crate::core::tools::bash::BashTaskManager for TaskManager {
-    fn register_shell_task(
-        &self,
+    fn register_shell_task<'a>(
+        &'a self,
         task: crate::core::tasks::shell_task::ShellTaskSpec,
         options: RegisterTaskOptions,
-    ) -> Result<String, String> {
+    ) -> BoxFuture<'a, Result<String, String>> {
         let shell_task: Arc<dyn BackgroundTask> =
             Arc::new(crate::core::tasks::shell_task::ShellTask::new(task));
-        self.register(shell_task, options)
-            .map_err(|error| error.to_string())
+        Box::pin(async move {
+            self.register(shell_task, options)
+                .await
+                .map_err(|error| error.to_string())
+        })
     }
 
     fn wait_for_foreground_release<'a>(

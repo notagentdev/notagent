@@ -11,8 +11,8 @@ use notagent::core::permissions::chain::build_policy_chain;
 use notagent::core::permissions::coordinator::{ApprovalCoordinator, ApprovalPresenter};
 use notagent::core::permissions::gate::{PermissionGate, PermissionGateOptions};
 use notagent::core::permissions::hook::{
-    PermissionHandler, PermissionHookOptions, PermissionHookResult, PermissionSessionState,
-    create_permission_handler,
+    PermissionCall, PermissionHandler, PermissionHookOptions, PermissionHookResult,
+    PermissionSessionState, create_permission_handler,
 };
 use notagent::core::permissions::request::{ApprovalAnswer, ApprovalRequest};
 use notagent::core::tools::tool_definition::ToolDefinition;
@@ -52,6 +52,14 @@ impl Drop for Workspace {
 
 fn input(arguments: Value) -> Map<String, Value> {
     arguments.as_object().cloned().unwrap_or_default()
+}
+
+fn permission_call(tool_name: &str, arguments: &Map<String, Value>) -> PermissionCall {
+    PermissionCall {
+        tool_call_id: "call-1".to_string(),
+        tool_name: tool_name.to_string(),
+        input: arguments.clone(),
+    }
 }
 
 fn state(
@@ -94,7 +102,7 @@ fn pre_tool_use(command: &str, matcher: Option<&str>) -> Hook {
         event: HookEvent::PreToolUse,
         matcher: matcher.map(str::to_string),
         command: command.to_string(),
-        timeout_ms: 10_000.0,
+        timeout_ms: 10_000,
         source: "e2e".to_string(),
     }
 }
@@ -128,13 +136,20 @@ fn harness(
         policies: build_policy_chain(&[]),
         coordinator: Arc::clone(&coordinator),
         state: state(cwd, approval),
-        decide: Some(Arc::new(
-            move |tool_name: String, arguments: Map<String, Value>| {
-                let runtime = Arc::clone(&runtime);
-                Box::pin(async move { runtime.decide(&tool_name, &arguments).await.verdict })
-                    as BoxFuture<'static, _>
-            },
-        )),
+        decide: Some(Arc::new(move |call: PermissionCall| {
+            let runtime = Arc::clone(&runtime);
+            Box::pin(async move {
+                let fields = input(json!({
+                    "tool_call_id": call.tool_call_id,
+                    "tool_name": call.tool_name,
+                    "tool_input": call.input,
+                }));
+                runtime
+                    .decide(HookEvent::PreToolUse, fields, Some("write"))
+                    .await
+                    .verdict
+            }) as BoxFuture<'static, _>
+        })),
     });
     Harness { handler, shown }
 }
@@ -156,7 +171,10 @@ async fn attempt_write(
 ) -> Attempt {
     let harness = harness(cwd, approval, answer, hooks);
     let arguments = input(json!({ "path": path, "content": content }));
-    let result = harness.handler.call("write", &arguments, None).await;
+    let result = harness
+        .handler
+        .call(permission_call("write", &arguments), None)
+        .await;
     let shown = harness.shown.lock().expect("shown").clone();
     if let Some(PermissionHookResult {
         block: true,
@@ -402,7 +420,10 @@ async fn a_hook_permits_a_credentials_file_the_guard_would_have_asked_about() {
         "TOKEN=1",
         ApprovalLevel::Manual,
         ApprovalAnswer::Deny,
-        vec![pre_tool_use("echo '{\"permission\":\"allow\"}'", None)],
+        vec![pre_tool_use(
+            "echo '{\"hook_output\":{\"decision\":\"allow\"}}'",
+            None,
+        )],
     )
     .await;
     assert!(outcome.shown.is_empty());
@@ -421,7 +442,7 @@ async fn a_hook_asks_about_an_ordinary_write_that_nothing_would_have_asked_about
         ApprovalLevel::Manual,
         ApprovalAnswer::Deny,
         vec![pre_tool_use(
-            "echo '{\"permission\":\"ask\",\"reason\":\"review writes\"}'",
+            "echo '{\"hook_output\":{\"decision\":\"ask\",\"reason\":\"review writes\"}}'",
             None,
         )],
     )
@@ -486,7 +507,7 @@ async fn refuses_a_call_whose_approval_was_pending_when_the_session_aborted() {
         decide: None,
     });
     let arguments = input(json!({ "path": target, "content": "x" }));
-    let call = handler.call("write", &arguments, None);
+    let call = handler.call(permission_call("write", &arguments), None);
     let abort = async {
         tokio::task::yield_now().await;
         coordinator.abort();
@@ -512,7 +533,7 @@ async fn settles_a_prompt_nobody_answered_so_the_interrupt_itself_can_finish() {
     let handler = unanswered_handler(&workspace.cwd());
     let turn = CancellationToken::new();
     let arguments = input(json!({ "path": target, "content": "x" }));
-    let call = handler.call("write", &arguments, Some(&turn));
+    let call = handler.call(permission_call("write", &arguments), Some(&turn));
     let cancel = async {
         tokio::task::yield_now().await;
         turn.cancel();
@@ -530,7 +551,7 @@ async fn does_not_blame_the_user_for_a_prompt_they_never_saw() {
     let handler = unanswered_handler(&workspace.cwd());
     let turn = CancellationToken::new();
     let arguments = input(json!({ "path": workspace.join(".env"), "content": "x" }));
-    let call = handler.call("write", &arguments, Some(&turn));
+    let call = handler.call(permission_call("write", &arguments), Some(&turn));
     let cancel = async {
         tokio::task::yield_now().await;
         turn.cancel();
@@ -558,7 +579,9 @@ async fn refuses_without_asking_once_the_turn_is_already_gone() {
     let turn = CancellationToken::new();
     turn.cancel();
     let arguments = input(json!({ "path": workspace.join(".env"), "content": "x" }));
-    let result = handler.call("write", &arguments, Some(&turn)).await;
+    let result = handler
+        .call(permission_call("write", &arguments), Some(&turn))
+        .await;
     assert_eq!(result.map(|result| result.block), Some(true));
     assert!(shown.lock().expect("shown").is_empty());
 }
@@ -576,11 +599,13 @@ async fn leaves_the_next_turn_free_to_ask_again() {
     let arguments = input(json!({ "path": workspace.join(".env"), "content": "x" }));
     let gone = CancellationToken::new();
     gone.cancel();
-    handler.call("write", &arguments, Some(&gone)).await;
+    handler
+        .call(permission_call("write", &arguments), Some(&gone))
+        .await;
     let fresh = CancellationToken::new();
     assert!(
         handler
-            .call("write", &arguments, Some(&fresh))
+            .call(permission_call("write", &arguments), Some(&fresh))
             .await
             .is_none()
     );
@@ -606,7 +631,7 @@ async fn the_gate_lets_an_ordinary_in_directory_write_through_untouched() {
     let gate = gate(&workspace.cwd(), ApprovalLevel::Manual, presenter);
     let arguments = input(json!({ "path": workspace.join("a.txt") }));
     assert!(
-        gate.before_tool_call("write", &arguments, None)
+        gate.before_tool_call(permission_call("write", &arguments), None)
             .await
             .is_none()
     );
@@ -620,7 +645,7 @@ async fn the_gate_blocks_a_refused_call_and_ends_the_batch() {
     let gate = gate(&workspace.cwd(), ApprovalLevel::Auto, presenter);
     let arguments = input(json!({ "path": workspace.join(".env") }));
     let block = gate
-        .before_tool_call("write", &arguments, None)
+        .before_tool_call(permission_call("write", &arguments), None)
         .await
         .expect("blocks");
     assert!(block.terminate);
@@ -639,7 +664,9 @@ async fn the_gate_keeps_a_blocked_write_off_the_file_system() {
     let (presenter, _shown) = recording(ApprovalAnswer::Deny);
     let gate = gate(&workspace.cwd(), ApprovalLevel::Auto, presenter);
     let arguments = input(json!({ "path": target, "content": "secret" }));
-    let block = gate.before_tool_call("write", &arguments, None).await;
+    let block = gate
+        .before_tool_call(permission_call("write", &arguments), None)
+        .await;
     assert!(block.is_some());
     if block.is_none() {
         let tool = create_write_tool_definition(&workspace.cwd(), None);
@@ -658,7 +685,7 @@ async fn the_gate_runs_an_approved_write() {
     let gate = gate(&workspace.cwd(), ApprovalLevel::Auto, presenter);
     let arguments = input(json!({ "path": target, "content": "ok" }));
     assert!(
-        gate.before_tool_call("write", &arguments, None)
+        gate.before_tool_call(permission_call("write", &arguments), None)
             .await
             .is_none()
     );
@@ -677,7 +704,7 @@ async fn the_gate_refuses_everything_once_aborted() {
     gate.abort();
     let arguments = input(json!({ "path": workspace.join(".env") }));
     assert!(
-        gate.before_tool_call("write", &arguments, None)
+        gate.before_tool_call(permission_call("write", &arguments), None)
             .await
             .is_some()
     );
@@ -692,7 +719,8 @@ async fn the_gate_asks_again_after_a_reset() {
     gate.abort();
     gate.reset();
     let arguments = input(json!({ "path": workspace.join(".env") }));
-    gate.before_tool_call("write", &arguments, None).await;
+    gate.before_tool_call(permission_call("write", &arguments), None)
+        .await;
     assert_eq!(*shown.lock().expect("shown"), vec![".env"]);
 }
 
@@ -702,7 +730,7 @@ async fn the_gate_settles_the_prompt_an_interrupted_turn_was_waiting_on() {
     let gate = gate(&workspace.cwd(), ApprovalLevel::Auto, unanswered());
     let turn = CancellationToken::new();
     let arguments = input(json!({ "path": workspace.join(".env") }));
-    let call = gate.before_tool_call("write", &arguments, Some(&turn));
+    let call = gate.before_tool_call(permission_call("write", &arguments), Some(&turn));
     let cancel = async {
         tokio::task::yield_now().await;
         turn.cancel();
@@ -718,8 +746,8 @@ async fn the_gate_settles_the_calls_queued_behind_it_too() {
     let turn = CancellationToken::new();
     let first_arguments = input(json!({ "path": workspace.join(".env") }));
     let second_arguments = input(json!({ "path": workspace.join(".netrc") }));
-    let first = gate.before_tool_call("write", &first_arguments, Some(&turn));
-    let second = gate.before_tool_call("write", &second_arguments, Some(&turn));
+    let first = gate.before_tool_call(permission_call("write", &first_arguments), Some(&turn));
+    let second = gate.before_tool_call(permission_call("write", &second_arguments), Some(&turn));
     let cancel = async {
         tokio::task::yield_now().await;
         turn.cancel();
@@ -736,7 +764,7 @@ async fn the_gate_decides_without_a_signal_as_a_session_that_has_none_does() {
     let gate = gate(&workspace.cwd(), ApprovalLevel::Auto, presenter);
     let arguments = input(json!({ "path": workspace.join(".env") }));
     assert!(
-        gate.before_tool_call("write", &arguments, None)
+        gate.before_tool_call(permission_call("write", &arguments), None)
             .await
             .is_none()
     );
@@ -748,7 +776,7 @@ async fn the_gate_denies_what_is_outstanding_when_the_session_is_torn_down() {
     let workspace = Workspace::new();
     let gate = Arc::new(gate(&workspace.cwd(), ApprovalLevel::Auto, unanswered()));
     let arguments = input(json!({ "path": workspace.join(".env") }));
-    let call = gate.before_tool_call("write", &arguments, None);
+    let call = gate.before_tool_call(permission_call("write", &arguments), None);
     let shutdown = async {
         tokio::task::yield_now().await;
         gate.session_shutdown();
@@ -763,12 +791,15 @@ async fn the_gate_starts_a_replaced_session_over_rather_than_inheriting_its_answ
     let (presenter, shown) = recording(ApprovalAnswer::ApproveAlways);
     let gate = gate(&workspace.cwd(), ApprovalLevel::Auto, presenter);
     let arguments = input(json!({ "path": workspace.join(".env") }));
-    gate.before_tool_call("write", &arguments, None).await;
-    gate.before_tool_call("write", &arguments, None).await;
+    gate.before_tool_call(permission_call("write", &arguments), None)
+        .await;
+    gate.before_tool_call(permission_call("write", &arguments), None)
+        .await;
     assert_eq!(*shown.lock().expect("shown"), vec![".env"]);
 
     gate.session_start();
-    gate.before_tool_call("write", &arguments, None).await;
+    gate.before_tool_call(permission_call("write", &arguments), None)
+        .await;
     assert_eq!(*shown.lock().expect("shown"), vec![".env", ".env"]);
 }
 
@@ -780,13 +811,13 @@ async fn the_gate_clears_a_teardown_denial_when_a_session_starts() {
     let arguments = input(json!({ "path": workspace.join(".env") }));
     gate.session_shutdown();
     assert!(
-        gate.before_tool_call("write", &arguments, None)
+        gate.before_tool_call(permission_call("write", &arguments), None)
             .await
             .is_some()
     );
     gate.session_start();
     assert!(
-        gate.before_tool_call("write", &arguments, None)
+        gate.before_tool_call(permission_call("write", &arguments), None)
             .await
             .is_none()
     );

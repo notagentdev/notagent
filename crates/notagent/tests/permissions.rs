@@ -10,6 +10,7 @@ use notagent::core::permissions::chain::{
 use notagent::core::permissions::coordinator::{
     ApprovalCoordinator, ApprovalObserver, ApprovalPresenter, approval_key,
 };
+use notagent::core::permissions::hook::PermissionCall;
 use notagent::core::permissions::policies::{destructive_command_ask, is_destructive_call};
 use notagent::core::permissions::policy::{
     FnPolicy, PermissionContext, PermissionDecision, PermissionEvaluation, PermissionPolicy,
@@ -31,6 +32,7 @@ fn input(entries: Value) -> Map<String, Value> {
 
 fn ctx(tool_name: &str, approval: ApprovalLevel, arguments: Value, cwd: &str) -> PermissionContext {
     PermissionContext {
+        tool_call_id: "call-test".to_string(),
         tool_name: tool_name.to_string(),
         input: input(arguments),
         mode_id: Some("manual".to_string()),
@@ -57,6 +59,7 @@ fn named(name: &'static str, decision: Option<PermissionDecision>) -> Arc<dyn Pe
 
 fn request(target: &str) -> ApprovalRequest {
     ApprovalRequest {
+        tool_call_id: "call-test".to_string(),
         tool_name: "write".to_string(),
         target: Some(target.to_string()),
         policy_name: "fallback-ask".to_string(),
@@ -662,6 +665,7 @@ async fn asks_again_even_after_the_user_allowed_it_for_the_session() {
     coordinator
         .request(
             ApprovalRequest {
+                tool_call_id: "call-destructive".to_string(),
                 tool_name: "bash".to_string(),
                 target: Some("rm -rf build".to_string()),
                 policy_name: "p".to_string(),
@@ -686,6 +690,7 @@ async fn still_remembers_an_ordinary_command() {
     coordinator
         .request(
             ApprovalRequest {
+                tool_call_id: "call-ordinary".to_string(),
                 tool_name: "bash".to_string(),
                 target: Some("npm test".to_string()),
                 policy_name: "p".to_string(),
@@ -1435,6 +1440,7 @@ fn remembers_only_the_session_wide_answer() {
 
 fn child_request(alias: &str, tool: &str, target: &str) -> ApprovalRequest {
     ApprovalRequest {
+        tool_call_id: format!("call-{alias}"),
         tool_name: tool.to_string(),
         target: Some(target.to_string()),
         policy_name: "p".to_string(),
@@ -1597,7 +1603,15 @@ async fn a_childs_call_is_judged_by_the_live_session_level_and_names_the_child()
 
     // Manual: the child is asked, and the prompt knows which child it is.
     with_requester(requester.clone(), async {
-        gate.before_tool_call("write", &call, None).await
+        gate.before_tool_call(
+            PermissionCall {
+                tool_call_id: "call-manual".to_string(),
+                tool_name: "write".to_string(),
+                input: call.clone(),
+            },
+            None,
+        )
+        .await
     })
     .await;
     assert_eq!(
@@ -1608,7 +1622,15 @@ async fn a_childs_call_is_judged_by_the_live_session_level_and_names_the_child()
     // The user switches the session to auto while the child is still running.
     *level.lock().expect("level") = ApprovalLevel::Auto;
     with_requester(requester, async {
-        gate.before_tool_call("write", &call, None).await
+        gate.before_tool_call(
+            PermissionCall {
+                tool_call_id: "call-auto".to_string(),
+                tool_name: "write".to_string(),
+                input: call,
+            },
+            None,
+        )
+        .await
     })
     .await;
     assert_eq!(

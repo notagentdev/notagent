@@ -83,8 +83,8 @@ use crate::utils::paths::{
 };
 
 /// Run a startup dialog on this thread.
-/// binary runs on a multi-threaded runtime; a `LocalSet` gives the dialog the
-/// single-threaded context Node's event loop provides for free.
+/// The binary runs on a multi-threaded runtime, while dialog components contain
+/// thread-local UI state and therefore need a `LocalSet`.
 async fn run_dialog<F: Future>(dialog: F) -> F::Output {
     tokio::task::LocalSet::new().run_until(dialog).await
 }
@@ -801,9 +801,31 @@ pub async fn main(args: Vec<String>) -> i32 {
         // PreToolUse runs from here rather than from the hook dispatcher, so one
         // run serves both purposes: telling a supervisor a tool was attempted,
         // and filling the user-authored slots of the policy chain.
-        decide: Some(Arc::new(move |tool_name, input| {
+        decide: Some(Arc::new(move |call| {
             let runtime = Arc::clone(&decide_runtime);
-            Box::pin(async move { runtime.decide(&tool_name, &input).await.verdict })
+            Box::pin(async move {
+                let tool_name = call.tool_name;
+                runtime
+                    .decide(
+                        crate::core::hooks::events::HookEvent::PreToolUse,
+                        [
+                            (
+                                "tool_call_id".to_string(),
+                                serde_json::json!(call.tool_call_id),
+                            ),
+                            ("tool_name".to_string(), serde_json::json!(&tool_name)),
+                            (
+                                "tool_input".to_string(),
+                                serde_json::Value::Object(call.input),
+                            ),
+                        ]
+                        .into_iter()
+                        .collect(),
+                        Some(&tool_name),
+                    )
+                    .await
+                    .verdict
+            })
         })),
     }));
     let hooks = Arc::new(HookDispatcher::new(Arc::clone(&hook_runtime)));
@@ -857,8 +879,8 @@ pub async fn main(args: Vec<String>) -> i32 {
             return 1;
         }
     }
-    // An unknown long flag has nobody left to claim it now that extensions are
-    // gone (`plans/facts/extension-boundary.md` §6).
+    // Every supported long flag has been claimed by this point, so accepting a
+    // remainder would silently ignore a typo in the user's command line.
     if let Some(message) = unknown_flags_error(&parsed) {
         eprintln!("{}", red(&format!("Error: {message}")));
         return 1;
@@ -1125,8 +1147,7 @@ pub async fn main(args: Vec<String>) -> i32 {
         settings_manager.get_theme().as_deref(),
         app_mode == AppMode::Interactive,
     );
-    // Chat-block style (v0.1.9): read once at startup; the settings menu
-    // updates the global live.
+    // Read once at startup; the settings menu updates the global live.
     crate::modes::interactive::theme::theme::set_block_style(
         if settings_manager.get_block_style_badge() {
             crate::modes::interactive::theme::theme::BlockStyle::Badge
@@ -1272,12 +1293,10 @@ pub async fn main(args: Vec<String>) -> i32 {
     }
 }
 
-/// The trust prompt, as far as the current mode can show one.
-/// mode has a screen, every other mode answers "no dialog".
-/// Deviation (class 1): the dialog is `!Send` and the callback is not, so the
-/// selector runs on a blocking thread with its own single-threaded runtime.
-/// Node needs no equivalent because it has one event loop for everything; the
-/// terminal is still touched by one dialog at a time.
+/// The trust prompt available to interactive mode. Every other mode answers
+/// "no dialog". The dialog contains thread-local UI state, so its selector runs
+/// on a blocking thread with a single-threaded runtime and remains the only
+/// code touching that terminal while it is open.
 fn trust_prompt_context(
     mode: AppMode,
     settings_manager: Arc<SettingsManager>,

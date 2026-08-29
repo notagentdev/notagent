@@ -460,11 +460,11 @@ pub struct ManagedTaskSnapshot {
 /// The part of `TaskManager` the shell tool uses. Implemented for the real
 /// manager in plan task 10.
 pub trait BashTaskManager: Send + Sync {
-    fn register_shell_task(
-        &self,
+    fn register_shell_task<'a>(
+        &'a self,
         task: ShellTaskSpec,
         options: RegisterTaskOptions,
-    ) -> Result<String, String>;
+    ) -> BoxFuture<'a, Result<String, String>>;
     fn wait_for_foreground_release<'a>(
         &'a self,
         task_id: &'a str,
@@ -1115,8 +1115,7 @@ impl Component for BashPreviewComponent {
         }
         let lines = self.cached_lines.clone().unwrap_or_default();
         // The standard style separates the output from the command with one
-        // blank row; the badge style stacks them directly (reference
-        // `format_bash_result`).
+        // blank row; the compact badge style stacks them directly.
         let lead = block_style() != BlockStyle::Badge;
         if let Some(skipped) = self.cached_skipped.filter(|skipped| *skipped > 0) {
             let theme = theme();
@@ -1213,8 +1212,8 @@ fn format_bash_call(args: &Value, theme: &Theme, running_for: Option<Duration>) 
     header
 }
 
-/// The command through the tree-sitter bash highlighter, in the reference's
-/// manner; a command the parser rejects renders plain.
+/// Renders the command through the tree-sitter bash highlighter. A command the
+/// parser rejects renders plain.
 fn render_shell_command(command: &str) -> String {
     crate::modes::interactive::theme::theme::highlight_code(command, Some("bash")).join("\n")
 }
@@ -1327,9 +1326,8 @@ fn rebuild_bash_result_component(
     if let Some(started_at) = started_at {
         let end_time = ended_at.unwrap_or_else(Instant::now);
         let elapsed = end_time.saturating_duration_since(started_at);
-        // Badge style (v0.1.9, reference `format_bash_result`): the timing
-        // reads `(1.2s)` — live it stays invisible below one second, final it
-        // original's `Elapsed/Took X.Xs` line.
+        // Compact timing stays invisible below one second while live and uses
+        // the same parenthesised duration once the command has settled.
         let timing = if block_style() == BlockStyle::Badge {
             if options.is_partial {
                 format_elapsed_live(elapsed).map(|text| format!("({text})"))
@@ -1424,8 +1422,8 @@ impl ToolDefinition for BashToolDefinition {
             state.started_at = Some(Instant::now());
             state.ended_at = None;
         }
-        // The running indicator lives on the call line, as in the reference;
-        // it disappears the moment the result records an end time.
+        // The running indicator lives on the call line and disappears the
+        // moment the result records an end time.
         let running_for = state
             .started_at
             .filter(|_| state.ended_at.is_none())
@@ -1801,6 +1799,7 @@ async fn run_managed(
     let description = task.description.clone();
     let task_id = manager
         .register_shell_task(task, options)
+        .await
         .map_err(ToolExecutionError::new)?;
 
     if starts_in_background {

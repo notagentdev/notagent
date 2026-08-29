@@ -211,6 +211,7 @@ async fn a_fast_background_terminal_emits_one_ordered_session_pair() {
         .unwrap_or_else(|| panic!("the harness session must have a task manager"));
     let task_id = manager
         .register(Arc::new(ImmediateShell), RegisterTaskOptions::default())
+        .await
         .unwrap_or_else(|error| panic!("the task must register: {error}"));
     let settled = manager.wait(&task_id, 2_000, None).await;
     assert!(settled.is_some(), "the immediate task must settle");

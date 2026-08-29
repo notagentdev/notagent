@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::chain::build_policy_chain;
 use super::coordinator::{ApprovalCoordinator, ApprovalObserver, ApprovalPresenter};
 use super::hook::{
-    PermissionDecideHook, PermissionHandler, PermissionHookOptions, PermissionStateSource,
-    create_permission_handler,
+    PermissionCall, PermissionDecideHook, PermissionHandler, PermissionHookOptions,
+    PermissionStateSource, create_permission_handler,
 };
 use super::policy::PermissionPolicy;
 use super::user_rules::create_session_approval_history;
@@ -71,11 +70,10 @@ impl PermissionGate {
     /// call — the session never goes idle.
     pub async fn before_tool_call(
         &self,
-        tool_name: &str,
-        input: &Map<String, Value>,
+        call: PermissionCall,
         signal: Option<&CancellationToken>,
     ) -> Option<PermissionBlock> {
-        let result = self.handler.call(tool_name, input, signal).await?;
+        let result = self.handler.call(call, signal).await?;
         if !result.block {
             return None;
         }

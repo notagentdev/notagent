@@ -31,6 +31,8 @@ impl std::fmt::Display for ApprovalAnswer {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApprovalRequest {
+    /// Stable identity shared with the attempted tool call.
+    pub tool_call_id: String,
     /// Tool requesting permission.
     pub tool_name: String,
     /// Path or argument summary the call would act on, if any.
@@ -95,6 +97,7 @@ pub fn build_approval_request(
         return None;
     };
     Some(ApprovalRequest {
+        tool_call_id: context.tool_call_id.clone(),
         tool_name: context.tool_name.clone(),
         target: describe_target(context),
         policy_name: evaluation.policy_name.clone(),

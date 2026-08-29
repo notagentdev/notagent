@@ -576,21 +576,23 @@ struct RecordingManager {
 }
 
 impl BashTaskManager for RecordingManager {
-    fn register_shell_task(
-        &self,
+    fn register_shell_task<'a>(
+        &'a self,
         task: ShellTaskSpec,
         options: RegisterTaskOptions,
-    ) -> Result<String, String> {
-        self.registered
-            .lock()
-            .expect("registered")
-            .push(Registration {
-                description: task.description.clone(),
-                detached: options.detached,
-                timeout_ms: options.timeout_ms,
-                auto_background_on_timeout: options.auto_background_on_timeout,
-            });
-        Ok("bash-1a2b3c4d".to_owned())
+    ) -> BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            self.registered
+                .lock()
+                .expect("registered")
+                .push(Registration {
+                    description: task.description.clone(),
+                    detached: options.detached,
+                    timeout_ms: options.timeout_ms,
+                    auto_background_on_timeout: options.auto_background_on_timeout,
+                });
+            Ok("bash-1a2b3c4d".to_owned())
+        })
     }
 
     fn wait_for_foreground_release<'a>(

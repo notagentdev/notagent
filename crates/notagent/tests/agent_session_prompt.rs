@@ -4,6 +4,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use notagent::core::agent_session::{AgentSessionEvent, PromptOptions, QueueBehavior};
+#[cfg(unix)]
+use notagent::core::hooks::Hook;
+#[cfg(unix)]
+use notagent::core::hooks::dispatch::HookDispatcher;
+#[cfg(unix)]
+use notagent::core::hooks::events::HookEvent;
+#[cfg(unix)]
+use notagent::core::hooks::payload::HookSessionContext;
+#[cfg(unix)]
+use notagent::core::hooks::runtime::{HookRuntime, HookRuntimeOptions};
 use notagent_agent::types::{
     AgentMessage, AgentTool, AgentToolResult, AgentToolUpdateCallback, BoxFuture,
     ToolExecutionError,
@@ -28,6 +38,24 @@ fn tool_call_reply(name: &str, id: &str, arguments: serde_json::Value) -> FauxRe
         StopReason::ToolUse,
     )
     .into()
+}
+
+#[cfg(unix)]
+fn prompt_hook(command: &str) -> Arc<HookDispatcher> {
+    let runtime = Arc::new(HookRuntime::new(HookRuntimeOptions {
+        hooks: vec![Hook {
+            event: HookEvent::UserPromptSubmit,
+            matcher: None,
+            command: command.to_string(),
+            timeout_ms: 10_000,
+            source: "test".to_string(),
+        }],
+        diagnostics: Vec::new(),
+        context: Arc::new(HookSessionContext::default),
+        report: None,
+        signal: None,
+    }));
+    Arc::new(HookDispatcher::new(runtime))
 }
 
 /// A tool that records what it was called with and answers with a fixed string.
@@ -91,6 +119,41 @@ async fn prompts_while_idle_and_records_a_single_text_response() {
     assert_eq!(harness.user_texts(), vec!["Hello".to_string()]);
     assert_eq!(harness.assistant_texts(), vec!["Hello back".to_string()]);
     assert_eq!(harness.pending_response_count(), 0);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_prompt_hook_refuses_before_transcript_or_model_state_changes() {
+    let harness = create_harness(HarnessOptions {
+        hooks: Some(prompt_hook(
+            "echo '{\"hook_output\":{\"decision\":\"deny\",\"reason\":\"blocked prompt\"}}'",
+        )),
+        ..HarnessOptions::default()
+    });
+    harness.set_responses(vec![reply("must not run")]);
+    let preflight = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&preflight);
+    let before = harness.session.messages();
+
+    let error = harness
+        .session
+        .prompt(
+            "do not append me",
+            PromptOptions {
+                preflight_result: Some(Arc::new(move |success| {
+                    observed.store(if success { 2 } else { 1 }, Ordering::SeqCst);
+                })),
+                ..PromptOptions::default()
+            },
+        )
+        .await
+        .expect_err("hook refuses");
+
+    assert!(error.contains("blocked prompt"), "{error}");
+    assert_eq!(harness.session.messages(), before);
+    assert_eq!(harness.pending_response_count(), 1);
+    assert_eq!(preflight.load(Ordering::SeqCst), 1);
+    assert!(harness.session.is_idle());
 }
 
 #[tokio::test]

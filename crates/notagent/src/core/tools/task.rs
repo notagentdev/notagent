@@ -15,8 +15,11 @@ use tokio_util::sync::CancellationToken;
 use crate::core::delegation::agent_type::{SUBAGENT_TYPES, SubagentType, may_delegate_to};
 use crate::core::delegation::aliases::AliasRegistry;
 use crate::core::delegation::limits::{MAX_DELEGATIONS_PER_CALL, check_delegation_request};
-use crate::core::delegation::run::{ChildSkill, DelegationOptions, DelegationRun, run_delegation};
+use crate::core::delegation::run::{
+    ChildSkill, DelegationOptions, DelegationRun, run_delegation_with_hooks,
+};
 use crate::core::experimental::get_experimental_tool_sampling;
+use crate::core::hooks::dispatch::{HookDispatcher, SubagentHookInfo};
 use crate::core::modes::Mode;
 use crate::core::modes::shells::ShellId;
 use crate::core::tasks::manager::{RegisterTaskOptions, TaskManager};
@@ -65,6 +68,8 @@ pub struct TaskToolSources {
     /// Resolves a child's tool from the session's assembled registry.
     pub resolve_tool: Option<crate::core::delegation::run::ResolveToolFn>,
     pub tool_options: Option<Arc<dyn Fn() -> Option<ToolsOptions> + Send + Sync>>,
+    /// Observes the actual child run rather than task-panel visibility.
+    pub hooks: Option<Arc<HookDispatcher>>,
     /// Where the transcripts of this session's children are kept.
     /// a mode switch rebuilds the tool but keeps the sources, and a subagent
     /// started before the switch stays continuable after it.
@@ -89,6 +94,7 @@ impl Default for TaskToolSources {
             background_allowed: None,
             resolve_tool: None,
             tool_options: None,
+            hooks: None,
             transcripts: TaskTranscriptStore::default(),
             cwd: None,
             subagent_model: None,
@@ -714,30 +720,13 @@ impl ToolDefinition for TaskToolDefinition {
                         .as_ref()
                         .and_then(|subagent_model| subagent_model()),
                 };
-                // Real parallelism: every child is its own tokio task, and the
-                // tool only holds the two ends of its result.
-                let releasing = aliases.clone();
-                let released = alias.clone();
-                tokio::spawn(async move {
-                    let result = run_delegation(delegation).await;
-                    // Returned however the run ended, including a failure: a
-                    // name held by a child that is gone would shrink the pool
-                    // every time something went wrong.
-                    releasing.release(&released);
-                    let _ = task_sender.send(SubagentRunResult {
-                        text: result.text.clone(),
-                        failed: result.failed,
-                    });
-                    let _ = run_sender.send(result);
-                });
-
+                let description = truncate_description(task);
                 let task_id = match &manager {
                     Some(manager) => {
-                        let description = truncate_description(task);
                         let cancel_controller = controller.clone();
                         let subagent: Arc<dyn BackgroundTask> =
                             Arc::new(SubagentTask::new(SubagentTaskOptions {
-                                description,
+                                description: description.clone(),
                                 tokens: Some(Arc::new(move || {
                                     tokens.load(std::sync::atomic::Ordering::SeqCst)
                                 })),
@@ -756,10 +745,37 @@ impl ToolDefinition for TaskToolDefinition {
                                     ..RegisterTaskOptions::default()
                                 },
                             )
+                            .await
                             .ok()
                     }
                     None => None,
                 };
+                let hook_info = SubagentHookInfo {
+                    task_id: task_id.clone(),
+                    child_session_id: session_id.clone(),
+                    agent: agent.as_str().to_owned(),
+                    alias: alias.clone(),
+                    description,
+                    prompt: task.clone(),
+                    detached: background,
+                };
+                // Every child owns a tokio task, while lifecycle hooks enclose
+                // the provider run before either result channel is released.
+                let releasing = aliases.clone();
+                let released = alias.clone();
+                let hooks = self.sources.hooks.clone();
+                tokio::spawn(async move {
+                    let result = run_delegation_with_hooks(delegation, hooks, hook_info).await;
+                    // Returned however the run ended, including a failure: a
+                    // name held by a child that is gone would shrink the pool
+                    // every time something went wrong.
+                    releasing.release(&released);
+                    let _ = task_sender.send(SubagentRunResult {
+                        text: result.text.clone(),
+                        failed: result.failed,
+                    });
+                    let _ = run_sender.send(result);
+                });
                 launched.push(Launched {
                     task: task.clone(),
                     session_id,

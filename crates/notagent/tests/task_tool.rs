@@ -172,6 +172,7 @@ fn harness_with_stream(
         background_allowed: Some(Arc::new(move || background)),
         resolve_tool: None,
         tool_options: None,
+        hooks: None,
         transcripts: Default::default(),
         cwd: None,
         subagent_model: None,

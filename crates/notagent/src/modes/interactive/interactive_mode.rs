@@ -341,8 +341,9 @@ enum EscapeTarget {
 /// A session list the selector asked for, and the load itself.
 type RunningSessionLoad = (LoadRequest, Pin<Box<dyn Future<Output = Vec<SessionInfo>>>>);
 
-/// The prompt the main loop currently drives, if any.
-type PromptFuture = Pin<Box<dyn Future<Output = Result<(), String>>>>;
+/// The prompt the main loop currently drives together with the text to restore
+/// if preflight refuses it.
+type PromptFuture = Pin<Box<dyn Future<Output = (String, Result<(), String>)>>>;
 
 /// A manual compaction the main loop drives beside its UI and session events.
 type CompactionFuture = Pin<Box<dyn Future<Output = ()>>>;
@@ -1891,8 +1892,9 @@ impl InteractiveMode {
                 let mut images = std::mem::take(&mut self.options.initial_images);
                 images.extend(self.images_for_text(&text));
                 self.clear_pasted_images();
+                let submitted_text = text.clone();
                 prompt = Some(Box::pin(async move {
-                    session
+                    let result = session
                         .prompt(
                             &text,
                             PromptOptions {
@@ -1900,7 +1902,8 @@ impl InteractiveMode {
                                 ..PromptOptions::default()
                             },
                         )
-                        .await
+                        .await;
+                    (submitted_text, result)
                 }));
             }
             if compaction.is_none()
@@ -1961,7 +1964,9 @@ impl InteractiveMode {
                     }
                 } => {
                     prompt = None;
+                    let (submitted_text, result) = result;
                     if let Err(message) = result {
+                        self.restore_rejected_prompt(&submitted_text);
                         self.show_error(&message);
                     }
                     None
@@ -6873,6 +6878,17 @@ impl InteractiveMode {
 
     fn clear_editor_text(&mut self) {
         self.editor.borrow_mut().editor_mut().set_text("");
+    }
+
+    fn restore_rejected_prompt(&mut self, submitted_text: &str) {
+        let current = self.editor.borrow().editor().get_text();
+        let restored = if current.trim().is_empty() {
+            submitted_text.to_owned()
+        } else {
+            format!("{submitted_text}\n\n{current}")
+        };
+        self.editor.borrow_mut().editor_mut().set_text(&restored);
+        self.ui.request_render();
     }
 
     /// `showExtensionCustom` here: the editor's text is saved, the view takes

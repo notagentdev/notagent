@@ -166,10 +166,12 @@ async fn lists_only_running_work_by_default() {
             finished("the finished one", "", 0),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     tasks.wait(&done_id, 2_000, None).await;
     tasks
         .register(running("the running one"), RegisterTaskOptions::default())
+        .await
         .expect("registered");
 
     let listed = text_of(
@@ -191,6 +193,7 @@ async fn includes_finished_work_when_asked() {
             finished("the finished one", "", 0),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     tasks.wait(&done_id, 2_000, None).await;
 
@@ -224,6 +227,7 @@ async fn reports_a_running_task_as_not_final_with_what_it_has_produced() {
     let (_directory, tasks) = manager();
     let task_id = tasks
         .register(running("a server"), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     // The task appends from its own tokio task; the tool reads whatever is
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -246,6 +250,7 @@ async fn reports_a_settled_task_as_final_with_its_exit_code() {
             finished("a build", "compiled\n", 2),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     tasks.wait(&task_id, 2_000, None).await;
     let result = text_of(
@@ -267,6 +272,7 @@ async fn names_the_full_log_rather_than_pretending_the_tail_is_everything() {
             finished("a build", "compiled\n", 0),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     tasks.wait(&task_id, 2_000, None).await;
     let result = run(
@@ -312,6 +318,7 @@ async fn stops_a_running_task_and_reports_the_reason() {
     let (_directory, tasks) = manager();
     let task_id = tasks
         .register(running("a server"), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     let result = run(
         &create_task_stop_tool_definition(Some(sources(&tasks))),
@@ -335,6 +342,7 @@ async fn suppresses_the_completion_so_the_model_is_not_told_twice() {
     let (_directory, tasks) = manager();
     let task_id = tasks
         .register(running("a server"), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     run(
         &create_task_stop_tool_definition(Some(sources(&tasks))),
@@ -354,6 +362,7 @@ async fn leaves_an_already_finished_task_alone() {
     let (_directory, tasks) = manager();
     let task_id = tasks
         .register(finished("a build", "", 0), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     tasks.wait(&task_id, 2_000, None).await;
     let result = run(

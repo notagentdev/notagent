@@ -196,7 +196,14 @@ pub async fn create_agent_session(options: CreateAgentSessionOptions) -> CreateA
                     Box::pin(async move {
                         let input = context.args.as_object().cloned().unwrap_or_default();
                         let block = permissions
-                            .before_tool_call(&context.tool_call.name, &input, signal.as_ref())
+                            .before_tool_call(
+                                crate::core::permissions::hook::PermissionCall {
+                                    tool_call_id: context.tool_call.id,
+                                    tool_name: context.tool_call.name,
+                                    input,
+                                },
+                                signal.as_ref(),
+                            )
                             .await?;
                         Some(notagent_agent::types::BeforeToolCallResult {
                             block: Some(true),

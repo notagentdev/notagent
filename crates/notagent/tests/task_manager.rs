@@ -216,6 +216,7 @@ async fn announces_detached_work_as_started_and_lists_it() {
     );
     let task_id = manager
         .register(controllable().task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
 
     assert_eq!(
@@ -263,8 +264,45 @@ async fn does_not_announce_foreground_work_which_its_tool_call_already_reports()
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     assert!(started.lock().expect("started").is_empty());
+}
+
+#[tokio::test]
+async fn registers_foreground_work_once_even_when_it_later_detaches() {
+    let (_directory, store) = workspace();
+    let registered: Arc<Mutex<Vec<TaskInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let recorder = Arc::clone(&registered);
+    let manager = TaskManager::new(
+        store,
+        TaskManagerOptions {
+            on_registered: Some(Arc::new(move |info| {
+                let recorder = Arc::clone(&recorder);
+                Box::pin(async move {
+                    recorder.lock().expect("registered").push(info);
+                })
+            })),
+            ..TaskManagerOptions::default()
+        },
+    );
+    let task_id = manager
+        .register(
+            controllable().task(),
+            RegisterTaskOptions {
+                detached: false,
+                ..RegisterTaskOptions::default()
+            },
+        )
+        .await
+        .expect("registered");
+    tokio::task::yield_now().await;
+    manager.detach(&task_id).expect("detached");
+
+    let registered = registered.lock().expect("registered");
+    assert_eq!(registered.len(), 1);
+    assert_eq!(registered[0].task_id(), task_id);
+    assert!(!registered[0].is_detached());
 }
 
 #[tokio::test]
@@ -279,9 +317,11 @@ async fn refuses_to_exceed_a_running_cap_naming_the_numbers() {
     );
     manager
         .register(controllable().task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     let error = manager
         .register(controllable().task(), RegisterTaskOptions::default())
+        .await
         .expect_err("refused");
     assert_eq!(error.running, 1);
     assert_eq!(error.max, 1);
@@ -305,6 +345,7 @@ async fn does_not_count_foreground_work_against_the_cap() {
     );
     manager
         .register(controllable().task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     assert!(
         manager
@@ -315,6 +356,7 @@ async fn does_not_count_foreground_work_against_the_cap() {
                     ..RegisterTaskOptions::default()
                 },
             )
+            .await
             .is_ok()
     );
 }
@@ -341,6 +383,7 @@ async fn reports_the_terminal_status_with_a_tail_of_what_was_produced() {
             immediate(TaskSettlementStatus::Completed, "hello"),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     manager.wait(&task_id, 2_000, None).await;
 
@@ -356,6 +399,7 @@ async fn settles_work_that_threw_instead_of_reporting() {
     let manager = TaskManager::new(store, TaskManagerOptions::default());
     let task_id = manager
         .register(Arc::new(Throws), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     let info = manager.wait(&task_id, 2_000, None).await.expect("info");
     assert_eq!(info.status(), TaskStatus::Failed);
@@ -377,6 +421,7 @@ async fn leaves_finished_background_work_out_of_the_active_list() {
             immediate(TaskSettlementStatus::Completed, ""),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     manager.wait(&task_id, 2_000, None).await;
 
@@ -403,6 +448,7 @@ async fn keeps_finished_foreground_work_out_of_both_lists() {
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     manager.wait_for_foreground_release(&task_id).await;
 
@@ -419,6 +465,7 @@ async fn signals_first_and_settles_as_killed_when_the_work_responds() {
     let controls = controllable();
     let task_id = manager
         .register(controls.task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     settle_on_abort(controls.sink().await);
 
@@ -438,6 +485,7 @@ async fn forces_work_that_ignores_the_signal_once_the_grace_window_has_passed() 
     let controls = controllable();
     let task_id = manager
         .register(controls.task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     controls.sink().await;
 
@@ -462,6 +510,7 @@ async fn treats_a_stop_after_the_deadline_fired_as_a_timeout() {
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     settle_on_abort(controls.sink().await);
 
@@ -491,6 +540,7 @@ async fn releases_the_waiting_tool_call_and_tells_the_task_it_was_detached() {
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     controls.sink().await;
 
@@ -529,6 +579,7 @@ async fn detaches_on_the_deadline_instead_of_stopping_when_that_was_asked_for() 
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     controls.sink().await;
 
@@ -556,6 +607,7 @@ async fn stops_on_the_deadline_when_backgrounding_was_not_asked_for() {
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     settle_on_abort(controls.sink().await);
 
@@ -584,6 +636,7 @@ async fn stops_foreground_work_when_the_turn_waiting_on_it_is_interrupted() {
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     settle_on_abort(controls.sink().await);
 
@@ -607,6 +660,7 @@ async fn leaves_detached_work_alone_when_the_turn_that_started_it_ends() {
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     controls.sink().await;
     manager.detach(&task_id);
@@ -630,6 +684,7 @@ async fn returns_the_complete_log_for_detached_work_and_says_it_is_complete() {
             immediate(TaskSettlementStatus::Completed, "line one\nline two\n"),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     manager.wait(&task_id, 2_000, None).await;
 
@@ -654,6 +709,7 @@ async fn writes_no_log_for_foreground_work_that_stayed_small() {
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     manager.wait_for_foreground_release(&task_id).await;
 
@@ -673,6 +729,7 @@ async fn spills_the_whole_stream_to_disk_once_foreground_output_outgrows_the_buf
                 ..RegisterTaskOptions::default()
             },
         )
+        .await
         .expect("registered");
     let sink = controls.sink().await;
 
@@ -694,6 +751,7 @@ async fn reports_a_truncated_preview_as_truncated() {
             immediate(TaskSettlementStatus::Completed, "abcdefghij"),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     manager.wait(&task_id, 2_000, None).await;
 
@@ -711,6 +769,7 @@ async fn reports_work_the_previous_process_left_running_as_lost() {
     let first = TaskManager::new(Arc::clone(&store), TaskManagerOptions::default());
     let task_id = first
         .register(controllable().task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     tokio::time::sleep(Duration::from_millis(20)).await;
 
@@ -741,6 +800,7 @@ async fn keeps_a_task_that_had_already_settled_at_the_status_it_settled_with() {
             immediate(TaskSettlementStatus::Failed, ""),
             RegisterTaskOptions::default(),
         )
+        .await
         .expect("registered");
     first.wait(&task_id, 2_000, None).await;
 
@@ -761,6 +821,7 @@ async fn writes_the_record_while_the_task_is_alive_not_only_when_it_ends() {
     let manager = TaskManager::new(Arc::clone(&store), TaskManagerOptions::default());
     let task_id = manager
         .register(controllable().task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     tokio::time::sleep(Duration::from_millis(20)).await;
 
@@ -787,6 +848,7 @@ async fn stops_everything_and_suppresses_the_notes_nobody_is_left_to_read() {
     let controls = controllable();
     let task_id = manager
         .register(controls.task(), RegisterTaskOptions::default())
+        .await
         .expect("registered");
     settle_on_abort(controls.sink().await);
 

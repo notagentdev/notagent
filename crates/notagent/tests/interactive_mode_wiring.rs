@@ -13,9 +13,15 @@ mod app_runtime;
 #[path = "support/llama_server.rs"]
 mod llama_server;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use app_runtime::{HeadlessApp, reply, tool_call_reply};
+use notagent::core::hooks::Hook;
+use notagent::core::hooks::dispatch::HookDispatcher;
+use notagent::core::hooks::events::HookEvent;
+use notagent::core::hooks::payload::HookSessionContext;
+use notagent::core::hooks::runtime::{HookRuntime, HookRuntimeOptions};
 use notagent::modes::interactive::interactive_mode::{
     InteractiveModeHandle, InteractiveModeOptions, InteractiveTerminal, create_interactive_mode,
 };
@@ -278,6 +284,46 @@ async fn a_submitted_prompt_reaches_the_provider_and_the_answer_reaches_the_tran
         assert_eq!(
             app.session().get_last_assistant_text().as_deref(),
             Some("Answer from the faux provider")
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_refused_prompt_returns_to_the_editor_without_reaching_the_transcript() {
+    local(async {
+        let hooks = Arc::new(HookDispatcher::new(Arc::new(HookRuntime::new(
+            HookRuntimeOptions {
+                hooks: vec![Hook {
+                    event: HookEvent::UserPromptSubmit,
+                    matcher: None,
+                    command: "exit 2".to_string(),
+                    timeout_ms: 1_000,
+                    source: "test".to_string(),
+                }],
+                diagnostics: Vec::new(),
+                context: Arc::new(HookSessionContext::default),
+                report: None,
+                signal: None,
+            },
+        ))));
+        let app = HeadlessApp::create_with_hooks(hooks).await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("Keep this prompt").await;
+
+        driver.wait_for("Hook exited with 2").await;
+        let screen = driver.screen();
+        assert!(
+            screen.contains("Keep this prompt"),
+            "the refused text must be restored to the editor: {screen}"
+        );
+        assert!(
+            app.session().messages().is_empty(),
+            "a refused prompt must not reach the transcript: {:#?}",
+            app.session().messages()
         );
     })
     .await;

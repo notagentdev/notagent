@@ -84,6 +84,14 @@ uuid = { workspace = true }
 futures = { workspace = true }
 globset = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 dirs = { workspace = true }
 # Theme integration tests use futures-based helpers.
