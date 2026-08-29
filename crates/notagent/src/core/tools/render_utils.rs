@@ -144,6 +144,34 @@ pub fn render_tool_path(
     cwd: &str,
     empty_fallback: Option<&str>,
 ) -> String {
+    render_tool_path_with_color(raw_path, theme, cwd, empty_fallback, ThemeColor::Accent)
+}
+
+/// File-changing tools use the ordinary output colour in badge headers. The
+/// badge already supplies the visual emphasis there; another accent on the
+/// filename makes those headers unlike the rest of the badge rows.
+pub fn render_mutation_tool_path(
+    raw_path: Option<&str>,
+    theme: &Theme,
+    cwd: &str,
+    empty_fallback: Option<&str>,
+) -> String {
+    use crate::modes::interactive::theme::theme::{BlockStyle, block_style};
+    let color = if block_style() == BlockStyle::Badge {
+        ThemeColor::ToolOutput
+    } else {
+        ThemeColor::Accent
+    };
+    render_tool_path_with_color(raw_path, theme, cwd, empty_fallback, color)
+}
+
+fn render_tool_path_with_color(
+    raw_path: Option<&str>,
+    theme: &Theme,
+    cwd: &str,
+    empty_fallback: Option<&str>,
+    color: ThemeColor,
+) -> String {
     let Some(raw_path) = raw_path else {
         return invalid_arg_text(theme);
     };
@@ -156,9 +184,5 @@ pub fn render_tool_path(
     if value.is_empty() {
         return theme.fg(ThemeColor::ToolOutput, "...");
     }
-    link_path(
-        &theme.fg(ThemeColor::Accent, &shorten_path(Some(value))),
-        value,
-        cwd,
-    )
+    link_path(&theme.fg(color, &shorten_path(Some(value))), value, cwd)
 }

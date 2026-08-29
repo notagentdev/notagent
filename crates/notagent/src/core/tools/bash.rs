@@ -32,7 +32,8 @@ use crate::core::tools::truncate::{
 use crate::modes::interactive::components::keybinding_hints::key_hint;
 use crate::modes::interactive::components::visual_truncate::truncate_to_visual_lines;
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, Theme, ThemeColor, block_style, format_elapsed_live, format_elapsed_precise, theme,
+    BlockStyle, Theme, ThemeColor, block_style, format_elapsed, format_elapsed_live,
+    format_elapsed_precise, theme,
 };
 use crate::utils::shell::{
     CommandTransport, ShellConfig, get_shell_config, get_shell_env, kill_process_tree,
@@ -1152,10 +1153,45 @@ fn format_duration(elapsed: Duration) -> String {
     format!("{:.1}s", elapsed.as_secs_f64())
 }
 
-/// The `$ command` header, restyled after the reference's bash toolbox
-/// (takeover from ../notagent-main-rust, user decision 2026-08-17, v0.1.8):
-/// a bold `$ ` prompt, the command syntax-coloured, and — while the command
-/// original's static `(timeout Ns)` suffix.
+fn bash_running_times(args: &Value, elapsed: Duration) -> (String, String) {
+    let elapsed_text = format_elapsed(elapsed);
+    let default_timeout = if args
+        .get("run_in_background")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        DEFAULT_BACKGROUND_TIMEOUT_S
+    } else {
+        DEFAULT_TIMEOUT_S
+    };
+    let timeout_secs = args
+        .get("timeout")
+        .and_then(Value::as_f64)
+        .filter(|timeout| *timeout > 0.0)
+        .unwrap_or(default_timeout) as u64;
+    let timeout_text = if timeout_secs >= 60 {
+        if timeout_secs.is_multiple_of(60) {
+            format!("{}m", timeout_secs / 60)
+        } else {
+            format!("{}m {}s", timeout_secs / 60, timeout_secs % 60)
+        }
+    } else {
+        format!("{timeout_secs}s")
+    };
+    (elapsed_text, timeout_text)
+}
+
+/// The compact running state that follows a foreground command in a badge
+/// header. Labels are redundant there: position and the slash already identify
+/// elapsed time and deadline.
+pub(crate) fn format_bash_badge_running_suffix(args: &Value, elapsed: Duration) -> String {
+    let (elapsed_text, timeout_text) = bash_running_times(args, elapsed);
+    format!("[{elapsed_text} / {timeout_text}]")
+}
+
+/// The `$ command` header: a bold prompt and syntax-coloured command. Standard
+/// blocks keep the labelled running state inline; badge blocks place their
+/// compact state after the header's closing parenthesis.
 fn format_bash_call(args: &Value, theme: &Theme, running_for: Option<Duration>) -> String {
     let command = str_arg(args.get("command"));
     let prompt = theme.fg(ThemeColor::ToolTitle, &theme.bold("$ "));
@@ -1165,36 +1201,10 @@ fn format_bash_call(args: &Value, theme: &Theme, running_for: Option<Duration>) 
         Some(command) => render_shell_command(command),
     };
     let mut header = format!("{prompt}{command_display}");
-    if let Some(elapsed) = running_for {
-        let elapsed_secs = elapsed.as_secs();
-        let elapsed_text = if elapsed_secs >= 60 {
-            format!("{}m {}s", elapsed_secs / 60, elapsed_secs % 60)
-        } else {
-            format!("{elapsed_secs}s")
-        };
-        let default_timeout = if args
-            .get("run_in_background")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-        {
-            DEFAULT_BACKGROUND_TIMEOUT_S
-        } else {
-            DEFAULT_TIMEOUT_S
-        };
-        let timeout_secs = args
-            .get("timeout")
-            .and_then(Value::as_f64)
-            .filter(|timeout| *timeout > 0.0)
-            .unwrap_or(default_timeout) as u64;
-        let timeout_text = if timeout_secs >= 60 {
-            if timeout_secs.is_multiple_of(60) {
-                format!("{}m", timeout_secs / 60)
-            } else {
-                format!("{}m {}s", timeout_secs / 60, timeout_secs % 60)
-            }
-        } else {
-            format!("{timeout_secs}s")
-        };
+    if let Some(elapsed) = running_for
+        && block_style() != BlockStyle::Badge
+    {
+        let (elapsed_text, timeout_text) = bash_running_times(args, elapsed);
         header.push_str(&theme.fg(
             ThemeColor::Muted,
             &format!(" [Running: {elapsed_text} / timeout: {timeout_text}]"),

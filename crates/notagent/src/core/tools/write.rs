@@ -18,7 +18,7 @@ use crate::core::tools::file_lease::{LeaseCoordinator, LeaseGate};
 use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
 use crate::core::tools::path_utils::resolve_to_cwd;
 use crate::core::tools::render_utils::{
-    call_title, normalize_display_text, render_tool_path, replace_tabs, str_arg,
+    call_title, normalize_display_text, render_mutation_tool_path, replace_tabs, str_arg,
 };
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
@@ -272,7 +272,7 @@ fn format_write_call(
 ) -> String {
     let raw_path = write_path_arg(args);
     let file_content = str_arg(args.get("content"));
-    let path_display = render_tool_path(raw_path.as_deref(), theme, cwd, None);
+    let path_display = render_mutation_tool_path(raw_path.as_deref(), theme, cwd, None);
     let mut text = format!("{}{path_display}", call_title(theme, "write"));
 
     let Some(file_content) = file_content else {

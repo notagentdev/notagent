@@ -13,6 +13,7 @@ use notagent_tui::tui::{Component, ComponentRef, Container, Line, component_ref}
 use serde_json::Value;
 use similar::{ChangeTag, TextDiff};
 
+use crate::core::tools::bash::format_bash_badge_running_suffix;
 use crate::core::tools::render_utils::get_text_output;
 use crate::core::tools::tool_definition::{
     RenderShell, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
@@ -40,6 +41,9 @@ struct BadgeCallHeader {
     call: ComponentRef,
     /// Whether the hoisted line is parenthesised — true for a call line.
     parens: bool,
+    /// Metadata that follows the complete call, such as diff counts or the
+    /// compact running time of a foreground command.
+    suffix: String,
 }
 
 /// A line below the badge row, moved under the badge's first character.
@@ -59,11 +63,17 @@ impl Component for BadgeCallHeader {
     fn render(&mut self, width: usize) -> Vec<Line> {
         use notagent_tui::utils::visible_width;
         let theme_instance = theme();
+        let suffix = if self.suffix.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", self.suffix)
+        };
         // One space after the badge, plus the two parentheses when they are
-        // drawn. Render against the remaining width so long one-line calls
-        // keep their first fragment beside the badge instead of moving down
-        // wholesale.
-        let overhead = visible_width(&self.badge) + if self.parens { 3 } else { 1 };
+        // drawn, and the metadata suffix. Render against the remaining width
+        // so the suffix stays behind the call instead of displacing its first
+        // fragment.
+        let overhead =
+            visible_width(&self.badge) + if self.parens { 3 } else { 1 } + visible_width(&suffix);
         if let Some(call_width) = width
             .checked_sub(overhead)
             .filter(|call_width| *call_width > 0)
@@ -76,14 +86,15 @@ impl Component for BadgeCallHeader {
                 let first = lines.remove(0);
                 let head = if self.parens {
                     format!(
-                        "{} {}{}{}",
+                        "{} {}{}{}{}",
                         self.badge,
                         theme_instance.fg(ThemeColor::Dim, "("),
                         first.trim_end(),
-                        theme_instance.fg(ThemeColor::Dim, ")")
+                        theme_instance.fg(ThemeColor::Dim, ")"),
+                        suffix,
                     )
                 } else {
-                    format!("{} {}", self.badge, first.trim_end())
+                    format!("{} {}{}", self.badge, first.trim_end(), suffix)
                 };
                 let mut out = vec![Line::from(head)];
                 out.extend(lines.iter().map(under_badge));
@@ -94,6 +105,9 @@ impl Component for BadgeCallHeader {
         let mut out = vec![Line::from(self.badge.as_str())];
         if lines.iter().any(|line| visible_width(line) > 0) {
             out.extend(lines.iter().map(under_badge));
+        }
+        if !self.suffix.is_empty() {
+            out.push(under_badge(&Line::from(self.suffix.as_str())));
         }
         out
     }
@@ -143,6 +157,7 @@ pub struct ToolExecutionComponent {
     request_render: Rc<dyn Fn()>,
     cwd: String,
     execution_started: bool,
+    execution_started_at: Option<Instant>,
     args_complete: bool,
     result: Option<ToolExecutionResult>,
     converted_images: HashMap<usize, (String, String)>,
@@ -243,6 +258,7 @@ impl ToolExecutionComponent {
             request_render,
             cwd,
             execution_started: false,
+            execution_started_at: None,
             args_complete: false,
             result: None,
             converted_images: HashMap::new(),
@@ -263,24 +279,46 @@ impl ToolExecutionComponent {
         block_style() == BlockStyle::Badge
     }
 
-    /// The state badge of this block: the tool's name, uppercased, on the
-    /// fill the standard style would wash the whole block with. File-changing
-    /// tools append their line counts in the same colours as the diff rows.
+    /// The state badge of this block: the tool's name, uppercased, on the fill
+    /// the standard style would wash the whole block with.
     fn badge_for(&self, state: ThemeBg) -> String {
+        badge(&theme(), state, &self.tool_name)
+    }
+
+    /// Metadata belongs after the call arguments, never inside the tool-name
+    /// badge. This keeps every badge row in the same `NAME (arguments) suffix`
+    /// order.
+    fn badge_suffix(&self) -> String {
         let theme = theme();
-        let mut rendered = badge(&theme, state, &self.tool_name);
-        let Some((added, removed)) = self.diff_stats() else {
-            return rendered;
-        };
-        if added > 0 {
-            rendered.push(' ');
-            rendered.push_str(&theme.fg(ThemeColor::ToolDiffAdded, &format!("+{added}")));
+        if let Some((added, removed)) = self.diff_stats() {
+            let mut parts = Vec::new();
+            if added > 0 {
+                parts.push(theme.fg(ThemeColor::ToolDiffAdded, &format!("+{added}")));
+            }
+            if removed > 0 {
+                parts.push(theme.fg(ThemeColor::ToolDiffRemoved, &format!("-{removed}")));
+            }
+            return parts.join(" ");
         }
-        if removed > 0 {
-            rendered.push(' ');
-            rendered.push_str(&theme.fg(ThemeColor::ToolDiffRemoved, &format!("-{removed}")));
+
+        let foreground_bash = self.tool_name == "bash"
+            && !self
+                .args
+                .get("run_in_background")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        let still_running =
+            self.is_partial && !self.result.as_ref().is_some_and(|result| result.is_error);
+        if foreground_bash
+            && still_running
+            && let Some(started_at) = self.execution_started_at
+        {
+            return theme.fg(
+                ThemeColor::Muted,
+                &format_bash_badge_running_suffix(&self.args, started_at.elapsed()),
+            );
         }
-        rendered
+        String::new()
     }
 
     fn diff_stats(&self) -> Option<(usize, usize)> {
@@ -396,6 +434,7 @@ impl ToolExecutionComponent {
 
     pub fn mark_execution_started(&mut self) {
         self.execution_started = true;
+        self.execution_started_at.get_or_insert_with(Instant::now);
         self.update_display();
         (self.request_render)();
     }
@@ -596,6 +635,7 @@ impl ToolExecutionComponent {
                 // otherwise the result, so that a tool whose whole output is
                 // one line costs one row instead of two.
                 let badge = self.badge_for(bg_slot);
+                let suffix = self.badge_suffix();
                 let head = match call_component {
                     Some(call) => Some((call, true)),
                     None => result_component.take().map(|result| (result, false)),
@@ -608,6 +648,7 @@ impl ToolExecutionComponent {
                                 badge,
                                 call: content,
                                 parens,
+                                suffix,
                             }),
                         );
                     }
@@ -678,6 +719,7 @@ impl ToolExecutionComponent {
                             0,
                         )),
                         parens: false,
+                        suffix: String::new(),
                     }));
                 }
                 if self.expanded
