@@ -464,8 +464,8 @@ fn badge_style_shows_colored_diff_stats_for_file_changes() {
         let plain = strip_ansi(&rendered);
         assert!(plain.contains(added), "{tool_name}: {plain}");
         assert!(
-            plain.find(added) < plain.find("test.py"),
-            "the stats must sit between the tool badge and its path: {tool_name}: {plain}"
+            plain.find("test.py") < plain.find(added),
+            "the stats must follow the file path: {tool_name}: {plain}"
         );
         assert!(
             rendered.contains(&theme().fg(ThemeColor::ToolDiffAdded, added)),

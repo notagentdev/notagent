@@ -212,7 +212,6 @@ impl Markdown {
         match token.kind.as_str() {
             "heading" => {
                 let heading_level = token.depth.unwrap_or(1);
-                let heading_prefix = format!("{} ", "#".repeat(heading_level));
                 let theme = self.theme.clone();
                 let heading_style: Box<dyn Fn(&str) -> String> = if heading_level == 1 {
                     Box::new(move |text: &str| {
@@ -231,15 +230,7 @@ impl Markdown {
                     token.tokens.as_deref().unwrap_or_default(),
                     Some(&heading_context),
                 );
-                let styled_heading = if heading_level >= 3 {
-                    format!(
-                        "{}{heading_text}",
-                        (heading_context.apply_text)(&heading_prefix)
-                    )
-                } else {
-                    heading_text
-                };
-                lines.push(styled_heading);
+                lines.push(heading_text);
                 if next_token_type.is_some_and(|kind| kind != "space") {
                     lines.push(String::new());
                 }

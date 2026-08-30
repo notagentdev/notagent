@@ -126,6 +126,26 @@ fn strip_ansi_trimmed(lines: &[Line]) -> Vec<String> {
 }
 
 #[test]
+fn headings_hide_markdown_markers_at_every_level() {
+    let _capabilities = lock_capabilities();
+    let mut markdown = Markdown::new(
+        "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6",
+        0,
+        0,
+        default_markdown_theme(),
+        None,
+        None,
+    );
+
+    let visible_lines: Vec<String> = strip_ansi_trimmed(&markdown.render(80))
+        .into_iter()
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert_eq!(visible_lines, ["H1", "H2", "H3", "H4", "H5", "H6"]);
+}
+
+#[test]
 fn emits_an_osc8_hyperlink_when_the_terminal_supports_it() {
     let _capabilities = lock_capabilities();
     set_capabilities(TerminalCapabilities {

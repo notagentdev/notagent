@@ -1,4 +1,4 @@
-const LOGO_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" aria-hidden="true"><path fill="#fff" fill-rule="evenodd" d="M165.29 165.29 H517.36 V400 H400 V517.36 H282.65 V634.72 H165.29 Z M282.65 282.65 V400 H400 V282.65 Z"/><path fill="#fff" d="M517.36 400 H634.72 V634.72 H517.36 Z"/></svg>"##;
+const LOGO_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true"><g fill="currentColor"><path d="M96 66H77C69 66 65 70 65 78v100c0 8 4 12 12 12h19v-18H82V84h14V66Z"/><path d="M160 66h19c8 0 12 4 12 12v100c0 8-4 12-12 12h-19v-18h14V84h-14V66Z"/><path d="M99 94h17l29 45V94h14v68h-15l-31-47v47H99V94Z"/></g></svg>"##;
 
 /// `escapeHtml(value)`
 fn escape_html(value: &str) -> String {
@@ -62,6 +62,11 @@ fn render_page(title: &str, heading: &str, message: &str, details: Option<&str>)
       height: 72px;
       display: block;
       margin-bottom: 24px;
+    }}
+    .logo svg {{
+      width: 100%;
+      height: 100%;
+      display: block;
     }}
     h1 {{
       margin: 0 0 10px;

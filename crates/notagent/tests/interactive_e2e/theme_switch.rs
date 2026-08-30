@@ -1,5 +1,5 @@
 use notagent::config::APP_NAME;
-use notagent::modes::interactive::theme::theme::theme;
+use notagent::modes::interactive::theme::theme::{ThemeColor, theme};
 
 use super::harness::{InteractiveE2e, run_local};
 
@@ -30,9 +30,9 @@ async fn the_settings_menu_switches_the_theme_and_repaints_the_screen() {
         let after = theme();
         assert_eq!(after.name.as_deref(), Some("light"));
         assert_ne!(
-            before.get_fg_ansi(notagent::modes::interactive::theme::theme::ThemeColor::Accent),
-            after.get_fg_ansi(notagent::modes::interactive::theme::theme::ThemeColor::Accent),
-            "the light theme paints the accent differently than {:?}",
+            before.get_fg_ansi(ThemeColor::Text),
+            after.get_fg_ansi(ThemeColor::Text),
+            "the light theme paints text differently than {:?}",
             before.name
         );
 

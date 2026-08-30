@@ -689,6 +689,11 @@ fn the_oauth_pages_escape_their_message() {
     assert!(success.contains("&lt;script&gt;"), "the message is escaped");
     assert!(!success.contains("<script>alert"), "no raw markup survives");
     assert!(success.contains("<title>Authentication successful</title>"));
+    assert!(success.contains("<svg"), "the project mark is embedded");
+    assert!(
+        !success.contains("<rect"),
+        "the project mark has no background shape"
+    );
 
     let error = oauth_error_html("Failed", Some("detail & more"));
     assert!(error.contains("<title>Authentication failed</title>"));

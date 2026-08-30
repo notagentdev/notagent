@@ -131,7 +131,7 @@ are the ones that runtime accepts.
 ## Custom providers (models.json)
 
 Additional OpenAI-compatible providers and models can be declared in
-`~/.notagent-v2/agent/models.json`. Entries there are layered over the built-in
+`~/.notagent/agent/models.json`. Entries there are layered over the built-in
 catalog: new providers appear in the picker, and known models can be
 overridden per field.
 

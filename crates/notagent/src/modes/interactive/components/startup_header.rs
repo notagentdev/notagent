@@ -5,6 +5,8 @@ use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
+const MAX_CARD_WIDTH: usize = 80;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StartupHeaderData {
     pub directory: String,
@@ -37,8 +39,8 @@ impl StartupHeader {
         let padding = " ".repeat(content_width.saturating_sub(visible_width(&clipped)));
         format!(
             " {} {clipped}{padding} {} ",
-            theme.fg(ThemeColor::Accent, "│"),
-            theme.fg(ThemeColor::Accent, "│")
+            theme.fg(ThemeColor::Text, "│"),
+            theme.fg(ThemeColor::Text, "│")
         )
     }
 }
@@ -63,37 +65,42 @@ impl Component for StartupHeader {
             return shared_lines(vec![truncate_to_width_opts(&title, width, "", false)]);
         }
 
-        let card_width = width - 2;
-        let horizontal = theme.fg(ThemeColor::Accent, &"─".repeat(card_width - 2));
-        let top = format!(
-            " {}{horizontal}{} ",
-            theme.fg(ThemeColor::Accent, "╭"),
-            theme.fg(ThemeColor::Accent, "╮")
-        );
-        let bottom = format!(
-            " {}{horizontal}{} ",
-            theme.fg(ThemeColor::Accent, "╰"),
-            theme.fg(ThemeColor::Accent, "╯")
-        );
         let git = data.git_branch.as_deref().unwrap_or("not a repository");
         let model = data
             .model
             .as_deref()
             .unwrap_or("not set, use /model to select");
+        let directory = Self::field("Directory:", &data.directory, ThemeColor::Text);
+        let git = Self::field("Git:", git, ThemeColor::Accent);
+        let model = Self::field("Model:", model, ThemeColor::Accent);
+        let content_width = [&title, &help, &directory, &git, &model]
+            .into_iter()
+            .map(|line| visible_width(line))
+            .max()
+            .unwrap_or_default();
+        let rendered_width = width
+            .min(MAX_CARD_WIDTH)
+            .min(content_width.saturating_add(6));
+        let card_width = rendered_width.saturating_sub(2);
+        let horizontal = theme.fg(ThemeColor::Text, &"─".repeat(card_width - 2));
+        let top = format!(
+            " {}{horizontal}{} ",
+            theme.fg(ThemeColor::Text, "╭"),
+            theme.fg(ThemeColor::Text, "╮")
+        );
+        let bottom = format!(
+            " {}{horizontal}{} ",
+            theme.fg(ThemeColor::Text, "╰"),
+            theme.fg(ThemeColor::Text, "╯")
+        );
         let lines = vec![
             top,
             Self::body_line(&title, card_width),
             Self::body_line(&help, card_width),
             Self::body_line("", card_width),
-            Self::body_line(
-                &Self::field("Directory:", &data.directory, ThemeColor::Text),
-                card_width,
-            ),
-            Self::body_line(&Self::field("Git:", git, ThemeColor::Accent), card_width),
-            Self::body_line(
-                &Self::field("Model:", model, ThemeColor::Accent),
-                card_width,
-            ),
+            Self::body_line(&directory, card_width),
+            Self::body_line(&git, card_width),
+            Self::body_line(&model, card_width),
             bottom,
         ];
         shared_lines(lines)
@@ -110,7 +117,7 @@ mod tests {
     use crate::modes::interactive::theme::theme::{init_theme, test_lock};
 
     #[test]
-    fn the_card_uses_the_available_width_and_shows_runtime_details() {
+    fn the_card_fits_its_content_and_shows_runtime_details() {
         let _guard = test_lock();
         init_theme(Some("dark"), false);
         let data = StartupHeaderData {
@@ -120,16 +127,25 @@ mod tests {
         };
         let mut card = StartupHeader::from_provider(Rc::new(move || data.clone()));
 
-        let lines: Vec<String> = card
-            .render(64)
+        let rendered = card.render(100);
+        assert!(
+            rendered[0].contains(&theme().fg(ThemeColor::Text, "╭")),
+            "the border uses the normal text color"
+        );
+        let lines: Vec<String> = rendered
             .iter()
             .map(|line| strip_terminal_sequences(line))
             .collect();
 
         assert_eq!(lines.len(), 8, "the card has a stable compact height");
+        let card_width = visible_width(&lines[0]);
         assert!(
-            lines.iter().all(|line| visible_width(line) == 64),
-            "every card line fills, but does not exceed, the render width: {lines:?}"
+            card_width < 100,
+            "the card should fit its content instead of filling the render width: {lines:?}"
+        );
+        assert!(
+            lines.iter().all(|line| visible_width(line) == card_width),
+            "every card line has the same content-based width: {lines:?}"
         );
         assert!(lines[0].starts_with(" ╭"), "the top border is rounded");
         assert!(lines[7].starts_with(" ╰"), "the bottom border is rounded");

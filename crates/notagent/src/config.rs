@@ -8,9 +8,8 @@ pub const PACKAGE_NAME: &str = "@notagent/coding-agent";
 pub const APP_NAME: &str = "notagent";
 pub const APP_TITLE: &str = APP_NAME;
 pub const CONFIG_DIR_NAME: &str = ".notagent";
-/// User-level state only. Kept apart from [`CONFIG_DIR_NAME`] so this build
-/// does not share `~/.notagent/agent` (sessions, settings, auth, trust) with
-pub const USER_CONFIG_DIR_NAME: &str = ".notagent-v2";
+/// User-level state root below the home directory.
+pub const USER_CONFIG_DIR_NAME: &str = ".notagent";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// e.g. `NOTAGENT_CODING_AGENT_DIR`.
@@ -47,10 +46,10 @@ fn home_dir() -> PathBuf {
 }
 
 // =============================================================================
-// User config paths (~/.notagent-v2/agent/*)
+// User config paths (~/.notagent/agent/*)
 // =============================================================================
 
-/// Get the agent config directory (e.g. `~/.notagent-v2/agent/`).
+/// Get the agent config directory (e.g. `~/.notagent/agent/`).
 pub fn get_agent_dir() -> PathBuf {
     match std::env::var(env_agent_dir()) {
         Ok(dir) if !dir.is_empty() => expand_tilde_path(&dir),
