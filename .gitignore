@@ -5,4 +5,6 @@ Cargo.lock.orig
 /worktrees
 /crates/*/target
 **/*.rs.bk
-.claude/settings.local.json
+/.claude/
+/.notmux/
+/.plans/
