@@ -56,9 +56,6 @@ pub static APP_KEYBINDINGS: &[KeybindingDefinition] = &[
     ),
     ("app.model.select", &["ctrl+l"], "Open model selector"),
     ("app.tools.expand", &["ctrl+o"], "Toggle tool output"),
-    // The panel is a ring rather than an on/off switch, so one key covers
-    // "show me the finished ones too" and "get it off my screen".
-    ("app.tasks.cycle", &["alt+b"], "Cycle background task panel"),
     (
         "app.tasks.detach",
         &["ctrl+b"],

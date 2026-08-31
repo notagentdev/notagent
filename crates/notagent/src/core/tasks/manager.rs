@@ -116,6 +116,9 @@ struct ManagedState {
     notification_suppressed: Option<bool>,
     timed_out: bool,
     terminal_fired: bool,
+    /// Whether `on_started` already ran for this task, so a subagent announced
+    /// at registration is not announced a second time when it is detached.
+    announced: bool,
     detached: bool,
     /// Cancels the armed deadline, standing in for `clearTimeout`.
     deadline: Option<CancellationToken>,
@@ -218,6 +221,7 @@ impl ManagedTask {
     /// Moves a foreground task to the background, releasing its tool call.
     fn detach(self: &Arc<Self>, via_timeout: bool) -> Option<TaskInfo> {
         let detach_timeout_ms;
+        let already_announced;
         {
             let mut state = self.state.lock().expect("poisoned");
             if is_terminal_task_status(state.status) {
@@ -229,6 +233,8 @@ impl ManagedTask {
                 return Some(self.to_info());
             }
             state.detached = true;
+            already_announced = state.announced;
+            state.announced = true;
             if let Some(cleanup) = state.detach_signal_cleanup.take() {
                 cleanup.cancel();
             }
@@ -249,7 +255,9 @@ impl ManagedTask {
         self.task.on_detach();
         self.output.start_persisting();
         self.enqueue_persist();
-        if let Some(on_started) = &self.on_started {
+        // A subagent already announced itself at registration; repeating the
+        // start on detach would put the same line in the transcript twice.
+        if !already_announced && let Some(on_started) = &self.on_started {
             on_started(self.to_info());
         }
         let _ = self.release.send(Some(if via_timeout {
@@ -372,10 +380,10 @@ impl ManagedTask {
             if state.terminal_fired {
                 return;
             }
-            // Foreground work reports through its own tool call. Announcing it
-            // as well would tell the model twice about one thing it already has
-            // the result of.
-            if !state.detached {
+            // Foreground shell work reports through its own tool call, and
+            // announcing it as well would say one thing twice. A subagent has
+            // no tool row, so its end is announced wherever it ran.
+            if !state.detached && self.task.kind() != TaskKind::Subagent {
                 return;
             }
             state.terminal_fired = true;
@@ -508,6 +516,7 @@ impl TaskManager {
                     notification_suppressed: None,
                     timed_out: false,
                     terminal_fired: false,
+                    announced: false,
                     detached,
                     deadline: None,
                     detach_signal_cleanup: None,
@@ -610,6 +619,15 @@ impl TaskManager {
 
         if entry.is_detached() {
             entry.enqueue_persist();
+        }
+        // A subagent announces its start even in the foreground: its tool row
+        // is not rendered, so the lifecycle lines are its only transcript
+        // record. A foreground shell stays quiet — its tool row already shows
+        // the running command, and detaching announces it later.
+        if entry.is_detached() || kind == TaskKind::Subagent {
+            if let Ok(mut state) = entry.state.lock() {
+                state.announced = true;
+            }
             if let Some(on_started) = &self.inner.on_started {
                 on_started(entry.to_info());
             }

@@ -127,7 +127,6 @@ use crate::modes::interactive::components::task_lifecycle::{
 use crate::modes::interactive::components::tasks_browser::{
     TasksBrowserComponent, TasksBrowserProps, TasksFilter,
 };
-use crate::modes::interactive::components::tasks_panel::{TasksPanel, TasksPanelScope};
 use crate::modes::interactive::components::text_input_dialog::{
     TextInputDialogComponent, TextInputDialogOptions,
 };
@@ -743,7 +742,6 @@ enum AppAction {
     Tree,
     Fork,
     Resume,
-    CycleTasksPanel,
     DetachTasks,
     /// `app.suspend` — Ctrl+Z.
     Suspend,
@@ -1054,9 +1052,6 @@ pub struct InteractiveMode {
     todo_panel_container: Rc<RefCell<Container>>,
     todo_panel: Rc<RefCell<TodoListComponent>>,
     todo_visibility: TodoVisibility,
-    tasks_panel_container: Rc<RefCell<Container>>,
-    tasks_panel: Rc<RefCell<TasksPanel>>,
-    tasks_panel_signature: String,
     subagent_panel: Rc<RefCell<SubagentPanel>>,
     subagent_panel_signature: String,
     widget_container_above: Rc<RefCell<Container>>,
@@ -1304,12 +1299,7 @@ impl InteractiveMode {
             Box::new(|| {}),
         );
 
-        // The three panels of the dock; the loop refreshes them on its tick.
-        let tasks_panel = Rc::new(RefCell::new(TasksPanel::new()));
-        let tasks_panel_container = Rc::new(RefCell::new(Container::new()));
-        tasks_panel_container
-            .borrow_mut()
-            .add_child(Rc::clone(&tasks_panel) as ComponentRef);
+        // The panels of the dock; the loop refreshes them on its tick.
         let subagent_panel = Rc::new(RefCell::new(SubagentPanel::new()));
         let subagent_panel_container = Rc::new(RefCell::new(Container::new()));
         subagent_panel_container
@@ -1346,9 +1336,6 @@ impl InteractiveMode {
             todo_panel_container,
             todo_panel,
             todo_visibility,
-            tasks_panel_container,
-            tasks_panel,
-            tasks_panel_signature: String::new(),
             subagent_panel,
             subagent_panel_signature: String::new(),
             widget_container_above: Rc::new(RefCell::new(Container::new())),
@@ -1555,7 +1542,6 @@ impl InteractiveMode {
             (Rc::clone(&self.editor_container) as ComponentRef, 3),
             (Rc::clone(&self.widget_container_below) as ComponentRef, 0),
             (Rc::clone(&self.footer_container) as ComponentRef, 1),
-            (Rc::clone(&self.tasks_panel_container) as ComponentRef, 0),
             (Rc::clone(&self.subagent_panel_container) as ComponentRef, 0),
         ] {
             dock.add_child_with(
@@ -1589,7 +1575,7 @@ impl InteractiveMode {
         );
         self.fullscreen_layout_root = Some(component_ref(root));
 
-        let children: [ComponentRef; 10] = [
+        let children: [ComponentRef; 9] = [
             Rc::clone(&self.document_container) as ComponentRef,
             Rc::clone(&self.pending_messages_container) as ComponentRef,
             Rc::clone(&self.status_container) as ComponentRef,
@@ -1598,7 +1584,6 @@ impl InteractiveMode {
             Rc::clone(&self.editor_container) as ComponentRef,
             Rc::clone(&self.widget_container_below) as ComponentRef,
             Rc::clone(&self.footer_container) as ComponentRef,
-            Rc::clone(&self.tasks_panel_container) as ComponentRef,
             Rc::clone(&self.subagent_panel_container) as ComponentRef,
         ];
         for child in children {
@@ -1703,7 +1688,6 @@ impl InteractiveMode {
             ("app.session.tree", AppAction::Tree),
             ("app.session.fork", AppAction::Fork),
             ("app.session.resume", AppAction::Resume),
-            ("app.tasks.cycle", AppAction::CycleTasksPanel),
             ("app.suspend", AppAction::Suspend),
         ] {
             let tx = self.ui_tx.clone();
@@ -2217,7 +2201,6 @@ impl InteractiveMode {
             UiMessage::Action(AppAction::Tree) => self.show_tree_selector(None),
             UiMessage::Action(AppAction::Fork) => self.show_user_message_selector(),
             UiMessage::Action(AppAction::Resume) => self.show_session_selector(),
-            UiMessage::Action(AppAction::CycleTasksPanel) => self.cycle_tasks_panel(),
             UiMessage::Action(AppAction::Suspend) => self.handle_ctrl_z(),
             UiMessage::Action(AppAction::DetachTasks) => {
                 self.detach_foreground_tasks();
@@ -3221,9 +3204,11 @@ impl InteractiveMode {
         let manager = self.session().task_manager();
         // Settled work is included, which is what lets the lifecycle lines
         // report an outcome at all: `list(true, …)` drops a task the moment it
-        // ends, so the announcement never saw one finish. The panels filter it
-        // back out themselves — they show what is running, the transcript
-        // reports what happened.
+        // ends, so the announcement never saw one finish. The panel filters it
+        // back out itself — it shows what is running, the transcript reports
+        // what happened. Shell tasks have no panel of their own any more: the
+        // footer counts them and `/tasks` holds the detail (user decision
+        // 2026-08-31).
         let all_tasks = manager
             .as_ref()
             .map(|manager| manager.list(false, None))
@@ -3235,31 +3220,6 @@ impl InteractiveMode {
                 .iter()
                 .any(|info| info.base().detached == Some(false)),
         );
-        let scope = self.tasks_panel.borrow().get_scope();
-        let tasks = match (&manager, scope) {
-            (Some(_), TasksPanelScope::Hidden) | (None, _) => Vec::new(),
-            (Some(manager), scope) => manager.list(scope == TasksPanelScope::Running, None),
-        };
-        // Elapsed time is deliberately left out of the signature: it changes
-        // every second for every running task.
-        let signature = tasks
-            .iter()
-            .map(|info| {
-                format!(
-                    "{}:{}:{}",
-                    info.task_id(),
-                    info.status().as_str(),
-                    info.description()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("|");
-        self.tasks_panel.borrow_mut().set_tasks(tasks);
-        if signature == self.tasks_panel_signature {
-            return;
-        }
-        self.tasks_panel_signature = signature;
-        self.ui.request_render();
     }
 
     /// Appends one lifecycle line to the transcript. It is a non-search
@@ -3323,13 +3283,6 @@ impl InteractiveMode {
     fn clear_todo_panel(&mut self) {
         self.todo_visibility.reset();
         self.todo_panel.borrow_mut().set_todos(Vec::new());
-    }
-
-    fn cycle_tasks_panel(&mut self) {
-        self.tasks_panel.borrow_mut().cycle_scope();
-        self.tasks_panel_signature = String::new();
-        self.refresh_tasks_panel();
-        self.ui.request_render();
     }
 
     /// Returns `false` when there is nothing to move, so the key falls through
@@ -8580,10 +8533,14 @@ impl InteractiveMode {
     }
 
     fn add_tool_component(&mut self, tool_name: &str, tool_call_id: &str, args: serde_json::Value) {
-        // `todo_write` already has the dock panel. A background bash is
-        // represented by immutable lifecycle rows; keeping its ordinary tool
-        // component would stream a second copy into the transcript.
-        if tool_name == "todo_write" || is_background_bash_call(tool_name, &args) {
+        // `todo_write` already has the dock panel. A background bash and every
+        // `task` call are represented by immutable lifecycle rows; keeping the
+        // ordinary tool component would stream a second copy into the
+        // transcript (subagents: user decision 2026-08-31).
+        if tool_name == "todo_write"
+            || tool_name == "task"
+            || is_background_bash_call(tool_name, &args)
+        {
             return;
         }
         // Consecutive search calls collapse into one "Searching…/Searched"
@@ -8752,9 +8709,11 @@ impl InteractiveMode {
                         let notagent_ai::types::AssistantContent::ToolCall(call) = content else {
                             continue;
                         };
-                        // No transcript row for `todo_write` on restore either
-                        // — same deviation as `add_tool_component`.
-                        if call.name == "todo_write" {
+                        // No transcript row for `todo_write` or `task` on
+                        // restore either — same deviation as
+                        // `add_tool_component`; subagents replay through their
+                        // lifecycle rows.
+                        if call.name == "todo_write" || call.name == "task" {
                             continue;
                         }
                         let args = serde_json::Value::Object(call.arguments.clone());

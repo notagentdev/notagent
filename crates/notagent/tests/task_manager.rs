@@ -4,6 +4,7 @@ use std::time::Duration;
 use notagent::core::tasks::manager::{RegisterTaskOptions, TaskManager, TaskManagerOptions};
 use notagent::core::tasks::output::OUTPUT_RING_BYTES;
 use notagent::core::tasks::store::TaskStore;
+use notagent::core::tasks::subagent_task::{SubagentRunResult, SubagentTask, SubagentTaskOptions};
 use notagent::core::tasks::types::{
     BackgroundTask, ForegroundRelease, ShellTaskInfo, TaskInfo, TaskInfoBase, TaskKind,
     TaskSettlement, TaskSettlementStatus, TaskSink, TaskStatus,
@@ -239,6 +240,78 @@ async fn announces_detached_work_as_started_and_lists_it() {
     assert_eq!(
         manager.get(&task_id).map(|info| info.is_detached()),
         Some(true)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn announces_a_foreground_subagent_at_both_ends_of_its_life() {
+    let (_directory, store) = workspace();
+    let started: Arc<Mutex<Vec<TaskInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let terminated: Arc<Mutex<Vec<TaskInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let start_recorder = Arc::clone(&started);
+    let end_recorder = Arc::clone(&terminated);
+    let manager = TaskManager::new(
+        store,
+        TaskManagerOptions {
+            on_started: Some(Arc::new(move |info| {
+                start_recorder.lock().expect("started").push(info)
+            })),
+            on_terminated: Some(Arc::new(move |info, _tail| {
+                end_recorder.lock().expect("terminated").push(info)
+            })),
+            ..TaskManagerOptions::default()
+        },
+    );
+
+    let (sender, receiver) = oneshot::channel::<SubagentRunResult>();
+    let subagent: Arc<dyn BackgroundTask> = Arc::new(SubagentTask::new(SubagentTaskOptions {
+        description: "investigate".to_owned(),
+        tokens: None,
+        session_id: "session-1".to_owned(),
+        agent: "read-only".to_owned(),
+        alias: "Vega".to_owned(),
+        run: receiver,
+        cancel: Arc::new(|| {}),
+    }));
+    let task_id = manager
+        .register(
+            subagent,
+            RegisterTaskOptions {
+                detached: false,
+                ..RegisterTaskOptions::default()
+            },
+        )
+        .await
+        .expect("registered");
+
+    assert_eq!(
+        started
+            .lock()
+            .expect("started")
+            .iter()
+            .map(|info| (info.task_id().to_owned(), info.is_detached()))
+            .collect::<Vec<_>>(),
+        vec![(task_id.clone(), false)],
+        "a foreground subagent announces its start, unlike a foreground shell"
+    );
+
+    let _ = sender.send(SubagentRunResult {
+        text: "answer".to_owned(),
+        failed: false,
+    });
+    assert!(
+        manager.wait(&task_id, 2_000, None).await.is_some(),
+        "the subagent must settle"
+    );
+    assert_eq!(
+        terminated
+            .lock()
+            .expect("terminated")
+            .iter()
+            .map(|info| info.task_id().to_owned())
+            .collect::<Vec<_>>(),
+        vec![task_id],
+        "its end is announced even though it never detached"
     );
 }
 

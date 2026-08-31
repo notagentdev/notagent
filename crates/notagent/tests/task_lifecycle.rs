@@ -117,13 +117,45 @@ fn a_background_subagent_gets_separate_start_and_end_lines() {
     let start_line = line(&started, true);
     let end_line = line(&ended, true);
 
-    assert!(start_line.contains("BG-SUBAGENT"), "{start_line}");
+    assert!(start_line.contains("SUBAGENT"), "{start_line}");
     assert!(start_line.contains("Vega"), "{start_line}");
-    assert!(start_line.contains("agent-1 started"), "{start_line}");
-    assert!(end_line.contains("BG-SUBAGENT"), "{end_line}");
+    assert!(
+        start_line.contains("agent-1 started in the background"),
+        "{start_line}"
+    );
+    assert!(end_line.contains("SUBAGENT"), "{end_line}");
     assert!(end_line.contains("Vega"), "{end_line}");
     assert!(end_line.contains("agent-1 done"), "{end_line}");
+    assert!(end_line.contains("↓ 12 tokens"), "{end_line}");
     assert_ne!(start_line, end_line, "the outcome is a new transcript line");
+}
+
+#[test]
+fn a_foreground_subagent_gets_the_same_pair_without_the_background_note() {
+    let _guard = theme_lock();
+    let foreground = |status: TaskStatus| {
+        let TaskInfo::Subagent(mut info) = subagent(status) else {
+            unreachable!("the fixture builds a subagent");
+        };
+        info.base.detached = Some(false);
+        TaskInfo::Subagent(info)
+    };
+    let start_line = line(
+        &TaskLifecycleRecord::started(foreground(TaskStatus::Running)),
+        true,
+    );
+    let end_line = line(
+        &TaskLifecycleRecord::ended(foreground(TaskStatus::Completed)),
+        true,
+    );
+
+    assert!(start_line.contains("SUBAGENT"), "{start_line}");
+    assert!(
+        start_line.contains("agent-1 started · "),
+        "a foreground start names no background: {start_line}"
+    );
+    assert!(end_line.contains("agent-1 done"), "{end_line}");
+    assert!(end_line.contains("↓ 12 tokens"), "{end_line}");
 }
 
 #[test]
@@ -153,7 +185,7 @@ fn every_background_badge_uses_the_compaction_colour() {
             TaskLifecycleRecord::started(shell(TaskStatus::Running, None)),
         ),
         (
-            "BG-Subagent",
+            "Subagent",
             TaskLifecycleRecord::ended(subagent(TaskStatus::Completed)),
         ),
     ] {

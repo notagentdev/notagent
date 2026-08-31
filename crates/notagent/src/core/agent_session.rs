@@ -2034,7 +2034,12 @@ impl AgentSession {
                             .ok()
                             .and_then(|tasks| tasks.notifier.clone())
                     };
-                    if tokio::runtime::Handle::try_current().is_ok() {
+                    // A foreground subagent's answer returns inside the turn
+                    // that asked for it; only detached work warrants a
+                    // notification.
+                    if info.base().detached == Some(true)
+                        && tokio::runtime::Handle::try_current().is_ok()
+                    {
                         tokio::spawn(async move {
                             if let Some(notifier) = notifier {
                                 notifier.notify(&info).await;

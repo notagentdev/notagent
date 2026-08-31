@@ -164,6 +164,10 @@ pub trait FooterSession: Send + Sync {
     fn goal(&self) -> Option<ThreadGoal>;
     /// How many MCP servers are connected, and how many want attention
     fn mcp_summary(&self) -> McpSummary;
+    /// How many background shell tasks are running. The footer only states
+    /// that they exist — the count is the pointer to `/tasks`, not a roster.
+    /// Subagents are not in it; they have their own panel.
+    fn running_shell_tasks(&self) -> usize;
 }
 
 /// The MCP servers reduced to what the footer shows.
@@ -232,6 +236,20 @@ impl FooterSession for AgentSession {
 
     fn is_using_subscription(&self, provider: &str) -> bool {
         self.model_runtime().is_using_subscription(provider)
+    }
+
+    fn running_shell_tasks(&self) -> usize {
+        let Some(manager) = AgentSession::task_manager(self) else {
+            return 0;
+        };
+        manager
+            .list(true, None)
+            .iter()
+            .filter(|info| {
+                matches!(info, crate::core::tasks::types::TaskInfo::Shell(_))
+                    && info.base().status == crate::core::tasks::types::TaskStatus::Running
+            })
+            .count()
     }
 }
 
@@ -518,6 +536,20 @@ impl Component for FooterComponent {
             } else {
                 format!("{model_name} • {}", thinking_level_value(thinking_level))
             };
+        }
+
+        // Running background shells, flush right after the model. Only the
+        // count: the row exists so the user knows work is running at all, and
+        // `/tasks` is where the detail lives. Added to the provider-less base
+        // so a width fallback cannot drop it. Accent, not the line's dim: the
+        // segment is the one live signal on an otherwise static row, and it is
+        // last, so its reset cannot bleach anything after it.
+        let running_shells = self.session.running_shell_tasks();
+        if running_shells > 0 {
+            right_side_without_provider = format!(
+                "{right_side_without_provider} • {}",
+                theme().fg(ThemeColor::Accent, &format!("{running_shells} bash"))
+            );
         }
 
         // Prepend the provider in parentheses if there are multiple providers

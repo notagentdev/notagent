@@ -36,6 +36,7 @@ struct SessionOptions {
     compaction_usage: Option<Usage>,
     tool_usage: Option<Usage>,
     using_subscription: bool,
+    running_bashes: usize,
 }
 
 fn usage_json((input, output, cache_read, cache_write, cost): Usage) -> Value {
@@ -61,6 +62,7 @@ struct StubSession {
     thinking_level: ThinkingLevel,
     session_name: String,
     using_subscription: bool,
+    running_bashes: usize,
 }
 
 impl FooterSession for StubSession {
@@ -105,6 +107,10 @@ impl FooterSession for StubSession {
 
     fn mcp_summary(&self) -> notagent::modes::interactive::components::footer::McpSummary {
         Default::default()
+    }
+
+    fn running_shell_tasks(&self) -> usize {
+        self.running_bashes
     }
 
     fn is_using_subscription(&self, provider: &str) -> bool {
@@ -160,6 +166,7 @@ fn create_session(options: SessionOptions) -> Arc<dyn FooterSession> {
         thinking_level: options.thinking_level.unwrap_or(ThinkingLevel::Off),
         session_name: options.session_name,
         using_subscription: options.using_subscription,
+        running_bashes: options.running_bashes,
     })
 }
 
@@ -200,6 +207,38 @@ fn abbreviates_the_home_directory_and_descendants() {
     assert_eq!(
         format_cwd_for_footer("/home/user/project", Some("/home/user")),
         "~/project"
+    );
+}
+
+#[test]
+fn counts_running_background_shells_at_the_right_edge() {
+    let _guard = guard();
+    let session = create_session(SessionOptions {
+        running_bashes: 3,
+        ..SessionOptions::default()
+    });
+    let mut footer = themed_footer(session, 1);
+    let raw = footer.render(120)[0].to_string();
+    let stats = strip_ansi(&raw);
+    assert!(
+        stats.trim_end().ends_with("3 bash"),
+        "the shell count belongs at the right edge: {stats:?}"
+    );
+    let accented = notagent::modes::interactive::theme::theme::theme().fg(
+        notagent::modes::interactive::theme::theme::ThemeColor::Accent,
+        "3 bash",
+    );
+    assert!(
+        raw.contains(&accented),
+        "the count takes the theme's accent colour, not a hardcoded one: {raw:?}"
+    );
+
+    let session = create_session(SessionOptions::default());
+    let mut footer = themed_footer(session, 1);
+    let stats = strip_ansi(&footer.render(120)[0]);
+    assert!(
+        !stats.contains("bash"),
+        "no running shell, no segment: {stats:?}"
     );
 }
 
