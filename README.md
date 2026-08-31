@@ -6,6 +6,13 @@ reading, editing, searching, and running commands.
 
 ## Why notagent?
 
+**One agent, cache-friendly modes.** Planning and execution stay within the
+same long-lived agent, conversation, and cache identity instead of moving to a
+separate agent with copied context. Switching modes keeps the shared history
+intact and changes only the compact mode-specific instructions and tool
+surface, allowing provider prompt caches to reuse matching prefixes rather than
+warming a new agent from scratch.
+
 **Save up to 50% tokens.** Two features cut the context cost of everyday
 agent work:
 
@@ -163,9 +170,16 @@ run it in a container or sandbox.
 ## Hooks
 
 Hooks are shell commands attached to agent lifecycle events. User declarations
-live in the agent configuration directory's `hooks.json`; project declarations
-live in `.notagent/hooks.json`. User hooks run first and project hooks are
-appended. A file can be a plain array or an object with a `hooks` array:
+live in the agent configuration directory's `hooks.json` (normally
+`~/.notagent/agent/hooks.json`). Project declarations are loaded once from
+`.notagent/hooks.json` relative to the directory in which notagent was launched;
+they are not reloaded when a session uses another working directory. User hooks
+run first and project hooks are appended. A file can be a plain array or an
+object with a `hooks` array:
+
+Project hook loading is currently independent of project trust. Review
+`.notagent/hooks.json` before starting notagent in an unfamiliar checkout,
+because its commands may run even when that project has not been trusted.
 
 ```json
 [
@@ -208,7 +222,8 @@ session has a file on disk. Event-specific fields are:
 
 | Events | Additional fields |
 | --- | --- |
-| `SessionStart`, `SessionEnd` | `source`; `reason` |
+| `SessionStart` | `source` |
+| `SessionEnd` | `reason` |
 | `TurnStarted` | `turn_number` |
 | `UserPromptSubmit` | `prompt` |
 | `UserPromptQueued` | `prompt`, `queue`, `image_count`, `queue_length` |
@@ -223,12 +238,15 @@ session has a file on disk. Event-specific fields are:
 | `Stop`, `StopFailure`, `Interrupt` | `stop_hook_active` |
 | `Notification` | `notification_type`, `message`, and, for permission prompts, `tool_name` |
 
-Hook commands run sequentially in declaration order. `PreToolUse` and
-`UserPromptSubmit` are blocking; every other event is observational. Exit code
-2 or a timeout refuses a blocking event. Other non-zero exits are reported as
-faults. Cancelling a turn cancels its hook without manufacturing a denial.
-Timeout and cancellation terminate the hook's process tree. `Stop` is only a
-notification and cannot continue or restart the agent.
+Hook commands run sequentially in declaration order. Observational hook chains
+run every matching declaration even when one fails. Blocking chains stop at the
+first denial or cancellation; an `allow` or `ask` does not suppress a later
+denial. `PreToolUse` and `UserPromptSubmit` are blocking; every other event is
+observational. Exit code 2 or a timeout refuses a blocking event. On an
+observational event, every non-zero exit and every timeout is reported as a
+fault instead. Cancelling a turn cancels its hook without manufacturing a
+denial. Timeout and cancellation terminate the hook's process tree. `Stop` is
+only a notification and cannot continue or restart the agent.
 
 After an ordinary hook exit, a deliberately detached descendant with redirected
 standard streams is left running. If a descendant retains the hook's captured
@@ -256,12 +274,17 @@ output is reported and refuses a blocking event. On observational events a
 decision is reported and ignored. `ask` enters the existing approval flow for
 `PreToolUse`, but is invalid and refuses `UserPromptSubmit`.
 
-Successful plain stdout is context where the event consumes context;
-structured JSON contributes only its `context` field. Stdout, stderr, and
-structured context are capped at 4000 UTF-16 code units including the
-truncation marker. Tool responses and subagent result summaries are capped at
-2000. Commands should write diagnostics to stderr. For an exit-code refusal,
-structured `reason` takes precedence, then stderr, then plain stdout.
+In the application, only successful output from `UserPromptSubmit` is delivered
+to the model as context: plain stdout is used directly, while structured JSON
+contributes only its `context` field. Context from `PreToolUse` and
+observational events is not injected into the conversation. Stdout and stderr
+are each capped at 4000 UTF-16 code units including the truncation marker before
+stdout is interpreted. A structured JSON document must therefore fit inside
+that captured stdout limit; one cut by the limit is malformed and refuses a
+blocking event. Tool responses and subagent result summaries are capped at
+2000 UTF-16 code units including their truncation marker. Commands should write
+diagnostics to stderr. For an exit-code refusal, structured `reason` takes
+precedence, then stderr, then plain stdout.
 
 A read-only prompt guard can reject an oversized submission before it reaches
 the transcript or model:
