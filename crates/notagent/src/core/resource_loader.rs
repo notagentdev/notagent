@@ -7,11 +7,14 @@ use notagent_agent::types::BoxFuture;
 use crate::config::CONFIG_DIR_NAME;
 use crate::core::diagnostics::ResourceDiagnostic;
 use crate::core::footer_data_provider::find_git_paths;
+use crate::core::package_manager::{DefaultPackageManager, PackageManagerOptions};
 use crate::core::prompt_templates::{
     LoadPromptTemplatesOptions, PromptTemplate, load_prompt_templates,
 };
 use crate::core::settings_manager::{SettingsManager, SettingsManagerCreateOptions};
-use crate::core::skills::{LoadSkillsOptions, LoadSkillsResult, Skill, load_skills};
+use crate::core::skills::{
+    LoadSkillsOptions, LoadSkillsResult, Skill, load_skills, materialize_builtin_skills,
+};
 use crate::core::source_info::{
     PathMetadata, SourceInfo, SourceOrigin, SourceScope, create_source_info,
 };
@@ -308,7 +311,18 @@ impl DefaultResourceLoader {
                 SettingsManagerCreateOptions::default(),
             ))
         });
-        let packages = options.packages.clone();
+        // Without a supplied provider the loader builds the real package
+        // manager itself: resolution is what discovers the user and project
+        // skill, prompt, and theme directories, so a loader without it would
+        // silently load nothing but explicit paths.
+        let packages = options.packages.clone().or_else(|| {
+            Some(Arc::new(DefaultPackageManager::new(PackageManagerOptions {
+                cwd: cwd.clone(),
+                agent_dir: agent_dir.clone(),
+                settings_manager: Arc::clone(&settings_manager),
+                command_runner: None,
+            })) as Arc<dyn PackageResources>)
+        });
         Self {
             cwd,
             agent_dir,
@@ -881,6 +895,15 @@ impl ResourceLoader for DefaultResourceLoader {
             // reload() keeps the trust decision and re-reads settings for it.
             self.settings_manager.reload();
 
+            // Before resolution, not after: discovery enumerates the skills
+            // directory, so a file written later would be invisible until the
+            // next reload.
+            let builtin_skill_diagnostics = if self.options.no_skills {
+                Vec::new()
+            } else {
+                materialize_builtin_skills(&self.agent_dir)
+            };
+
             let resolved = match self.packages.as_ref() {
                 Some(packages) => packages.resolve().await,
                 None => ResolvedResources::default(),
@@ -925,6 +948,7 @@ impl ResourceLoader for DefaultResourceLoader {
             };
             state.last_skill_paths = skill_paths.clone();
             self.update_skills_from_paths(&mut state, &skill_paths);
+            state.skill_diagnostics.extend(builtin_skill_diagnostics);
             for path in &self.options.additional_skill_paths {
                 if !is_local_path(path) {
                     continue;

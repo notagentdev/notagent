@@ -471,6 +471,23 @@ fn carries_the_modes_guidance_body() {
 }
 
 #[test]
+fn shipped_plan_mode_asks_for_the_planning_skill_instead_of_carrying_it() {
+    let injection = render_mode_injection(&builtin("plan"));
+    assert!(
+        injection.contains("create-plan"),
+        "plan mode must name the planning skill: {injection}"
+    );
+    assert!(
+        injection.contains("skill"),
+        "plan mode must name the tool that loads it: {injection}"
+    );
+    assert!(
+        injection.contains("already loaded"),
+        "plan mode must state the exception for a loaded planning skill: {injection}"
+    );
+}
+
+#[test]
 fn distinguishes_the_two_shipped_modes_by_shell() {
     assert!(
         wrap(&builtin("manual"))

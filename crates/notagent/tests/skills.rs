@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use notagent::core::skills::{
-    LoadSkillsOptions, Skill, format_skills_for_prompt, load_skills, load_skills_from_dir,
+    BUILTIN_SKILLS, LoadSkillsOptions, Skill, format_skills_for_prompt, load_skills,
+    load_skills_from_dir, materialize_builtin_skills,
 };
 use notagent::core::source_info::{SyntheticSourceInfoOptions, create_synthetic_source_info};
 
@@ -520,4 +521,93 @@ fn reports_a_collision_diagnostic_and_keeps_the_first_skill() {
     assert_eq!(collisions[0].name, "calendar");
     assert!(collisions[0].winner_path.contains("first"));
     assert!(collisions[0].loser_path.contains("second"));
+}
+
+// ------------------------------------------------------------ built-in skills
+
+fn temp_agent_dir() -> PathBuf {
+    let directory = tempfile::Builder::new()
+        .prefix("builtin-skills-")
+        .tempdir()
+        .expect("temp dir");
+    let path = directory.path().to_path_buf();
+    let _ = directory.keep();
+    path
+}
+
+#[test]
+fn materialises_missing_builtin_skills_and_loads_them() {
+    let agent_dir = temp_agent_dir();
+    let agent_dir_text = agent_dir.to_string_lossy().into_owned();
+
+    let diagnostics = materialize_builtin_skills(&agent_dir_text);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let result = load_skills(&LoadSkillsOptions {
+        cwd: empty_cwd(),
+        agent_dir: Some(agent_dir_text),
+        skill_paths: Vec::new(),
+        include_defaults: true,
+    });
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    for (name, _) in BUILTIN_SKILLS {
+        let skill = result
+            .skills
+            .iter()
+            .find(|skill| skill.name == *name)
+            .unwrap_or_else(|| panic!("built-in skill {name} not loaded"));
+        assert!(
+            !skill.description.trim().is_empty(),
+            "built-in skill {name} has no description"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&agent_dir);
+}
+
+#[test]
+fn never_touches_an_existing_skill_file() {
+    let agent_dir = temp_agent_dir();
+    let agent_dir_text = agent_dir.to_string_lossy().into_owned();
+    let edited_dir = agent_dir.join("skills").join("create-plan");
+    std::fs::create_dir_all(&edited_dir).expect("creates");
+    let edited_file = edited_dir.join("SKILL.md");
+    let edited_content = "---\nname: create-plan\ndescription: the user's own\n---\nEdited.";
+    std::fs::write(&edited_file, edited_content).expect("writes");
+
+    let diagnostics = materialize_builtin_skills(&agent_dir_text);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let kept = std::fs::read_to_string(&edited_file).expect("reads");
+    assert_eq!(
+        kept, edited_content,
+        "materialisation must not overwrite an existing skill file"
+    );
+    // The other shipped skills still arrive beside the edited one.
+    for (name, _) in BUILTIN_SKILLS {
+        assert!(
+            agent_dir
+                .join("skills")
+                .join(name)
+                .join("SKILL.md")
+                .exists(),
+            "built-in skill {name} was not materialised"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&agent_dir);
+}
+
+#[test]
+fn builtin_skill_bodies_carry_no_code_fences_and_no_emoji() {
+    for (name, content) in BUILTIN_SKILLS {
+        assert!(
+            !content.contains("```"),
+            "built-in skill {name} contains a code fence"
+        );
+        assert!(
+            content.chars().all(|character| (character as u32) < 0x2190),
+            "built-in skill {name} contains a symbol or emoji character"
+        );
+    }
 }

@@ -135,6 +135,24 @@ Additional OpenAI-compatible providers and models can be declared in
 catalog: new providers appear in the picker, and known models can be
 overridden per field.
 
+## Built-in skills
+
+Four skills ship with the binary and are written once into
+`~/.notagent/agent/skills/` on startup, each only if its file does not
+already exist:
+
+- `create-plan` — research a task and record an implementation plan under `plans/`
+- `execute-plan` — work through a recorded plan task by task, tracking status in the file
+- `explore` — read-only investigation with cited findings
+- `debug` — systematic debugging discipline: reproduce first, then ranked hypotheses, then the fix
+
+Once on disk they are ordinary user skills: edit them, replace them with your
+own of the same name, or delete one to restore the shipped version on the next
+start. User skills take precedence over project skills of the same name, as
+always. Plan mode asks the model to load `create-plan` unless another planning
+skill is already in use, so replacing the planning method means providing a
+skill, not editing the mode.
+
 ## Permissions & containerization
 
 notagent's permission rules and hooks can refuse agent actions, but they are

@@ -735,3 +735,52 @@ pub fn default_skill_dirs(cwd: &str, agent_dir: &str) -> (PathBuf, PathBuf) {
         Path::new(cwd).join(CONFIG_DIR_NAME).join("skills"),
     )
 }
+
+/// The skills shipped with the binary, written into the user skills directory
+/// on startup when absent. Once on disk they are ordinary user skills: the
+/// loader, the tools, and the user's editor all see plain files, and the
+/// regular name precedence applies.
+pub const BUILTIN_SKILLS: &[(&str, &str)] = &[
+    (
+        "create-plan",
+        include_str!("skills/builtin/create-plan/SKILL.md"),
+    ),
+    (
+        "execute-plan",
+        include_str!("skills/builtin/execute-plan/SKILL.md"),
+    ),
+    ("explore", include_str!("skills/builtin/explore/SKILL.md")),
+    ("debug", include_str!("skills/builtin/debug/SKILL.md")),
+];
+
+/// Writes each shipped skill to `<agent_dir>/skills/<name>/SKILL.md` unless
+/// that file already exists. An existing file is never touched, whatever its
+/// content: the user's edit is the override mechanism, and deleting the file
+/// restores the shipped version on the next start. Write failures become
+/// warnings rather than errors — a read-only home directory must not stop the
+/// session, only cost it the shipped skills.
+pub fn materialize_builtin_skills(agent_dir: &str) -> Vec<ResourceDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for (name, content) in BUILTIN_SKILLS {
+        let dir = Path::new(agent_dir).join("skills").join(name);
+        let file = dir.join("SKILL.md");
+        if file.exists() {
+            continue;
+        }
+        let path_text = file.to_string_lossy().into_owned();
+        if let Err(error) = std::fs::create_dir_all(&dir) {
+            diagnostics.push(ResourceDiagnostic::warning(
+                format!("cannot create built-in skill directory: {error}"),
+                &path_text,
+            ));
+            continue;
+        }
+        if let Err(error) = std::fs::write(&file, content) {
+            diagnostics.push(ResourceDiagnostic::warning(
+                format!("cannot write built-in skill: {error}"),
+                &path_text,
+            ));
+        }
+    }
+    diagnostics
+}
