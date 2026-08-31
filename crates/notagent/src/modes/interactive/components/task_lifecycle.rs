@@ -25,12 +25,17 @@ pub fn task_lifecycle_line(
     badge_style: bool,
 ) -> String {
     let clean = record.task.status() == TaskStatus::Completed;
-    // A subagent's badge carries no BG- prefix: the same pair of lines records
-    // a foreground child and a detached one, and only the started line says
-    // where it ran. Shells keep theirs — a foreground shell never gets lines.
+    // The badge carries where a subagent runs: BG- for a detached child, bare
+    // for one the turn is waiting on — the two behave differently, so their
+    // lines must be tellable apart at a glance. Shells only ever get lines as
+    // background work.
     let (badge_name, identity, work) = match &record.task {
         TaskInfo::Subagent(info) => (
-            "Subagent",
+            if info.base.detached == Some(true) {
+                "BG-Subagent"
+            } else {
+                "Subagent"
+            },
             format!("{} · {}", info.alias, info.base.task_id),
             single_line(&info.base.description),
         ),
@@ -41,15 +46,7 @@ pub fn task_lifecycle_line(
         ),
     };
     let detail = match record.phase {
-        TaskLifecyclePhase::Started => {
-            let verb = match &record.task {
-                TaskInfo::Subagent(info) if info.base.detached == Some(true) => {
-                    "started in the background"
-                }
-                _ => "started",
-            };
-            format!("{identity} {verb} · {work}")
-        }
+        TaskLifecyclePhase::Started => format!("{identity} started · {work}"),
         TaskLifecyclePhase::Ended => {
             let base = record.task.base();
             let elapsed = format_elapsed(base.started_at, base.ended_at.unwrap_or(base.started_at));
