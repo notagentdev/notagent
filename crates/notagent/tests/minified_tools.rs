@@ -7,6 +7,7 @@ use notagent::core::tools::read_minified::create_read_minified_tool_definition;
 use notagent::core::tools::tool_definition::ToolDefinition;
 use notagent_agent::types::AgentToolResult;
 use notagent_ai::types::TextOrImageContent;
+use notagent_ai::utils::estimate::estimate_text_tokens;
 use serde_json::{Value, json};
 
 struct Workspace {
@@ -340,18 +341,40 @@ async fn collects_warnings_from_every_edit() {
 #[tokio::test]
 async fn returns_the_compact_view_of_a_source_file() {
     let workspace = Workspace::new();
-    let path = workspace.write(
-        "main.rs",
-        "/// Doc comment.\nfn main() {\n    // gone\n    let x = 1;\n}\n",
-    );
+    let source = "/// Doc comment.\nfn main() {\n    // gone\n    let x = 1;\n}\n";
+    let path = workspace.write("main.rs", source);
     let tool = create_read_minified_tool_definition(&workspace.dir(), None);
 
     let result = run(&tool, json!({ "path": path })).await.expect("reads");
+    let compact = text_output(&result);
 
-    assert_eq!(text_output(&result), "fn main() {\n let x = 1;\n}\n");
+    assert_eq!(compact, "fn main() {\n let x = 1;\n}\n");
     assert_eq!(
         result.details.as_ref().expect("details")["minified"],
         json!(true)
+    );
+}
+
+#[tokio::test]
+async fn a_commented_source_file_saves_at_least_half_the_estimated_tokens() {
+    let workspace = Workspace::new();
+    let source = "/// Doc comment.\nfn main() {\n    // gone\n    let x = 1;\n}\n";
+    let path = workspace.write("main.rs", source);
+    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
+
+    let result = run(&tool, json!({ "path": path })).await.expect("reads");
+    let compact = text_output(&result);
+    let raw_tokens = estimate_text_tokens(source);
+    let compact_tokens = estimate_text_tokens(&compact);
+
+    assert_eq!(
+        (raw_tokens, compact_tokens),
+        (15, 7),
+        "keep the README fixture measurement current"
+    );
+    assert!(
+        compact_tokens * 2 <= raw_tokens,
+        "a representative minified read must save at least half the estimated tokens: raw={raw_tokens}, compact={compact_tokens}"
     );
 }
 

@@ -172,6 +172,43 @@ async fn a_switched_on_filter_compacts_what_the_model_reads() {
 }
 
 #[tokio::test]
+async fn a_typical_test_run_saves_at_least_half_the_estimated_tokens() {
+    let directory = TempDir::new();
+    let operations = RecordingOperations::new(&cargo_test_output());
+    let definition = create_bash_tool_definition(
+        &directory.as_str(),
+        Some(BashToolOptions {
+            operations: Some(operations),
+            bash_filter: Some(Arc::new(|| true)),
+            ..BashToolOptions::default()
+        }),
+    );
+
+    let result = run(&definition, json!({ "command": "cargo test" }))
+        .await
+        .expect("command runs");
+    let text = text_output(&result);
+    let full_output_path = result
+        .details
+        .as_ref()
+        .and_then(|details| details["fullOutputPath"].as_str())
+        .expect("details name the full output");
+    let measured_text = text.replace(full_output_path, "<full-output-path>");
+    let compact_tokens = estimated_tokens(&measured_text);
+    let raw_tokens = estimated_tokens(&cargo_test_output());
+
+    assert_eq!(
+        (raw_tokens, compact_tokens),
+        (624, 24),
+        "keep the README fixture measurement current"
+    );
+    assert!(
+        compact_tokens * 2 <= raw_tokens,
+        "a representative filtered test run must save at least half the estimated tokens: raw={raw_tokens}, compact={compact_tokens}\n{text}"
+    );
+}
+
+#[tokio::test]
 async fn the_raw_output_stays_reachable_after_compaction() {
     let directory = TempDir::new();
     let operations = RecordingOperations::new(&cargo_test_output());

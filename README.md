@@ -13,8 +13,8 @@ intact and changes only the compact mode-specific instructions and tool
 surface, allowing provider prompt caches to reuse matching prefixes rather than
 warming a new agent from scratch.
 
-**Save up to 50% tokens.** Two features cut the context cost of everyday
-agent work:
+**Cut compactable tool output by at least 50% in the checked workloads.** Two
+features reduce the part of the context spent on source reads and shell output:
 
 - *Minified tools.* `read_minified` returns a compact view of a source file:
   comments removed, blank lines dropped, indentation collapsed to one space
@@ -27,6 +27,13 @@ agent work:
   package-manager output shrinks to what the agent actually needs. The filter
   never loses information: whenever a compaction would be empty, larger than
   the raw output, or uncertain, the raw output passes through untouched.
+
+The regression fixtures use notagent's deterministic four-units-per-token
+estimators. A commented Rust source read drops from 15 to 7 estimated tokens
+(53%); a 60-test Cargo run drops from 624 to 24 with its full-log pointer
+normalized to a stable placeholder (96%). These are reproducible fixture
+measurements, not a promise for every input: savings depend on how much
+removable structure the input contains.
 
 **Atomic writes in the same branch or worktree.** With `/leases on`, every
 mutating file tool takes an advisory, time-bounded lease before it writes
