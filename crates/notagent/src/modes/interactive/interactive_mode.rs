@@ -9047,7 +9047,7 @@ impl InteractiveMode {
         let color = if self.is_bash_mode {
             theme().get_bash_mode_border_color()
         } else {
-            theme().get_thinking_border_color(self.session().thinking_level())
+            get_editor_theme().border_color
         };
         self.editor.borrow_mut().editor_mut().border_color = color;
         self.ui.request_render();
