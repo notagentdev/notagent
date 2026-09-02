@@ -51,12 +51,18 @@ struct BadgeCallHeader {
 /// that stacks content under a badge keeps that column (the explore block
 /// prefixes its rows, the thinking block renders at `output_pad`). Continuation
 /// lines at the margin would sit one column out of line with the row above.
-fn under_badge(line: &Line) -> Line {
-    use notagent_tui::utils::visible_width;
+fn under_badge(line: &Line, width: usize) -> Line {
+    use notagent_tui::utils::{slice_by_column, visible_width};
+    if width == 0 {
+        return Line::from("");
+    }
     if visible_width(line) == 0 {
         return Line::clone(line);
     }
-    Line::from(format!(" {line}"))
+    Line::from(format!(
+        " {}",
+        slice_by_column(line, 0, width.saturating_sub(1), true)
+    ))
 }
 
 impl Component for BadgeCallHeader {
@@ -97,17 +103,27 @@ impl Component for BadgeCallHeader {
                     format!("{} {}{}", self.badge, first.trim_end(), suffix)
                 };
                 let mut out = vec![Line::from(head)];
-                out.extend(lines.iter().map(under_badge));
+                out.extend(lines.iter().map(|line| under_badge(line, width)));
                 return out;
             }
         }
-        let lines = self.call.borrow_mut().render(width);
-        let mut out = vec![Line::from(self.badge.as_str())];
-        if lines.iter().any(|line| visible_width(line) > 0) {
-            out.extend(lines.iter().map(under_badge));
+        let continuation_width = width.saturating_sub(1);
+        let lines = if continuation_width == 0 {
+            Vec::new()
+        } else {
+            self.call.borrow_mut().render(continuation_width)
+        };
+        let mut out = vec![Line::from(notagent_tui::utils::slice_by_column(
+            &self.badge,
+            0,
+            width,
+            true,
+        ))];
+        if lines.iter().any(|line| visible_width(line.trim_end()) > 0) {
+            out.extend(lines.iter().map(|line| under_badge(line, width)));
         }
         if !self.suffix.is_empty() {
-            out.push(under_badge(&Line::from(self.suffix.as_str())));
+            out.push(under_badge(&Line::from(self.suffix.as_str()), width));
         }
         out
     }

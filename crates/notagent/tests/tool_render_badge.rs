@@ -3,7 +3,7 @@ use std::rc::Rc;
 use notagent::core::tools::tool_definition::{
     ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
 };
-use notagent::core::tools::{ToolName, create_tool_definition};
+use notagent::core::tools::{ALL_TOOL_NAMES, ToolName, create_tool_definition};
 use notagent::modes::interactive::components::tool_execution::{
     ToolExecutionComponent, ToolExecutionOptions,
 };
@@ -12,6 +12,7 @@ use notagent::modes::interactive::theme::theme::{
 };
 use notagent::utils::ansi::strip_ansi;
 use notagent_tui::tui::Component;
+use notagent_tui::utils::visible_width;
 use serde_json::{Value, json};
 
 /// Serializes the cases: theme, block style and capabilities are global.
@@ -238,4 +239,32 @@ fn a_running_foreground_bash_puts_compact_timing_after_the_command() {
         !header.contains("[Running:"),
         "the badge timing must not repeat labels already conveyed by its position: {lines:?}"
     );
+}
+
+#[test]
+fn partial_builtin_tool_calls_never_exceed_the_available_width() {
+    let _guard = badge_setup();
+    for tool in ALL_TOOL_NAMES {
+        let mut component = ToolExecutionComponent::new(
+            tool.as_str(),
+            format!("partial-{tool}"),
+            json!({}),
+            ToolExecutionOptions::default(),
+            None,
+            Rc::new(|| {}),
+            "/tmp",
+        );
+
+        for width in [1, 2, 20, 40, 80, 189] {
+            let lines = component.render(width);
+            assert!(
+                lines.iter().all(|line| visible_width(line) <= width),
+                "partial {tool} call must fit width {width}: {:?}",
+                lines
+                    .iter()
+                    .map(|line| (visible_width(line), strip_ansi(line)))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 }
