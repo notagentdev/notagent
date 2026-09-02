@@ -9,6 +9,7 @@ use notagent::modes::interactive::components::subagent_panel::{
 use notagent::modes::interactive::theme::theme::{ThemeColor, init_theme, theme};
 use notagent::utils::ansi::strip_ansi;
 use notagent_tui::tui::Component;
+use notagent_tui::utils::visible_width;
 
 /// The global theme is a process global.
 fn theme_lock() -> MutexGuard<'static, ()> {
@@ -335,12 +336,36 @@ fn never_renders_wider_than_it_was_given() {
         },
     )]);
     for line in panel.render(60) {
-        assert!(
-            strip_ansi(&line).chars().count() <= 60,
-            "{:?}",
-            strip_ansi(&line)
-        );
+        assert!(visible_width(&line) <= 60, "{:?}", strip_ansi(&line));
     }
+}
+
+#[test]
+fn uses_the_same_horizontal_inset_as_the_footer_text() {
+    let _guard = theme_lock();
+    let mut panel = SubagentPanel::new();
+    panel.set_tasks(vec![subagent(
+        "agent-1",
+        "Inspect the parser",
+        SubagentOverrides {
+            started_at: now_ms(),
+            ..Default::default()
+        },
+    )]);
+
+    let width = 60;
+    let lines = panel.render(width);
+    assert!(
+        strip_ansi(&lines[0]).starts_with(" ● main"),
+        "{:?}",
+        lines[0]
+    );
+    assert!(strip_ansi(&lines[1]).starts_with("   ○"), "{:?}", lines[1]);
+    assert_eq!(
+        visible_width(&lines[1]),
+        width - 1,
+        "the rightmost terminal column must stay outside the panel text"
+    );
 }
 
 #[test]

@@ -10,6 +10,9 @@ use super::tasks_panel::{now_ms, single_line};
 /// Most children shown at once, so a wide fan-out cannot take the screen.
 const MAX_ROWS: usize = 6;
 
+/// Matches the footer text inset on both terminal edges.
+const HORIZONTAL_PADDING: usize = 1;
+
 /// Shortest a task label may be squeezed to before the row gives up on it.
 const MIN_LABEL_WIDTH: usize = 12;
 
@@ -157,6 +160,10 @@ impl Component for SubagentPanel {
         if rows.is_empty() {
             return Vec::new();
         }
+        if width <= HORIZONTAL_PADDING * 2 {
+            return Vec::new();
+        }
+        let content_width = width - HORIZONTAL_PADDING * 2;
 
         let shown = &rows[..rows.len().min(MAX_ROWS)];
         // `Math.max(...shown.map((row) => row.name.length))` — JavaScript counts
@@ -166,10 +173,15 @@ impl Component for SubagentPanel {
             .map(|row| row_name(row).chars().count())
             .max()
             .unwrap_or(0);
-        let mut lines: Vec<String> = vec![format!(
-            "{} {}",
-            theme_instance.fg(ThemeColor::Muted, "●"),
-            theme_instance.bold("main")
+        let mut lines: Vec<String> = vec![truncate_to_width_opts(
+            &format!(
+                "{} {}",
+                theme_instance.fg(ThemeColor::Muted, "●"),
+                theme_instance.bold("main")
+            ),
+            content_width,
+            "…",
+            false,
         )];
 
         for row in shown {
@@ -190,7 +202,7 @@ impl Component for SubagentPanel {
             // reason to look at the row at all, and both are short. Measured
             // rather than counted, so editing the prefix cannot silently push
             // the row past the terminal edge.
-            let label_width = width
+            let label_width = content_width
                 .saturating_sub(visible_width(&prefix))
                 .saturating_sub(2)
                 .saturating_sub(visible_width(&right))
@@ -206,7 +218,7 @@ impl Component for SubagentPanel {
                     theme_instance.fg(ThemeColor::Text, &padded),
                     theme_instance.fg(ThemeColor::Muted, &right)
                 ),
-                width,
+                content_width,
                 "…",
                 false,
             ));
@@ -215,9 +227,14 @@ impl Component for SubagentPanel {
         let hidden = rows.len() - shown.len();
         if hidden > 0 {
             let more = format!("↓ {hidden} more");
-            let pad = width.saturating_sub(visible_width(&more));
+            let pad = content_width.saturating_sub(visible_width(&more));
             lines.push(" ".repeat(pad) + &theme_instance.fg(ThemeColor::Muted, &more));
         }
-        shared_lines(lines)
+        shared_lines(
+            lines
+                .into_iter()
+                .map(|line| " ".repeat(HORIZONTAL_PADDING) + &line)
+                .collect(),
+        )
     }
 }
