@@ -3,6 +3,7 @@ use std::rc::Rc;
 use notagent_tui::tui::{Component, Line, shared_lines};
 use notagent_tui::utils::{truncate_to_width_opts, visible_width};
 
+use crate::config::VERSION;
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
 const MAX_CARD_WIDTH: usize = 80;
@@ -50,9 +51,10 @@ impl Component for StartupHeader {
         let data = (self.data)();
         let theme = theme();
         let title = format!(
-            "{}{}",
+            "{}{}{}",
             theme.fg(ThemeColor::Text, "Welcome to "),
-            theme.bold(&theme.fg(ThemeColor::Accent, "notagent!"))
+            theme.bold(&theme.fg(ThemeColor::Accent, "notagent")),
+            theme.fg(ThemeColor::Dim, &format!(" v{VERSION}"))
         );
         let help = format!(
             "{}{}{}",
@@ -149,7 +151,14 @@ mod tests {
         );
         assert!(lines[0].starts_with(" ╭"), "the top border is rounded");
         assert!(lines[7].starts_with(" ╰"), "the bottom border is rounded");
-        assert!(lines[1].contains("Welcome to notagent!"), "{lines:?}");
+        assert!(
+            lines[1].contains(&format!("Welcome to notagent v{}", crate::config::VERSION)),
+            "{lines:?}"
+        );
+        assert!(
+            !lines[1].contains(&format!("v{}!", crate::config::VERSION)),
+            "{lines:?}"
+        );
         assert!(
             lines[2].contains("Send /help for help information."),
             "{lines:?}"
