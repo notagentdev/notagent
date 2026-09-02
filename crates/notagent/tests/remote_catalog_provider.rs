@@ -207,6 +207,10 @@ async fn parses_keyed_catalogs_sends_version_headers_and_observes_the_refresh_tt
         vec!["dynamic"]
     );
     assert_eq!(server.request_count(), 2);
+    assert_eq!(
+        server.requests()[0].path,
+        "/api/models/providers/test-provider.json"
+    );
     let user_agent = server.requests()[0]
         .header("user-agent")
         .expect("user agent")

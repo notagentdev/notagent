@@ -5,7 +5,9 @@ use notagent_ai::auth::types::{
     ApiKeyAuth, ApiKeyAuthInput, ApiKeyCredential, AuthContext, AuthError, AuthEvent, AuthPrompt,
     AuthPromptKind, BoxFuture, Credential, ProviderAuthInteraction,
 };
-use notagent_ai::models::{CreateModelsOptions, Provider, create_models};
+use notagent_ai::models::{
+    CreateModelsOptions, Provider, create_models, get_supported_thinking_levels,
+};
 use notagent_ai::providers::all::{builtin_models, builtin_providers};
 use notagent_ai::providers::amazon_bedrock::amazon_bedrock_provider;
 use notagent_ai::providers::anthropic::anthropic_provider;
@@ -14,7 +16,7 @@ use notagent_ai::providers::cloudflare_stream::{cloudflare_streams, resolve_clou
 use notagent_ai::providers::cloudflare_workers_ai::cloudflare_workers_ai_provider;
 use notagent_ai::providers::google_vertex::google_vertex_provider;
 use notagent_ai::types::{
-    Context, Message, Modality, Model, ModelCost, ProviderEnv, ProviderStreams,
+    Context, Message, Modality, Model, ModelCost, ModelThinkingLevel, ProviderEnv, ProviderStreams,
     SimpleStreamOptions, StreamOptions, UserContent, UserMessage,
 };
 use notagent_ai::utils::event_stream::create_assistant_message_event_stream;
@@ -226,17 +228,7 @@ fn every_builtin_provider_matches_the_catalog_fixture() {
             "{id} dynamic"
         );
 
-        // is: they are named here rather than written into it (v0.1.16).
-        let port_added: &[&str] = match id {
-            "zai" => &["glm-5.3", "glm-5.3-flash"],
-            "zai-coding-cn" => &["glm-5.3"],
-            _ => &[],
-        };
-        let models: Vec<_> = provider
-            .get_models()
-            .into_iter()
-            .filter(|model| !port_added.contains(&model.id.as_str()))
-            .collect();
+        let models = provider.get_models();
         assert_eq!(
             models.len(),
             expected["modelCount"].as_u64().expect("count") as usize,
@@ -1042,7 +1034,7 @@ fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
 
     let models = builtin_models(None);
     let list = models.get_models(Some("cline-pass"));
-    assert_eq!(list.len(), 11, "every ClinePass model is present");
+    assert_eq!(list.len(), 12, "every ClinePass model is present");
     for model in &list {
         assert!(model.id.starts_with("cline-pass/"), "{}", model.id);
         assert_eq!(model.api, "openai-completions");
@@ -1059,31 +1051,64 @@ fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
             model.id
         );
     }
+
+    let mut ids: Vec<_> = list.iter().map(|model| model.id.as_str()).collect();
+    ids.sort_unstable();
+    assert_eq!(
+        ids,
+        [
+            "cline-pass/deepseek-v4-flash",
+            "cline-pass/deepseek-v4-pro",
+            "cline-pass/glm-5.2",
+            "cline-pass/kimi-k2.6",
+            "cline-pass/kimi-k2.7-code",
+            "cline-pass/kimi-k3",
+            "cline-pass/mimo-v2.5",
+            "cline-pass/mimo-v2.5-pro",
+            "cline-pass/minimax-m3",
+            "cline-pass/qwen3.7-max",
+            "cline-pass/qwen3.7-plus",
+            "cline-pass/qwen3.8-max",
+        ],
+        "the catalog contains exactly the public Cline Pass lineup"
+    );
+
+    let qwen = models
+        .get_model("cline-pass", "cline-pass/qwen3.8-max")
+        .expect("Qwen3.8 Max");
+    assert_eq!(qwen.context_window, 1_000_000);
+    assert_eq!(qwen.max_tokens, 131_072);
+    assert_eq!(qwen.input, [Modality::Text, Modality::Image]);
+    assert_eq!(
+        get_supported_thinking_levels(&qwen),
+        [
+            ModelThinkingLevel::Minimal,
+            ModelThinkingLevel::Low,
+            ModelThinkingLevel::Medium,
+            ModelThinkingLevel::High,
+            ModelThinkingLevel::Xhigh,
+        ]
+    );
 }
 
-/// GLM-5.3 joins z.ai with the values of GLM-5.2 (user decision 2026-08-17).
-/// ClinePass does not offer it yet, so it is not in that catalog.
 #[test]
-fn glm_5_3_matches_glm_5_2_on_zai_and_is_absent_from_cline_pass() {
+fn glm_5_3_is_available_on_zai_and_absent_from_cline_pass() {
     let models = builtin_models(None);
 
     for provider in ["zai", "zai-coding-cn"] {
-        let older = models.get_model(provider, "glm-5.2").expect("glm-5.2");
         let newer = models.get_model(provider, "glm-5.3").expect("glm-5.3");
 
         assert_eq!(newer.name, "GLM-5.3");
-        assert_eq!(newer.context_window, older.context_window);
-        assert_eq!(newer.max_tokens, older.max_tokens);
-        assert_eq!(newer.reasoning, older.reasoning);
-        assert_eq!(newer.thinking_level_map, older.thinking_level_map);
-        assert_eq!(newer.compat, older.compat);
-        assert_eq!(newer.base_url, older.base_url);
+        assert!(newer.reasoning);
+        assert_eq!(newer.context_window, 1_000_000);
+        assert_eq!(newer.max_tokens, 131_072);
+        assert!(newer.thinking_level_map.is_none());
     }
 
     assert!(
         models
             .get_model("cline-pass", "cline-pass/glm-5.3")
             .is_none(),
-        "ClinePass does not carry GLM-5.3 yet"
+        "ClinePass does not carry GLM-5.3"
     );
 }

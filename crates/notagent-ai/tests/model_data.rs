@@ -256,7 +256,7 @@ fn baseten_registers_glm_52_as_its_default_reasoning_model() {
         serde_json::to_value(model.thinking_level_map).unwrap(),
         json!({ "off": "none", "minimal": null, "low": null, "medium": null, "high": "high", "xhigh": null, "max": "max" })
     );
-    assert_eq!(model.input, vec![Modality::Text]);
+    assert_eq!(model.input, vec![Modality::Text, Modality::Image]);
     assert_eq!(model.context_window, 1_048_576);
     assert_eq!(model.max_tokens, 262_144);
     assert_eq!(
@@ -618,19 +618,6 @@ fn fireworks_registers_kimi_k26_on_the_anthropic_api() {
     assert_eq!(compat["supportsEagerToolInputStreaming"], json!(false));
     assert_eq!(compat["supportsCacheControlOnTools"], json!(false));
     assert_eq!(compat["supportsLongCacheRetention"], json!(false));
-}
-
-#[test]
-fn fireworks_registers_the_fire_pass_turbo_router() {
-    let model = get_builtin_models("fireworks")
-        .into_iter()
-        .find(|model| {
-            model.id.starts_with("accounts/fireworks/routers/") && model.id.ends_with("-turbo")
-        })
-        .expect("a turbo router model");
-    assert_eq!(model.api, "anthropic-messages");
-    assert_eq!(model.base_url, "https://api.fireworks.ai/inference");
-    assert_eq!(model.input, vec![Modality::Text, Modality::Image]);
 }
 
 #[test]

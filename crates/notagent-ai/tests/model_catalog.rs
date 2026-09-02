@@ -2,7 +2,7 @@
 //! manifest validation (SHA-256 per file, structureHash, required fields per model) to
 //! be reproduced as a test.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use notagent_ai::model_catalog::*;
 use notagent_ai::types::Model;
@@ -30,7 +30,11 @@ fn manifest_has_schema_version_three_and_a_structure_hash() {
 fn every_embedded_file_matches_its_manifest_digest() {
     let manifest = manifest();
     let files = manifest["files"].as_object().expect("files map");
-    assert_eq!(files.len(), 40, "the snapshot has 40 provider files");
+    assert_eq!(
+        files.len(),
+        MODEL_DATA.len(),
+        "every embedded provider has one manifest entry"
+    );
 
     for (provider, raw) in MODEL_DATA {
         let file_name = format!("{provider}.json");
@@ -60,11 +64,37 @@ fn every_embedded_file_matches_its_manifest_digest() {
 }
 
 #[test]
-fn the_catalog_contains_exactly_1238_models_across_40_providers() {
-    // +11 ClinePass models, +2 GLM-5.3 (zai, zai-coding-cn); v0.1.16.
-    // +1 GLM-5.3-Flash on zai (2026-08-27).
-    assert_eq!(get_builtin_providers().len(), 40);
-    assert_eq!(all_builtin_models().len(), 1238);
+fn the_manifest_structure_hash_matches_the_embedded_catalog() {
+    let mut structure = BTreeMap::<&str, BTreeMap<String, String>>::new();
+    let mut model_count = 0;
+    for (provider, raw) in MODEL_DATA {
+        let groups: Value = serde_json::from_str(raw).expect("valid JSON");
+        let mut models = BTreeMap::new();
+        for (api, entries) in groups.as_object().expect("api groups") {
+            for model_id in entries.as_object().expect("model entries").keys() {
+                assert!(
+                    models.insert(model_id.clone(), api.clone()).is_none(),
+                    "{provider}/{model_id} appears in more than one API group"
+                );
+                model_count += 1;
+            }
+        }
+        structure.insert(provider, models);
+    }
+
+    let digest = Sha256::digest(
+        serde_json::to_vec(&structure).expect("the catalog structure serializes deterministically"),
+    )
+    .iter()
+    .map(|byte| format!("{byte:02x}"))
+    .collect::<String>();
+    assert_eq!(
+        manifest()["structureHash"].as_str(),
+        Some(digest.as_str()),
+        "the generation stamp must describe the embedded catalog"
+    );
+    assert_eq!(get_builtin_providers().len(), MODEL_DATA.len());
+    assert_eq!(all_builtin_models().len(), model_count);
 }
 
 #[test]

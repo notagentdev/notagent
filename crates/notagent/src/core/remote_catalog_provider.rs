@@ -134,7 +134,7 @@ impl RemoteCatalogProvider {
             .filter(|stored| !stored.models.is_empty())
             .and_then(|stored| stored.etag.clone());
         let url = format!(
-            "{}/api/models/providers/{}",
+            "{}/api/models/providers/{}.json",
             self.catalog_base_url.trim_end_matches('/'),
             urlencode(self.inner.id())
         );
