@@ -74,6 +74,24 @@ fn tells_the_model_where_the_notagent_docs_live() {
 }
 
 #[test]
+fn default_prompt_requires_small_root_cause_changes() {
+    let prompt = build_system_prompt(&options());
+
+    for rule in [
+        "trace the affected flow end to end",
+        "whether any code change is needed at all",
+        "Reuse existing helpers and patterns",
+        "Fix the root cause in the shared implementation",
+        "Inspect the relevant callers",
+        "Do not introduce unrequested abstractions",
+        "smallest correct change in the fewest files",
+        "Prefer deletion over addition",
+    ] {
+        assert!(prompt.contains(rule), "missing implementation rule: {rule}");
+    }
+}
+
+#[test]
 fn lists_a_custom_tool_when_it_supplies_a_snippet() {
     let prompt = build_system_prompt(&BuildSystemPromptOptions {
         selected_tools: tools(&["read", "dynamic_tool"]),
