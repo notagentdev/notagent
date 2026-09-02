@@ -72,11 +72,26 @@ fn points_the_model_at_public_notagent_documentation() {
 }
 
 #[test]
+fn default_prompt_separates_discussion_diagnosis_and_changes() {
+    let prompt = build_system_prompt(&options());
+
+    for rule in [
+        "Distinguish discussion, diagnosis, and change requests",
+        "Discussion requests authorize analysis only",
+        "Diagnosis requests authorize investigation and reporting, but not implementation",
+        "Only an explicit change request authorizes modifying the project",
+    ] {
+        assert!(prompt.contains(rule), "missing task intent rule: {rule}");
+    }
+}
+
+#[test]
 fn default_prompt_requires_small_root_cause_changes() {
     let prompt = build_system_prompt(&options());
 
     for rule in [
         "trace the affected flow end to end",
+        "carry the work through understanding, minimal implementation, and relevant verification",
         "whether any code change is needed at all",
         "Reuse existing helpers and patterns",
         "Fix the root cause in the shared implementation",
