@@ -386,9 +386,11 @@ impl TaskToolDefinition {
         let mut lines = vec![
             "Delegates independent work to subagents and returns what each one found.".to_owned(),
             String::new(),
+            "Do not call this tool unless the user explicitly asks for subagents, delegation, or parallel agent work. Requests for depth, thoroughness, research, investigation, review, planning, or broad codebase analysis do not by themselves authorize delegation.".to_owned(),
+            String::new(),
             "A subagent starts with no view of this conversation, so each task must carry the context it needs. It returns one answer; its intermediate steps are not shown to you or to the user, so summarise anything the user should see.".to_owned(),
             String::new(),
-            "Use this for work that is genuinely separable and would otherwise crowd this conversation: sweeping many files for one answer, or several independent investigations at once. Do not use it to read a known file, to search for a known symbol, or for anything you can finish in a step or two — going direct is faster and cheaper.".to_owned(),
+            "When delegation was explicitly requested, use it only for concrete, bounded work that can run independently while you perform useful, non-overlapping work. Keep the next blocking step local, and do not repeat delegated work yourself. Do not use it to read a known file, to search for a known symbol, or for anything you can finish in a step or two — going direct is faster and cheaper.".to_owned(),
             String::new(),
             "Subagent types:".to_owned(),
             describe_agent_types(&self.agent_types()),

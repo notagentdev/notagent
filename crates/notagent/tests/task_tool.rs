@@ -236,6 +236,29 @@ async fn describes_both_types_by_what_they_are_for() {
 }
 
 #[tokio::test]
+async fn requires_explicit_user_authorization_before_delegation() {
+    let harness = harness(ShellId::Worker, false);
+    let description = harness.tool.description();
+
+    assert!(
+        description.contains("unless the user explicitly asks"),
+        "{description}"
+    );
+    assert!(
+        description.contains("do not by themselves authorize delegation"),
+        "{description}"
+    );
+    assert!(
+        description.contains("Keep the next blocking step local"),
+        "{description}"
+    );
+    assert!(
+        description.contains("do not repeat delegated work yourself"),
+        "{description}"
+    );
+}
+
+#[tokio::test]
 async fn refuses_a_type_that_does_not_exist_naming_the_ones_that_do() {
     let harness = harness(ShellId::Worker, false);
     let error = harness
