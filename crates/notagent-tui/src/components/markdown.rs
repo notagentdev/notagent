@@ -662,6 +662,106 @@ impl Markdown {
         wrap_text_with_ansi(text, max_width.max(1))
     }
 
+    fn table_should_render_records(
+        &mut self,
+        rows: &[Vec<TableCell>],
+        column_widths: &[usize],
+        style_context: Option<&InlineStyleContext>,
+    ) -> bool {
+        if rows.is_empty() {
+            return false;
+        }
+
+        let mut affected_rows = 0;
+        for row in rows {
+            let mut cramped_cells = 0;
+            let mut row_is_affected = false;
+            for (column, cell) in row.iter().enumerate().take(column_widths.len()) {
+                let text = self.render_inline_tokens(&cell.tokens, style_context);
+                let width = column_widths[column].max(1);
+                let wrapped_height = Self::wrap_cell_text(&text, width).len();
+                let token_is_fragmented =
+                    Self::longest_word_width(&text, None) > width && wrapped_height >= 3;
+
+                cramped_cells += usize::from(wrapped_height >= 4);
+                row_is_affected |= token_is_fragmented || (width < 12 && wrapped_height >= 7);
+            }
+            row_is_affected |= cramped_cells >= 2;
+            affected_rows += usize::from(row_is_affected);
+        }
+
+        let threshold = if rows.len() == 1 {
+            1
+        } else {
+            2.max(rows.len().div_ceil(3))
+        };
+        affected_rows >= threshold
+    }
+
+    fn render_table_records(
+        &mut self,
+        header: &[TableCell],
+        rows: &[Vec<TableCell>],
+        available_width: usize,
+        style_context: Option<&InlineStyleContext>,
+    ) -> Vec<String> {
+        let available_width = available_width.max(1);
+        let mut labels = Vec::with_capacity(header.len());
+        for cell in header {
+            labels.push(self.render_inline_tokens(&cell.tokens, style_context));
+        }
+        let label_width = labels
+            .iter()
+            .map(|label| visible_width(label))
+            .max()
+            .unwrap_or(0);
+        let value_gap = 2;
+        let aligned = label_width + value_gap + 12 <= available_width;
+        let mut lines = Vec::new();
+
+        for (row_index, row) in rows.iter().enumerate() {
+            for (column, label) in labels.iter().enumerate() {
+                let value = row
+                    .get(column)
+                    .map(|cell| self.render_inline_tokens(&cell.tokens, style_context))
+                    .unwrap_or_default();
+
+                if aligned {
+                    let value_indent = label_width + value_gap;
+                    let value_width = available_width.saturating_sub(value_indent).max(1);
+                    for (line_index, value_line) in Self::wrap_cell_text(&value, value_width)
+                        .into_iter()
+                        .enumerate()
+                    {
+                        let prefix = if line_index == 0 {
+                            let padding =
+                                " ".repeat(label_width.saturating_sub(visible_width(label)));
+                            (self.theme.bold)(&format!("{label}{padding}"))
+                        } else {
+                            " ".repeat(label_width)
+                        };
+                        lines.push(format!("{prefix}{}{value_line}", " ".repeat(value_gap)));
+                    }
+                } else {
+                    let styled_label = (self.theme.bold)(label);
+                    lines.extend(Self::wrap_cell_text(&styled_label, available_width));
+
+                    let value_indent = 2.min(available_width.saturating_sub(1));
+                    let value_width = available_width.saturating_sub(value_indent).max(1);
+                    for value_line in Self::wrap_cell_text(&value, value_width) {
+                        lines.push(format!("{}{value_line}", " ".repeat(value_indent)));
+                    }
+                }
+            }
+
+            if row_index + 1 < rows.len() {
+                lines.push("─".repeat(available_width));
+            }
+        }
+
+        lines
+    }
+
     fn render_table(
         &mut self,
         token: &Token,
@@ -679,7 +779,9 @@ impl Markdown {
 
         let border_overhead = 3 * column_count + 1;
         if available_width < border_overhead + column_count {
-            let mut fallback = if token.raw.is_empty() {
+            let mut fallback = if !rows.is_empty() {
+                self.render_table_records(&header, &rows, available_width, style_context)
+            } else if token.raw.is_empty() {
                 Vec::new()
             } else {
                 wrap_text_with_ansi(&token.raw, available_width)
@@ -791,6 +893,15 @@ impl Markdown {
             widths
         };
         column_widths.truncate(column_count);
+
+        if self.table_should_render_records(&rows, &column_widths, style_context) {
+            let mut records =
+                self.render_table_records(&header, &rows, available_width, style_context);
+            if next_token_type.is_some_and(|kind| kind != "space") {
+                records.push(String::new());
+            }
+            return records;
+        }
 
         let border = |left: &str, middle: &str, right: &str, widths: &[usize]| {
             format!(

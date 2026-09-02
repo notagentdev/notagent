@@ -146,6 +146,93 @@ fn headings_hide_markdown_markers_at_every_level() {
 }
 
 #[test]
+fn a_systemically_cramped_table_renders_as_stacked_records() {
+    let _capabilities = lock_capabilities();
+    let mut markdown = Markdown::new(
+        "| Key | Notes |\n| --- | --- |\n| firstlongid | A readable explanatory sentence for this row. |\n| secondlongid | Another readable explanatory sentence for this row. |\n| short | A final readable explanatory sentence for this row. |",
+        0,
+        0,
+        default_markdown_theme(),
+        None,
+        None,
+    );
+
+    let visible_lines: Vec<String> = strip_ansi_trimmed(&markdown.render(17))
+        .into_iter()
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    assert!(
+        !visible_lines.iter().any(|line| line.starts_with('┌')),
+        "a cramped table must not retain its grid: {visible_lines:?}"
+    );
+    assert_eq!(
+        visible_lines
+            .iter()
+            .filter(|line| line.as_str() == "Key")
+            .count(),
+        3,
+        "each source row must become one labelled record: {visible_lines:?}"
+    );
+    assert_eq!(
+        visible_lines
+            .iter()
+            .filter(|line| line.chars().all(|character| character == '─'))
+            .count(),
+        2,
+        "stacked records must remain visually separable: {visible_lines:?}"
+    );
+    assert!(
+        visible_lines.iter().any(|line| line == "firstlongid"),
+        "record values must remain visible: {visible_lines:?}"
+    );
+}
+
+#[test]
+fn cramped_tables_keep_labels_and_values_aligned_when_space_allows() {
+    let _capabilities = lock_capabilities();
+    let mut markdown = Markdown::new(
+        "| A | B | C | D | E | F |\n| --- | --- | --- | --- | --- | --- |\n| alphabet | birthday | calendar | document | elephant | fountain |\n| airplane | building | cardinal | dinosaur | envelope | festival |",
+        0,
+        0,
+        default_markdown_theme(),
+        None,
+        None,
+    );
+
+    let visible_lines = strip_ansi_trimmed(&markdown.render(30));
+
+    assert!(
+        visible_lines.iter().any(|line| line == "A  alphabet"),
+        "record fields should remain aligned when their values have enough width: {visible_lines:?}"
+    );
+    assert!(
+        !visible_lines.iter().any(|line| line.starts_with('┌')),
+        "a systemically fragmented grid must use records: {visible_lines:?}"
+    );
+}
+
+#[test]
+fn one_mildly_fragmented_row_keeps_the_table_grid() {
+    let _capabilities = lock_capabilities();
+    let mut markdown = Markdown::new(
+        "| Key | Date | State |\n| --- | --- | --- |\n| short | 2025-01-01 | Ready |\n| verylongidentifier | 2025-02-02 | Ready |\n| final | 2025-03-03 | Done |",
+        0,
+        0,
+        default_markdown_theme(),
+        None,
+        None,
+    );
+
+    let visible_lines = strip_ansi_trimmed(&markdown.render(40));
+
+    assert!(
+        visible_lines.iter().any(|line| line.starts_with('┌')),
+        "one exceptional cell must not collapse an otherwise readable grid: {visible_lines:?}"
+    );
+}
+
+#[test]
 fn emits_an_osc8_hyperlink_when_the_terminal_supports_it() {
     let _capabilities = lock_capabilities();
     set_capabilities(TerminalCapabilities {
