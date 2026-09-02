@@ -37,7 +37,8 @@ use notagent_tui::tui_alt_screen::TuiAltScreen;
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 use crate::config::{
-    APP_NAME, APP_TITLE, CONFIG_DIR_NAME, VERSION, get_agent_dir, get_auth_path, get_docs_path,
+    APP_NAME, APP_TITLE, CONFIG_DIR_NAME, InstallEnv, InstallMethod, PROVIDER_DOCUMENTATION_URL,
+    VERSION, detect_install_method, get_agent_dir, get_auth_path,
 };
 use crate::core::agent_session::{
     AgentSession, AgentSessionEvent, CompactionReason, ExecuteBashOptions, NavigateTreeOptions,
@@ -2568,7 +2569,11 @@ impl InteractiveMode {
     }
 
     fn show_new_version_notification(&mut self, release: LatestPiRelease) {
-        let action = theme().fg(ThemeColor::Accent, &format!("{APP_NAME} update"));
+        let command = match detect_install_method(&InstallEnv::current()) {
+            InstallMethod::Homebrew => "brew upgrade notagent".to_owned(),
+            _ => format!("{APP_NAME} update"),
+        };
+        let action = theme().fg(ThemeColor::Accent, &command);
         let update_instruction = format!(
             "{}{action}",
             theme().fg(
@@ -6062,7 +6067,7 @@ impl InteractiveMode {
                 theme().fg(ThemeColor::Muted, "See:"),
                 theme().fg(
                     ThemeColor::Accent,
-                    &format!("  {}", get_docs_path().join("providers.md").display()),
+                    &format!("  {PROVIDER_DOCUMENTATION_URL}"),
                 ),
             ]);
         }

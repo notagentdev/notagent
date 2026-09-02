@@ -5,7 +5,7 @@ use semver::Version;
 use crate::utils::management_http::{FetchRetryOptions, fetch_with_retry};
 use crate::utils::notagent_user_agent::get_pi_user_agent;
 
-const LATEST_VERSION_URL: &str = "https://notagent.dev/api/latest-version";
+const LATEST_VERSION_URL: &str = "https://notagent.dev/api/latest-version.json";
 
 /// `crates/notagent/tests/support/mod.rs`). Unset in every other build path.
 static LATEST_VERSION_URL_OVERRIDE: std::sync::RwLock<Option<String>> =

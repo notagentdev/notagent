@@ -9,7 +9,7 @@ use crate::cli::config_selector::ConfigSelectorOptions;
 use crate::config::{
     APP_NAME, CONFIG_DIR_NAME, InstallEnv, InstallMethod, PACKAGE_NAME, SelfUpdateCommand,
     SelfUpdatePackageTarget, USER_CONFIG_DIR_NAME, VERSION, detect_install_method, get_agent_dir,
-    get_self_update_command, get_self_update_unavailable_instruction,
+    get_self_update_command, get_self_update_unavailable_instruction, get_update_instruction,
 };
 use crate::core::model_runtime::{CreateModelRuntimeOptions, ModelRuntime};
 use crate::core::package_manager::command_runner::{CommandRunner, ProcessCommandRunner};
@@ -1166,6 +1166,16 @@ pub async fn handle_package_command(
                     return Some(0);
                 }
                 let install_method = detect_install_method(&runtime.install_env);
+                if install_method == InstallMethod::Homebrew {
+                    if let Some(note) = self_update_plan.note.as_deref() {
+                        print_self_update_note(note, runtime);
+                    }
+                    match get_update_instruction(&runtime.install_env, APP_NAME) {
+                        Ok(instruction) => console.log(&paint.green(&instruction)),
+                        Err(message) => return Some(report_command_error(&message, runtime)),
+                    }
+                    return Some(0);
+                }
                 if cfg!(windows)
                     && install_method != InstallMethod::Npm
                     && install_method != InstallMethod::Pnpm
@@ -1174,7 +1184,6 @@ pub async fn handle_package_command(
                         "{APP_NAME} self-update on Windows is only supported for npm and pnpm installs."
                     )));
                     console.error(&paint.dim(&format!(
-                        // the name `config.rs` gives the standalone install.
                         "Detected install method: {}. Update {APP_NAME} manually.",
                         install_method.as_str()
                     )));

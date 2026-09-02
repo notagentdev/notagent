@@ -48,7 +48,7 @@ async fn serve(responses: Vec<CannedResponse>, fallback: CannedResponse) -> (Env
     // SAFETY: serialized by the guard.
     unsafe { std::env::remove_var("NOTAGENT_SKIP_VERSION_CHECK") };
     let server = TestServer::start(responses, fallback).await;
-    set_latest_version_url_for_tests(Some(format!("{}/api/latest-version", server.base_url)));
+    set_latest_version_url_for_tests(Some(format!("{}/api/latest-version.json", server.base_url)));
     (guard, server)
 }
 
@@ -104,7 +104,7 @@ async fn uses_the_notagent_dev_version_check_api_with_a_notagent_user_agent() {
     );
     let requests = server.requests();
     let request = requests.first().expect("request");
-    assert_eq!(request.path, "/api/latest-version");
+    assert_eq!(request.path, "/api/latest-version.json");
     assert!(
         request
             .header("user-agent")

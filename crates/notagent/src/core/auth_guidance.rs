@@ -1,14 +1,13 @@
-use crate::config::get_docs_path;
+use crate::config::{DOCUMENTATION_URL, PROVIDER_DOCUMENTATION_URL};
 
 const UNKNOWN_PROVIDER: &str = "unknown";
 
 /// `getProviderLoginHelp()`
 pub fn get_provider_login_help() -> String {
-    let docs = get_docs_path();
     [
         "Use /login to log into a provider via OAuth or API key. See:".to_owned(),
-        format!("  {}", docs.join("providers.md").display()),
-        format!("  {}", docs.join("models.md").display()),
+        format!("  {DOCUMENTATION_URL}"),
+        format!("  {PROVIDER_DOCUMENTATION_URL}"),
     ]
     .join("\n")
 }
@@ -56,9 +55,9 @@ mod tests {
     }
 
     #[test]
-    fn the_login_help_lists_both_docs_pages() {
+    fn the_login_help_links_to_public_documentation() {
         let help = get_provider_login_help();
-        assert!(help.contains("providers.md"));
-        assert!(help.contains("models.md"));
+        assert!(help.contains(DOCUMENTATION_URL));
+        assert!(help.contains(PROVIDER_DOCUMENTATION_URL));
     }
 }

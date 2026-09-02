@@ -1,4 +1,4 @@
-use crate::config::{get_docs_path, get_examples_path, get_readme_path};
+use crate::config::DOCUMENTATION_URL;
 use crate::core::skills::{Skill, format_skills_for_prompt};
 
 /// One preloaded context file: `AGENTS.md`, `CLAUDE.md` and the like.
@@ -92,10 +92,6 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
 
         return prompt;
     }
-
-    let readme_path = get_readme_path();
-    let docs_path = get_docs_path();
-    let examples_path = get_examples_path();
 
     // A tool appears in "Available tools" only when the caller supplies a
     // one-line snippet for it.
@@ -196,16 +192,8 @@ Guidelines:
 {guidelines}
 
 Notagent documentation (read only when the user asks about notagent itself, its SDK, extensions, themes, skills, or TUI):
-- Main documentation: {readme}
-- Additional docs: {docs}
-- Examples: {examples} (extensions, custom tools, SDK)
-- When reading notagent docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), notagent packages (docs/packages.md), environment variables (docs/environment-variables.md)
-- When working on notagent topics, read the docs and examples, and follow .md cross-references before implementing
-- Always read notagent .md files completely and follow links to related docs (e.g., tui.md for TUI API details)",
-        readme = readme_path.display(),
-        docs = docs_path.display(),
-        examples = examples_path.display(),
+- Public documentation: {DOCUMENTATION_URL}
+- When working on notagent topics, consult the public documentation before implementing",
     );
 
     if !append_section.is_empty() {

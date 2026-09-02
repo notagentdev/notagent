@@ -1,3 +1,5 @@
+mod support;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
@@ -7,6 +9,8 @@ use notagent::core::package_manager::command_runner::{CommandOptions, CommandRun
 use notagent::core::project_trust::ProjectTrustContext;
 use notagent::core::trust_manager::ProjectTrustStore;
 use notagent::package_manager_cli::{ConsoleIo, PackageCommandRuntime, handle_package_command};
+use notagent::utils::version_check::set_latest_version_url_for_tests;
+use support::{CannedResponse, TestServer};
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -166,6 +170,7 @@ impl Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
+        set_latest_version_url_for_tests(None);
         unsafe {
             match self.previous_home.as_ref() {
                 Some(home) => std::env::set_var("HOME", home),
@@ -521,6 +526,31 @@ async fn reports_that_the_latest_version_could_not_be_determined_when_offline() 
             .contains("Could not determine latest notagent version."),
         "{}",
         fixture.console.stderr()
+    );
+    assert!(fixture.runner.runs().is_empty());
+}
+
+#[tokio::test]
+async fn a_homebrew_self_update_prints_the_command_without_running_it() {
+    let mut fixture = Fixture::new();
+    let server =
+        TestServer::start(Vec::new(), CannedResponse::json(r#"{"version":"999.0.0"}"#)).await;
+    set_latest_version_url_for_tests(Some(format!("{}/api/latest-version.json", server.base_url)));
+    fixture.runtime.install_env = InstallEnv {
+        package_dir: PathBuf::from("/opt/homebrew/Caskroom/notagent/0.1.46"),
+        exec_path: PathBuf::from("/opt/homebrew/Caskroom/notagent/0.1.46/notagent"),
+        entrypoint: Some(PathBuf::from("/opt/homebrew/bin/notagent")),
+        standalone_binary: true,
+    };
+
+    assert_eq!(fixture.run(&["update", "--self"]).await, Some(0));
+    assert!(
+        fixture
+            .console
+            .stdout()
+            .contains("Run: brew upgrade notagent"),
+        "{}",
+        fixture.console.stdout()
     );
     assert!(fixture.runner.runs().is_empty());
 }

@@ -200,6 +200,33 @@ fn a_standalone_binary_points_at_the_releases_page() {
 }
 
 #[test]
+fn a_homebrew_cask_install_only_prints_the_upgrade_command() {
+    let _guard = path_lock();
+    let env = InstallEnv {
+        package_dir: PathBuf::from("/opt/homebrew/Caskroom/notagent/0.1.46"),
+        exec_path: PathBuf::from("/opt/homebrew/Caskroom/notagent/0.1.46/notagent"),
+        entrypoint: Some(PathBuf::from("/opt/homebrew/bin/notagent")),
+        standalone_binary: true,
+    };
+
+    assert_eq!(detect_install_method(&env), InstallMethod::Homebrew);
+    assert_eq!(
+        get_update_instruction(&env, "notagent").expect("instruction"),
+        "Run: brew upgrade notagent"
+    );
+    assert_eq!(
+        get_self_update_command(
+            &env,
+            "notagent",
+            None,
+            &SelfUpdatePackageTarget::new("notagent"),
+        )
+        .expect("no error"),
+        None
+    );
+}
+
+#[test]
 fn self_updates_npm_installs_from_custom_prefixes() {
     let _guard = path_lock();
     let (directory, package_dir, exec_path) = npm_prefix_install("notagent-prefix-");

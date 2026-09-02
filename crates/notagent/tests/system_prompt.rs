@@ -64,13 +64,11 @@ fn lists_every_default_tool_that_has_a_snippet() {
 }
 
 #[test]
-fn tells_the_model_where_the_notagent_docs_live() {
+fn points_the_model_at_public_notagent_documentation() {
     let prompt = build_system_prompt(&options());
 
-    assert!(prompt.contains(
-        "- When reading notagent docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory"
-    ));
-    assert!(prompt.contains("environment variables (docs/environment-variables.md)"));
+    assert!(prompt.contains("https://github.com/notagentdev/notagent#readme"));
+    assert!(!prompt.contains("Additional docs:"));
 }
 
 #[test]

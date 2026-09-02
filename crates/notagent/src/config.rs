@@ -11,6 +11,9 @@ pub const CONFIG_DIR_NAME: &str = ".notagent";
 /// User-level state root below the home directory.
 pub const USER_CONFIG_DIR_NAME: &str = ".notagent";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const DOCUMENTATION_URL: &str = "https://github.com/notagentdev/notagent#readme";
+pub const PROVIDER_DOCUMENTATION_URL: &str =
+    "https://github.com/notagentdev/notagent#local-and-custom-endpoints";
 
 /// e.g. `NOTAGENT_CODING_AGENT_DIR`.
 pub fn env_agent_dir() -> String {
@@ -176,6 +179,7 @@ pub fn get_bundled_interactive_asset_path(name: &str) -> PathBuf {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InstallMethod {
     Binary,
+    Homebrew,
     Npm,
     Pnpm,
     Yarn,
@@ -187,6 +191,7 @@ impl InstallMethod {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Binary => "binary",
+            Self::Homebrew => "homebrew",
             Self::Npm => "npm",
             Self::Pnpm => "pnpm",
             Self::Yarn => "yarn",
@@ -229,6 +234,9 @@ pub fn detect_install_method(env: &InstallEnv) -> InstallMethod {
         lowercase_slashes(&env.package_dir),
         lowercase_slashes(&env.exec_path)
     );
+    if resolved.contains("/caskroom/notagent/") {
+        return InstallMethod::Homebrew;
+    }
     if resolved.contains("/pnpm/") || resolved.contains("/.pnpm/") {
         return InstallMethod::Pnpm;
     }
@@ -465,7 +473,7 @@ pub fn get_self_update_command_for_method(
 ) -> Option<SelfUpdateCommand> {
     let uninstall_needed = target.package_name != installed_package_name;
     match method {
-        InstallMethod::Binary | InstallMethod::Unknown => None,
+        InstallMethod::Binary | InstallMethod::Homebrew | InstallMethod::Unknown => None,
         InstallMethod::Pnpm => {
             let bin_dir_args = pnpm_bin_dir_args(&env.package_dir);
             let mut install_args = vec![
@@ -623,7 +631,7 @@ fn get_global_package_roots(
             &["pm".to_owned(), "bin".to_owned(), "-g".to_owned()],
             false,
         )?)),
-        InstallMethod::Binary | InstallMethod::Unknown => Ok(Vec::new()),
+        InstallMethod::Binary | InstallMethod::Homebrew | InstallMethod::Unknown => Ok(Vec::new()),
     }
 }
 
@@ -758,6 +766,9 @@ pub fn get_self_update_unavailable_instruction(
     target: &SelfUpdatePackageTarget,
 ) -> Result<String, String> {
     let method = detect_install_method(env);
+    if method == InstallMethod::Homebrew {
+        return Ok("Run: brew upgrade notagent".to_owned());
+    }
     if method == InstallMethod::Binary {
         return Ok(
             "Download from: https://github.com/notagentdev/notagent/releases/latest".to_owned(),
