@@ -844,6 +844,31 @@ async fn native_anthropic_models_keep_cache_control_and_eager_tool_input() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn gpt_6_astra_uses_the_context_limit_of_each_openai_endpoint() {
+    let api = get_builtin_model("openai", "gpt-6-astra").expect("OpenAI model");
+    let codex = get_builtin_model("openai-codex", "gpt-6-astra").expect("Codex model");
+
+    assert_eq!(api.context_window, 1_050_000);
+    assert_eq!(codex.context_window, 872_000);
+    assert_eq!(api.max_tokens, 128_000);
+    assert_eq!(codex.max_tokens, 128_000);
+    assert_eq!(
+        get_supported_thinking_levels(&api),
+        vec![
+            ModelThinkingLevel::Low,
+            ModelThinkingLevel::Medium,
+            ModelThinkingLevel::High,
+            ModelThinkingLevel::Xhigh,
+            ModelThinkingLevel::Max,
+        ]
+    );
+    assert_eq!(
+        get_supported_thinking_levels(&codex),
+        get_supported_thinking_levels(&api)
+    );
+}
+
+#[test]
 fn max_thinking_is_opt_in_and_codex_models_advertise_it() {
     use notagent_ai::models::{clamp_thinking_level, get_supported_thinking_levels};
 
