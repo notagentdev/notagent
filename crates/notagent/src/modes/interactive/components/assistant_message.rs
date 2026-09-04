@@ -9,7 +9,7 @@ use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, ThemeColor, block_style, color_badge, format_elapsed_live, format_elapsed_precise,
+    BlockStyle, ThemeColor, block_style, format_elapsed_live, format_elapsed_precise,
     get_markdown_theme, theme,
 };
 
@@ -34,13 +34,12 @@ pub struct AssistantMessageComponent {
     last_message: Option<AssistantMessage>,
     has_tool_calls: bool,
     is_streaming: bool,
-    /// Whether the badge-style thinking block shows its text (the expand
-    /// toggle; reference `assistant_message.rs`).
+    /// Whether the compact thinking block shows its text.
     thinking_expanded: bool,
     /// When live thinking started streaming into this component.
     thinking_started: Option<std::time::Instant>,
     /// The frozen thinking duration once it ended. Replayed messages carry
-    /// none and show the THOUGHT badge without a runtime.
+    /// none and show the Thought heading without a runtime.
     thinking_finished: Option<std::time::Duration>,
     /// The last rendered timer second, so a tick rebuilds at most once per
     /// second.
@@ -105,13 +104,13 @@ impl AssistantMessageComponent {
         }
     }
 
-    /// Whether this component's thinking is still streaming — the badge
-    /// shows THINKING with a live timer and needs the one-second tick.
+    /// Whether this component's thinking is still streaming — the heading
+    /// shows Thinking with a live timer and needs the one-second tick.
     pub fn has_running_thinking(&self) -> bool {
         self.thinking_started.is_some() && self.thinking_finished.is_none()
     }
 
-    /// Advances the THINKING badge's timer. Returns `true` when the visible
+    /// Advances the Thinking heading's timer. Returns `true` when the visible
     /// second changed and the caller should request a render (reference
     /// `tick_thinking_timer`).
     pub fn tick_thinking_timer(&mut self) -> bool {
@@ -132,8 +131,7 @@ impl AssistantMessageComponent {
         true
     }
 
-    /// Opens or closes the badge-style thinking block; the expand toggle
-    /// reaches this through the chat's expandables.
+    /// Opens or closes the compact thinking block through the chat's expandables.
     pub fn set_expanded(&mut self, expanded: bool) {
         if self.thinking_expanded == expanded {
             return;
@@ -237,9 +235,9 @@ impl AssistantMessageComponent {
                         continue;
                     }
 
-                    // Hidden thinking is hidden in every style. The badge
-                    // style has no static label to fall back to — the badge
-                    // itself is the block — so hiding drops the block whole.
+                    // Hidden thinking is hidden in every style. The compact
+                    // style has no static label to fall back to, so hiding
+                    // drops the block whole.
                     if self.hide_thinking_block && block_style() == BlockStyle::Badge {
                         continue;
                     }
@@ -251,22 +249,23 @@ impl AssistantMessageComponent {
                         message.content[index..].iter().any(is_visible_content);
 
                     if block_style() == BlockStyle::Badge {
-                        // The badge style renders thinking as its own block:
-                        // THINKING with a live timer while it streams, THOUGHT
-                        // with the runtime once it ended, the text itself
-                        // behind the expand toggle (reference
-                        // `assistant_message.rs`).
+                        // The compact style renders thinking as its own block:
+                        // a muted heading with a live timer while it streams,
+                        // then the text itself behind the expand toggle.
                         let is_last_run = !message.content[index..]
                             .iter()
                             .any(|content| matches!(content, AssistantContent::Thinking(_)));
                         let running = is_last_run && self.has_running_thinking();
                         let theme_instance = theme();
-                        let mut badge_line = color_badge(
-                            &theme_instance,
-                            ThemeColor::ThinkingText,
-                            if running { "Thinking" } else { "Thought" },
+                        let mut heading = format!(
+                            "{}{}",
+                            theme_instance.fg(ThemeColor::Muted, "*"),
+                            theme_instance.fg(
+                                ThemeColor::Muted,
+                                if running { "Thinking" } else { "Thought" },
+                            ),
                         );
-                        // The runtime sits next to the badge — live it stays
+                        // The runtime sits next to the heading — live it stays
                         // invisible below one second, final it reads as ms
                         // only under a second.
                         let duration_text = if running {
@@ -278,7 +277,7 @@ impl AssistantMessageComponent {
                             None
                         };
                         if let Some(duration_text) = duration_text {
-                            badge_line.push_str(&format!(
+                            heading.push_str(&format!(
                                 " {}{}{}",
                                 theme_instance.fg(ThemeColor::Dim, "("),
                                 theme_instance.fg(ThemeColor::ThinkingText, &duration_text),
@@ -287,16 +286,13 @@ impl AssistantMessageComponent {
                         }
                         // A thinking run following earlier sections of the
                         // same message needs its own breathing room — without
-                        // it the badge sticks to the preceding answer text.
+                        // it the heading sticks to the preceding answer text.
                         if run_start > 0 {
                             self.content_container
                                 .add_child(component_ref(Spacer::new(1)));
                         }
-                        self.content_container.add_child(component_ref(Text::new(
-                            badge_line,
-                            self.output_pad.saturating_sub(1),
-                            0,
-                        )));
+                        self.content_container
+                            .add_child(component_ref(Text::new(heading, 0, 0)));
                         if self.thinking_expanded {
                             self.content_container
                                 .add_child(component_ref(Markdown::new(
@@ -321,9 +317,9 @@ impl AssistantMessageComponent {
                                     }),
                                 )));
                         }
-                        // The info line closes the block: under the badge
+                        // The info line closes the block: under the heading
                         // collapsed and under the thinking text expanded; the
-                        // runtime lives up on the badge line.
+                        // runtime lives on the heading line.
                         if !running {
                             self.content_container.add_child(component_ref(Text::new(
                                 theme_instance.fg(

@@ -7,7 +7,9 @@ use notagent::modes::interactive::components::markdown_transform::{
     MarkdownMessageType, MarkdownTransformContext, MarkdownTransformer,
 };
 use notagent::modes::interactive::components::user_message::UserMessageComponent;
-use notagent::modes::interactive::theme::theme::{BlockStyle, init_theme, set_block_style};
+use notagent::modes::interactive::theme::theme::{
+    BlockStyle, ThemeColor, init_theme, set_block_style, theme,
+};
 use notagent::utils::ansi::strip_ansi;
 use notagent_ai::types::{
     AssistantContent, AssistantMessage, StopReason, TextContent, ThinkingContent, ToolCall, Usage,
@@ -372,11 +374,11 @@ fn uses_configured_output_padding_for_user_messages() {
 }
 
 // ---------------------------------------------------------------------------
-// Badge block style (takeover of the reference's badge-style thinking block)
+// Compact thinking rendering in the badge block style
 // ---------------------------------------------------------------------------
 
 #[test]
-fn badge_style_collapses_thinking_behind_a_thought_badge() {
+fn badge_style_collapses_thinking_behind_a_muted_heading() {
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
     set_block_style(BlockStyle::Badge);
@@ -392,8 +394,21 @@ fn badge_style_collapses_thinking_behind_a_thought_badge() {
         Some(1),
         Vec::new(),
     );
-    let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    let lines = component.render(80);
+    let muted_heading = format!(
+        "{}{}",
+        theme().fg(ThemeColor::Muted, "*"),
+        theme().fg(ThemeColor::Muted, "Thought")
+    );
+    assert!(
+        lines.iter().any(|line| line.starts_with(&muted_heading)),
+        "the heading must start in column zero and use the muted foreground: {lines:#?}"
+    );
+    let rendered = strip_ansi(&lines.join("\n"));
+    assert!(
+        rendered.lines().any(|line| line.starts_with("*Thought")),
+        "{rendered}"
+    );
     assert!(rendered.contains("to expand)"), "{rendered}");
     assert!(
         !rendered.contains("secret reasoning"),
@@ -445,15 +460,15 @@ fn badge_style_hiding_thinking_drops_the_block_whole() {
         Vec::new(),
     );
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(!rendered.contains("THOUGHT"), "{rendered}");
+    assert!(!rendered.contains("*Thought"), "{rendered}");
     assert!(!rendered.contains("Thinking..."), "{rendered}");
     assert!(!rendered.contains("secret reasoning"), "{rendered}");
     assert!(rendered.contains("answer"), "{rendered}");
 
-    // Showing them again brings the badge back.
+    // Showing them again brings the heading back.
     component.set_hide_thinking_block(false);
     let shown = strip_ansi(&component.render(80).join("\n"));
-    assert!(shown.contains("THOUGHT"), "{shown}");
+    assert!(shown.contains("*Thought"), "{shown}");
 }
 
 #[test]
@@ -470,8 +485,8 @@ fn badge_style_thinking_timer_runs_while_streaming_and_freezes_on_text() {
     );
     assert!(component.has_running_thinking());
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("THINKING"), "{rendered}");
-    // No info line while the badge still counts.
+    assert!(rendered.contains("*Thinking"), "{rendered}");
+    // No info line while the heading still counts.
     assert!(!rendered.contains("to expand)"), "{rendered}");
 
     // Visible text after the thinking freezes the timer.
@@ -484,7 +499,7 @@ fn badge_style_thinking_timer_runs_while_streaming_and_freezes_on_text() {
     );
     assert!(!component.has_running_thinking());
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    assert!(rendered.contains("*Thought"), "{rendered}");
     assert!(rendered.contains("to expand)"), "{rendered}");
 }
 
@@ -506,7 +521,7 @@ fn badge_style_replayed_thought_carries_no_runtime() {
         Vec::new(),
     );
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("THOUGHT"), "{rendered}");
+    assert!(rendered.contains("*Thought"), "{rendered}");
     assert!(!rendered.contains("ms)"), "{rendered}");
     assert!(
         !rendered.contains("s)") || rendered.contains("to expand)"),

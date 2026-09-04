@@ -445,7 +445,7 @@ async fn a_resumed_thought_keeps_exploration_runs_separate() {
 
         let terminal = VirtualTerminal::new(100, 60);
         let mut driver = Driver::start(&app, terminal).await;
-        driver.wait_for("THOUGHT").await;
+        driver.wait_for("*Thought").await;
 
         let screen = driver.terminal.get_viewport().join("\n");
         assert!(

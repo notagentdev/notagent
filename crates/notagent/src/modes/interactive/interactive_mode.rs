@@ -931,7 +931,7 @@ expandable!(
     CustomMessageComponent,
     BashExecutionComponent,
     ExploreBlockComponent,
-    // The expand toggle opens and closes the badge-style thinking block
+    // The expand toggle opens and closes the compact thinking block
     // (reference: Ctrl+O reaches every transcript component).
     AssistantMessageComponent,
 );
@@ -2170,8 +2170,7 @@ impl InteractiveMode {
             }
             needs_render |= indicator.tick_elapsed();
         }
-        // The THINKING badge's live timer advances at most once per second
-        // (reference: the badge timer runs on the animation tick).
+        // The Thinking heading's live timer advances at most once per second.
         if let Some(component) = self.streaming_component.clone() {
             needs_render |= component.borrow_mut().tick_thinking_timer();
         }
