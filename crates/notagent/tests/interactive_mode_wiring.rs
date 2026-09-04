@@ -26,7 +26,7 @@ use notagent::modes::interactive::interactive_mode::{
     InteractiveModeHandle, InteractiveModeOptions, InteractiveTerminal, create_interactive_mode,
 };
 use notagent_agent::types::AgentMessage;
-use notagent_ai::providers::faux::faux_assistant_message;
+use notagent_ai::providers::faux::{faux_assistant_message, faux_thinking, faux_tool_call};
 use notagent_ai::types::{AssistantContent, StopReason, TextContent, UserContent, UserMessage};
 use notagent_tui::terminal::TerminalPump;
 use notagent_tui::test_terminal::VirtualTerminal;
@@ -408,6 +408,54 @@ async fn a_resumed_compacted_session_keeps_the_full_transcript_once() {
             screen.matches("Compacted from").count(),
             1,
             "a persisted compaction entry must be rendered exactly once: {screen}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_resumed_thought_keeps_exploration_runs_separate() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.session().with_session_manager(|manager| {
+            manager
+                .append_message(&AgentMessage::Assistant(faux_assistant_message(
+                    vec![faux_tool_call(
+                        "ls",
+                        serde_json::json!({ "path": "." }),
+                        Some("first-listing".to_owned()),
+                    )],
+                    StopReason::ToolUse,
+                )))
+                .expect("stored first exploration");
+            manager
+                .append_message(&AgentMessage::Assistant(faux_assistant_message(
+                    vec![
+                        faux_thinking("the listing needs a second look"),
+                        faux_tool_call(
+                            "ls",
+                            serde_json::json!({ "path": "." }),
+                            Some("second-listing".to_owned()),
+                        ),
+                    ],
+                    StopReason::ToolUse,
+                )))
+                .expect("stored thought and second exploration");
+        });
+
+        let terminal = VirtualTerminal::new(100, 60);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("THOUGHT").await;
+
+        let screen = driver.terminal.get_viewport().join("\n");
+        assert!(
+            !screen.contains("2 listings"),
+            "a resumed thought must close the preceding exploration block: {screen}"
+        );
+        assert_eq!(
+            screen.matches("1 listing").count(),
+            2,
+            "resume must preserve both exploration blocks around the thought: {screen}"
         );
     })
     .await;

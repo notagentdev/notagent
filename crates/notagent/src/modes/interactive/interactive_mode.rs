@@ -8707,7 +8707,12 @@ impl InteractiveMode {
             match item {
                 AgentMessage::Assistant(message) => {
                     self.add_message_to_chat(item, populate_history);
-                    if assistant_message_ends_search_run(message) {
+                    // Live streaming closes on thinking before later calls
+                    // open their block. A restored message arrives whole, so
+                    // reproduce that boundary before replaying its calls.
+                    if streamed_thinking_chars(message) > 0
+                        || assistant_message_ends_search_run(message)
+                    {
                         self.close_explore_block();
                     }
                     for content in message.content.iter() {
