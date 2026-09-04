@@ -4,6 +4,35 @@ A terminal coding agent, written in Rust. It runs as a TUI, talks to LLM
 providers over their native APIs, and drives an agent loop with tools for
 reading, editing, searching, and running commands.
 
+## Installation
+
+The initial Homebrew release supports Apple Silicon Macs:
+
+```sh
+brew install --cask notagentdev/tap/notagent
+```
+
+### Updating
+
+```sh
+brew upgrade notagent
+```
+
+notagent checks `notagent.dev` for new versions in the background and shows
+this command when an update is available. It never runs Homebrew or replaces
+its own executable.
+
+### Building from source
+
+The required Rust toolchain is pinned by the repository:
+
+```sh
+cargo build --release
+```
+
+The binary is `target/release/notagent`. Run the complete project gate with
+`scripts/check.sh`.
+
 ## Why notagent?
 
 **One agent, cache-friendly modes.** Planning and execution stay within the
@@ -74,15 +103,6 @@ never blocks a file.
 | `notagent-telemetry` | Vendor-neutral telemetry contracts (spans, events, attributes) |
 | `notagent-index` | Code symbol indexing using tree-sitter |
 
-## Build
-
-```sh
-cargo build --release
-```
-
-The binary is `target/release/notagent`. Run the test suite with
-`cargo test --workspace`.
-
 ## Usage
 
 ```sh
@@ -148,6 +168,15 @@ Additional OpenAI-compatible providers and models can be declared in
 `~/.notagent/agent/models.json`. Entries there are layered over the built-in
 catalog: new providers appear in the picker, and known models can be
 overridden per field.
+
+The binary also contains a built-in model catalog, so it remains usable
+offline. Catalog updates for authenticated providers are fetched from
+`notagent.dev` and cached in `~/.notagent/agent/models-store.json`. To force a
+refresh without changing the user-owned `models.json`, run:
+
+```sh
+notagent update --models
+```
 
 ## Built-in skills
 
