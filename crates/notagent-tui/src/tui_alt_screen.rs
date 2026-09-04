@@ -959,10 +959,8 @@ impl TuiAltScreen {
         let body = data.strip_prefix("\x1b[<")?;
         let (body, release) = if let Some(rest) = body.strip_suffix('M') {
             (rest, false)
-        } else if let Some(rest) = body.strip_suffix('m') {
-            (rest, true)
         } else {
-            return None;
+            (body.strip_suffix('m')?, true)
         };
         let mut parts = body.split(';');
         let number = |part: Option<&str>| -> Option<i64> {

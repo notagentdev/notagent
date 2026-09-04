@@ -1248,11 +1248,10 @@ pub fn truncate_to_width_opts(text: &str, max_width: usize, ellipsis: &str, pad:
     let mut kept_width = 0;
     let mut keep_contiguous_prefix = true;
     let mut overflowed = false;
-    let exhausted_input;
     let has_ansi = text.contains('\x1b');
     let has_tabs = text.contains('\t');
 
-    if !has_ansi && !has_tabs {
+    let exhausted_input = if !has_ansi && !has_tabs {
         for segment in graphemes(text) {
             let width = grapheme_width(segment);
             if keep_contiguous_prefix && kept_width + width <= target_width {
@@ -1267,7 +1266,7 @@ pub fn truncate_to_width_opts(text: &str, max_width: usize, ellipsis: &str, pad:
                 break;
             }
         }
-        exhausted_input = !overflowed;
+        !overflowed
     } else {
         let bytes = text.as_bytes();
         let mut i = 0;
@@ -1332,8 +1331,8 @@ pub fn truncate_to_width_opts(text: &str, max_width: usize, ellipsis: &str, pad:
             }
             i = end;
         }
-        exhausted_input = i >= text.len();
-    }
+        i >= text.len()
+    };
 
     if !overflowed && exhausted_input {
         return if pad {

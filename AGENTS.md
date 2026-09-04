@@ -45,7 +45,7 @@ take minutes and are not a verification step — use `cargo check`.
 Stale test binaries from earlier sessions can slow a run down badly; killing
 them (`pkill -f "target/debug/deps"`) before a full suite is worth it.
 
-Toolchain is pinned in `rust-toolchain.toml` (1.95.0 with rustfmt and clippy).
+Toolchain is pinned in `rust-toolchain.toml` (1.98.1 with rustfmt and clippy).
 `cargo fmt` runs with defaults — there is no `rustfmt.toml`.
 
 ## Testing

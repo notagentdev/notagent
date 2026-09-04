@@ -210,12 +210,14 @@ async fn run_request(
     context: &ImagesContext,
     options: Option<&ImagesOptions>,
     output: &mut AssistantImages,
-) -> Result<(), RawProviderError> {
-    let plain = |message: String| RawProviderError {
-        status: None,
-        body_text: None,
-        body_json: None,
-        message,
+) -> Result<(), Box<RawProviderError>> {
+    let plain = |message: String| {
+        Box::new(RawProviderError {
+            status: None,
+            body_text: None,
+            body_json: None,
+            message,
+        })
     };
 
     let Some(api_key) = options
@@ -300,7 +302,7 @@ async fn run_request(
     )
     .await
     .map_err(|error| match error {
-        ProviderRetryError::Request(error) => error.raw,
+        ProviderRetryError::Request(error) => Box::new(error.raw),
         ProviderRetryError::RetryDelayTooLong(message) => plain(message),
         ProviderRetryError::Aborted => plain("Request aborted".to_string()),
     })?;

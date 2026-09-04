@@ -481,25 +481,27 @@ impl CombinedAutocompleteProvider {
 
         let is_root_prefix = matches!(raw_prefix.as_str(), "" | "./" | "../" | "~" | "~/" | "/");
 
-        let search_dir;
-        let search_prefix;
-        if is_root_prefix || raw_prefix.ends_with('/') {
-            search_dir = if raw_prefix.starts_with('~') || expanded_prefix.starts_with('/') {
-                expanded_prefix.clone()
-            } else {
-                join(&[&self.base_path, &expanded_prefix])
-            };
-            search_prefix = String::new();
+        let (search_dir, search_prefix) = if is_root_prefix || raw_prefix.ends_with('/') {
+            (
+                if raw_prefix.starts_with('~') || expanded_prefix.starts_with('/') {
+                    expanded_prefix.clone()
+                } else {
+                    join(&[&self.base_path, &expanded_prefix])
+                },
+                String::new(),
+            )
         } else {
             let directory = dirname(&expanded_prefix);
             let file = basename(&expanded_prefix);
-            search_dir = if raw_prefix.starts_with('~') || expanded_prefix.starts_with('/') {
-                directory
-            } else {
-                join(&[&self.base_path, &directory])
-            };
-            search_prefix = file;
-        }
+            (
+                if raw_prefix.starts_with('~') || expanded_prefix.starts_with('/') {
+                    directory
+                } else {
+                    join(&[&self.base_path, &directory])
+                },
+                file,
+            )
+        };
 
         let Ok(entries) = std::fs::read_dir(&search_dir) else {
             return Vec::new();
