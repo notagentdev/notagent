@@ -72,7 +72,7 @@ cask "notagent" do
   url "https://github.com/notagentdev/notagent/releases/download/v#{version}/notagent-v#{version}-aarch64-apple-darwin.tar.gz"
   name "notagent"
   desc "Terminal coding agent with multi-provider model support"
-  homepage "https://notagent.dev"
+  homepage "https://notagent.dev/"
 
   livecheck do
     url "https://notagent.dev/api/latest-version.json"
