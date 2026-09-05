@@ -282,18 +282,16 @@ async fn a_writing_tool_ends_the_exploration_run() {
     .await;
 }
 
-/// The model narrating its own exploration keeps the run together: a message
-/// whose text introduces the call it makes in the same breath is one step, not
-/// two. This is the shape that used to split a single look into a block per
-/// call.
+/// Narration settles the preceding exploration before its own calls start.
 #[tokio::test(flavor = "current_thread")]
-async fn narrating_the_exploration_keeps_it_in_one_block() {
+async fn narration_separates_explorations_without_splitting_its_own_calls() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;
         let project = e2e.path(".");
         e2e.faux().set_responses(vec![
             narrated_tool_call("Looking at the project root", "ls", "call-1", &project),
             narrated_tool_call("Now searching for a needle", "grep", "call-2", "needle"),
+            tool_call_reply("ls", "call-3", json!({ "path": &project })),
             reply("Had a look."),
         ]);
         let mut driver = e2e.start().await;
@@ -305,8 +303,12 @@ async fn narrating_the_exploration_keeps_it_in_one_block() {
         let screen = driver.screen();
         assert_eq!(
             screen.matches("EXPLORED").count(),
-            1,
-            "the narration does not split the run:\n{screen}"
+            2,
+            "new narration settles the preceding run:\n{screen}"
+        );
+        assert!(
+            screen.contains("1 search, 1 listing"),
+            "consecutive calls after narration must stay together:\n{screen}"
         );
     })
     .await;

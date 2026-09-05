@@ -936,26 +936,14 @@ expandable!(
     AssistantMessageComponent,
 );
 
-/// Whether a finished assistant message ends a run of exploration.
-/// The reference closes the block on the reasoning and the message events
-/// themselves (`TaskReasoning`, `TaskMessage`), which arrive before the tool
-/// calls they lead to. Our messages carry both at once, so the same rule reads
-/// as: the message put something of its own in the transcript — an answer or a
-/// thought — and did not announce exploration alongside it. A message whose
-/// text introduces its own exploration keeps the run open, because the reference
-/// would not have closed it either: there, the calls follow the text inside the
-/// same turn.
-/// Characters of thinking an assistant message shows so far. Growth during
-/// event, which closes the active exploration the moment reasoning appears.
-/// Deliberately thinking only: narration text that introduces its own
-/// exploration keeps the run in one block (see
-/// `assistant_message_ends_search_run` and the pinned e2e case), while a
-/// thought is a break in the exploration by definition.
-fn streamed_thinking_chars(message: &notagent_ai::types::AssistantMessage) -> usize {
+/// Visible content ends the preceding exploration immediately: leaving its
+/// timer running above a growing answer would repeatedly clear scrollback.
+fn streamed_visible_chars(message: &notagent_ai::types::AssistantMessage) -> usize {
     message
         .content
         .iter()
         .map(|content| match content {
+            notagent_ai::types::AssistantContent::Text(text) => text.text.trim().len(),
             notagent_ai::types::AssistantContent::Thinking(thinking) => {
                 thinking.thinking.trim().len()
             }
@@ -964,21 +952,15 @@ fn streamed_thinking_chars(message: &notagent_ai::types::AssistantMessage) -> us
         .sum()
 }
 
+/// A completed message must not close the new exploration its own calls opened.
 fn assistant_message_ends_search_run(message: &notagent_ai::types::AssistantMessage) -> bool {
-    let has_visible_content = message.content.iter().any(|content| match content {
-        notagent_ai::types::AssistantContent::Text(text) => !text.text.trim().is_empty(),
-        notagent_ai::types::AssistantContent::Thinking(thinking) => {
-            !thinking.thinking.trim().is_empty()
-        }
-        notagent_ai::types::AssistantContent::ToolCall(_) => false,
-    });
     let announced_exploration = message.content.iter().any(|content| {
         matches!(
             content,
             notagent_ai::types::AssistantContent::ToolCall(call) if is_explore_tool(&call.name)
         )
     });
-    has_visible_content && !announced_exploration
+    streamed_visible_chars(message) > 0 && !announced_exploration
 }
 
 struct ExpandableText {
@@ -8199,10 +8181,9 @@ impl InteractiveMode {
                     self.chat_expandables
                         .push(Rc::clone(&component) as Rc<RefCell<dyn Expandable>>);
                     self.streaming_component = Some(component);
-                    // A message that already opens with thinking is the same
-                    // reasoning moment as growth during streaming; only the
-                    // delivery granularity differs.
-                    self.streaming_visible_chars = streamed_thinking_chars(&message);
+                    // Providers may deliver the first visible content with
+                    // MessageStart rather than a later delta.
+                    self.streaming_visible_chars = streamed_visible_chars(&message);
                     if self.streaming_visible_chars > 0 {
                         self.close_explore_block();
                     }
@@ -8221,12 +8202,9 @@ impl InteractiveMode {
                     component
                         .borrow_mut()
                         .update_content(message.clone(), Some(true));
-                    // The reference closes the exploration on its reasoning
-                    // event; here that moment is the streamed message growing
-                    // thinking. Calls that follow open a fresh block, so a
-                    // thought separates two explorations instead of hiding
-                    // inside one.
-                    let visible = streamed_thinking_chars(&message);
+                    // Settle the preceding block before any subsequent calls
+                    // open their own exploration below this text or thought.
+                    let visible = streamed_visible_chars(&message);
                     if visible > self.streaming_visible_chars {
                         self.close_explore_block();
                     }
@@ -8714,12 +8692,9 @@ impl InteractiveMode {
             match item {
                 AgentMessage::Assistant(message) => {
                     self.add_message_to_chat(item, populate_history);
-                    // Live streaming closes on thinking before later calls
-                    // open their block. A restored message arrives whole, so
-                    // reproduce that boundary before replaying its calls.
-                    if streamed_thinking_chars(message) > 0
-                        || assistant_message_ends_search_run(message)
-                    {
+                    // Reproduce the live text/thinking boundary before this
+                    // restored message's calls open their own block.
+                    if streamed_visible_chars(message) > 0 {
                         self.close_explore_block();
                     }
                     for content in message.content.iter() {

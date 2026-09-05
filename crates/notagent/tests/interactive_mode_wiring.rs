@@ -414,49 +414,102 @@ async fn a_resumed_compacted_session_keeps_the_full_transcript_once() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_resumed_thought_keeps_exploration_runs_separate() {
+async fn resumed_text_and_thinking_keep_exploration_runs_separate() {
     local(async {
-        let app = HeadlessApp::create().await;
-        app.session().with_session_manager(|manager| {
-            manager
-                .append_message(&AgentMessage::Assistant(faux_assistant_message(
-                    vec![faux_tool_call(
-                        "ls",
-                        serde_json::json!({ "path": "." }),
-                        Some("first-listing".to_owned()),
-                    )],
-                    StopReason::ToolUse,
-                )))
-                .expect("stored first exploration");
-            manager
-                .append_message(&AgentMessage::Assistant(faux_assistant_message(
-                    vec![
-                        faux_thinking("the listing needs a second look"),
-                        faux_tool_call(
+        for content in [
+            faux_thinking("the listing needs a second look"),
+            AssistantContent::Text(TextContent::new("the listing needs a second look")),
+        ] {
+            let app = HeadlessApp::create().await;
+            app.session().with_session_manager(|manager| {
+                manager
+                    .append_message(&AgentMessage::Assistant(faux_assistant_message(
+                        vec![faux_tool_call(
                             "ls",
                             serde_json::json!({ "path": "." }),
-                            Some("second-listing".to_owned()),
-                        ),
-                    ],
-                    StopReason::ToolUse,
-                )))
-                .expect("stored thought and second exploration");
-        });
+                            Some("first-listing".to_owned()),
+                        )],
+                        StopReason::ToolUse,
+                    )))
+                    .expect("stored first exploration");
+                manager
+                    .append_message(&AgentMessage::Assistant(faux_assistant_message(
+                        vec![
+                            content,
+                            faux_tool_call(
+                                "ls",
+                                serde_json::json!({ "path": "." }),
+                                Some("second-listing".to_owned()),
+                            ),
+                        ],
+                        StopReason::ToolUse,
+                    )))
+                    .expect("stored visible content and second exploration");
+            });
 
-        let terminal = VirtualTerminal::new(100, 60);
+            let terminal = VirtualTerminal::new(100, 60);
+            let mut driver = Driver::start(&app, terminal).await;
+            driver.wait_for("1 listing").await;
+
+            let screen = driver.terminal.get_viewport().join("\n");
+            assert!(
+                !screen.contains("2 listings"),
+                "resumed visible content must close the preceding exploration block: {screen}"
+            );
+            assert_eq!(
+                screen.matches("1 listing").count(),
+                2,
+                "resume must preserve both exploration blocks around visible content: {screen}"
+            );
+        }
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_streaming_answer_does_not_keep_repainting_the_previous_exploration() {
+    local(async {
+        let app = HeadlessApp::create_slow(100.0).await;
+        let answer = (0..120)
+            .map(|row| format!("Answer line {row:03}\n"))
+            .collect::<String>();
+        app.faux().set_responses(vec![
+            tool_call_reply("ls", "listing", serde_json::json!({ "path": "." })),
+            reply(&answer),
+        ]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
         let mut driver = Driver::start(&app, terminal).await;
-        driver.wait_for("*Thought").await;
-
-        let screen = driver.terminal.get_viewport().join("\n");
+        driver.wait_for("notagent").await;
+        driver.submit("look around, then explain").await;
+        driver.wait_for("Answer line 030").await;
         assert!(
-            !screen.contains("2 listings"),
-            "a resumed thought must close the preceding exploration block: {screen}"
+            app.session().is_streaming(),
+            "the check must run before MessageEnd"
+        );
+
+        driver.terminal.clear_writes();
+        driver.settle_for(1_200).await;
+        let writes = driver.terminal.get_writes();
+        assert!(
+            app.session().is_streaming(),
+            "the answer must still be streaming"
         );
         assert_eq!(
-            screen.matches("1 listing").count(),
-            2,
-            "resume must preserve both exploration blocks around the thought: {screen}"
+            writes.matches("\x1b[3J").count(),
+            0,
+            "an old exploration timer must not clear scrollback during the answer"
         );
+        let history = driver.terminal.get_scroll_buffer().join("\n");
+        assert!(
+            !history.contains("EXPLORING"),
+            "the preceding exploration must be settled: {history}"
+        );
+        assert!(
+            history.contains("EXPLORED"),
+            "the completed exploration must remain in history: {history}"
+        );
+        app.session().request_abort();
+        driver.settle_for(100).await;
     })
     .await;
 }
