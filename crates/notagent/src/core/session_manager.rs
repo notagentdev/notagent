@@ -15,6 +15,63 @@ use crate::utils::paths::{normalize_path_default, resolve_path_default};
 
 pub const CURRENT_SESSION_VERSION: u32 = 3;
 
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+
+    #[test]
+    fn a_partial_failed_append_is_removed_before_pending_entries_are_retried() {
+        let directory = tempfile::tempdir().expect("directory");
+        let cwd = directory.path().to_string_lossy();
+        let mut manager = SessionManager::create(&cwd, Some(&cwd), None).expect("manager");
+        manager
+            .append_message_value(json!({"role":"assistant", "content":[]}))
+            .expect("initial flush");
+        let path = manager.get_session_file().expect("file").to_owned();
+        let original = std::fs::read(&path).expect("original");
+        let confirmed = manager.persisted_entries;
+        // Buffer an entry without touching the file, then inject a short write
+        // through the same persistence boundary used by normal appends.
+        manager.persist = false;
+        manager
+            .append_message_value(json!({"role":"user", "content":"pending", "timestamp":1}))
+            .expect("buffer");
+        manager.persist = true;
+        manager
+            .persist_entry_with(|file, _| {
+                file.write_all(b"{\"type\":\"message\"")?;
+                Err(std::io::Error::other("injected short write"))
+            })
+            .expect_err("write failure");
+        assert_eq!(
+            manager.persisted_entries, confirmed,
+            "a failed write must not advance the durable prefix"
+        );
+        assert_eq!(
+            std::fs::read(&path).expect("rolled back"),
+            original,
+            "a partial line must not remain after a successful rollback"
+        );
+        // A rollback can itself fail. A later retry must truncate its leftover
+        // bytes before appending, using the retained rollback offset.
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("file")
+            .write_all(b"partial leftover")
+            .expect("partial suffix");
+        manager.append_thinking_level_change("high").expect("retry");
+        let reopened = SessionManager::open(&path, Some(&cwd), None).expect("reopen");
+        assert_eq!(reopened.get_entries().len(), manager.get_entries().len());
+        assert_eq!(
+            reopened.get_branch(None).len(),
+            manager.get_branch(None).len(),
+            "the complete parent chain must survive recovery"
+        );
+        assert!(manager.rollback_offset.is_none());
+    }
+}
+
 // =============================================================================
 // Entry types
 // =============================================================================
@@ -1294,6 +1351,10 @@ pub struct SessionManager {
     cwd: String,
     persist: bool,
     flushed: bool,
+    // The in-memory tree includes pending entries; only this prefix is on disk.
+    persisted_entries: usize,
+    rollback_offset: Option<u64>,
+    persistence_error: Option<SessionManagerError>,
     file_entries: Vec<FileEntry>,
     ids: HashSet<String>,
     labels_by_id: BTreeMap<String, String>,
@@ -1319,6 +1380,9 @@ impl SessionManager {
             cwd: resolve_or_raw(cwd),
             persist,
             flushed: false,
+            persisted_entries: 0,
+            rollback_offset: None,
+            persistence_error: None,
             file_entries: Vec::new(),
             ids: HashSet::new(),
             labels_by_id: BTreeMap::new(),
@@ -1387,6 +1451,8 @@ impl SessionManager {
         }
         self.build_index();
         self.flushed = true;
+        self.persisted_entries = self.file_entries.len();
+        self.rollback_offset = None;
         Ok(())
     }
 
@@ -1414,6 +1480,8 @@ impl SessionManager {
         self.label_timestamps_by_id.clear();
         self.leaf_id = None;
         self.flushed = false;
+        self.persisted_entries = 0;
+        self.rollback_offset = None;
 
         if self.persist {
             let file_timestamp = timestamp.replace([':', '.'], "-");
@@ -1455,14 +1523,22 @@ impl SessionManager {
         }
     }
 
-    fn rewrite_file(&self) -> Result<(), SessionManagerError> {
+    fn rewrite_file(&mut self) -> Result<(), SessionManagerError> {
         let (true, Some(session_file)) = (self.persist, &self.session_file) else {
             return Ok(());
         };
-        let mut file = std::fs::File::create(session_file).map_err(io_error)?;
+        let parent = Path::new(session_file)
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
+        let mut file = tempfile::NamedTempFile::new_in(parent).map_err(io_error)?;
         for entry in &self.file_entries {
             writeln!(file, "{}", entry.to_json()).map_err(io_error)?;
         }
+        file.as_file().sync_all().map_err(io_error)?;
+        file.persist(session_file)
+            .map_err(|error| io_error(error.error))?;
+        self.persisted_entries = self.file_entries.len();
+        self.rollback_offset = None;
         Ok(())
     }
 
@@ -1490,7 +1566,19 @@ impl SessionManager {
         self.session_file.as_deref()
     }
 
-    fn persist_entry(&mut self, entry: &SessionEntry) -> Result<(), SessionManagerError> {
+    fn persist_entry(&mut self) -> Result<(), SessionManagerError> {
+        self.persist_entry_with(|file, entries| {
+            for entry in entries {
+                writeln!(file, "{}", entry.to_json())?;
+            }
+            file.sync_data()
+        })
+    }
+
+    fn persist_entry_with(
+        &mut self,
+        write_entries: impl FnOnce(&mut std::fs::File, &[FileEntry]) -> std::io::Result<()>,
+    ) -> Result<(), SessionManagerError> {
         let (true, Some(session_file)) = (self.persist, self.session_file.clone()) else {
             return Ok(());
         };
@@ -1500,40 +1588,31 @@ impl SessionManager {
             .iter()
             .filter_map(FileEntry::as_entry)
             .any(SessionEntry::is_assistant_message);
-        if !has_assistant {
-            if self.flushed {
-                let mut file = std::fs::OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .open(&session_file)
-                    .map_err(io_error)?;
-                writeln!(file, "{}", FileEntry::Entry(entry.clone()).to_json())
-                    .map_err(io_error)?;
-            } else {
-                // Stay unflushed so the first assistant message writes everything.
-                self.flushed = false;
-            }
+        if !has_assistant && !self.flushed {
             return Ok(());
         }
-
-        if !self.flushed {
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&session_file)
-                .map_err(io_error)?;
-            for entry in &self.file_entries {
-                writeln!(file, "{}", entry.to_json()).map_err(io_error)?;
-            }
-            self.flushed = true;
-        } else {
-            let mut file = std::fs::OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(&session_file)
-                .map_err(io_error)?;
-            writeln!(file, "{}", FileEntry::Entry(entry.clone()).to_json()).map_err(io_error)?;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .create_new(!self.flushed)
+            .open(&session_file)
+            .map_err(io_error)?;
+        self.flushed = true;
+        // Retry a failed rollback before appending anything else. Otherwise a
+        // partially written JSON line would consume the next entry on reload.
+        if let Some(offset) = self.rollback_offset {
+            file.set_len(offset).map_err(io_error)?;
         }
+        let offset = file.metadata().map_err(io_error)?.len();
+        self.rollback_offset = Some(offset);
+        let result = write_entries(&mut file, &self.file_entries[self.persisted_entries..]);
+        if let Err(error) = result {
+            // Keep the entire pending prefix for the next attempt, even when
+            // truncation fails too. Never persist a child without its parent.
+            let _ = file.set_len(offset);
+            return Err(io_error(error));
+        }
+        self.persisted_entries = self.file_entries.len();
+        self.rollback_offset = None;
         Ok(())
     }
 
@@ -1542,8 +1621,15 @@ impl SessionManager {
         self.file_entries.push(FileEntry::Entry(entry.clone()));
         self.ids.insert(id.clone());
         self.leaf_id = Some(id.clone());
-        self.persist_entry(&entry)?;
+        if let Err(error) = self.persist_entry() {
+            self.persistence_error = Some(error.clone());
+            return Err(error);
+        }
         Ok(id)
+    }
+
+    pub fn take_persistence_error(&mut self) -> Option<SessionManagerError> {
+        self.persistence_error.take()
     }
 
     fn next_id(&self) -> String {
@@ -1777,7 +1863,7 @@ impl SessionManager {
             label: label.map(str::to_owned),
             extra: Map::new(),
         };
-        let id = self.append_entry(SessionEntry::Label(entry))?;
+        let result = self.append_entry(SessionEntry::Label(entry));
         match label.filter(|label| !label.is_empty()) {
             Some(label) => {
                 self.labels_by_id
@@ -1790,7 +1876,7 @@ impl SessionManager {
                 self.label_timestamps_by_id.remove(target_id);
             }
         }
-        Ok(id)
+        result
     }
 
     /// Walk from an entry to the root, returning the path in root-first order.
@@ -2041,6 +2127,8 @@ impl SessionManager {
             .chain(label_entries.into_iter().map(FileEntry::Entry))
             .collect();
         self.session_id = new_session_id;
+        self.persisted_entries = 0;
+        self.rollback_offset = None;
         if self.persist {
             self.session_file = Some(new_session_file.clone());
         }

@@ -83,6 +83,7 @@ unicode-width = { workspace = true }
 uuid = { workspace = true }
 futures = { workspace = true }
 globset = { workspace = true }
+tempfile = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
@@ -98,5 +99,4 @@ dirs = { workspace = true }
 futures = { workspace = true }
 # VirtualTerminal support for interactive component tests.
 notagent-tui = { workspace = true, features = ["test-terminal"] }
-tempfile = { workspace = true }
 tokio = { workspace = true }

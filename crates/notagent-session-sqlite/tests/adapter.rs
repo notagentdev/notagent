@@ -7,7 +7,7 @@ fn commits_a_transaction_and_returns_its_result() {
     let db = RusqliteDatabase::open(":memory:").expect("opens");
     db.exec("CREATE TABLE values_table (value INTEGER NOT NULL)")
         .expect("creates");
-    let result = with_transaction(&db, || {
+    let result = with_transaction(&db, |db| {
         db.run(&SqlQuery::new(
             "INSERT INTO values_table (value) VALUES (?)",
             vec![SqlValue::Integer(42)],
@@ -30,7 +30,7 @@ fn rolls_back_a_failed_transaction() {
     let db = RusqliteDatabase::open(":memory:").expect("opens");
     db.exec("CREATE TABLE values_table (value INTEGER NOT NULL)")
         .expect("creates");
-    let error = with_transaction(&db, || {
+    let error = with_transaction(&db, |db| {
         db.run(&SqlQuery::new(
             "INSERT INTO values_table (value) VALUES (?)",
             vec![SqlValue::Integer(42)],
@@ -95,4 +95,65 @@ fn reports_a_closed_database() {
     db.close();
     let error = db.exec("SELECT 1").expect_err("rejects");
     assert_eq!(error.0, "SQLite database is closed");
+}
+
+#[test]
+fn competing_transactions_wait_until_the_connection_is_released() {
+    use std::sync::{Arc, mpsc};
+    use std::time::Duration;
+    let db = Arc::new(RusqliteDatabase::open(":memory:").expect("open"));
+    let (entered, wait_entered) = mpsc::channel();
+    let (release, wait_release) = mpsc::channel();
+    let first = Arc::clone(&db);
+    let holder = std::thread::spawn(move || {
+        with_transaction(first.as_ref(), |db| {
+            db.exec("CREATE TABLE isolated (value INTEGER)")?;
+            entered.send(()).expect("entered");
+            wait_release
+                .recv_timeout(Duration::from_secs(5))
+                .expect("release");
+            Ok(())
+        })
+    });
+    wait_entered
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first transaction");
+    let (finished, wait_finished) = mpsc::channel();
+    let second = Arc::clone(&db);
+    let waiter = std::thread::spawn(move || {
+        let result = with_transaction(second.as_ref(), |db| {
+            db.exec("INSERT INTO isolated VALUES (1)")
+        });
+        finished.send(result).expect("result");
+    });
+    let early = wait_finished.recv_timeout(Duration::from_millis(100));
+    release.send(()).expect("release holder");
+    holder.join().expect("holder").expect("first commit");
+    waiter.join().expect("waiter");
+    assert!(
+        matches!(early, Err(mpsc::RecvTimeoutError::Timeout)),
+        "a competing BEGIN must wait rather than fail or enter the current transaction: {early:?}"
+    );
+    wait_finished
+        .recv_timeout(Duration::from_secs(5))
+        .expect("completed")
+        .expect("second commit");
+}
+
+#[test]
+fn a_failed_commit_rolls_back_before_the_next_transaction() {
+    let db = RusqliteDatabase::open(":memory:").expect("open");
+    db.exec("PRAGMA foreign_keys=ON; CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(id INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)").expect("schema");
+    with_transaction(&db, |db| db.exec("INSERT INTO child VALUES (1)"))
+        .expect_err("deferred constraint must reject commit");
+    with_transaction(&db, |db| {
+        db.exec("INSERT INTO parent VALUES (1); INSERT INTO child VALUES (1)")
+    })
+    .expect("failed commit must not leave a transaction open");
+    assert_eq!(
+        db.all(&SqlQuery::raw("SELECT * FROM child"))
+            .expect("rows")
+            .len(),
+        1
+    );
 }

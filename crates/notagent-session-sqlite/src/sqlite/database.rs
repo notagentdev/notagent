@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
@@ -7,8 +8,8 @@ use serde_json::{Map, Value};
 use super::sql::SqlQuery;
 use super::types::{Row, SqliteDatabase, SqliteDatabaseFactory, SqliteError, SqliteRunResult};
 
-pub struct RusqliteDatabase {
-    connection: Mutex<Option<Connection>>,
+pub struct RusqliteDatabase<C = Connection> {
+    connection: Mutex<Option<C>>,
 }
 
 impl RusqliteDatabase {
@@ -18,16 +19,21 @@ impl RusqliteDatabase {
             connection: Mutex::new(Some(connection)),
         })
     }
+}
 
+impl<C: BorrowMut<Connection> + Send> RusqliteDatabase<C> {
     fn with_connection<T>(
         &self,
-        body: impl FnOnce(&Connection) -> Result<T, SqliteError>,
+        body: impl FnOnce(&mut Connection) -> Result<T, SqliteError>,
     ) -> Result<T, SqliteError> {
-        let guard = self.connection.lock().expect("sqlite mutex");
+        let mut guard = self
+            .connection
+            .lock()
+            .map_err(|_| SqliteError("SQLite connection lock is poisoned".to_owned()))?;
         let connection = guard
-            .as_ref()
+            .as_mut()
             .ok_or_else(|| SqliteError("SQLite database is closed".to_owned()))?;
-        body(connection)
+        body(connection.borrow_mut())
     }
 }
 
@@ -46,7 +52,31 @@ fn row_to_json(row: &rusqlite::Row<'_>, columns: &[String]) -> Result<Row, Sqlit
     Ok(result)
 }
 
-impl SqliteDatabase for RusqliteDatabase {
+impl<C: BorrowMut<Connection> + Send> SqliteDatabase for RusqliteDatabase<C> {
+    fn transaction(
+        &self,
+        body: &mut dyn FnMut(&dyn SqliteDatabase) -> Result<(), SqliteError>,
+    ) -> Result<(), SqliteError> {
+        self.with_connection(|connection| {
+            connection.execute_batch("BEGIN IMMEDIATE")?;
+            // The outer mutex stays locked; callback queries lock only this
+            // borrowed view, never the outer connection again.
+            let view = RusqliteDatabase {
+                connection: Mutex::new(Some(connection)),
+            };
+            struct Rollback<'a>(&'a dyn SqliteDatabase);
+            impl Drop for Rollback<'_> {
+                fn drop(&mut self) {
+                    let _ = self.0.exec("ROLLBACK");
+                }
+            }
+            let rollback = Rollback(&view);
+            body(&view)?;
+            view.exec("COMMIT")?;
+            drop(rollback);
+            Ok(())
+        })
+    }
     fn exec(&self, sql: &str) -> Result<(), SqliteError> {
         self.with_connection(|connection| {
             connection.execute_batch(sql)?;
@@ -87,9 +117,8 @@ impl SqliteDatabase for RusqliteDatabase {
     }
 
     fn close(&self) {
-        let mut guard = self.connection.lock().expect("sqlite mutex");
-        if let Some(connection) = guard.take() {
-            let _ = connection.close();
+        if let Ok(mut guard) = self.connection.lock() {
+            guard.take();
         }
     }
 }

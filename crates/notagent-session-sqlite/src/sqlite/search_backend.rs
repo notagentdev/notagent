@@ -83,7 +83,7 @@ END;
 pub fn ensure_search_schema(db: &dyn SqliteDatabase) -> Result<(), SessionError> {
     let fts_exists = table_exists(db, "session_search_fts")?;
     let entries_exist = table_exists(db, "entries")?;
-    with_transaction(db, || {
+    with_transaction(db, |db| {
         db.exec(SEARCH_SCHEMA)?;
         if !fts_exists && entries_exist {
             rebuild_search_index(db)

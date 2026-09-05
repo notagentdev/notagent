@@ -180,6 +180,9 @@ pub enum AgentSessionEvent {
         will_retry: bool,
     },
     AgentSettled,
+    PersistenceError {
+        error_message: String,
+    },
     QueueUpdate {
         steering: Vec<String>,
         follow_up: Vec<String>,
@@ -728,20 +731,22 @@ impl AgentSession {
         if let AgentEvent::MessageEnd { message } = &event {
             match message {
                 AgentMessage::Custom(custom) => {
-                    let mut manager = self.session_manager.lock().expect("poisoned");
-                    let _ = manager.append_custom_message_entry(
-                        &custom.custom_type,
-                        serde_json::to_value(&custom.content).unwrap_or(Value::Null),
-                        custom.display,
-                        custom.details.clone(),
-                    );
+                    self.with_session_manager(|manager| {
+                        let _ = manager.append_custom_message_entry(
+                            &custom.custom_type,
+                            serde_json::to_value(&custom.content).unwrap_or(Value::Null),
+                            custom.display,
+                            custom.details.clone(),
+                        );
+                    });
                 }
                 AgentMessage::User(_)
                 | AgentMessage::Assistant(_)
                 | AgentMessage::ToolResult(_) => {
                     let value = serde_json::to_value(message).unwrap_or(Value::Null);
-                    let mut manager = self.session_manager.lock().expect("poisoned");
-                    let _ = manager.append_message_value(value);
+                    self.with_session_manager(|manager| {
+                        let _ = manager.append_message_value(value);
+                    });
                 }
                 // bashExecution, compactionSummary and branchSummary are
                 // persisted where they are produced.
@@ -2091,7 +2096,7 @@ impl AgentSession {
         let Ok(data) = serde_json::to_value(record) else {
             return;
         };
-        let entry = {
+        let (entry, error) = {
             let Ok(mut manager) = self.session_manager.lock() else {
                 return;
             };
@@ -2100,7 +2105,7 @@ impl AgentSession {
             }
             let previous_leaf = manager.get_leaf_id().map(str::to_owned);
             let _ = manager.append_custom_entry(TASK_LIFECYCLE_ENTRY_TYPE, Some(data));
-            manager
+            let entry = manager
                 .get_leaf_entry()
                 .filter(|entry| {
                     previous_leaf.as_deref() != Some(entry.id())
@@ -2110,8 +2115,10 @@ impl AgentSession {
                                 if custom.custom_type == TASK_LIFECYCLE_ENTRY_TYPE
                         )
                 })
-                .cloned()
+                .cloned();
+            (entry, manager.take_persistence_error())
         };
+        self.report_persistence_error(error);
         if let Some(entry) = entry {
             self.emit(AgentSessionEvent::EntryAppended {
                 entry: Box::new(entry),
@@ -2735,7 +2742,25 @@ impl AgentSession {
     /// Runs `body` with the session manager locked. The manager is `&mut` for
     /// every append, so callers that need several operations take it once.
     pub fn with_session_manager<T>(&self, body: impl FnOnce(&mut SessionManager) -> T) -> T {
-        body(&mut self.session_manager.lock().expect("poisoned"))
+        let (result, error) = {
+            let mut manager = self.session_manager.lock().expect("poisoned");
+            let result = body(&mut manager);
+            (result, manager.take_persistence_error())
+        };
+        self.report_persistence_error(error);
+        result
+    }
+
+    // Listeners may read the manager, so notify only after releasing it.
+    fn report_persistence_error(
+        &self,
+        error: Option<crate::core::session_manager::SessionManagerError>,
+    ) {
+        if let Some(error) = error {
+            self.emit(AgentSessionEvent::PersistenceError {
+                error_message: format!("Could not save session: {error}. Unsaved entries remain in memory and will be retried on the next write. Do not close this session."),
+            });
+        }
     }
 
     pub fn pending_message_count(&self) -> usize {
@@ -3167,13 +3192,14 @@ impl AgentSession {
         messages.push(AgentMessage::Custom(message.clone()));
         self.agent.set_messages(messages);
         {
-            let mut manager = self.session_manager.lock().expect("poisoned");
-            let _ = manager.append_custom_message_entry(
-                &message.custom_type,
-                serde_json::to_value(&message.content).unwrap_or(Value::Null),
-                message.display,
-                message.details.clone(),
-            );
+            self.with_session_manager(|manager| {
+                let _ = manager.append_custom_message_entry(
+                    &message.custom_type,
+                    serde_json::to_value(&message.content).unwrap_or(Value::Null),
+                    message.display,
+                    message.details.clone(),
+                );
+            });
         }
         self.emit(AgentSessionEvent::Agent(AgentEvent::MessageStart {
             message: AgentMessage::Custom(message.clone()),
@@ -3273,8 +3299,9 @@ impl AgentSession {
         let thinking_level = self.thinking_level_for_model_switch(None);
         self.agent.set_model(model.clone());
         {
-            let mut manager = self.session_manager.lock().expect("poisoned");
-            let _ = manager.append_model_change(&model.provider, &model.id);
+            self.with_session_manager(|manager| {
+                let _ = manager.append_model_change(&model.provider, &model.id);
+            });
         }
         self.settings_manager
             .set_default_model_and_provider(&model.provider, &model.id);
@@ -3328,8 +3355,9 @@ impl AgentSession {
 
         self.agent.set_model(next.model.clone());
         {
-            let mut manager = self.session_manager.lock().expect("poisoned");
-            let _ = manager.append_model_change(&next.model.provider, &next.model.id);
+            self.with_session_manager(|manager| {
+                let _ = manager.append_model_change(&next.model.provider, &next.model.id);
+            });
         }
         self.settings_manager
             .set_default_model_and_provider(&next.model.provider, &next.model.id);
@@ -3362,8 +3390,9 @@ impl AgentSession {
         let thinking_level = self.thinking_level_for_model_switch(None);
         self.agent.set_model(next.clone());
         {
-            let mut manager = self.session_manager.lock().expect("poisoned");
-            let _ = manager.append_model_change(&next.provider, &next.id);
+            self.with_session_manager(|manager| {
+                let _ = manager.append_model_change(&next.provider, &next.id);
+            });
         }
         self.settings_manager
             .set_default_model_and_provider(&next.provider, &next.id);
@@ -3408,8 +3437,9 @@ impl AgentSession {
 
         if is_changing {
             {
-                let mut manager = self.session_manager.lock().expect("poisoned");
-                let _ = manager.append_thinking_level_change(thinking_level_name(effective));
+                self.with_session_manager(|manager| {
+                    let _ = manager.append_thinking_level_change(thinking_level_name(effective));
+                });
             }
             if self.supports_thinking() || effective != ThinkingLevel::Off {
                 self.settings_manager
@@ -4363,8 +4393,9 @@ impl AgentSession {
         self.agent.set_messages(messages);
         let value =
             serde_json::to_value(AgentMessage::BashExecution(message)).unwrap_or(Value::Null);
-        let mut manager = self.session_manager.lock().expect("poisoned");
-        let _ = manager.append_message_value(value);
+        self.with_session_manager(|manager| {
+            let _ = manager.append_message_value(value);
+        });
     }
 
     pub fn abort_bash(&self) {
@@ -4421,11 +4452,10 @@ pub struct NavigateTreeResult {
 impl AgentSession {
     /// Sets a display name for the session.
     pub fn set_session_name(&self, name: &str) {
-        let session_name = {
-            let mut manager = self.session_manager.lock().expect("poisoned");
+        let session_name = self.with_session_manager(|manager| {
             let _ = manager.append_session_info(name);
             manager.get_session_name()
-        };
+        });
         self.emit(AgentSessionEvent::SessionInfoChanged { name: session_name });
     }
 
@@ -4575,8 +4605,7 @@ impl AgentSession {
         };
 
         let mut summary_entry: Option<BranchSummaryEntry> = None;
-        {
-            let mut manager = self.session_manager.lock().expect("poisoned");
+        let context = self.with_session_manager(|manager| {
             if let Some(summary) = summary_text.as_ref() {
                 let summary_id = manager
                     .branch_with_summary(
@@ -4607,10 +4636,9 @@ impl AgentSession {
                 let _ = manager.append_label_change(target_id, Some(label.as_str()));
             }
 
-            let context = manager.build_session_context();
-            drop(manager);
-            self.agent.set_messages(context.messages);
-        }
+            Ok::<_, String>(manager.build_session_context())
+        })?;
+        self.agent.set_messages(context.messages);
 
         let _ = old_leaf_id;
         Ok(NavigateTreeResult {

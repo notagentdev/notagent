@@ -389,19 +389,42 @@ impl AgentSessionRuntime {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let destination = Path::new(&session_dir).join(&file_name);
-        let destination_text = destination.to_string_lossy().into_owned();
-
         let previous_session_file = self.session().session_file();
-        if destination_text != resolved {
-            std::fs::copy(&resolved, &destination)
-                .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
-        }
-
-        let session_manager =
-            SessionManager::open(&destination_text, Some(&session_dir), cwd_override)
-                .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
+        // Opening can migrate a session, so validate only an owned snapshot.
+        // Publishing must never replace an existing session, even on collision.
+        let staged = tempfile::Builder::new()
+            .prefix(".import-")
+            .tempfile_in(&session_dir)
+            .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
+        std::fs::copy(&resolved, staged.path())
+            .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
+        let mut session_manager = SessionManager::open(
+            &staged.path().to_string_lossy(),
+            Some(&session_dir),
+            cwd_override,
+        )
+        .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
         assert_session_cwd_exists(&session_manager, &self.cwd())?;
+        staged
+            .as_file()
+            .sync_all()
+            .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
+        let mut destination = Path::new(&session_dir).join(&file_name);
+        let mut staged = staged;
+        loop {
+            match staged.persist_noclobber(&destination) {
+                Ok(_) => break,
+                Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    staged = error.file;
+                    destination = Path::new(&session_dir)
+                        .join(format!("import-{}.jsonl", uuid::Uuid::new_v4()));
+                }
+                Err(error) => return Err(SessionOpenError::Failed(error.error.to_string())),
+            }
+        }
+        session_manager
+            .set_session_file(&destination.to_string_lossy())
+            .map_err(|error| SessionOpenError::Failed(error.to_string()))?;
         let cwd = session_manager.get_cwd().to_string();
         self.replace_with(
             cwd,

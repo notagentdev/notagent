@@ -298,7 +298,7 @@ async fn fences_a_stale_owner_after_an_expired_lease_is_acquired_by_another_writ
     second_repository.close().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn serializes_lease_checked_writes_for_sessions_sharing_one_connection() {
     let directory = tempfile::Builder::new()
         .prefix("notagent-lease-")
@@ -314,12 +314,34 @@ async fn serializes_lease_checked_writes_for_sessions_sharing_one_connection() {
     let first = create(&repo, &cwd, "session-1").await;
     let second = create(&repo, &cwd, "session-2").await;
 
-    let (first_id, second_id) = tokio::join!(
-        first.append_message(user_message("first")),
-        second.append_message(user_message("second"))
-    );
-    first_id.expect("appends");
-    second_id.expect("appends");
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
+    let mut tasks = Vec::new();
+    for session in [first, second] {
+        let barrier = std::sync::Arc::clone(&barrier);
+        tasks.push(tokio::spawn(async move {
+            for _ in 0..100 {
+                barrier.wait().await;
+                session
+                    .append_message(user_message("parallel write"))
+                    .await
+                    .expect("concurrent session writes must not share a transaction");
+            }
+            assert_eq!(
+                session
+                    .find_entries(&EntryQuery::default())
+                    .expect("entries")
+                    .len(),
+                100
+            );
+        }));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        for task in tasks {
+            task.await.expect("writer");
+        }
+    })
+    .await
+    .expect("writers must not deadlock");
     repo.close().await;
 }
 

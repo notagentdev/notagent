@@ -198,6 +198,9 @@ pub fn session_event_to_json(event: &AgentSessionEvent, strip_partial: bool) -> 
             ("willRetry", Value::from(*will_retry)),
         ]),
         AgentSessionEvent::AgentSettled => object(vec![("type", Value::from("agent_settled"))]),
+        AgentSessionEvent::PersistenceError { error_message } => json!({
+            "type": "persistence_error", "errorMessage": error_message,
+        }),
         AgentSessionEvent::QueueUpdate {
             steering,
             follow_up,

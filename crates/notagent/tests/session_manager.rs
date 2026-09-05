@@ -49,6 +49,76 @@ fn ids(entries: &[SessionEntry]) -> Vec<String> {
     entries.iter().map(|entry| entry.id().to_owned()).collect()
 }
 
+#[test]
+fn failed_appends_are_retried_before_their_children_are_persisted() {
+    let directory = tempfile::tempdir().expect("directory");
+    let cwd = directory.path().to_string_lossy();
+    let mut session = SessionManager::create(&cwd, Some(&cwd), None).expect("manager");
+    session.append_message(&user_msg("first")).expect("user");
+    session
+        .append_message(&assistant_msg("second"))
+        .expect("assistant");
+    let path = session.get_session_file().expect("file").to_owned();
+    let backup = directory.path().join("saved.jsonl");
+    std::fs::rename(&path, &backup).expect("temporarily move file");
+    std::fs::create_dir(&path).expect("block appends");
+    session
+        .append_message(&user_msg("pending"))
+        .expect_err("write must fail");
+    session
+        .append_thinking_level_change("high")
+        .expect_err("second write must fail");
+    assert!(
+        session.take_persistence_error().is_some(),
+        "failed writes must be observable"
+    );
+    std::fs::remove_dir(&path).expect("unblock");
+    std::fs::rename(&backup, &path).expect("restore");
+    session
+        .append_message(&assistant_msg("recovered"))
+        .expect("recover");
+    let reopened = SessionManager::open(&path, Some(&cwd), None).expect("reopen");
+    assert_eq!(
+        ids(&reopened.get_entries()),
+        ids(&session.get_entries()),
+        "every pending entry must be written exactly once"
+    );
+    assert_eq!(
+        reopened.build_session_context().messages,
+        session.build_session_context().messages,
+        "reopening must retain the complete context chain"
+    );
+}
+
+#[test]
+fn an_initial_flush_failure_preserves_the_buffered_prefix_for_retry() {
+    let directory = tempfile::tempdir().expect("directory");
+    let cwd = directory.path().to_string_lossy();
+    let mut session = SessionManager::create(&cwd, Some(&cwd), None).expect("manager");
+    session
+        .append_message(&user_msg("buffered user"))
+        .expect("buffer");
+    let path = session.get_session_file().expect("path").to_owned();
+    std::fs::create_dir(&path).expect("block creation");
+    session
+        .append_message(&assistant_msg("pending assistant"))
+        .expect_err("initial flush must fail");
+    std::fs::remove_dir(&path).expect("unblock");
+    session
+        .append_message(&user_msg("retry"))
+        .expect("flush all");
+    let reopened = SessionManager::open(&path, Some(&cwd), None).expect("reopen");
+    assert_eq!(
+        ids(&reopened.get_entries()),
+        ids(&session.get_entries()),
+        "initial recovery must include header and all messages"
+    );
+    assert_eq!(
+        reopened.build_session_context().messages,
+        session.build_session_context().messages
+    );
+}
+
 // ---------------------------------------------------------------------------
 // append operations
 // ---------------------------------------------------------------------------

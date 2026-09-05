@@ -178,6 +178,74 @@ async fn consecutive_exploration_calls_stay_in_one_block() {
     .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn a_skill_between_streamed_calls_keeps_each_exploration_in_its_original_block() {
+    use notagent_ai::providers::faux::{faux_assistant_message, faux_tool_call};
+    use notagent_ai::types::StopReason;
+
+    run_local(async {
+        let e2e = InteractiveE2e::with_size(120, 60).await;
+        std::fs::write(e2e.path("notes.txt"), "hello\n").expect("fixture written");
+        e2e.faux().set_responses(vec![
+            faux_assistant_message(
+                vec![
+                    faux_tool_call(
+                        "read",
+                        json!({ "path": e2e.path("notes.txt") }),
+                        Some("read-1".to_owned()),
+                    ),
+                    faux_tool_call(
+                        "ls",
+                        json!({ "path": e2e.path(".") }),
+                        Some("ls-1".to_owned()),
+                    ),
+                    faux_tool_call(
+                        "skill",
+                        json!({ "name": "debug" }),
+                        Some("skill-1".to_owned()),
+                    ),
+                    faux_tool_call(
+                        "read",
+                        json!({ "path": e2e.path("notes.txt") }),
+                        Some("read-2".to_owned()),
+                    ),
+                ],
+                StopReason::ToolUse,
+            )
+            .into(),
+            reply("Finished the exploration."),
+        ]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+        driver
+            .submit("read, list, load debug, then read again")
+            .await;
+        driver.wait_for("Finished the exploration.").await;
+
+        let screen = driver.screen();
+        assert!(
+            !screen.contains("EXPLORING"),
+            "completed calls must leave no running block:\n{screen}"
+        );
+        assert_eq!(
+            screen.matches("EXPLORED").count(),
+            2,
+            "the skill must separate exactly two exploration blocks:\n{screen}"
+        );
+        assert_eq!(
+            screen.matches("Read notes.txt").count(),
+            2,
+            "each read must appear exactly once:\n{screen}"
+        );
+        assert_eq!(
+            screen.matches("1 read, 1 listing").count(),
+            1,
+            "the initial read and listing must remain together:\n{screen}"
+        );
+    })
+    .await;
+}
+
 /// A tool that changes the project ends the run: it is not exploration, so it
 /// gets its own row and whatever follows starts a fresh block.
 #[tokio::test(flavor = "current_thread")]

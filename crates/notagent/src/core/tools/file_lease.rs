@@ -6,8 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::fs::{self, OpenOptions};
-use tokio::io::AsyncWriteExt;
+use tokio::fs;
 
 use crate::config::CONFIG_DIR_NAME;
 
@@ -246,10 +245,8 @@ fn is_blocking(lease: &FileLease, now_ms: u64) -> bool {
     }
 }
 
-/// File-system backed lease store.
-/// Each lease is a JSON file under the lease directory, named by the hash of
-/// the leased file's path. Atomicity comes from creating the lease file with
-/// `O_CREAT | O_EXCL` semantics: exactly one concurrent acquirer can win.
+/// File-system backed lease store. All readers and mutations of one lease share
+/// an OS lock on a separate, stable file; replacing JSON never replaces the lock.
 pub struct FileLeaseStore {
     lease_dir: PathBuf,
 }
@@ -259,7 +256,6 @@ impl FileLeaseStore {
         Self { lease_dir }
     }
 
-    /// The workspace-local lease directory, `<cwd>/.notagent/leases`.
     pub fn for_workspace(cwd: &str) -> Self {
         Self::new(Path::new(cwd).join(CONFIG_DIR_NAME).join("leases"))
     }
@@ -269,61 +265,36 @@ impl FileLeaseStore {
             .join(format!("{}.json", compute_path_key(path)))
     }
 
-    /// Atomically acquires a lease for the file referenced by `lease`. Stale
-    /// leases (expired, or held by a process that no longer exists) are
-    /// replaced.
-    pub async fn try_acquire(&self, lease: FileLease) -> Result<FileLease, LeaseError> {
-        fs::create_dir_all(&self.lease_dir)
-            .await
-            .map_err(|error| LeaseError::CreateDirectory(error.to_string()))?;
-        let lease_path = self.lease_file_path(&lease.file_path);
-        let content =
-            serde_json::to_vec(&lease).map_err(|error| LeaseError::Encode(error.to_string()))?;
-
-        // Two attempts: the second one runs after a stale lease file has been
-        // removed. A third concurrent acquirer winning the race in between is
-        // reported as AlreadyLeased by that iteration's create_new failure.
-        for _ in 0..2 {
-            let open_result = OpenOptions::new()
+    async fn with_locked_file<T: Send + 'static>(
+        lease_path: PathBuf,
+        body: impl FnOnce(&Path) -> Result<T, LeaseError> + Send + 'static,
+    ) -> Result<T, LeaseError> {
+        // Keep the lock and all filesystem work in the same blocking job.
+        // Cancelling its await cannot unlock while a write is still in flight.
+        tokio::task::spawn_blocking(move || {
+            let parent = lease_path.parent().ok_or_else(|| {
+                LeaseError::CreateDirectory("Lease has no parent directory".to_owned())
+            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|error| LeaseError::CreateDirectory(error.to_string()))?;
+            let lock = std::fs::OpenOptions::new()
+                .read(true)
                 .write(true)
-                .create_new(true)
-                .open(&lease_path)
-                .await;
-
-            match open_result {
-                Ok(mut file) => {
-                    file.write_all(&content)
-                        .await
-                        .map_err(|error| LeaseError::WriteFile(error.to_string()))?;
-                    file.sync_all()
-                        .await
-                        .map_err(|error| LeaseError::WriteFile(error.to_string()))?;
-                    return Ok(lease);
-                }
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                    if let Some(current) = self.get_by_path(&lease.file_path).await?
-                        && is_blocking(&current, lease.acquired_at_ms)
-                    {
-                        return Err(LeaseError::AlreadyLeased {
-                            path: lease.file_path.display().to_string(),
-                            remaining_secs: current.remaining_secs(lease.acquired_at_ms),
-                            holder: current.agent_id,
-                        });
-                    }
-
-                    let _ = fs::remove_file(&lease_path).await;
-                }
-                Err(error) => return Err(LeaseError::CreateFile(error.to_string())),
-            }
-        }
-
-        Err(LeaseError::StaleCleanupExhausted)
+                .create(true)
+                .truncate(false)
+                .open(lease_path.with_extension("lock"))
+                .map_err(|error| LeaseError::CreateFile(error.to_string()))?;
+            lock.lock()
+                .map_err(|error| LeaseError::CreateFile(error.to_string()))?;
+            // Lock files must not be unlinked: waiters hold their original inode.
+            body(&lease_path)
+        })
+        .await
+        .map_err(|error| LeaseError::WriteFile(error.to_string()))?
     }
 
-    /// Returns the lease currently stored for the given file, if any.
-    pub async fn get_by_path(&self, path: &Path) -> Result<Option<FileLease>, LeaseError> {
-        let lease_path = self.lease_file_path(path);
-        match fs::read_to_string(&lease_path).await {
+    fn read_lease(path: &Path) -> Result<Option<FileLease>, LeaseError> {
+        match std::fs::read_to_string(path) {
             Ok(raw) => serde_json::from_str(&raw)
                 .map(Some)
                 .map_err(|error| LeaseError::Decode(error.to_string())),
@@ -332,58 +303,86 @@ impl FileLeaseStore {
         }
     }
 
-    /// Persists an updated lease; fails when the stored lease has a different
-    /// id, which is what a stale-cleanup by another acquirer looks like.
-    pub async fn update(&self, lease: FileLease) -> Result<FileLease, LeaseError> {
-        let current =
-            self.get_by_path(&lease.file_path)
-                .await?
-                .ok_or_else(|| LeaseError::NotOwner {
-                    path: lease.file_path.display().to_string(),
-                    lease_id: lease.lease_id.clone(),
-                })?;
-
-        if current.lease_id != lease.lease_id {
-            return Err(LeaseError::NotOwner {
-                path: lease.file_path.display().to_string(),
-                lease_id: lease.lease_id.clone(),
-            });
-        }
-
+    fn write_lease(path: &Path, lease: &FileLease) -> Result<(), LeaseError> {
+        use std::io::Write;
         let content =
-            serde_json::to_vec(&lease).map_err(|error| LeaseError::Encode(error.to_string()))?;
-        fs::write(self.lease_file_path(&lease.file_path), content)
-            .await
+            serde_json::to_vec(lease).map_err(|error| LeaseError::Encode(error.to_string()))?;
+        let parent = path.parent().ok_or_else(|| {
+            LeaseError::CreateDirectory("Lease has no parent directory".to_owned())
+        })?;
+        let mut file = tempfile::NamedTempFile::new_in(parent)
+            .map_err(|error| LeaseError::CreateFile(error.to_string()))?;
+        file.write_all(&content)
+            .and_then(|()| file.as_file().sync_all())
             .map_err(|error| LeaseError::WriteFile(error.to_string()))?;
-        Ok(lease)
-    }
-
-    /// Removes the lease for the given file when it is owned by `lease_id`.
-    pub async fn release(&self, path: &Path, lease_id: &str) -> Result<(), LeaseError> {
-        if let Some(current) = self.get_by_path(path).await? {
-            if current.lease_id != lease_id {
-                return Err(LeaseError::NotOwner {
-                    path: path.display().to_string(),
-                    lease_id: lease_id.to_owned(),
-                });
-            }
-
-            let _ = fs::remove_file(self.lease_file_path(path)).await;
-        }
-
+        file.persist(path)
+            .map_err(|error| LeaseError::WriteFile(error.error.to_string()))?;
         Ok(())
     }
 
-    /// Lists active leases, optionally filtered to files under `path`; expired
-    /// leases are purged as a side effect.
+    pub async fn try_acquire(&self, lease: FileLease) -> Result<FileLease, LeaseError> {
+        Self::with_locked_file(self.lease_file_path(&lease.file_path), move |path| {
+            if let Some(current) = Self::read_lease(path)?
+                && is_blocking(&current, lease.acquired_at_ms)
+            {
+                return Err(LeaseError::AlreadyLeased {
+                    path: lease.file_path.display().to_string(),
+                    remaining_secs: current.remaining_secs(lease.acquired_at_ms),
+                    holder: current.agent_id,
+                });
+            }
+            Self::write_lease(path, &lease)?;
+            Ok(lease)
+        })
+        .await
+    }
+
+    pub async fn get_by_path(&self, path: &Path) -> Result<Option<FileLease>, LeaseError> {
+        Self::with_locked_file(self.lease_file_path(path), Self::read_lease).await
+    }
+
+    pub async fn update(&self, lease: FileLease) -> Result<FileLease, LeaseError> {
+        Self::with_locked_file(self.lease_file_path(&lease.file_path), move |path| {
+            let current = Self::read_lease(path)?;
+            if !current.is_some_and(|current| current.lease_id == lease.lease_id) {
+                return Err(LeaseError::NotOwner {
+                    path: lease.file_path.display().to_string(),
+                    lease_id: lease.lease_id.clone(),
+                });
+            }
+            Self::write_lease(path, &lease)?;
+            Ok(lease)
+        })
+        .await
+    }
+
+    pub async fn release(&self, path: &Path, lease_id: &str) -> Result<(), LeaseError> {
+        let target = path.to_path_buf();
+        let lease_id = lease_id.to_owned();
+        Self::with_locked_file(self.lease_file_path(path), move |path| {
+            if let Some(current) = Self::read_lease(path)? {
+                if current.lease_id != lease_id {
+                    return Err(LeaseError::NotOwner {
+                        path: target.display().to_string(),
+                        lease_id,
+                    });
+                }
+                std::fs::remove_file(path)
+                    .map_err(|error| LeaseError::WriteFile(error.to_string()))?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// Lists active leases and cleans up expired ones under the same lock used
+    /// by acquisition, updates and release.
     pub async fn list(&self, path: Option<&Path>) -> Result<Vec<FileLease>, LeaseError> {
         let mut entries = match fs::read_dir(&self.lease_dir).await {
             Ok(entries) => entries,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(LeaseError::ListDirectory(error.to_string())),
         };
-
-        let now_ms = now_ms();
         let mut leases = Vec::new();
         while let Some(entry) = entries
             .next_entry()
@@ -394,28 +393,28 @@ impl FileLeaseStore {
             if entry_path.extension().and_then(|value| value.to_str()) != Some("json") {
                 continue;
             }
-
-            let Ok(raw) = fs::read_to_string(&entry_path).await else {
-                continue;
-            };
-            let Ok(lease) = serde_json::from_str::<FileLease>(&raw) else {
-                continue;
-            };
-
-            if lease.is_expired(now_ms) {
-                let _ = fs::remove_file(&entry_path).await;
-                continue;
-            }
-
-            if let Some(filter_path) = path
-                && !lease.file_path.starts_with(filter_path)
+            let lease = Self::with_locked_file(entry_path, |path| {
+                let lease = match Self::read_lease(path) {
+                    Ok(Some(lease)) => lease,
+                    Ok(None) | Err(LeaseError::Decode(_) | LeaseError::ReadFile(_)) => {
+                        return Ok(None);
+                    }
+                    Err(error) => return Err(error),
+                };
+                if lease.is_expired(now_ms()) {
+                    std::fs::remove_file(path)
+                        .map_err(|error| LeaseError::WriteFile(error.to_string()))?;
+                    return Ok(None);
+                }
+                Ok(Some(lease))
+            })
+            .await?;
+            if let Some(lease) = lease
+                && path.is_none_or(|filter| lease.file_path.starts_with(filter))
             {
-                continue;
+                leases.push(lease);
             }
-
-            leases.push(lease);
         }
-
         leases.sort_by(|left, right| left.file_path.cmp(&right.file_path));
         Ok(leases)
     }
@@ -550,6 +549,145 @@ async fn read_hash(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_waiting_process_cannot_replace_a_renewed_lease() {
+        let fixture = Fixture::new();
+        let old = fixture.live_lease().lease_until_ms(1);
+        fixture.store.try_acquire(old).await.expect("old lease");
+        let lease_path = fixture.store.lease_file_path(&fixture.file_path);
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(lease_path.with_extension("lock"))
+            .expect("lock file");
+        lock.lock().expect("hold lock");
+        let mut child =
+            std::process::Command::new(std::env::current_exe().expect("test executable"))
+                .args([
+                    "--exact",
+                    "core::tools::file_lease::tests::lease_acquisition_process_probe",
+                    "--nocapture",
+                ])
+                .env("NOTAGENT_LEASE_PROBE_DIR", &fixture.directory.path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .expect("child");
+        let ready = fixture.directory.path.join("ready");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !ready.exists() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let completed_while_locked = fixture.directory.path.join("result").exists();
+        let current = fixture
+            .live_lease()
+            .lease_id("renewed")
+            .acquired_at_ms(now_ms())
+            .lease_until_ms(now_ms() + 60_000);
+        FileLeaseStore::write_lease(&lease_path, &current).expect("renew under lock");
+        drop(lock);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("child status") {
+                break status;
+            }
+            if std::time::Instant::now() >= deadline {
+                child.kill().expect("stop timed-out child");
+                child.wait().expect("reap child");
+                panic!("lease acquisition must not deadlock");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        };
+        assert!(
+            ready.exists() && status.success(),
+            "probe must run successfully"
+        );
+        assert!(
+            !completed_while_locked,
+            "a different process must honor the metadata lock"
+        );
+        assert_eq!(
+            std::fs::read_to_string(fixture.directory.path.join("result")).expect("result"),
+            "blocked"
+        );
+        assert_eq!(
+            fixture
+                .store
+                .get_by_path(&fixture.file_path)
+                .await
+                .expect("lease"),
+            Some(current)
+        );
+    }
+
+    #[tokio::test]
+    async fn lease_acquisition_process_probe() {
+        let Some(directory) = std::env::var_os("NOTAGENT_LEASE_PROBE_DIR") else {
+            return;
+        };
+        let directory = PathBuf::from(directory);
+        let store = FileLeaseStore::for_workspace(&directory.to_string_lossy());
+        let lease = FileLease::new("contender", directory.join("test.rs"))
+            .agent_id(format!("pid:{}", std::process::id()))
+            .acquired_at_ms(now_ms())
+            .lease_until_ms(now_ms() + 60_000);
+        std::fs::write(directory.join("ready"), "ready").expect("ready");
+        let outcome = match store.try_acquire(lease).await {
+            Err(LeaseError::AlreadyLeased { .. }) => "blocked",
+            Ok(_) => "acquired",
+            Err(error) => panic!("unexpected lease error: {error}"),
+        };
+        std::fs::write(directory.join("result"), outcome).expect("result");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_stale_cleanup_has_exactly_one_new_owner() {
+        let fixture = Fixture::new();
+        fixture
+            .store
+            .try_acquire(fixture.live_lease().lease_until_ms(1))
+            .await
+            .expect("expired lease");
+        let barrier = Arc::new(tokio::sync::Barrier::new(8));
+        let mut tasks = Vec::new();
+        for id in 0..8 {
+            let store = FileLeaseStore::for_workspace(&fixture.directory.cwd());
+            let lease = fixture
+                .live_lease()
+                .lease_id(format!("owner-{id}"))
+                .acquired_at_ms(now_ms())
+                .lease_until_ms(now_ms() + 60_000);
+            let barrier = Arc::clone(&barrier);
+            tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
+                store.try_acquire(lease).await
+            }));
+        }
+        let mut winners = Vec::new();
+        for task in tasks {
+            match task.await.expect("contender") {
+                Ok(lease) => winners.push(lease),
+                Err(LeaseError::AlreadyLeased { .. }) => {}
+                Err(error) => panic!("contention must not produce corrupt leases: {error}"),
+            }
+        }
+        assert_eq!(
+            winners.len(),
+            1,
+            "only one contender may own the replacement"
+        );
+        fixture.store.list(None).await.expect("cleanup");
+        assert_eq!(
+            fixture
+                .store
+                .get_by_path(&fixture.file_path)
+                .await
+                .expect("lease"),
+            winners.pop()
+        );
+    }
 
     impl FileLease {
         fn test() -> Self {

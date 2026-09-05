@@ -49,7 +49,7 @@ pub fn apply_migrations(db: &dyn SqliteDatabase) -> Result<(), SqliteError> {
         if applied.iter().any(|id| id == migration.id) {
             continue;
         }
-        with_transaction(db, || {
+        with_transaction(db, |db| {
             db.exec(migration.sql)?;
             db.run(&sql![
                 text("INSERT INTO migrations (id, applied_at) VALUES ("),

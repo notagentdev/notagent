@@ -3,6 +3,7 @@ use std::sync::{Arc, LazyLock};
 use regex::Regex;
 
 use super::policy::{FnPolicy, PermissionContext, PermissionDecision, PermissionPolicy};
+use crate::core::tools::path_utils::{resolve_read_path, resolve_to_cwd};
 use crate::utils::paths::{is_absolute_path, main_separator, node_relative, node_resolve};
 
 /// Tools that only read. They never need confirmation.
@@ -65,11 +66,13 @@ fn target_path(context: &PermissionContext) -> Option<&str> {
 
 fn absolute_target(context: &PermissionContext) -> Option<String> {
     let raw = target_path(context)?;
-    Some(if is_absolute_path(raw) {
-        node_resolve(&[raw])
-    } else {
-        node_resolve(&[&context.cwd, raw])
-    })
+    Some(
+        if matches!(context.tool_name.as_str(), "read" | "read_minified") {
+            resolve_read_path(raw, &context.cwd)
+        } else {
+            resolve_to_cwd(raw, &context.cwd)
+        },
+    )
 }
 
 fn is_inside(parent: &str, child: &str) -> bool {

@@ -8492,6 +8492,10 @@ impl InteractiveMode {
                 }
                 self.ui.request_render();
             }
+            AgentSessionEvent::PersistenceError { error_message } => {
+                self.show_error(&error_message);
+                self.ui.request_render();
+            }
             AgentSessionEvent::SessionInfoChanged { .. } => {
                 self.update_terminal_title();
                 self.footer.borrow_mut().invalidate();
@@ -8547,13 +8551,17 @@ impl InteractiveMode {
         {
             return;
         }
-        // Consecutive search calls collapse into one "Searching…/Searched"
-        // block instead of individual rows (takeover of the reference's
-        // explore grouping, user decision 2026-08-17, v0.1.8). A repeated
-        // call id replaces its entry, so the streaming double-announce stays
-        // one row.
         if is_explore_tool(tool_name) {
-            let block = self.open_explore_block(false);
+            // Streaming repeats earlier calls even after another tool closes
+            // their block. Keep each call in its original block so its result
+            // cannot leave a duplicate permanently pending.
+            let existing = self
+                .chat_explore_blocks
+                .iter()
+                .rev()
+                .find(|block| block.borrow().has_call(tool_call_id))
+                .cloned();
+            let block = existing.unwrap_or_else(|| self.open_explore_block(false));
             block
                 .borrow_mut()
                 .push_call(tool_name, tool_call_id.to_owned(), &args);

@@ -63,6 +63,15 @@ fn rebind(
             })
         }));
         current.backpressure = Some(Box::new(unsubscribe));
+    } else {
+        current.events = Some(session.subscribe(Arc::new(move |event| {
+            if let crate::core::agent_session::AgentSessionEvent::PersistenceError {
+                error_message,
+            } = event
+            {
+                eprintln!("{error_message}");
+            }
+        })));
     }
 }
 

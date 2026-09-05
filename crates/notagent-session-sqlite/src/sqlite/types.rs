@@ -31,6 +31,12 @@ pub struct SqliteRunResult {
 /// values directly and returns rows as JSON objects, which keeps the typed
 /// `get<TRow>`/`all<TRow>` surface of the original.
 pub trait SqliteDatabase: Send + Sync {
+    /// Holds exclusive connection access until the callback commits or rolls back.
+    /// Queries inside the callback must use its database argument.
+    fn transaction(
+        &self,
+        body: &mut dyn FnMut(&dyn SqliteDatabase) -> Result<(), SqliteError>,
+    ) -> Result<(), SqliteError>;
     fn exec(&self, sql: &str) -> Result<(), SqliteError>;
     fn run(&self, query: &SqlQuery) -> Result<SqliteRunResult, SqliteError>;
     fn get(&self, query: &SqlQuery) -> Result<Option<Row>, SqliteError>;
@@ -38,23 +44,21 @@ pub trait SqliteDatabase: Send + Sync {
     fn close(&self);
 }
 
-/// the trait object safe by exposing the three statements separately.
+/// Preserves typed callback results across the object-safe transaction boundary.
 pub fn with_transaction<T>(
     db: &dyn SqliteDatabase,
-    body: impl FnOnce() -> Result<T, SqliteError>,
+    body: impl FnOnce(&dyn SqliteDatabase) -> Result<T, SqliteError>,
 ) -> Result<T, SqliteError> {
-    db.exec("BEGIN IMMEDIATE")?;
-    match body() {
-        Ok(value) => {
-            db.exec("COMMIT")?;
-            Ok(value)
-        }
-        Err(error) => {
-            // Ignore rollback errors to rethrow the original error.
-            let _ = db.exec("ROLLBACK");
-            Err(error)
-        }
-    }
+    let mut body = Some(body);
+    let mut value = None;
+    db.transaction(&mut |connection| {
+        let callback = body
+            .take()
+            .ok_or_else(|| SqliteError("Transaction callback ran twice".to_owned()))?;
+        value = Some(callback(connection)?);
+        Ok(())
+    })?;
+    value.ok_or_else(|| SqliteError("Transaction callback did not run".to_owned()))
 }
 
 #[async_trait::async_trait]

@@ -203,6 +203,46 @@ fn read(path: &str) -> String {
     std::fs::read_to_string(path).expect("reads")
 }
 
+#[tokio::test]
+async fn at_prefixed_protected_paths_cannot_bypass_auto_permissions() {
+    let workspace = Workspace::new();
+    for path in ["@.env", "@.git/hooks/pre-commit"] {
+        let outcome = attempt_write(
+            &workspace.cwd(),
+            path,
+            "payload",
+            ApprovalLevel::Auto,
+            ApprovalAnswer::Deny,
+            Vec::new(),
+        )
+        .await;
+        assert!(outcome.blocked, "{path} must require approval");
+        assert!(
+            !Path::new(&workspace.join(&path[1..])).exists(),
+            "denial must prevent the resolved write"
+        );
+    }
+    let harness = harness(
+        &workspace.cwd(),
+        ApprovalLevel::Auto,
+        ApprovalAnswer::Deny,
+        Vec::new(),
+    );
+    for tool in ["read", "read_minified"] {
+        let result = harness
+            .handler
+            .call(
+                permission_call(tool, &input(json!({ "path": "@.env" }))),
+                None,
+            )
+            .await;
+        assert!(
+            result.is_some_and(|result| result.block),
+            "{tool} must protect the resolved secret path"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // denied calls never touch the file system
 // ---------------------------------------------------------------------------

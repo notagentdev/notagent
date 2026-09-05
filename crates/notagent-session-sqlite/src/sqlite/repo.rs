@@ -128,11 +128,11 @@ fn get_parent_path(path: &str) -> String {
 /// Runs a write transaction and preserves the original `SessionError` code:
 fn in_transaction<T>(
     db: &dyn SqliteDatabase,
-    body: impl FnOnce() -> Result<T, SessionError>,
+    body: impl FnOnce(&dyn SqliteDatabase) -> Result<T, SessionError>,
 ) -> Result<T, SessionError> {
     let captured: std::cell::RefCell<Option<SessionError>> = std::cell::RefCell::new(None);
-    let result = with_transaction(db, || {
-        body().map_err(|error| {
+    let result = with_transaction(db, |db| {
+        body(db).map_err(|error| {
             *captured.borrow_mut() = Some(error.clone());
             SqliteError(error.message)
         })
@@ -340,15 +340,15 @@ impl SqliteSessionStorage {
         }
         let _guard = self.operations.lock().await;
         let lease = self.lease.lock().expect("storage mutex").clone();
-        let _ = with_transaction(self.db.as_ref(), || {
-            release_writer_lease(self.db.as_ref(), &self.metadata.id, &lease)
+        let _ = with_transaction(self.db.as_ref(), |db| {
+            release_writer_lease(db, &self.metadata.id, &lease)
                 .map_err(|error| SqliteError(error.message))
         });
     }
 
     async fn enqueue_write<T>(
         &self,
-        operation: impl FnOnce() -> Result<T, SessionError>,
+        operation: impl FnOnce(&dyn SqliteDatabase) -> Result<T, SessionError>,
     ) -> Result<T, SessionError> {
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::storage(format!(
@@ -360,12 +360,12 @@ impl SqliteSessionStorage {
         if let Some(error) = self.lease_error.lock().expect("storage mutex").clone() {
             return Err(error);
         }
-        in_transaction(self.db.as_ref(), || {
+        in_transaction(self.db.as_ref(), |db| {
             let now = now_ms();
             let renewed = {
                 let mut lease = self.lease.lock().expect("storage mutex");
                 renew_writer_lease(
-                    self.db.as_ref(),
+                    db,
                     &self.metadata.id,
                     &mut lease,
                     now,
@@ -380,7 +380,7 @@ impl SqliteSessionStorage {
                 }
                 return Err(error);
             }
-            operation()
+            operation(db)
         })
     }
 
@@ -406,11 +406,11 @@ impl SqliteSessionStorage {
                 let _guard = storage.operations.lock().await;
                 // A transient heartbeat failure is retried. Every write still
                 // verifies ownership transactionally.
-                let _ = with_transaction(storage.db.as_ref(), || {
+                let _ = with_transaction(storage.db.as_ref(), |db| {
                     let now = now_ms();
                     let mut lease = storage.lease.lock().expect("storage mutex");
                     let renewed = renew_writer_lease(
-                        storage.db.as_ref(),
+                        db,
                         &storage.metadata.id,
                         &mut lease,
                         now,
@@ -443,41 +443,41 @@ impl SqliteSessionStorage {
     }
 
     pub async fn create_lane(&self, lane: &str, at: Option<&str>) -> Result<(), SessionError> {
-        self.enqueue_write(|| {
-            if read_lane(self.db.as_ref(), &self.metadata.id, lane)?.is_some() {
+        self.enqueue_write(|db| {
+            if read_lane(db, &self.metadata.id, lane)?.is_some() {
                 return Err(SessionError::new(
                     SessionErrorCode::AlreadyExists,
                     format!("Lane already exists: {lane}"),
                 ));
             }
             if let Some(at) = at
-                && read_entry_row(self.db.as_ref(), &self.metadata.id, at)?.is_none()
+                && read_entry_row(db, &self.metadata.id, at)?.is_none()
             {
                 return Err(SessionError::not_found(format!("Entry not found: {at}")));
             }
-            let seq = get_next_sequence(self.db.as_ref(), &self.metadata.id)?;
-            create_lane(self.db.as_ref(), &self.metadata.id, seq, lane, at)?;
-            advance_sequence(self.db.as_ref(), &self.metadata.id, seq)
+            let seq = get_next_sequence(db, &self.metadata.id)?;
+            create_lane(db, &self.metadata.id, seq, lane, at)?;
+            advance_sequence(db, &self.metadata.id, seq)
         })
         .await
     }
 
     pub async fn move_lane(&self, lane: &str, to: Option<&str>) -> Result<(), SessionError> {
-        self.enqueue_write(|| {
-            if read_lane(self.db.as_ref(), &self.metadata.id, lane)?.is_none() {
+        self.enqueue_write(|db| {
+            if read_lane(db, &self.metadata.id, lane)?.is_none() {
                 return Err(SessionError::new(
                     SessionErrorCode::InvalidLane,
                     format!("Lane not found: {lane}"),
                 ));
             }
             if let Some(to) = to
-                && read_entry_row(self.db.as_ref(), &self.metadata.id, to)?.is_none()
+                && read_entry_row(db, &self.metadata.id, to)?.is_none()
             {
                 return Err(SessionError::not_found(format!("Entry not found: {to}")));
             }
-            let seq = get_next_sequence(self.db.as_ref(), &self.metadata.id)?;
-            move_lane(self.db.as_ref(), &self.metadata.id, seq, lane, to)?;
-            advance_sequence(self.db.as_ref(), &self.metadata.id, seq)
+            let seq = get_next_sequence(db, &self.metadata.id)?;
+            move_lane(db, &self.metadata.id, seq, lane, to)?;
+            advance_sequence(db, &self.metadata.id, seq)
         })
         .await
     }
@@ -487,17 +487,17 @@ impl SqliteSessionStorage {
         entry: ProvisionedEntry,
         lane: &str,
     ) -> Result<Entry, SessionError> {
-        self.enqueue_write(|| {
-            let parent_id = read_lane_head(self.db.as_ref(), &self.metadata.id, lane)?;
-            assert_unused_id(self.db.as_ref(), &self.metadata.id, entry.id())?;
-            let seq = get_next_sequence(self.db.as_ref(), &self.metadata.id)?;
+        self.enqueue_write(|db| {
+            let parent_id = read_lane_head(db, &self.metadata.id, lane)?;
+            assert_unused_id(db, &self.metadata.id, entry.id())?;
+            let seq = get_next_sequence(db, &self.metadata.id)?;
             let timestamp = now_ms();
             let committed = provisioned_to_entry(&entry, parent_id.clone(), seq, timestamp)?;
             let payload = serde_json::to_string(&entry_payload(&committed)?).map_err(|error| {
                 SessionError::new(SessionErrorCode::InvalidPayload, error.to_string())
             })?;
             insert_entry_row(
-                self.db.as_ref(),
+                db,
                 &self.metadata.id,
                 &NewEntryRow {
                     seq,
@@ -508,14 +508,9 @@ impl SqliteSessionStorage {
                     payload,
                 },
             )?;
-            set_lane_leaf(
-                self.db.as_ref(),
-                &self.metadata.id,
-                lane,
-                Some(committed.id()),
-            )?;
+            set_lane_leaf(db, &self.metadata.id, lane, Some(committed.id()))?;
             append_entry_to_branch_cache(
-                self.db.as_ref(),
+                db,
                 &self.metadata.id,
                 committed.id(),
                 seq,
@@ -524,35 +519,35 @@ impl SqliteSessionStorage {
                 committed.parent_id(),
             )?;
             if committed.entry_type() == EntryType::Message {
-                increment_message_count(self.db.as_ref(), &self.metadata.id)?;
+                increment_message_count(db, &self.metadata.id)?;
             }
-            advance_sequence(self.db.as_ref(), &self.metadata.id, seq)?;
+            advance_sequence(db, &self.metadata.id, seq)?;
             Ok(committed)
         })
         .await
     }
 
     pub async fn append_record(&self, record: LaneRecord) -> Result<LaneRecord, SessionError> {
-        self.enqueue_write(|| {
+        self.enqueue_write(|db| {
             let lane = record.lane().to_owned();
-            if read_lane(self.db.as_ref(), &self.metadata.id, &lane)?.is_none() {
+            if read_lane(db, &self.metadata.id, &lane)?.is_none() {
                 return Err(SessionError::new(
                     SessionErrorCode::InvalidLane,
                     format!("Lane not found: {lane}"),
                 ));
             }
-            assert_unused_id(self.db.as_ref(), &self.metadata.id, record.id())?;
-            let seq = get_next_sequence(self.db.as_ref(), &self.metadata.id)?;
+            assert_unused_id(db, &self.metadata.id, record.id())?;
+            let seq = get_next_sequence(db, &self.metadata.id)?;
             let timestamp = now_ms();
             let committed = with_seq_and_timestamp(&record, seq, timestamp)?;
             if let LaneRecord::OperationStarted(started) = &record {
-                start_lane_operation(self.db.as_ref(), &self.metadata.id, &lane, &started.id)?;
+                start_lane_operation(db, &self.metadata.id, &lane, &started.id)?;
             }
             let payload = serde_json::to_string(&record).map_err(|error| {
                 SessionError::new(SessionErrorCode::InvalidPayload, error.to_string())
             })?;
             append_record_row(
-                self.db.as_ref(),
+                db,
                 &self.metadata.id,
                 &NewRecordRow {
                     seq,
@@ -566,17 +561,12 @@ impl SqliteSessionStorage {
                 },
             )?;
             if let LaneRecord::OperationFinished(finished) = &record {
-                finish_lane_operation(
-                    self.db.as_ref(),
-                    &self.metadata.id,
-                    &lane,
-                    &finished.run_id,
-                )?;
+                finish_lane_operation(db, &self.metadata.id, &lane, &finished.run_id)?;
             }
             if let LaneRecord::Usage(usage) = &record {
-                add_usage_to_stats(self.db.as_ref(), &self.metadata.id, &usage.usage)?;
+                add_usage_to_stats(db, &self.metadata.id, &usage.usage)?;
             }
-            advance_sequence(self.db.as_ref(), &self.metadata.id, seq)?;
+            advance_sequence(db, &self.metadata.id, seq)?;
             Ok(committed)
         })
         .await
@@ -801,17 +791,10 @@ impl SqliteSessionStorage {
 
     pub async fn set_name(&self, name: Option<&str>) -> Result<(), SessionError> {
         let encoded = encode_fact_value(name)?;
-        self.enqueue_write(|| {
-            let seq = get_next_sequence(self.db.as_ref(), &self.metadata.id)?;
-            append_fact(
-                self.db.as_ref(),
-                &self.metadata.id,
-                seq,
-                "name",
-                None,
-                encoded.as_deref(),
-            )?;
-            advance_sequence(self.db.as_ref(), &self.metadata.id, seq)
+        self.enqueue_write(|db| {
+            let seq = get_next_sequence(db, &self.metadata.id)?;
+            append_fact(db, &self.metadata.id, seq, "name", None, encoded.as_deref())?;
+            advance_sequence(db, &self.metadata.id, seq)
         })
         .await
     }
@@ -827,20 +810,20 @@ impl SqliteSessionStorage {
 
     pub async fn set_label(&self, id: &str, label: Option<&str>) -> Result<(), SessionError> {
         let encoded = encode_fact_value(label)?;
-        self.enqueue_write(|| {
-            if read_entry_row(self.db.as_ref(), &self.metadata.id, id)?.is_none() {
+        self.enqueue_write(|db| {
+            if read_entry_row(db, &self.metadata.id, id)?.is_none() {
                 return Err(SessionError::not_found(format!("Entry not found: {id}")));
             }
-            let seq = get_next_sequence(self.db.as_ref(), &self.metadata.id)?;
+            let seq = get_next_sequence(db, &self.metadata.id)?;
             append_fact(
-                self.db.as_ref(),
+                db,
                 &self.metadata.id,
                 seq,
                 "label",
                 Some(id),
                 encoded.as_deref(),
             )?;
-            advance_sequence(self.db.as_ref(), &self.metadata.id, seq)
+            advance_sequence(db, &self.metadata.id, seq)
         })
         .await
     }
@@ -1032,9 +1015,9 @@ impl SqliteSessionRepository {
         }
         let created_at = now_ms();
         let lease_options = self.inner.lease_options;
-        let lease = with_transaction(db.as_ref(), || {
+        let lease = with_transaction(db.as_ref(), |db| {
             insert_session_row(
-                db.as_ref(),
+                db,
                 &NewSessionRow {
                     id: id.clone(),
                     created_at,
@@ -1044,12 +1027,11 @@ impl SqliteSessionRepository {
                 },
             )
             .map_err(|error| SqliteError(error.message))?;
-            create_sequence(db.as_ref(), &id, 1).map_err(|error| SqliteError(error.message))?;
-            create_stats(db.as_ref(), &id, 0).map_err(|error| SqliteError(error.message))?;
-            create_initial_lane(db.as_ref(), &id, "main", None)
+            create_sequence(db, &id, 1).map_err(|error| SqliteError(error.message))?;
+            create_stats(db, &id, 0).map_err(|error| SqliteError(error.message))?;
+            create_initial_lane(db, &id, "main", None)
                 .map_err(|error| SqliteError(error.message))?;
-            claim_writer_lease(db.as_ref(), &id, lease_options)
-                .map_err(|error| SqliteError(error.message))
+            claim_writer_lease(db, &id, lease_options).map_err(|error| SqliteError(error.message))
         })?;
         let row = require_session_row(db.as_ref(), &id)?;
         let metadata = decode_session_metadata(&row, &path)?;
@@ -1073,12 +1055,12 @@ impl SqliteSessionRepository {
         }
         require_session_row(db.as_ref(), &metadata.id)?;
         let lease_options = self.inner.lease_options;
-        let (lease, row) = with_transaction(db.as_ref(), || {
-            let lease = claim_writer_lease(db.as_ref(), &metadata.id, lease_options)
+        let (lease, row) = with_transaction(db.as_ref(), |db| {
+            let lease = claim_writer_lease(db, &metadata.id, lease_options)
                 .map_err(|error| SqliteError(error.message))?;
-            let row = require_session_row(db.as_ref(), &metadata.id)
+            let row = require_session_row(db, &metadata.id)
                 .map_err(|error| SqliteError(error.message))?;
-            read_lanes(db.as_ref(), &metadata.id).map_err(|error| SqliteError(error.message))?;
+            read_lanes(db, &metadata.id).map_err(|error| SqliteError(error.message))?;
             Ok((lease, row))
         })?;
         let decoded = decode_session_metadata(&row, &metadata.path)?;
@@ -1094,14 +1076,12 @@ impl SqliteSessionRepository {
         let _guard = self.inner.operations.lock().await;
         let db = self.get_database().await?;
         let lease_options = self.inner.lease_options;
-        with_transaction(db.as_ref(), || {
-            let lease = claim_writer_lease(db.as_ref(), &metadata.id, lease_options)
+        with_transaction(db.as_ref(), |db| {
+            let lease = claim_writer_lease(db, &metadata.id, lease_options)
                 .map_err(|error| SqliteError(error.message))?;
-            require_session_row(db.as_ref(), &metadata.id)
-                .map_err(|error| SqliteError(error.message))?;
-            rebuild_branch_cache(db.as_ref(), &metadata.id)
-                .map_err(|error| SqliteError(error.message))?;
-            release_writer_lease(db.as_ref(), &metadata.id, &lease)
+            require_session_row(db, &metadata.id).map_err(|error| SqliteError(error.message))?;
+            rebuild_branch_cache(db, &metadata.id).map_err(|error| SqliteError(error.message))?;
+            release_writer_lease(db, &metadata.id, &lease)
                 .map_err(|error| SqliteError(error.message))
         })?;
         Ok(())
@@ -1130,20 +1110,20 @@ impl SqliteSessionRepository {
         let db = self.get_database().await?;
         let lease_options = self.inner.lease_options;
         let session_id = metadata.id.clone();
-        in_transaction(db.as_ref(), || {
-            if !session_exists(db.as_ref(), &session_id)? {
-                return delete_writer_lease(db.as_ref(), &session_id);
+        in_transaction(db.as_ref(), |db| {
+            if !session_exists(db, &session_id)? {
+                return delete_writer_lease(db, &session_id);
             }
-            claim_writer_lease(db.as_ref(), &session_id, lease_options)?;
-            delete_branch_cache(db.as_ref(), &session_id)?;
-            delete_fact_rows(db.as_ref(), &session_id)?;
-            delete_lane_rows(db.as_ref(), &session_id)?;
-            delete_record_rows(db.as_ref(), &session_id)?;
-            delete_entry_rows(db.as_ref(), &session_id)?;
-            delete_writer_lease(db.as_ref(), &session_id)?;
-            delete_stats(db.as_ref(), &session_id)?;
-            delete_sequence(db.as_ref(), &session_id)?;
-            delete_session_row(db.as_ref(), &session_id)
+            claim_writer_lease(db, &session_id, lease_options)?;
+            delete_branch_cache(db, &session_id)?;
+            delete_fact_rows(db, &session_id)?;
+            delete_lane_rows(db, &session_id)?;
+            delete_record_rows(db, &session_id)?;
+            delete_entry_rows(db, &session_id)?;
+            delete_writer_lease(db, &session_id)?;
+            delete_stats(db, &session_id)?;
+            delete_sequence(db, &session_id)?;
+            delete_session_row(db, &session_id)
         })?;
         Ok(())
     }
@@ -1257,9 +1237,9 @@ impl SqliteSessionRepository {
             .clone()
             .or_else(|| Some(source.id.clone()));
 
-        let lease = in_transaction(db.as_ref(), || {
+        let lease = in_transaction(db.as_ref(), |db| {
             insert_session_row(
-                db.as_ref(),
+                db,
                 &NewSessionRow {
                     id: id.clone(),
                     created_at,
@@ -1268,9 +1248,9 @@ impl SqliteSessionRepository {
                     metadata: metadata.clone(),
                 },
             )?;
-            create_sequence(db.as_ref(), &id, 1)?;
+            create_sequence(db, &id, 1)?;
             create_stats(
-                db.as_ref(),
+                db,
                 &id,
                 entries
                     .iter()
@@ -1283,7 +1263,7 @@ impl SqliteSessionRepository {
                 let seq = next_seq;
                 next_seq += 1;
                 insert_entry_row(
-                    db.as_ref(),
+                    db,
                     &id,
                     &NewEntryRow {
                         seq,
@@ -1300,28 +1280,28 @@ impl SqliteSessionRepository {
                 for (lane, leaf_id) in &lanes {
                     let seq = next_seq;
                     next_seq += 1;
-                    create_lane(db.as_ref(), &id, seq, lane, leaf_id.as_deref())?;
+                    create_lane(db, &id, seq, lane, leaf_id.as_deref())?;
                 }
             } else {
-                create_initial_lane(db.as_ref(), &id, "main", branch_fork_target_id.as_deref())?;
+                create_initial_lane(db, &id, "main", branch_fork_target_id.as_deref())?;
             }
 
             if let Some(name) = latest_name.as_ref().and_then(|fact| fact.value.as_ref()) {
                 let seq = next_seq;
                 next_seq += 1;
-                append_fact(db.as_ref(), &id, seq, "name", None, Some(name))?;
+                append_fact(db, &id, seq, "name", None, Some(name))?;
             }
             for (key, value) in &labels_to_copy {
                 let seq = next_seq;
                 next_seq += 1;
-                append_fact(db.as_ref(), &id, seq, "label", Some(key), Some(value))?;
+                append_fact(db, &id, seq, "label", Some(key), Some(value))?;
             }
 
-            set_next_sequence(db.as_ref(), &id, next_seq)?;
+            set_next_sequence(db, &id, next_seq)?;
             for tip in &branch_tips {
-                build_cached_branch(db.as_ref(), &id, tip)?;
+                build_cached_branch(db, &id, tip)?;
             }
-            claim_writer_lease(db.as_ref(), &id, lease_options)
+            claim_writer_lease(db, &id, lease_options)
         })?;
 
         let row = require_session_row(db.as_ref(), &id)?;
