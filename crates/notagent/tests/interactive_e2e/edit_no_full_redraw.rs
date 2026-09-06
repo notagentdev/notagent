@@ -34,28 +34,23 @@ fn write_lines(dir: &std::path::Path, name: &str, count: usize) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// `createLargeEdits(lines)` — ten three-line blocks whose middle line changes.
+/// One large replacement with enough separated changes to exercise scrolling.
 fn large_edits(count: usize) -> Vec<Edit> {
-    let line = |index: usize| format!("line {index}");
-    [50, 150, 250, 350, 450, 550, 650, 750, 850, 950]
-        .into_iter()
-        .take_while(|target| target + 1 < count)
-        .map(|target| Edit {
-            // array, so the changed line is `lines[target]` = `line {target}`.
-            old_text: format!(
-                "{}\n{}\n{}",
-                line(target - 1),
-                line(target),
-                line(target + 1)
-            ),
-            new_text: format!(
-                "{}\n{} changed\n{}",
-                line(target - 1),
-                line(target),
-                line(target + 1)
-            ),
+    let old_text = (0..count)
+        .map(|index| format!("line {index}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let new_text = (0..count)
+        .map(|index| {
+            if index % 100 == 50 {
+                format!("line {index} changed")
+            } else {
+                format!("line {index}")
+            }
         })
-        .collect()
+        .collect::<Vec<_>>()
+        .join("\n");
+    vec![Edit { old_text, new_text }]
 }
 
 /// The row under test, mounted in a started screen over the virtual terminal.
@@ -82,7 +77,7 @@ impl EditRow {
         let row = Rc::new(RefCell::new(ToolExecutionComponent::new(
             "edit",
             "tool-call-1",
-            json!({ "path": path, "edits": edits_json(edits) }),
+            json!({ "path": path, "old_string": edits[0].old_text, "new_string": edits[0].new_text }),
             ToolExecutionOptions::default(),
             Some(definition),
             Rc::new(move || core.request_render()),
@@ -152,15 +147,6 @@ impl EditRow {
     fn full_clears(&self) -> usize {
         self.terminal.get_writes().matches(FULL_CLEAR).count()
     }
-}
-
-fn edits_json(edits: &[Edit]) -> serde_json::Value {
-    serde_json::Value::Array(
-        edits
-            .iter()
-            .map(|edit| json!({ "old_string": edit.old_text, "new_string": edit.new_text }))
-            .collect(),
-    )
 }
 
 fn success_result(
@@ -254,7 +240,7 @@ async fn reconstructs_the_boxed_preview_from_a_settled_result_without_args_compl
         init_theme(Some("dark"), false);
         let dir = tempfile::tempdir().expect("temp dir");
         let path = write_lines(dir.path(), "replay-edit.txt", 200);
-        let edits: Vec<Edit> = large_edits(200).into_iter().take(2).collect();
+        let edits = large_edits(200);
         let cwd = std::env::current_dir()
             .expect("cwd")
             .to_string_lossy()

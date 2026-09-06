@@ -169,7 +169,7 @@ async fn a_patch_can_be_taken_back() {
         &harness.edit_tool(),
         json!({
             "path": &path,
-            "edits": [{ "old_string": "let value = 1;", "new_string": "let value = 2;" }],
+            "old_string": "let value = 1;", "new_string": "let value = 2;",
         }),
     )
     .await

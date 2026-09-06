@@ -52,7 +52,7 @@ fn the_edit_preview_reports_a_file_it_cannot_read() {
     let definition = create_tool_definition(ToolName::Edit, "/test-cwd", None);
     let args = json!({
         "path": "/test-cwd/missing-file.rs",
-        "edits": [{ "old_string": "a", "new_string": "b" }],
+        "old_string": "a", "new_string": "b",
     });
     let mut context = ToolRenderContext::new("call-1", args.clone(), "/test-cwd");
     context.args_complete = true;

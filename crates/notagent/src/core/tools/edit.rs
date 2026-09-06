@@ -37,36 +37,26 @@ use crate::modes::interactive::theme::theme::{
 
 pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
-        snippet: "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
+        snippet: "Make a precise file edit with one exact text replacement",
         guidelines: &[
-            "Use patch for precise changes (edits[].old_string must match exactly)",
-            "When changing multiple separate locations in one file, use one patch call with multiple entries in edits[] instead of multiple patch calls",
-            "Each edits[].old_string is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-            "Keep edits[].old_string as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+            "Use patch for precise changes with path, old_string and new_string (old_string must match exactly)",
+            "Each patch call replaces one unique occurrence. Base subsequent changes on the file after the preceding patch.",
+            "Keep old_string as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
         ],
     };
 
-const DESCRIPTION: &str = "Edit a single file using exact text replacement. Every edits[].old_string must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.";
+const DESCRIPTION: &str = "Edit a single file using exact text replacement. Supply path, old_string and new_string directly. old_string must identify a unique region in the current file. new_string may be empty to delete that region. Do not include large unchanged regions just to connect distant changes.";
 
 fn edit_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
             "path": { "type": "string", "description": "Path to the file to edit (relative or absolute)" },
-            "edits": {
-                "type": "array",
-                "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "old_string": { "type": "string", "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].old_string in the same call." },
-                        "new_string": { "type": "string", "description": "Replacement text for this targeted edit." },
-                    },
-                    "required": ["old_string", "new_string"],
-                },
-            },
+            "old_string": { "type": "string", "description": "Exact text to find. It must be non-empty and unique in the current file." },
+            "new_string": { "type": "string", "description": "Replacement text. Use an empty string to delete the matched text." },
         },
-        "required": ["path", "edits"],
+        "required": ["path", "old_string", "new_string"],
+        "additionalProperties": false,
     })
 }
 
@@ -170,74 +160,32 @@ pub fn create_edit_tool_definition(
     }
 }
 
-/// `prepareEditArguments`: accept the shapes models actually send.
-pub fn prepare_edit_arguments(input: Value) -> Value {
-    let Value::Object(mut args) = input else {
-        return input;
-    };
-
-    // Some models send `edits` as a JSON string instead of an array.
-    if let Some(Value::String(edits)) = args.get("edits")
-        && let Ok(parsed @ Value::Array(_)) = serde_json::from_str::<Value>(edits)
-    {
-        args.insert("edits".to_owned(), parsed);
-    }
-
-    // A flat single replacement is folded into edits[].
-    let flat_old = args
-        .get("old_string")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let flat_new = args
-        .get("new_string")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let (Some(old_text), Some(new_text)) = (flat_old, flat_new) else {
-        return Value::Object(args);
-    };
-
-    let mut edits = match args.get("edits") {
-        Some(Value::Array(edits)) => edits.clone(),
-        _ => Vec::new(),
-    };
-    edits.push(json!({ "old_string": old_text, "new_string": new_text }));
-    args.remove("old_string");
-    args.remove("new_string");
-    args.insert("edits".to_owned(), Value::Array(edits));
-    Value::Object(args)
-}
-
 fn validate_edit_input(input: &Value) -> Result<(String, Vec<Edit>), ToolExecutionError> {
-    let edits = input
-        .get("edits")
-        .and_then(Value::as_array)
-        .filter(|edits| !edits.is_empty());
-    let Some(edits) = edits else {
+    if input.get("edits").is_some() {
         return Err(ToolExecutionError::new(
-            "Edit tool input is invalid. edits must contain at least one replacement.",
+            "Patch accepts one replacement. Supply path, old_string and new_string directly, not edits.",
         ));
-    };
-    let path = input
-        .get("path")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let edits = edits
-        .iter()
-        .map(|edit| Edit {
-            old_text: edit
-                .get("old_string")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
-            new_text: edit
-                .get("new_string")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
+    }
+    let string_arg = |name: &str| {
+        input.get(name).and_then(Value::as_str).ok_or_else(|| {
+            ToolExecutionError::new(format!("Patch requires {name} to be a string."))
         })
-        .collect();
-    Ok((path, edits))
+    };
+    let path = string_arg("path")?;
+    let old_text = string_arg("old_string")?;
+    let new_text = string_arg("new_string")?;
+    if path.is_empty() || old_text.is_empty() {
+        return Err(ToolExecutionError::new(
+            "Patch requires non-empty path and old_string.",
+        ));
+    }
+    Ok((
+        path.to_owned(),
+        vec![Edit {
+            old_text: old_text.to_owned(),
+            new_text: new_text.to_owned(),
+        }],
+    ))
 }
 
 // ============================================================================
@@ -701,10 +649,6 @@ impl ToolDefinition for EditToolDefinition {
         }))
     }
 
-    fn prepare_arguments(&self, args: Value) -> Value {
-        prepare_edit_arguments(args)
-    }
-
     fn execute<'a>(
         &'a self,
         _tool_call_id: &'a str,
@@ -916,7 +860,7 @@ mod tests {
                 "call-1",
                 json!({
                     "path": "edit-test.txt",
-                    "edits": [{ "old_string": "world", "new_string": "testing" }],
+                    "old_string": "world", "new_string": "testing",
                 }),
                 None,
                 None,
@@ -953,7 +897,7 @@ mod tests {
                 "call-1",
                 json!({
                     "path": "latin1.txt",
-                    "edits": [{ "old_string": "caf", "new_string": "bar" }],
+                    "old_string": "caf", "new_string": "bar",
                 }),
                 None,
                 None,
@@ -970,37 +914,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn applies_several_edits_in_one_call() {
+    async fn successive_calls_match_the_result_of_the_preceding_patch() {
         let directory = TempDir::new();
-        directory.write("multi.txt", "alpha\nbeta\ngamma\n");
+        directory.write("file.txt", "alpha\nbeta\n");
         let tool = create_edit_tool_definition(&directory.cwd(), None);
-        let result = tool
-            .execute(
-                "call-1",
-                json!({
-                    "path": "multi.txt",
-                    "edits": [
-                        { "old_string": "alpha", "new_string": "ALPHA" },
-                        { "old_string": "gamma", "new_string": "GAMMA" },
-                    ],
-                }),
+        for (old, new) in [("alpha", "ALPHA"), ("ALPHA", "changed")] {
+            tool.execute(
+                "patch",
+                json!({ "path": "file.txt", "old_string": old, "new_string": new }),
                 None,
                 None,
                 None,
             )
             .await
-            .expect("edit");
+            .expect("patch the current file");
+        }
         assert_eq!(
-            text_of(&result),
-            "Successfully replaced 2 block(s) in multi.txt."
+            directory.read("file.txt"),
+            "changed\nbeta\n",
+            "later patches must match the updated file"
         );
-        assert_eq!(directory.read("multi.txt"), "ALPHA\nbeta\nGAMMA\n");
-        let diff = result.details.expect("details")["diff"]
-            .as_str()
-            .expect("diff")
-            .to_owned();
-        assert!(diff.contains("ALPHA"));
-        assert!(diff.contains("GAMMA"));
     }
 
     #[tokio::test]
@@ -1010,7 +943,7 @@ mod tests {
         let tool = create_edit_tool_definition(&directory.cwd(), None);
         tool.execute(
             "call-1",
-            json!({ "path": "crlf.txt", "edits": [{ "old_string": "two", "new_string": "TWO" }] }),
+            json!({ "path": "crlf.txt", "old_string": "two", "new_string": "TWO" }),
             None,
             None,
             None,
@@ -1035,7 +968,7 @@ mod tests {
             "call-1",
             json!({
                 "path": "fuzzy.txt",
-                "edits": [{ "old_string": "change 'that'", "new_string": "changed" }],
+                "old_string": "change 'that'", "new_string": "changed",
             }),
             None,
             None,
@@ -1057,7 +990,7 @@ mod tests {
         let error = tool
             .execute(
                 "call-1",
-                json!({ "path": "missing.txt", "edits": [{ "old_string": "a", "new_string": "b" }] }),
+                json!({ "path": "missing.txt", "old_string": "a", "new_string": "b" }),
                 None,
                 None,
                 None,
@@ -1072,17 +1005,14 @@ mod tests {
         let error = tool
             .execute(
                 "call-1",
-                json!({ "path": "file.txt", "edits": [] }),
+                json!({ "path": "file.txt", "old_string": "content" }),
                 None,
                 None,
                 None,
             )
             .await
             .expect_err("invalid");
-        assert_eq!(
-            error.message,
-            "Edit tool input is invalid. edits must contain at least one replacement."
-        );
+        assert_eq!(error.message, "Patch requires new_string to be a string.");
     }
 
     #[tokio::test]
@@ -1093,7 +1023,7 @@ mod tests {
         let error = tool
             .execute(
                 "call-1",
-                json!({ "path": "file.txt", "edits": [{ "old_string": "zzz", "new_string": "b" }] }),
+                json!({ "path": "file.txt", "old_string": "zzz", "new_string": "b" }),
                 None,
                 None,
                 None,
@@ -1108,36 +1038,77 @@ mod tests {
         assert_eq!(directory.read("file.txt"), "content");
     }
 
-    #[test]
-    fn prepares_legacy_and_stringified_arguments() {
-        // A single old/new pair becomes an entry in `edits`.
-        let prepared = prepare_edit_arguments(
-            json!({ "path": "a.txt", "old_string": "one", "new_string": "two" }),
-        );
+    #[tokio::test]
+    async fn rejects_incomplete_or_nested_arguments_without_changing_the_file() {
+        let directory = TempDir::new();
+        directory.write("file.txt", "content");
+        let tool = create_edit_tool_definition(&directory.cwd(), None);
+        for args in [
+            json!({ "path": "file.txt", "old_string": "content" }),
+            json!({ "path": "file.txt", "old_string": "content", "new_string": null }),
+            json!({ "path": "file.txt", "old_string": 1, "new_string": "x" }),
+            json!({ "path": "file.txt", "old_string": "", "new_string": "x" }),
+            json!({ "path": "", "old_string": "content", "new_string": "x" }),
+            json!({ "old_string": "content", "new_string": "x" }),
+            json!({ "path": "file.txt", "edits": [{ "old_string": "content", "new_string": "x" }] }),
+            json!({ "path": "file.txt", "old_string": "content", "new_string": "x", "edits": [] }),
+        ] {
+            let result = tool
+                .execute("invalid", args.clone(), None, None, None)
+                .await;
+            assert!(
+                result.is_err(),
+                "invalid patch arguments must be rejected: {args}"
+            );
+            assert_eq!(
+                directory.read("file.txt"),
+                "content",
+                "invalid input must not mutate the file: {args}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn an_empty_replacement_deletes_the_matched_text() {
+        let directory = TempDir::new();
+        directory.write("file.txt", "before remove after");
+        let tool = create_edit_tool_definition(&directory.cwd(), None);
+        tool.execute(
+            "delete",
+            json!({ "path": "file.txt", "old_string": "remove ", "new_string": "" }),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("empty replacement is valid");
         assert_eq!(
-            prepared,
-            json!({ "path": "a.txt", "edits": [{ "old_string": "one", "new_string": "two" }] })
+            directory.read("file.txt"),
+            "before after",
+            "an explicit empty replacement must delete only the match"
         );
+    }
 
-        // A JSON string of edits is parsed.
-        let prepared = prepare_edit_arguments(json!({
-            "path": "a.txt",
-            "edits": "[{\"old_string\":\"one\",\"new_string\":\"two\"}]",
-        }));
-        assert_eq!(prepared["edits"][0]["old_string"], json!("one"));
-
-        // Both forms combine, with the flat pair appended.
-        let prepared = prepare_edit_arguments(json!({
-            "path": "a.txt",
-            "edits": [{ "old_string": "one", "new_string": "two" }],
-            "old_string": "three",
-            "new_string": "four",
-        }));
-        assert_eq!(prepared["edits"].as_array().expect("edits").len(), 2);
-        assert_eq!(prepared["edits"][1]["new_string"], json!("four"));
-
-        // Anything else is passed through unchanged.
-        assert_eq!(prepare_edit_arguments(json!("nonsense")), json!("nonsense"));
+    #[tokio::test]
+    async fn an_ambiguous_match_does_not_change_the_file() {
+        let directory = TempDir::new();
+        directory.write("file.txt", "same same");
+        let tool = create_edit_tool_definition(&directory.cwd(), None);
+        let result = tool
+            .execute(
+                "ambiguous",
+                json!({ "path": "file.txt", "old_string": "same", "new_string": "different" }),
+                None,
+                None,
+                None,
+            )
+            .await;
+        assert!(result.is_err(), "patch must require a unique match");
+        assert_eq!(
+            directory.read("file.txt"),
+            "same same",
+            "an ambiguous patch must leave the file unchanged"
+        );
     }
 
     #[tokio::test]
@@ -1150,7 +1121,7 @@ mod tests {
         let error = tool
             .execute(
                 "call-1",
-                json!({ "path": "file.txt", "edits": [{ "old_string": "content", "new_string": "x" }] }),
+                json!({ "path": "file.txt", "old_string": "content", "new_string": "x" }),
                 Some(signal),
                 None,
                 None,
@@ -1173,7 +1144,7 @@ mod tests {
     fn one_edit() -> Value {
         json!({
             "path": "file.txt",
-            "edits": [{ "old_string": "content", "new_string": "changed" }],
+            "old_string": "content", "new_string": "changed",
         })
     }
 
@@ -1265,7 +1236,7 @@ mod tests {
             "call-1",
             json!({
                 "path": "file.txt",
-                "edits": [{ "old_string": "not in the file", "new_string": "x" }],
+                "old_string": "not in the file", "new_string": "x",
             }),
             None,
             None,
@@ -1286,6 +1257,55 @@ mod tests {
     }
 
     #[test]
+    fn the_agent_schema_accepts_flat_replacements_and_rejects_nested_calls() {
+        use notagent_ai::types::ToolCall;
+        use notagent_ai::utils::validation::{check, validate_tool_arguments};
+
+        let tool = create_edit_tool("/tmp", None).to_tool();
+        for (args, valid) in [
+            (
+                json!({ "path": "file.txt", "old_string": "before", "new_string": "after" }),
+                true,
+            ),
+            (
+                json!({ "path": "file.txt", "old_string": "before", "new_string": "" }),
+                true,
+            ),
+            (json!({ "path": "file.txt", "old_string": "before" }), false),
+            (
+                json!({ "path": "file.txt", "old_string": "before", "new_string": null }),
+                false,
+            ),
+            (
+                json!({ "path": "file.txt", "edits": [{ "old_string": "before", "new_string": "after" }] }),
+                false,
+            ),
+            (
+                json!({ "path": "file.txt", "old_string": "before", "new_string": "after", "edits": [] }),
+                false,
+            ),
+        ] {
+            let call = ToolCall {
+                name: "patch".to_owned(),
+                arguments: args.as_object().expect("object arguments").clone(),
+                ..ToolCall::default()
+            };
+            assert_eq!(
+                check(&tool.parameters, &args),
+                valid,
+                "the model-facing schema must enforce the flat patch contract: {args}"
+            );
+            if valid {
+                assert_eq!(
+                    validate_tool_arguments(&tool, &call).expect("valid patch arguments"),
+                    args,
+                    "valid flat arguments must pass through central validation unchanged"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn advertises_its_schema_and_prompt_contribution() {
         let tool = create_edit_tool_definition("/tmp", None);
         assert_eq!(tool.name(), "patch");
@@ -1297,11 +1317,29 @@ mod tests {
             tool.render_shell(),
             crate::core::tools::tool_definition::RenderShell::SelfManaged
         );
-        assert_eq!(tool.prompt_guidelines().len(), 4);
-        assert_eq!(tool.parameters()["required"], json!(["path", "edits"]));
+        assert_eq!(tool.prompt_guidelines().len(), 3);
         assert_eq!(
-            tool.parameters()["properties"]["edits"]["items"]["required"],
-            json!(["old_string", "new_string"])
+            tool.parameters()["required"],
+            json!(["path", "old_string", "new_string"]),
+            "patch must expose the same flat replacement fields as patch_minified"
+        );
+        let properties = tool.parameters()["properties"]
+            .as_object()
+            .expect("properties");
+        assert_eq!(
+            properties.len(),
+            3,
+            "patch needs only path, old_string and new_string"
+        );
+        assert!(
+            properties.values().all(|field| field["type"] == "string"),
+            "patch arguments must be flat strings"
+        );
+        let args = json!({ "path": "file.txt", "old_string": "before", "new_string": "after" });
+        assert_eq!(
+            tool.prepare_arguments(args.clone()),
+            args,
+            "flat arguments must reach execution unchanged"
         );
     }
 }

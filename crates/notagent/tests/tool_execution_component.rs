@@ -450,10 +450,8 @@ fn badge_style_shows_colored_diff_stats_for_file_changes() {
             "patch",
             json!({
                 "path": "test.py",
-                "edits": [{
-                    "old_string": "before\nunchanged\n",
-                    "new_string": "after\nunchanged\n"
-                }]
+                "old_string": "before\nunchanged\n",
+                "new_string": "after\nunchanged\n"
             }),
             "+1",
             Some("-1"),
