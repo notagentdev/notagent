@@ -151,8 +151,6 @@ pub struct SettingsConfig {
     pub fullscreen_exit_output: FullscreenExitOutput,
     pub fullscreen_scrollbar: ScrollViewScrollbar,
     pub warnings: WarningSettings,
-    /// user decision 2026-08-17), false = standard filled surface.
-    pub block_style_badge: bool,
     /// reachable as `/leases on|off`.
     pub atomic_leases: bool,
     /// `/bash-filter on|off`.
@@ -163,7 +161,6 @@ impl Default for SettingsConfig {
     fn default() -> Self {
         Self {
             auto_compact: false,
-            block_style_badge: true,
             atomic_leases: false,
             bash_filter: false,
             show_images: false,
@@ -207,8 +204,6 @@ impl Default for SettingsConfig {
 /// `SettingsCallbacks`.
 pub struct SettingsCallbacks {
     pub on_auto_compact_change: Box<dyn FnMut(bool)>,
-    /// Chat-block style toggle (v0.1.9): true = badge.
-    pub on_block_style_change: Box<dyn FnMut(bool)>,
     /// Atomic file leases toggle (v0.1.19).
     pub on_atomic_leases_change: Box<dyn FnMut(bool)>,
     /// Bash filter toggle (v0.1.20).
@@ -252,7 +247,6 @@ impl Default for SettingsCallbacks {
     fn default() -> Self {
         Self {
             on_auto_compact_change: Box::new(|_| {}),
-            on_block_style_change: Box::new(|_| {}),
             on_atomic_leases_change: Box::new(|_| {}),
             on_bash_filter_change: Box::new(|_| {}),
             on_show_images_change: Box::new(|_| {}),
@@ -928,20 +922,6 @@ impl SettingsSelectorComponent {
                 submenu: None,
             },
             SettingItem {
-                id: "block-style".to_string(),
-                label: "Block style".to_string(),
-                description: Some(
-                    "How chat blocks render: 'badge' leads with a state badge, 'standard' fills the block background".to_string(),
-                ),
-                current_value: if config.block_style_badge {
-                    "badge".to_string()
-                } else {
-                    "standard".to_string()
-                },
-                values: Some(vec!["badge".to_string(), "standard".to_string()]),
-                submenu: None,
-            },
-            SettingItem {
                 id: "steering-mode".to_string(),
                 label: "Steering mode".to_string(),
                 description: Some(
@@ -1454,7 +1434,6 @@ impl SettingsSelectorComponent {
                 let mut callbacks = change_callbacks.borrow_mut();
                 match id {
                     "autocompact" => (callbacks.on_auto_compact_change)(new_value == "true"),
-                    "block-style" => (callbacks.on_block_style_change)(new_value == "badge"),
                     "atomic-leases" => (callbacks.on_atomic_leases_change)(new_value == "true"),
                     "bash-filter" => (callbacks.on_bash_filter_change)(new_value == "true"),
                     "show-images" => (callbacks.on_show_images_change)(new_value == "true"),

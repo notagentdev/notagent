@@ -997,19 +997,11 @@ impl SettingsManager {
         self.set_global_field("lastMode", Value::from(mode_id));
     }
 
-    /// surface, anything else — including absent — is the badge style, the
-    /// default by user decision.
+    /// Only an explicit `blockStyle: "standard"` in the config disables badges.
     pub fn get_block_style_badge(&self) -> bool {
         self.settings_snapshot()
             .block_style
             .is_none_or(|style| style != "standard")
-    }
-
-    pub fn set_block_style_setting(&self, badge: bool) {
-        self.set_global_field(
-            "blockStyle",
-            Value::from(if badge { "badge" } else { "standard" }),
-        );
     }
 
     /// enabled, matching the reference default for `cb_search_enabled`.

@@ -56,6 +56,29 @@ fn manager(harness: &Harness) -> SettingsManager {
 }
 
 #[test]
+fn badges_are_the_default_and_standard_requires_an_explicit_config_value() {
+    let harness = harness();
+    assert!(
+        manager(&harness).get_block_style_badge(),
+        "missing config must default to badge mode"
+    );
+    let settings_path = harness.agent_dir.join("settings.json");
+    for (config, badge) in [
+        (json!({}), true),
+        (json!({ "blockStyle": "badge" }), true),
+        (json!({ "blockStyle": "standard" }), false),
+        (json!({ "blockStyle": "unknown" }), true),
+    ] {
+        std::fs::write(&settings_path, config.to_string()).expect("write config");
+        assert_eq!(
+            manager(&harness).get_block_style_badge(),
+            badge,
+            "only an explicit standard setting may disable badges: {config}"
+        );
+    }
+}
+
+#[test]
 fn preserves_externally_added_settings_when_changing_a_field() {
     let harness = harness();
     let settings_path = harness.agent_dir.join("settings.json");

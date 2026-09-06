@@ -4335,7 +4335,6 @@ impl InteractiveMode {
             fullscreen_exit_output: settings.get_fullscreen_exit_output(),
             fullscreen_scrollbar: scroll_view_scrollbar(settings.get_fullscreen_scrollbar()),
             warnings: settings.get_warnings(),
-            block_style_badge: settings.get_block_style_badge(),
             atomic_leases: settings.get_atomic_leases_enabled(),
             bash_filter: settings.get_bash_filter_enabled(),
         };
@@ -4347,20 +4346,6 @@ impl InteractiveMode {
                 Box::new(move |enabled| {
                     session.set_auto_compaction_enabled(enabled);
                     effect(&tx, id, SettingsEffect::AutoCompact(enabled));
-                })
-            },
-            on_block_style_change: {
-                let settings = Arc::clone(&settings);
-                let tx = self.ui_tx.clone();
-                Box::new(move |badge| {
-                    settings.set_block_style_setting(badge);
-                    crate::modes::interactive::theme::theme::set_block_style(if badge {
-                        crate::modes::interactive::theme::theme::BlockStyle::Badge
-                    } else {
-                        crate::modes::interactive::theme::theme::BlockStyle::Standard
-                    });
-                    // Rows already on screen rebuild for the new style.
-                    effect(&tx, id, SettingsEffect::InvalidateChat);
                 })
             },
             // The gate is read at call time, so the next mutating tool call

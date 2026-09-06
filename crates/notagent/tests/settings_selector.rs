@@ -40,7 +40,6 @@ type Calls = Rc<RefCell<Vec<(&'static str, String)>>>;
 fn config() -> SettingsConfig {
     SettingsConfig {
         auto_compact: true,
-        block_style_badge: true,
         atomic_leases: false,
         bash_filter: false,
         show_images: false,
@@ -154,6 +153,18 @@ impl Harness {
     fn take_calls(&self) -> Vec<(&'static str, String)> {
         self.calls.borrow_mut().drain(..).collect()
     }
+}
+
+#[test]
+fn block_style_is_not_available_in_the_settings_menu() {
+    let _guard = test_lock();
+    let mut harness = Harness::new(config());
+    harness.search("Block style");
+    let rendered = harness.lines().join("\n");
+    assert!(
+        rendered.contains("No matching settings"),
+        "block style must be configurable only through the config file: {rendered}"
+    );
 }
 
 #[test]
