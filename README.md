@@ -6,7 +6,7 @@ reading, editing, searching, and running commands.
 
 ## Installation
 
-The initial Homebrew release supports Apple Silicon Macs:
+Version 0.1.49 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
