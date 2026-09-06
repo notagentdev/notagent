@@ -20,6 +20,9 @@ use crate::core::session_manager::SessionEntry;
 use crate::core::usage_totals::{add_usage_to_totals, create_usage_totals};
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
+/// Shared inset for footer rows and the subagent roster beneath them.
+pub(super) const FOOTER_PADDING_X: usize = 2;
+
 /// Format token counts for compact footer display.
 pub fn format_tokens(count: u64) -> String {
     if count < 1000 {
@@ -511,10 +514,9 @@ impl Component for FooterComponent {
             .map(|model| model.id.clone())
             .unwrap_or_else(|| "no-model".to_string());
 
-        // Every footer row is inset by one column on both sides, like the
-        // reference's `FOOTER_PADDING_X` (takeover, user decision 2026-08-18).
-        let indent = " ";
-        let content_width = width.saturating_sub(2);
+        let padding = FOOTER_PADDING_X.min(width / 2);
+        let indent = " ".repeat(padding);
+        let content_width = width.saturating_sub(padding * 2);
 
         // If statsLeft is too wide, truncate it
         let mut stats_left_width = visible_width(&stats_left);

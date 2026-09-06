@@ -5,13 +5,11 @@ use crate::core::modes::shells::ShellId;
 use crate::core::tasks::types::{SubagentTaskInfo, TaskInfo, TaskStatus, is_terminal_task_status};
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
+use super::footer::FOOTER_PADDING_X;
 use super::tasks_panel::{now_ms, single_line};
 
 /// Most children shown at once, so a wide fan-out cannot take the screen.
 const MAX_ROWS: usize = 6;
-
-/// Matches the footer text inset on both terminal edges.
-const HORIZONTAL_PADDING: usize = 1;
 
 /// Shortest a task label may be squeezed to before the row gives up on it.
 const MIN_LABEL_WIDTH: usize = 12;
@@ -160,10 +158,10 @@ impl Component for SubagentPanel {
         if rows.is_empty() {
             return Vec::new();
         }
-        if width <= HORIZONTAL_PADDING * 2 {
+        if width <= FOOTER_PADDING_X * 2 {
             return Vec::new();
         }
-        let content_width = width - HORIZONTAL_PADDING * 2;
+        let content_width = width - FOOTER_PADDING_X * 2;
 
         let shown = &rows[..rows.len().min(MAX_ROWS)];
         // `Math.max(...shown.map((row) => row.name.length))` — JavaScript counts
@@ -233,7 +231,7 @@ impl Component for SubagentPanel {
         shared_lines(
             lines
                 .into_iter()
-                .map(|line| " ".repeat(HORIZONTAL_PADDING) + &line)
+                .map(|line| " ".repeat(FOOTER_PADDING_X) + &line)
                 .collect(),
         )
     }

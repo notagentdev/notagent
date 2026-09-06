@@ -211,6 +211,43 @@ fn abbreviates_the_home_directory_and_descendants() {
 }
 
 #[test]
+fn all_footer_rows_align_with_message_text_and_preserve_the_right_inset() {
+    let _guard = guard();
+    let mut footer = themed_footer(create_session(SessionOptions::default()), 1);
+    footer.set_show_workspace(true);
+    let lines = footer.render(120);
+    assert_eq!(
+        lines.len(),
+        2,
+        "the fixture must include stats and workspace rows"
+    );
+    for line in &lines {
+        let text = strip_ansi(line);
+        assert!(
+            text.starts_with("  ") && !text.starts_with("   "),
+            "footer text must start in column two: {text:?}"
+        );
+        assert!(
+            visible_width(line) <= 118,
+            "footer text must leave two columns on the right: {text:?}"
+        );
+    }
+    assert_eq!(
+        visible_width(&lines[0]),
+        118,
+        "the model must align with the right inset"
+    );
+    for width in 0..=80 {
+        for line in footer.render(width) {
+            assert!(
+                visible_width(&line) <= width.saturating_sub(2.min(width / 2)),
+                "footer row must fit width {width} with its inset: {line:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn counts_running_background_shells_at_the_right_edge() {
     let _guard = guard();
     let session = create_session(SessionOptions {

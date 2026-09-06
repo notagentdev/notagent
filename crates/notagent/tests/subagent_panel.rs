@@ -335,8 +335,14 @@ fn never_renders_wider_than_it_was_given() {
             ..Default::default()
         },
     )]);
-    for line in panel.render(60) {
-        assert!(visible_width(&line) <= 60, "{:?}", strip_ansi(&line));
+    for width in 0..=80 {
+        for line in panel.render(width) {
+            assert!(
+                visible_width(&line) <= width.saturating_sub(2),
+                "subagent rows must preserve the right inset at width {width}: {:?}",
+                strip_ansi(&line)
+            );
+        }
     }
 }
 
@@ -356,15 +362,15 @@ fn uses_the_same_horizontal_inset_as_the_footer_text() {
     let width = 60;
     let lines = panel.render(width);
     assert!(
-        strip_ansi(&lines[0]).starts_with(" ● main"),
+        strip_ansi(&lines[0]).starts_with("  ● main"),
         "{:?}",
         lines[0]
     );
-    assert!(strip_ansi(&lines[1]).starts_with("   ○"), "{:?}", lines[1]);
+    assert!(strip_ansi(&lines[1]).starts_with("    ○"), "{:?}", lines[1]);
     assert_eq!(
         visible_width(&lines[1]),
-        width - 1,
-        "the rightmost terminal column must stay outside the panel text"
+        width - 2,
+        "the two rightmost terminal columns must stay outside the panel text"
     );
 }
 

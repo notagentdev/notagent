@@ -314,6 +314,13 @@ impl StatusIndicator {
 
 impl Component for StatusIndicator {
     fn render(&mut self, width: usize) -> Vec<Line> {
+        if self.kind == StatusIndicatorKind::Working {
+            // Reserve the output gutter as well as the loader's own margins.
+            if width < 4 {
+                return vec![Line::from(""); 2];
+            }
+            return super::indent_lines(self.loader.render(width - 1), width);
+        }
         self.loader.render(width)
     }
 
