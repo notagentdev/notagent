@@ -119,6 +119,63 @@ mod tests {
     use crate::modes::interactive::theme::theme::{init_theme, test_lock};
 
     #[test]
+    fn model_changes_keep_every_border_at_the_same_column() {
+        let _guard = test_lock();
+        init_theme(Some("dark"), false);
+        let data = Rc::new(std::cell::RefCell::new(StartupHeaderData {
+            directory: "~/projects/notagent".to_owned(),
+            git_branch: Some("main".to_owned()),
+            model: Some("openai/gpt-5".to_owned()),
+        }));
+        let source = Rc::clone(&data);
+        let mut card = StartupHeader::from_provider(Rc::new(move || source.borrow().clone()));
+        let terminal = notagent_tui::test_terminal::VirtualTerminal::new(120, 24);
+        let mut screen =
+            notagent_tui::tui_main_screen::TuiMainScreen::new(Box::new(terminal.clone()));
+        let source = Rc::clone(&data);
+        screen.core().add_child(notagent_tui::tui::component_ref(
+            StartupHeader::from_provider(Rc::new(move || source.borrow().clone())),
+        ));
+        screen.start();
+        for model in ["openai/gpt-5", "anthropic/claude-fable-5-1", "openai/gpt-5"] {
+            data.borrow_mut().model = Some(model.to_owned());
+            for width in 8..=120 {
+                let lines: Vec<_> = card
+                    .render(width)
+                    .iter()
+                    .map(|line| strip_terminal_sequences(line))
+                    .collect();
+                let columns = lines[0].chars().count();
+                assert!(columns <= width, "header must fit width {width}: {lines:?}");
+                assert!(
+                    lines.iter().all(|line| line.chars().count() == columns),
+                    "all ASCII-content rows must align with both borders at width {width}: {lines:?}"
+                );
+                assert!(
+                    lines[1..7]
+                        .iter()
+                        .all(|line| line.chars().nth(columns - 2) == Some('│')),
+                    "right border must stay in the same cell at width {width}: {lines:?}"
+                );
+            }
+            for width in [120, 40, 38, 80, 24, 60, 120] {
+                terminal.resize(width, 24);
+                screen.core().request_immediate_render();
+                screen.render_now(false);
+                let viewport = terminal.get_viewport();
+                let expected = card.render(width);
+                for (actual, expected) in viewport.iter().zip(expected.iter()) {
+                    assert_eq!(
+                        actual.trim_end(),
+                        strip_terminal_sequences(expected).trim_end(),
+                        "model changes and resizing must repaint the whole card at width {width}: {viewport:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_card_fits_its_content_and_shows_runtime_details() {
         let _guard = test_lock();
         init_theme(Some("dark"), false);
