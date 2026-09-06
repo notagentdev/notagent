@@ -334,7 +334,7 @@ fn format_exit_code(exit_code: Option<i64>) -> String {
 
 impl Component for BashExecutionComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
-        self.container.render(width)
+        super::indent_lines(self.container.render(width.saturating_sub(1)), width)
     }
 
     fn invalidate(&mut self) {

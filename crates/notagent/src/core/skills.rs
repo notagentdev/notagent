@@ -472,7 +472,7 @@ pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
 
     let mut lines = vec![
         "\n\nThe following skills provide specialized instructions for specific tasks.".to_string(),
-        "Use the read tool to load a skill's file when the task matches its description."
+        "Use the skill tool with the skill's name to load its instructions when the task matches its description. Do not load skill instructions with the read tool."
             .to_string(),
         "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands."
             .to_string(),

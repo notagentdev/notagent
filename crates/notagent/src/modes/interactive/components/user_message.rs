@@ -70,34 +70,38 @@ impl UserMessageComponent {
             1
         };
         let mut content_box = BoxComponent::new(
-            self.output_pad,
+            0,
             padding_y,
             Some(Rc::new(|content: &str| {
                 theme().bg(ThemeBg::UserMessageBg, content)
             })),
         );
-        content_box.add_child(component_ref(Markdown::new(
-            self.text.clone(),
-            0,
-            0,
-            self.markdown_theme.clone(),
-            Some(DefaultTextStyle {
-                color: Some(Rc::new(|content: &str| {
-                    theme().fg(ThemeColor::UserMessageText, content)
-                })),
-                ..DefaultTextStyle::default()
-            }),
-            Some(MarkdownOptions {
-                preserve_ordered_list_markers: true,
-                preserve_backslash_escapes: true,
-                transform: Some(create_markdown_transform(
-                    MarkdownMessageType::User,
-                    false,
-                    self.markdown_transformers.clone(),
-                )),
-                ..MarkdownOptions::default()
-            }),
-        )));
+        content_box.add_child(component_ref(super::message_marker::MessageMarker {
+            marker: "❯",
+            padding: self.output_pad,
+            content: Markdown::new(
+                self.text.clone(),
+                0,
+                0,
+                self.markdown_theme.clone(),
+                Some(DefaultTextStyle {
+                    color: Some(Rc::new(|content: &str| {
+                        theme().fg(ThemeColor::UserMessageText, content)
+                    })),
+                    ..DefaultTextStyle::default()
+                }),
+                Some(MarkdownOptions {
+                    preserve_ordered_list_markers: true,
+                    preserve_backslash_escapes: true,
+                    transform: Some(create_markdown_transform(
+                        MarkdownMessageType::User,
+                        false,
+                        self.markdown_transformers.clone(),
+                    )),
+                    ..MarkdownOptions::default()
+                }),
+            ),
+        }));
         self.container.add_child(component_ref(content_box));
     }
 }

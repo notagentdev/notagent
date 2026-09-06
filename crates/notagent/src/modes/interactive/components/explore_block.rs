@@ -326,6 +326,8 @@ impl Component for ExploreBlockComponent {
     fn invalidate(&mut self) {}
 
     fn render(&mut self, width: usize) -> Vec<Line> {
+        let outer_width = width;
+        let width = width.saturating_sub(1);
         if self.entries.is_empty() || width == 0 {
             return Vec::new();
         }
@@ -433,7 +435,7 @@ impl Component for ExploreBlockComponent {
                     .map(|line| paint_row(&theme_instance, background, &line, width)),
             );
         }
-        shared_lines(rendered)
+        super::indent_lines(shared_lines(rendered), outer_width)
     }
 
     fn handle_input(&mut self, data: &str) {
@@ -625,10 +627,10 @@ mod tests {
         let expected = vec![
             "",
             "",
-            " Exploring...",
+            "  Exploring...",
             "",
-            " Searched files config",
-            " 1 search",
+            "  Searched files config",
+            "  1 search",
             "",
         ];
         assert_eq!(actual, expected);
@@ -672,15 +674,15 @@ mod tests {
         let expected = vec![
             "",
             "",
-            " Exploring...",
+            "  Exploring...",
             "",
-            " ...",
-            " Searched files pattern-1",
-            " Searched files pattern-2",
-            " Searched files pattern-3",
-            " Searched files pattern-4",
-            " (1 more, ctrl+o to expand)",
-            " 5 searches",
+            "  ...",
+            "  Searched files pattern-1",
+            "  Searched files pattern-2",
+            "  Searched files pattern-3",
+            "  Searched files pattern-4",
+            "  (1 more, ctrl+o to expand)",
+            "  5 searches",
             "",
         ];
         assert_eq!(actual, expected);
@@ -703,7 +705,7 @@ mod tests {
         block.set_expanded(true);
         let actual = rendered(&mut block);
         assert!(
-            actual.contains(&" Searched text pattern-0".to_string()),
+            actual.contains(&"  Searched text pattern-0".to_string()),
             "{actual:?}"
         );
         assert_eq!(
@@ -712,7 +714,7 @@ mod tests {
             "the surface ends with a padded blank row"
         );
         assert!(
-            actual.contains(&" (ctrl+o to collapse)".to_string()),
+            actual.contains(&"  (ctrl+o to collapse)".to_string()),
             "{actual:?}"
         );
     }
@@ -750,9 +752,9 @@ mod tests {
         // below — no surface padding rows.
         let expected = vec![
             "",
-            " EXPLORED  (0ms)",
-            " Searched code workspace lock",
-            " 1 search, 1 failed",
+            "  EXPLORED  (0ms)",
+            "  Searched code workspace lock",
+            "  1 search, 1 failed",
         ];
         assert_eq!(actual, expected);
     }
@@ -790,7 +792,7 @@ mod tests {
         let collapsed = rendered(&mut block);
         assert_eq!(
             collapsed.last().map(String::as_str),
-            Some(" (1 more, ctrl+o to expand)"),
+            Some("  (1 more, ctrl+o to expand)"),
             "{collapsed:?}"
         );
         assert!(

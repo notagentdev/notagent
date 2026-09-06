@@ -84,7 +84,7 @@ fn chains_markdown_transformers_with_user_message_context() {
         MarkdownTransformContext {
             message_type: MarkdownMessageType::User,
             is_streaming: false,
-            available_width: 78,
+            available_width: 77,
         }
     );
 }
@@ -156,4 +156,47 @@ fn switching_the_style_rebuilds_the_message_layout() {
     assert_eq!(standard_rows, 3);
     assert_eq!(badge_rows, 1);
     set_block_style(BlockStyle::Standard);
+}
+
+#[test]
+fn user_markers_align_wrapped_text_and_preserve_markdown_structure() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    for style in [BlockStyle::Standard, BlockStyle::Badge] {
+        set_block_style(style);
+        let mut component =
+            UserMessageComponent::new("alpha beta gamma delta epsilon", None, None, Vec::new());
+        let lines: Vec<_> = component
+            .render(16)
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect();
+        assert!(
+            lines.iter().any(|line| line.starts_with("❯ alpha")),
+            "the marker stays at the margin: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| line.starts_with("  gamma")),
+            "wrapped text aligns after the marker: {lines:?}"
+        );
+        assert_eq!(
+            lines.join("\n").matches('❯').count(),
+            1,
+            "one marker per user message"
+        );
+        for width in 1..=20 {
+            for line in component.render(width) {
+                assert!(
+                    notagent_tui::utils::visible_width(&line) <= width,
+                    "line exceeds width {width}: {line:?}"
+                );
+            }
+        }
+        let mut heading = UserMessageComponent::new("# Heading", None, None, Vec::new());
+        let rendered = strip_ansi(&heading.render(40).join("\n"));
+        assert!(
+            rendered.contains("❯ Heading") && !rendered.contains("# Heading"),
+            "the marker must not change Markdown parsing: {rendered}"
+        );
+    }
 }

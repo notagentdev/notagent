@@ -874,6 +874,8 @@ fn image_blocks(
 
 impl Component for ToolExecutionComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
+        let outer_width = width;
+        let width = width.saturating_sub(1);
         // A live style switch restyles rows already on screen (reference
         // pattern: rebuild when the built style no longer matches).
         if self.dirty.get() || self.built_style != block_style() {
@@ -903,10 +905,10 @@ impl Component for ToolExecutionComponent {
                 }
                 lines.extend(image.borrow_mut().render(width));
             }
-            return lines;
+            return super::indent_lines(lines, outer_width);
         }
 
-        self.container.render(width)
+        super::indent_lines(self.container.render(width), outer_width)
     }
 
     fn invalidate(&mut self) {

@@ -70,6 +70,12 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
         .map(|text| format!("\n\n{text}"))
         .unwrap_or_default();
 
+    let tools: Vec<String> = match options.selected_tools.as_ref() {
+        Some(tools) => tools.clone(),
+        None => DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
+    };
+    let has_skill = tools.iter().any(|name| name == "skill");
+
     if let Some(custom_prompt) = options.custom_prompt.as_deref() {
         let mut prompt = custom_prompt.to_string();
 
@@ -79,12 +85,7 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
 
         append_project_context(&mut prompt, &options.context_files);
 
-        // Skills are only listed when the model has a way to read them.
-        let custom_prompt_has_read = match options.selected_tools.as_ref() {
-            None => true,
-            Some(tools) => tools.iter().any(|name| name == "read"),
-        };
-        if custom_prompt_has_read && !options.skills.is_empty() {
+        if has_skill && !options.skills.is_empty() {
             prompt.push_str(&format_skills_for_prompt(&options.skills));
         }
 
@@ -93,12 +94,8 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
         return prompt;
     }
 
-    // A tool appears in "Available tools" only when the caller supplies a
+    // A tool appears in the reference only when the caller supplies a
     // one-line snippet for it.
-    let tools: Vec<String> = match options.selected_tools.as_ref() {
-        Some(tools) => tools.clone(),
-        None => DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
-    };
     let visible_tools: Vec<&String> = tools
         .iter()
         .filter(|name| options.snippet(name).is_some())
@@ -128,7 +125,6 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
     let has_grep = has("grep");
     let has_find = has("find_filesystem");
     let has_ls = has("ls");
-    let has_read = has("read");
 
     if has_bash && !has_grep && !has_find && !has_ls {
         add_guideline(
@@ -170,10 +166,10 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
     let mut prompt = format!(
         "You are an expert coding assistant operating inside notagent, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
-Available tools:
+Tool reference:
 {tools_list}
 
-In addition to the tools above, you may have access to other custom tools depending on the project.
+Only tools attached to the current request are available to call. This reference may include tools unavailable in the current mode or subagent; apply tool-specific instructions only when that tool is attached. Project-specific tools may also be attached.
 
 Operating modes:
 A user message may begin with a <mode> block. It is injected by the system when the operating mode changes and is not part of what the user wrote. It names the mode and the shell that bounds which tools you have. The most recent <mode> block is the one in force; every earlier one is superseded and no longer applies. Follow the active block without replying to it, mentioning it, or quoting it back.
@@ -209,7 +205,7 @@ Notagent documentation (read only when the user asks about notagent itself, its 
 
     append_project_context(&mut prompt, &options.context_files);
 
-    if has_read && !options.skills.is_empty() {
+    if has_skill && !options.skills.is_empty() {
         prompt.push_str(&format_skills_for_prompt(&options.skills));
     }
 

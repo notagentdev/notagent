@@ -135,6 +135,47 @@ fn cwd() -> String {
 }
 
 #[test]
+fn tool_gutters_reserve_width_in_both_styles_and_render_shells() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    for style in [BlockStyle::Standard, BlockStyle::Badge] {
+        set_block_style(style);
+        for render_shell in [RenderShell::Default, RenderShell::SelfManaged] {
+            let tool: ToolDef = std::sync::Arc::new(StubTool {
+                call_text: Some("a long custom call that wraps"),
+                result_text: Some("a long custom result that wraps"),
+                render_shell,
+                ..StubTool::new("custom_tool")
+            });
+            let mut component = ToolExecutionComponent::new(
+                "custom_tool",
+                "gutter",
+                json!({}),
+                ToolExecutionOptions::default(),
+                Some(tool),
+                no_render(),
+                cwd(),
+            );
+            component.update_result(text_result("done"), false);
+            for width in [10, 20, 40, 80] {
+                for line in component.render(width) {
+                    assert!(
+                        notagent_tui::utils::visible_width(&line) <= width,
+                        "the gutter must fit inside width {width}: {line:?}"
+                    );
+                    if !line.is_empty() {
+                        assert!(
+                            line.starts_with(' '),
+                            "the block must keep its outer gutter: {line:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn stacks_custom_call_and_result_renderers_like_the_old_implementation() {
     let _guard = guard();
     init_theme(Some("dark"), false);
@@ -300,8 +341,8 @@ fn badge_style_leads_with_a_state_badge_and_drops_the_padding_rows() {
         .collect();
 
     // Spacer, then badge and call sharing one row — no surface, no padding
-    // rows, and the badge starts at the margin rather than a column in.
-    let expected = vec!["".to_string(), " CUSTOM TOOL  (custom call)".to_string()];
+    // rows, with one outer column before the badge.
+    let expected = vec!["".to_string(), "  CUSTOM TOOL  (custom call)".to_string()];
     assert_eq!(stripped, expected);
 }
 
@@ -333,14 +374,13 @@ fn badge_style_keeps_continuation_and_result_lines_under_the_badge_column() {
         .map(|line| strip_ansi(line).trim_end().to_string())
         .collect();
 
-    // The badge row's own text starts one column in (the pill's padding), and
-    // everything stacked below it shares that column — the same one the
-    // explore and thinking blocks keep under their badges.
+    // The outer gutter and the badge padding put the text in column two;
+    // continuation and result lines align with that text.
     let expected = vec![
         "".to_string(),
-        " CUSTOM TOOL  (first line)".to_string(),
-        " second line".to_string(),
-        " the output".to_string(),
+        "  CUSTOM TOOL  (first line)".to_string(),
+        "  second line".to_string(),
+        "  the output".to_string(),
     ];
     assert_eq!(stripped, expected);
 }
@@ -511,7 +551,7 @@ fn badge_style_fallback_shares_the_badge_row_with_the_first_output_line() {
     // Spacer, then the badge (with its pill padding) sharing its row with
     // the output — no padding rows, no second name line, no argument JSON
     // while collapsed.
-    let expected = vec!["".to_string(), " GOAL  done".to_string()];
+    let expected = vec!["".to_string(), "  GOAL  done".to_string()];
     assert_eq!(stripped, expected);
 }
 

@@ -1721,14 +1721,6 @@ impl AgentSession {
                         .unwrap_or_default()
                 })
             },
-            modes: {
-                let weak = Arc::downgrade(self);
-                Arc::new(move || {
-                    weak.upgrade()
-                        .map(|session| session.modes())
-                        .unwrap_or_default()
-                })
-            },
         };
 
         let task_sources = TaskToolSources {

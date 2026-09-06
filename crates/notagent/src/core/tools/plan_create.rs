@@ -23,7 +23,7 @@ pub const PLAN_CREATE_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution 
     SystemPromptContribution {
         snippet: "Write a plan to the plans directory",
         guidelines: &[
-            "Use plan_create to record a plan the user should be able to come back to; a plan that only exists in the reply is lost when the session ends.",
+            "Use plan_create when the user requests a plan file or the active planning mode authorizes one. A separate file makes the plan easy to track and revise; plans in saved conversations remain part of the session history. Discussion alone does not authorize creating a file.",
         ],
     };
 

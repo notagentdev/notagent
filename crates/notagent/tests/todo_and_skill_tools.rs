@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use notagent::core::modes::shells::{ApprovalLevel, ShellId};
-use notagent::core::modes::{Mode, ModeSkill};
 use notagent::core::todos::{Todo, TodoStatus, TodoStore};
 use notagent::core::tools::skill::{
     SkillToolSkill, SkillToolSources, create_skill_tool_definition,
@@ -204,66 +202,57 @@ async fn rejects_an_invalid_item_and_leaves_the_list_untouched() {
 // skill
 // ---------------------------------------------------------------------------
 
-fn sources(modes: Vec<Mode>, skills: Vec<SkillToolSkill>) -> SkillToolSources {
+fn sources(skills: Vec<SkillToolSkill>) -> SkillToolSources {
     SkillToolSources {
-        modes: Arc::new(move || modes.clone()),
         skills: Arc::new(move || skills.clone()),
     }
 }
 
-fn mode(directory: &TempDir, id: &str, body: &str) -> Mode {
-    let file_path = directory.write(&format!("{id}/10-main.md"), body);
-    Mode {
-        id: id.to_owned(),
-        shell: ShellId::Worker,
-        approval: ApprovalLevel::Manual,
-        tools: Vec::new(),
-        subagents: None,
-        skills: vec![ModeSkill {
-            file_name: "10-main.md".to_owned(),
-            file_path: PathBuf::from(file_path),
-            body: body.to_owned(),
-        }],
-        source_dir: directory.path.join(id),
+fn skill(directory: &TempDir, name: &str, body: &str) -> SkillToolSkill {
+    SkillToolSkill {
+        name: name.to_owned(),
+        file_path: directory.write(&format!("{name}/SKILL.md"), body),
     }
 }
 
 #[tokio::test]
-async fn loads_a_mode_body_by_name() {
+async fn loads_a_skill_body_by_name() {
     let directory = TempDir::new();
-    let tool = create_skill_tool_definition(Some(sources(
-        vec![mode(&directory, "plan", "plan mode guidance")],
-        Vec::new(),
-    )));
+    let tool = create_skill_tool_definition(Some(sources(vec![skill(
+        &directory,
+        "plan",
+        "plan skill guidance",
+    )])));
 
     let text = text_output(&run(&tool, json!({ "name": "plan" })).await.expect("loads"));
     assert!(text.contains("<skill name=\"plan\""), "{text}");
-    assert!(text.contains("plan mode guidance"), "{text}");
+    assert!(text.contains("plan skill guidance"), "{text}");
     assert!(text.ends_with("</skill>"), "{text}");
 }
 
 #[tokio::test]
 async fn carries_the_source_path_in_the_envelope() {
     let directory = TempDir::new();
-    let mode = mode(&directory, "manual", "manual guidance");
-    let source_dir = mode.source_dir.to_string_lossy().into_owned();
-    let tool = create_skill_tool_definition(Some(sources(vec![mode], Vec::new())));
+    let skill = skill(&directory, "manual", "manual guidance");
+    let source_path = skill.file_path.clone();
+    let tool = create_skill_tool_definition(Some(sources(vec![skill])));
 
     let text = text_output(
         &run(&tool, json!({ "name": "manual" }))
             .await
             .expect("loads"),
     );
-    assert!(text.contains(&format!("path=\"{source_dir}\"")), "{text}");
+    assert!(text.contains(&format!("path=\"{source_path}\"")), "{text}");
 }
 
 #[tokio::test]
 async fn resolves_names_case_insensitively() {
     let directory = TempDir::new();
-    let tool = create_skill_tool_definition(Some(sources(
-        vec![mode(&directory, "plan", "plan mode guidance")],
-        Vec::new(),
-    )));
+    let tool = create_skill_tool_definition(Some(sources(vec![skill(
+        &directory,
+        "plan",
+        "plan skill guidance",
+    )])));
 
     let result = run(&tool, json!({ "name": "PLAN" })).await.expect("loads");
     assert_eq!(result.details.expect("details")["name"], json!("plan"));
@@ -272,10 +261,11 @@ async fn resolves_names_case_insensitively() {
 #[tokio::test]
 async fn reports_token_volume_so_lazy_loads_stay_measurable() {
     let directory = TempDir::new();
-    let tool = create_skill_tool_definition(Some(sources(
-        vec![mode(&directory, "plan", "plan mode guidance")],
-        Vec::new(),
-    )));
+    let tool = create_skill_tool_definition(Some(sources(vec![skill(
+        &directory,
+        "plan",
+        "plan skill guidance",
+    )])));
 
     let result = run(&tool, json!({ "name": "plan" })).await.expect("loads");
     assert!(
@@ -289,13 +279,10 @@ async fn reports_token_volume_so_lazy_loads_stay_measurable() {
 #[tokio::test]
 async fn names_the_available_options_when_a_skill_is_unknown() {
     let directory = TempDir::new();
-    let tool = create_skill_tool_definition(Some(sources(
-        vec![mode(&directory, "plan", "plan mode guidance")],
-        vec![SkillToolSkill {
-            name: "research".to_owned(),
-            file_path: directory.write("research.md", "research"),
-        }],
-    )));
+    let tool = create_skill_tool_definition(Some(sources(vec![
+        skill(&directory, "plan", "plan skill guidance"),
+        skill(&directory, "research", "research"),
+    ])));
 
     let error = run(&tool, json!({ "name": "nope" }))
         .await
@@ -321,9 +308,9 @@ async fn reports_that_nothing_is_loaded_when_there_are_no_sources() {
 #[tokio::test]
 async fn lists_sibling_resources_without_inlining_them() {
     let directory = TempDir::new();
-    let mode = mode(&directory, "research", "BODY");
+    let skill = skill(&directory, "research", "BODY");
     directory.write("research/reference.csv", "secret,payload");
-    let tool = create_skill_tool_definition(Some(sources(vec![mode], Vec::new())));
+    let tool = create_skill_tool_definition(Some(sources(vec![skill])));
 
     let result = run(&tool, json!({ "name": "research" }))
         .await
@@ -341,22 +328,20 @@ async fn lists_sibling_resources_without_inlining_them() {
 #[tokio::test]
 async fn omits_the_resources_block_when_there_are_no_siblings() {
     let directory = TempDir::new();
-    let tool = create_skill_tool_definition(Some(sources(
-        vec![mode(&directory, "solo", "BODY")],
-        Vec::new(),
-    )));
+    let tool = create_skill_tool_definition(Some(sources(vec![skill(&directory, "solo", "BODY")])));
 
     let text = text_output(&run(&tool, json!({ "name": "solo" })).await.expect("loads"));
     assert!(!text.contains("<resources>"), "{text}");
 }
 
 #[tokio::test]
-async fn returns_identical_bodies_for_the_runtime_and_model_paths() {
+async fn returns_identical_bodies_on_repeated_loads() {
     let directory = TempDir::new();
-    let tool = create_skill_tool_definition(Some(sources(
-        vec![mode(&directory, "plan", "plan mode guidance")],
-        Vec::new(),
-    )));
+    let tool = create_skill_tool_definition(Some(sources(vec![skill(
+        &directory,
+        "plan",
+        "plan skill guidance",
+    )])));
 
     let first = text_output(&run(&tool, json!({ "name": "plan" })).await.expect("loads"));
     let second = text_output(&run(&tool, json!({ "name": "plan" })).await.expect("loads"));
@@ -364,34 +349,40 @@ async fn returns_identical_bodies_for_the_runtime_and_model_paths() {
 }
 
 #[tokio::test]
-async fn resolves_a_mode_before_a_skill_of_the_same_name() {
+async fn does_not_load_or_advertise_modes_as_skills() {
     let directory = TempDir::new();
-    let mode = mode(&directory, "plan", "the mode body");
-    let skill_path = directory.write("plan.md", "the skill body");
-    let tool = create_skill_tool_definition(Some(sources(
-        vec![mode],
-        vec![SkillToolSkill {
-            name: "plan".to_owned(),
-            file_path: skill_path,
-        }],
-    )));
-
-    let text = text_output(&run(&tool, json!({ "name": "plan" })).await.expect("loads"));
-    assert!(text.contains("the mode body"), "{text}");
-    assert!(!text.contains("the skill body"), "{text}");
+    let tool = create_skill_tool_definition(Some(sources(vec![skill(
+        &directory,
+        "research",
+        "research guidance",
+    )])));
+    for mode in ["auto", "manual", "plan", "yolo"] {
+        let error = run(&tool, json!({ "name": mode }))
+            .await
+            .expect_err("modes are injected, not skills");
+        assert_eq!(
+            error.message,
+            format!("Unknown skill \"{mode}\". Available: research")
+        );
+    }
+    assert!(
+        tool.description()
+            .contains("Operating modes are supplied by system injection")
+    );
+    assert_eq!(
+        tool.parameters()["properties"]["name"]["description"],
+        "Name of the skill to load."
+    );
 }
 
 #[tokio::test]
 async fn reads_a_skill_body_from_its_file() {
     let directory = TempDir::new();
     let file_path = directory.write("skills/writing.md", "---\nname: writing\n---\nthe body\n");
-    let tool = create_skill_tool_definition(Some(sources(
-        Vec::new(),
-        vec![SkillToolSkill {
-            name: "writing".to_owned(),
-            file_path: file_path.clone(),
-        }],
-    )));
+    let tool = create_skill_tool_definition(Some(sources(vec![SkillToolSkill {
+        name: "writing".to_owned(),
+        file_path: file_path.clone(),
+    }])));
 
     let text = text_output(
         &run(&tool, json!({ "name": "writing" }))

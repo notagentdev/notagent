@@ -7,6 +7,7 @@ use notagent_tui::editor_component::EditorComponent;
 use notagent_tui::tui::{Component, Focusable, Line, TuiCore};
 
 use crate::core::keybindings::KeybindingsManager;
+use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
 /// Handler for an app action.
 /// key and `false` to fall through to ordinary editor handling.
@@ -46,8 +47,10 @@ impl CustomEditor {
         keybindings: Rc<RefCell<KeybindingsManager>>,
         options: Option<EditorOptions>,
     ) -> Self {
+        let mut options = options.unwrap_or_default();
+        options.padding_x = Some(options.padding_x.unwrap_or(0).saturating_add(2));
         Self {
-            editor: Editor::new(core, theme, options.unwrap_or_default()),
+            editor: Editor::new(core, theme, options),
             keybindings,
             action_handlers: Vec::new(),
             on_escape: None,
@@ -114,7 +117,15 @@ impl CustomEditor {
 
 impl Component for CustomEditor {
     fn render(&mut self, width: usize) -> Vec<Line> {
-        self.editor.render(width)
+        let mut lines = self.editor.render(width);
+        // Replace a reserved padding cell, keeping the draft and cursor marker
+        // untouched. The first row is the border, followed by the visible input.
+        if let Some(line) = lines.get_mut(1)
+            && let Some(content) = line.strip_prefix(' ')
+        {
+            *line = Line::from(format!("{}{content}", theme().fg(ThemeColor::Muted, "❯")));
+        }
+        lines
     }
 
     fn invalidate(&mut self) {
@@ -257,7 +268,7 @@ impl EditorComponent for CustomEditor {
     }
 
     fn set_padding_x(&mut self, padding: usize) {
-        self.editor.set_padding_x(padding);
+        self.editor.set_padding_x(padding.saturating_add(2));
     }
 
     fn set_autocomplete_max_visible(&mut self, max_visible: usize) {

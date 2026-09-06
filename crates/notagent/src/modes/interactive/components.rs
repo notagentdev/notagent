@@ -22,6 +22,7 @@ pub mod llama;
 pub mod login_dialog;
 pub mod markdown_transform;
 pub mod mermaid;
+mod message_marker;
 pub mod model_selector;
 pub mod oauth_selector;
 pub mod scoped_models_selector;
@@ -47,6 +48,23 @@ pub mod trust_selector;
 pub mod user_message;
 pub mod user_message_selector;
 pub mod visual_truncate;
+
+fn indent_lines(lines: Vec<notagent_tui::tui::Line>, width: usize) -> Vec<notagent_tui::tui::Line> {
+    lines
+        .into_iter()
+        .map(|line| {
+            if width == 0 {
+                notagent_tui::tui::Line::from("")
+            } else if line.is_empty() {
+                line
+            } else if width == 1 {
+                notagent_tui::tui::Line::from(" ")
+            } else {
+                notagent_tui::tui::Line::from(format!(" {line}"))
+            }
+        })
+        .collect()
+}
 
 /// `Number.prototype.toLocaleString()` for the token counts the message
 /// components print.

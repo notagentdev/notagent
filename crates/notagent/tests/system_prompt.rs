@@ -26,13 +26,137 @@ fn snippets(entries: &[(&str, &str)]) -> Vec<(String, String)> {
 }
 
 #[test]
+fn skills_are_listed_only_when_the_skill_tool_is_available_in_either_prompt_path() {
+    let skills = notagent::core::skills::load_skills_from_dir(
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/skills/valid-skill"
+        ),
+        "test",
+    )
+    .skills;
+    assert_eq!(skills.len(), 1, "the fixture must provide a visible skill");
+    for custom_prompt in [None, Some("Custom instructions".to_string())] {
+        for (selected_tools, listed) in [
+            (None, false),
+            (tools(&[]), false),
+            (tools(&["read"]), false),
+            (tools(&["skill"]), true),
+            (tools(&["read", "skill"]), true),
+        ] {
+            let prompt = build_system_prompt(&BuildSystemPromptOptions {
+                custom_prompt: custom_prompt.clone(),
+                selected_tools: selected_tools.clone(),
+                skills: skills.clone(),
+                ..options()
+            });
+            assert_eq!(
+                prompt.contains("<available_skills>"),
+                listed,
+                "skill availability must control the catalog: custom={custom_prompt:?}, tools={selected_tools:?}"
+            );
+            assert_eq!(
+                prompt.contains("Use the skill tool with the skill's name"),
+                listed,
+                "listed skills must be loaded through the skill tool: {prompt}"
+            );
+            assert!(
+                !prompt.contains("Use the read tool to load a skill"),
+                "the prompt must not offer a conflicting loading path: {prompt}"
+            );
+        }
+    }
+}
+
+#[test]
 fn shows_none_for_an_empty_tool_list() {
     let prompt = build_system_prompt(&BuildSystemPromptOptions {
         selected_tools: tools(&[]),
         ..options()
     });
 
-    assert!(prompt.contains("Available tools:\n(none)"));
+    assert!(prompt.contains("Tool reference:\n(none)"));
+}
+
+#[test]
+fn tool_guidance_is_scoped_to_the_tools_attached_to_each_request() {
+    let prompt = build_system_prompt(&options());
+    for rule in [
+        "Only tools attached to the current request are available to call",
+        "tools unavailable in the current mode or subagent",
+        "apply tool-specific instructions only when that tool is attached",
+    ] {
+        assert!(
+            prompt.contains(rule),
+            "missing tool availability rule: {rule}"
+        );
+    }
+    assert!(
+        !prompt.contains("Available tools:"),
+        "the reference must not claim current availability: {prompt}"
+    );
+}
+
+#[test]
+fn automatic_approval_does_not_forbid_material_clarification() {
+    let auto = include_str!("../src/core/modes/builtin/auto/10-auto.md");
+    assert!(
+        auto.contains("ask when an unresolved choice would materially change the work"),
+        "automatic approval must still allow necessary clarification: {auto}"
+    );
+    assert!(
+        !auto.contains("Do not ask the user to choose"),
+        "auto mode must not categorically forbid clarification: {auto}"
+    );
+}
+
+#[test]
+fn planning_instructions_preserve_history_and_require_file_authorization() {
+    let guidance = notagent::core::tools::plan_create::PLAN_CREATE_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+        .guidelines
+        .join("\n");
+    let skill = include_str!("../src/core/skills/builtin/create-plan/SKILL.md");
+    for text in [&guidance, skill] {
+        assert!(
+            text.contains("user requests a plan file"),
+            "file creation needs authorization: {text}"
+        );
+        assert!(
+            text.contains("plans in saved conversations remain part of the session history"),
+            "planning guidance must acknowledge persisted replies: {text}"
+        );
+        assert!(
+            !text.contains("gone when the session ends")
+                && !text.contains("lost when the session ends"),
+            "planning guidance must not claim replies are lost: {text}"
+        );
+    }
+    assert!(skill.contains("Loading this skill does not by itself authorize creating a file"));
+}
+
+#[test]
+fn goal_guidance_accounts_for_budget_limits_and_user_pauses() {
+    use notagent::core::tools::goal::{
+        create_goal_tool_definition, create_update_goal_tool_definition,
+    };
+    use notagent::core::tools::tool_definition::ToolDefinition;
+
+    let tool = create_update_goal_tool_definition(None);
+    for text in [
+        tool.description().to_owned(),
+        create_goal_tool_definition(None)
+            .prompt_guidelines()
+            .join("\n"),
+    ] {
+        assert!(
+            text.contains("budget limit") && text.contains("user pauses"),
+            "goal continuation has external stop conditions: {text}"
+        );
+        assert!(
+            !text.contains("only way to stop") && !text.contains("only update_goal stops"),
+            "goal completion must not be confused with external stop conditions: {text}"
+        );
+    }
 }
 
 #[test]

@@ -294,7 +294,9 @@ fn puts_the_intro_text_before_the_xml() {
     let intro = &result[..xml_start];
 
     assert!(intro.contains("The following skills provide specialized instructions"));
-    assert!(intro.contains("Use the read tool to load a skill's file"));
+    assert!(intro.contains("Use the skill tool with the skill's name"));
+    assert!(intro.contains("Do not load skill instructions with the read tool."));
+    assert!(!intro.contains("Use the read tool to load"));
 }
 
 #[test]

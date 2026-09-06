@@ -470,7 +470,7 @@ impl ToolDefinition for TaskToolDefinition {
 
     fn prompt_guidelines(&self) -> Vec<String> {
         vec![
-            "Delegate with the task tool when work is separable and would otherwise crowd this conversation; give each subagent the context it needs, since it cannot see this one.".to_owned(),
+            "Use the task tool only when the user explicitly asks for subagents, delegation, or parallel agent work, and only for concrete, bounded work that can run independently while you perform useful, non-overlapping work. Give each subagent the context it needs, since it cannot see this conversation.".to_owned(),
         ]
     }
 

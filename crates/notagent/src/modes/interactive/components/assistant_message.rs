@@ -198,25 +198,31 @@ impl AssistantMessageComponent {
                 AssistantContent::Text(content) if !content.text.trim().is_empty() => {
                     // Assistant text messages with no background - trim the text
                     // Set paddingY=0 to avoid extra spacing before tool executions
-                    self.content_container
-                        .add_child(component_ref(Markdown::new(
-                            content.text.trim(),
-                            self.output_pad,
-                            0,
-                            self.markdown_theme.clone(),
-                            None,
-                            Some(MarkdownOptions {
-                                transform: Some(create_markdown_transform(
-                                    MarkdownMessageType::Assistant,
-                                    self.is_streaming,
-                                    self.markdown_transformers.clone(),
-                                )),
-                                ..MarkdownOptions::default()
-                            }),
-                        )));
+                    self.content_container.add_child(component_ref(
+                        super::message_marker::MessageMarker {
+                            marker: "\u{283f}",
+                            padding: self.output_pad,
+                            content: Markdown::new(
+                                content.text.trim(),
+                                0,
+                                0,
+                                self.markdown_theme.clone(),
+                                None,
+                                Some(MarkdownOptions {
+                                    transform: Some(create_markdown_transform(
+                                        MarkdownMessageType::Assistant,
+                                        self.is_streaming,
+                                        self.markdown_transformers.clone(),
+                                    )),
+                                    ..MarkdownOptions::default()
+                                }),
+                            ),
+                        },
+                    ));
                     index += 1;
                 }
                 AssistantContent::Thinking(_) => {
+                    let thinking_padding = self.output_pad.saturating_add(1).max(2);
                     let run_start = index;
                     let mut thinking_blocks: Vec<String> = Vec::new();
                     while index < message.content.len() {
@@ -258,7 +264,7 @@ impl AssistantMessageComponent {
                         let running = is_last_run && self.has_running_thinking();
                         let theme_instance = theme();
                         let mut heading = format!(
-                            "{}{}",
+                            "{} {}",
                             theme_instance.fg(ThemeColor::Muted, "*"),
                             theme_instance.fg(
                                 ThemeColor::Muted,
@@ -297,7 +303,7 @@ impl AssistantMessageComponent {
                             self.content_container
                                 .add_child(component_ref(Markdown::new(
                                     thinking_blocks.join("\n\n"),
-                                    self.output_pad,
+                                    thinking_padding,
                                     0,
                                     self.markdown_theme.clone(),
                                     Some(DefaultTextStyle {
@@ -334,7 +340,7 @@ impl AssistantMessageComponent {
                                         }
                                     ),
                                 ),
-                                self.output_pad,
+                                thinking_padding,
                                 0,
                             )));
                         }
@@ -345,7 +351,7 @@ impl AssistantMessageComponent {
                             theme.italic(
                                 &theme.fg(ThemeColor::ThinkingText, &self.hidden_thinking_label),
                             ),
-                            self.output_pad,
+                            thinking_padding,
                             0,
                         )));
                     } else {
@@ -353,7 +359,7 @@ impl AssistantMessageComponent {
                         self.content_container
                             .add_child(component_ref(Markdown::new(
                                 thinking_blocks.join("\n\n"),
-                                self.output_pad,
+                                thinking_padding,
                                 0,
                                 self.markdown_theme.clone(),
                                 Some(DefaultTextStyle {

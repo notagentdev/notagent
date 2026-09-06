@@ -26,6 +26,7 @@ use notagent_tui::components::stack::{StackEntryOptions, StackOptions};
 use notagent_tui::components::text::Text;
 use notagent_tui::components::truncated_text::TruncatedText;
 use notagent_tui::components::v_stack::VStack;
+use notagent_tui::editor_component::EditorComponent;
 use notagent_tui::fuzzy::fuzzy_filter;
 use notagent_tui::keybindings::set_keybindings;
 use notagent_tui::layout_node::StackBasis;
@@ -4631,10 +4632,7 @@ impl InteractiveMode {
                 self.ui.set_show_hardware_cursor(enabled);
             }
             SettingsEffect::EditorPaddingX(padding) => {
-                self.editor
-                    .borrow_mut()
-                    .editor_mut()
-                    .set_padding_x(padding as usize);
+                self.editor.borrow_mut().set_padding_x(padding as usize);
             }
             SettingsEffect::OutputPad(padding) => {
                 self.output_pad = padding as usize;
@@ -7680,8 +7678,8 @@ impl InteractiveMode {
             .set_show_hardware_cursor(settings.get_show_hardware_cursor());
         {
             let mut editor = self.editor.borrow_mut();
-            let editor = editor.editor_mut();
             editor.set_padding_x(settings.get_editor_padding_x() as usize);
+            let editor = editor.editor_mut();
             editor.set_autocomplete_max_visible(settings.get_autocomplete_max_visible() as usize);
         }
         {

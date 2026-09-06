@@ -239,6 +239,18 @@ async fn describes_both_types_by_what_they_are_for() {
 async fn requires_explicit_user_authorization_before_delegation() {
     let harness = harness(ShellId::Worker, false);
     let description = harness.tool.description();
+    let guidelines = harness.tool.prompt_guidelines().join("\n");
+
+    assert!(
+        guidelines.contains(
+            "only when the user explicitly asks for subagents, delegation, or parallel agent work"
+        ),
+        "system prompt guidance must require the same authorization as the tool description: {guidelines}"
+    );
+    assert!(
+        guidelines.contains("useful, non-overlapping work"),
+        "delegation guidance must preserve the independent-work condition: {guidelines}"
+    );
 
     assert!(
         description.contains("unless the user explicitly asks"),

@@ -36,4 +36,4 @@ Before recording the plan, check it against the request with fresh eyes: every r
 
 ## Record it
 
-Record the plan with `plan_create` rather than only in your reply. A plan that exists only in the conversation is gone when the session ends, which is precisely when someone wants to come back to it.
+When the user requests a plan file or the active planning mode authorizes one, record the plan with `plan_create` so it can be tracked and revised separately. Otherwise, provide it in your reply; plans in saved conversations remain part of the session history. Loading this skill does not by itself authorize creating a file.

@@ -11,7 +11,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::modes::indicator::estimate_injected_tokens;
-use crate::core::modes::{Mode, render_mode_injection};
 use crate::core::tools::render_utils::{call_title, str_arg};
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
@@ -22,7 +21,7 @@ use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 pub const SKILL_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
-        snippet: "Load a skill or mode's full instructions on demand",
+        snippet: "Load a skill's full instructions on demand",
         guidelines: &[
             "Load a skill with the skill tool when the task matches its description, instead of guessing at its content.",
         ],
@@ -32,14 +31,14 @@ fn skill_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "name": { "type": "string", "description": "Name of the skill or mode to load." },
+            "name": { "type": "string", "description": "Name of the skill to load." },
         },
         "required": ["name"],
     })
 }
 
 const DESCRIPTION: &str = concat!(
-    "Loads the full instructions for a named skill or operating mode.\n",
+    "Loads the full instructions for a named skill. Operating modes are supplied by system injection, not loaded through this tool.\n",
     "\n",
     "Only names listed in the available skills section can be loaded. Do not load a skill whose instructions are already present in the conversation.\n",
     "The result is delimited and carries the source path; resolve any relative path the instructions mention against that path.\n",
@@ -57,7 +56,6 @@ pub struct SkillToolSkill {
 #[derive(Clone)]
 pub struct SkillToolSources {
     pub skills: Arc<dyn Fn() -> Vec<SkillToolSkill> + Send + Sync>,
-    pub modes: Arc<dyn Fn() -> Vec<Mode> + Send + Sync>,
 }
 
 impl Default for SkillToolSources {
@@ -66,7 +64,6 @@ impl Default for SkillToolSources {
     fn default() -> Self {
         Self {
             skills: Arc::new(Vec::new),
-            modes: Arc::new(Vec::new),
         }
     }
 }
@@ -119,23 +116,6 @@ fn list_resources(file_path: &str) -> Vec<String> {
 fn resolve(name: &str, sources: &SkillToolSources) -> Option<ResolvedBody> {
     let wanted = name.trim().to_lowercase();
 
-    if let Some(mode) = (sources.modes)()
-        .into_iter()
-        .find(|candidate| candidate.id.to_lowercase() == wanted)
-    {
-        let resources = mode
-            .skills
-            .first()
-            .map(|skill| list_resources(&skill.file_path.to_string_lossy()))
-            .unwrap_or_default();
-        return Some(ResolvedBody {
-            name: mode.id.clone(),
-            path: mode.source_dir.to_string_lossy().into_owned(),
-            body: render_mode_injection(&mode),
-            resources,
-        });
-    }
-
     let skill = (sources.skills)()
         .into_iter()
         .find(|candidate| candidate.name.to_lowercase() == wanted)?;
@@ -172,10 +152,9 @@ fn render_skill_envelope(resolved: &ResolvedBody) -> String {
 }
 
 fn available_names(sources: &SkillToolSources) -> Vec<String> {
-    let mut names: Vec<String> = (sources.modes)()
+    let mut names: Vec<String> = (sources.skills)()
         .into_iter()
-        .map(|mode| mode.id)
-        .chain((sources.skills)().into_iter().map(|skill| skill.name))
+        .map(|skill| skill.name)
         .collect();
     names.sort_by(|left, right| {
         left.to_lowercase()

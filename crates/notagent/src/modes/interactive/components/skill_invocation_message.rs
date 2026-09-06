@@ -101,7 +101,7 @@ impl SkillInvocationMessageComponent {
 
 impl Component for SkillInvocationMessageComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
-        self.content_box.render(width)
+        super::indent_lines(self.content_box.render(width.saturating_sub(1)), width)
     }
 
     fn invalidate(&mut self) {

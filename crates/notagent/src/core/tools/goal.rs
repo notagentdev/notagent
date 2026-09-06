@@ -25,7 +25,7 @@ pub const GOAL_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
         snippet: "Pursue a long-running goal across turns",
         guidelines: &[
-            "While a goal is active you are continued automatically after every turn; only update_goal stops that.",
+            "While a goal is active, ending a turn does not end the goal. Use update_goal to report genuine completion or a blocker; continuation also stops at a budget limit or when the user pauses the goal.",
         ],
     };
 
@@ -37,7 +37,7 @@ Starts a new active goal only when no goal is currently defined; if a goal alrea
 
 const UPDATE_DESCRIPTION: &str = "End the session's goal, either because it is achieved or because you cannot proceed.
 
-While a goal is active you are continued automatically after every turn. This tool is the only way to stop that; ending a turn with an explanation does not stop it, and you will simply be continued again.
+While a goal is active you are continued automatically after every turn unless a budget limit is reached or the user pauses the goal. Use this tool to report genuine completion or a blocker; ending a turn with an explanation does not by itself stop continuation.
 
 Set `status` to `complete` only when the objective has actually been achieved and no required work remains. Do not mark a goal complete merely because its budget is nearly exhausted, because you produced a plan or a first pass, or because you are stopping work. A completion claim made while the task list still has open items is refused; finish them, or drop what is no longer required with todo_write.
 

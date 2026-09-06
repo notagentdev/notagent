@@ -16,9 +16,12 @@ use notagent_tui::tui_main_screen::TuiMainScreen;
 /// process global, so the cases run one at a time.
 fn keybindings_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    let guard = LOCK
+        .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(|error| error.into_inner());
+    notagent::modes::interactive::theme::theme::init_theme(None, false);
+    guard
 }
 
 fn default_editor_theme() -> EditorTheme {
@@ -32,6 +35,82 @@ fn default_editor_theme() -> EditorTheme {
             no_match: Rc::new(|text| format!("\x1b[2m{text}\x1b[22m")),
         }),
     }
+}
+
+#[test]
+fn input_text_keeps_its_marker_and_spacing_when_padding_changes() {
+    let _guard = keybindings_lock();
+    let tui = TuiMainScreen::new(Box::new(VirtualTerminal::new(80, 24)));
+    let mut editor = CustomEditor::new(
+        tui.core().clone(),
+        default_editor_theme(),
+        Rc::new(RefCell::new(KeybindingsManager::default())),
+        None,
+    );
+    editor.set_text("draft");
+    for padding in [0, 2, 0] {
+        editor.set_padding_x(padding);
+        let lines: Vec<_> = editor
+            .render(40)
+            .iter()
+            .map(|line| notagent::utils::ansi::strip_ansi(line))
+            .collect();
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with(&format!("❯{}draft", " ".repeat(padding + 1)))),
+            "input keeps its marker and inset: {lines:?}"
+        );
+    }
+}
+
+#[test]
+fn the_input_marker_preserves_empty_drafts_wrapping_and_cursor_position() {
+    use notagent::utils::ansi::strip_ansi;
+    use notagent_tui::tui::{CURSOR_MARKER, Focusable};
+    use notagent_tui::utils::visible_width;
+
+    let _guard = keybindings_lock();
+    let tui = TuiMainScreen::new(Box::new(VirtualTerminal::new(80, 24)));
+    let mut editor = CustomEditor::new(
+        tui.core().clone(),
+        default_editor_theme(),
+        Rc::new(RefCell::new(KeybindingsManager::default())),
+        None,
+    );
+    editor.set_focused(true);
+    let empty = editor.render(40);
+    let (before_cursor, _) = empty[1]
+        .split_once(CURSOR_MARKER)
+        .expect("focused input has a cursor marker");
+    assert_eq!(
+        strip_ansi(before_cursor),
+        "❯ ",
+        "empty input shows the icon before its cursor"
+    );
+
+    let draft = "alpha beta gamma delta\nsecond line";
+    editor.set_text(draft);
+    for width in 3..=40 {
+        let lines = editor.render(width);
+        let plain = strip_ansi(&lines.join("\n"));
+        assert_eq!(
+            plain.matches('❯').count(),
+            1,
+            "one icon per input at width {width}: {plain}"
+        );
+        for line in lines {
+            assert!(
+                visible_width(&line) <= width,
+                "input exceeds width {width}: {line:?}"
+            );
+        }
+    }
+    assert_eq!(
+        editor.get_text(),
+        draft,
+        "the icon must never become part of the submitted draft"
+    );
 }
 
 #[test]

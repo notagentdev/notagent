@@ -217,8 +217,8 @@ fn uses_configured_output_padding_for_text_and_thinking() {
 
     component.set_output_pad(0);
     let updated: Vec<String> = component.render(80).iter().map(|l| strip_ansi(l)).collect();
-    assert!(updated.iter().any(|line| line.starts_with("hello")));
-    assert!(updated.iter().any(|line| line.starts_with("reasoning")));
+    assert!(updated.iter().any(|line| line.starts_with("⠿ hello")));
+    assert!(updated.iter().any(|line| line.starts_with("  reasoning")));
 }
 
 #[test]
@@ -235,7 +235,7 @@ fn chains_markdown_transformers_in_registration_order() {
             &MarkdownTransformContext {
                 message_type: MarkdownMessageType::Assistant,
                 is_streaming: false,
-                available_width: 78,
+                available_width: 77,
             }
         );
         markdown.replace("$x^2$", "x²")
@@ -318,10 +318,10 @@ fn reapplies_markdown_transformers_when_available_width_changes() {
         vec![transformer],
     );
 
-    assert!(strip_ansi(&component.render(80).join("\n")).contains("answer (78)"));
+    assert!(strip_ansi(&component.render(80).join("\n")).contains("answer (77)"));
     component.render(80);
-    assert!(strip_ansi(&component.render(60).join("\n")).contains("answer (58)"));
-    assert_eq!(*widths.borrow(), vec![78, 58]);
+    assert!(strip_ansi(&component.render(60).join("\n")).contains("answer (57)"));
+    assert_eq!(*widths.borrow(), vec![77, 57]);
 }
 
 #[test]
@@ -366,11 +366,70 @@ fn uses_configured_output_padding_for_user_messages() {
 
     let mut padded = UserMessageComponent::new("hello", None, Some(1), Vec::new());
     let padded_lines: Vec<String> = padded.render(40).iter().map(|l| strip_ansi(l)).collect();
-    assert!(padded_lines.iter().any(|line| line.starts_with(" hello")));
+    assert!(padded_lines.iter().any(|line| line.starts_with("❯ hello")));
 
     let mut unpadded = UserMessageComponent::new("hello", None, Some(0), Vec::new());
     let unpadded_lines: Vec<String> = unpadded.render(40).iter().map(|l| strip_ansi(l)).collect();
-    assert!(unpadded_lines.iter().any(|line| line.starts_with("hello")));
+    assert!(
+        unpadded_lines
+            .iter()
+            .any(|line| line.starts_with("❯ hello"))
+    );
+}
+
+#[test]
+fn answer_markers_keep_wrapped_text_aligned_without_moving_the_thought_star() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+    let mut component = AssistantMessageComponent::new(
+        Some(create_assistant_message(
+            vec![
+                thinking("reasoning"),
+                text("alpha beta gamma delta epsilon"),
+            ],
+            StopReason::Stop,
+        )),
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    );
+    let lines = component.render(16);
+    let plain: Vec<_> = lines.iter().map(|line| strip_ansi(line)).collect();
+    assert!(
+        plain.iter().any(|line| line.starts_with("* Thought")),
+        "the star stays at the margin: {plain:?}"
+    );
+    assert!(
+        plain.iter().any(|line| line.starts_with("⠿ alpha")),
+        "the answer starts with its marker: {plain:?}"
+    );
+    assert!(
+        plain.iter().any(|line| line.starts_with("  gamma")),
+        "wrapped text aligns after the marker: {plain:?}"
+    );
+    assert_eq!(
+        plain.join("\n").matches('⠿').count(),
+        1,
+        "one marker per answer"
+    );
+    component.update_content(
+        create_assistant_message(
+            vec![text("alpha beta gamma delta epsilon")],
+            StopReason::Stop,
+        ),
+        Some(false),
+    );
+    for width in 1..=20 {
+        for line in component.render(width) {
+            assert!(
+                notagent_tui::utils::visible_width(&line) <= width,
+                "line exceeds width {width}: {line:?}"
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -396,7 +455,7 @@ fn badge_style_collapses_thinking_behind_a_muted_heading() {
     );
     let lines = component.render(80);
     let muted_heading = format!(
-        "{}{}",
+        "{} {}",
         theme().fg(ThemeColor::Muted, "*"),
         theme().fg(ThemeColor::Muted, "Thought")
     );
@@ -406,7 +465,7 @@ fn badge_style_collapses_thinking_behind_a_muted_heading() {
     );
     let rendered = strip_ansi(&lines.join("\n"));
     assert!(
-        rendered.lines().any(|line| line.starts_with("*Thought")),
+        rendered.lines().any(|line| line.starts_with("* Thought")),
         "{rendered}"
     );
     assert!(rendered.contains("to expand)"), "{rendered}");
@@ -436,8 +495,18 @@ fn badge_style_expand_toggle_reveals_the_thinking_text() {
     );
     component.set_expanded(true);
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("secret reasoning"), "{rendered}");
-    assert!(rendered.contains("to collapse)"), "{rendered}");
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("  secret reasoning")),
+        "thinking text aligns in column two: {rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("  (") && line.contains("to collapse)")),
+        "the hint aligns with thinking text: {rendered}"
+    );
 }
 
 #[test]
@@ -460,7 +529,7 @@ fn badge_style_hiding_thinking_drops_the_block_whole() {
         Vec::new(),
     );
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(!rendered.contains("*Thought"), "{rendered}");
+    assert!(!rendered.contains("* Thought"), "{rendered}");
     assert!(!rendered.contains("Thinking..."), "{rendered}");
     assert!(!rendered.contains("secret reasoning"), "{rendered}");
     assert!(rendered.contains("answer"), "{rendered}");
@@ -468,7 +537,7 @@ fn badge_style_hiding_thinking_drops_the_block_whole() {
     // Showing them again brings the heading back.
     component.set_hide_thinking_block(false);
     let shown = strip_ansi(&component.render(80).join("\n"));
-    assert!(shown.contains("*Thought"), "{shown}");
+    assert!(shown.contains("* Thought"), "{shown}");
 }
 
 #[test]
@@ -485,7 +554,7 @@ fn badge_style_thinking_timer_runs_while_streaming_and_freezes_on_text() {
     );
     assert!(component.has_running_thinking());
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("*Thinking"), "{rendered}");
+    assert!(rendered.contains("* Thinking"), "{rendered}");
     // No info line while the heading still counts.
     assert!(!rendered.contains("to expand)"), "{rendered}");
 
@@ -499,7 +568,7 @@ fn badge_style_thinking_timer_runs_while_streaming_and_freezes_on_text() {
     );
     assert!(!component.has_running_thinking());
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("*Thought"), "{rendered}");
+    assert!(rendered.contains("* Thought"), "{rendered}");
     assert!(rendered.contains("to expand)"), "{rendered}");
 }
 
@@ -521,7 +590,7 @@ fn badge_style_replayed_thought_carries_no_runtime() {
         Vec::new(),
     );
     let rendered = strip_ansi(&component.render(80).join("\n"));
-    assert!(rendered.contains("*Thought"), "{rendered}");
+    assert!(rendered.contains("* Thought"), "{rendered}");
     assert!(!rendered.contains("ms)"), "{rendered}");
     assert!(
         !rendered.contains("s)") || rendered.contains("to expand)"),
