@@ -29,7 +29,7 @@ fi
 dist_dir="target/dist/v$version"
 archive_name="notagent-v$version-$target.tar.gz"
 archive_path="$dist_dir/$archive_name"
-binary_path="target/release/notagent"
+binary_path="${NOTAGENT_RELEASE_BINARY:-target/release/notagent}"
 staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/notagent-release.XXXXXX")
 trap 'rm -rf "$staging_dir"' EXIT
 
@@ -40,6 +40,8 @@ if ! file "$binary_path" | rg -q 'Mach-O 64-bit executable arm64'; then
 	echo "Release binary is not an arm64 Mach-O executable." >&2
 	exit 1
 fi
+# Packaging must not turn a local, unsigned build into a public release.
+codesign --verify --strict --check-notarization -R=notarized "$binary_path"
 
 mkdir -p "$dist_dir" target/release-site/api
 cp "$binary_path" "$staging_dir/notagent"
