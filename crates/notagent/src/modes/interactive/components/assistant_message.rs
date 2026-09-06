@@ -6,6 +6,7 @@ use notagent_tui::components::markdown::{
 };
 use notagent_tui::components::spacer::Spacer;
 use notagent_tui::components::text::Text;
+use notagent_tui::components::truncated_text::TruncatedText;
 use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
@@ -290,6 +291,20 @@ impl AssistantMessageComponent {
                                 theme_instance.fg(ThemeColor::Dim, ")")
                             ));
                         }
+                        if !running {
+                            heading.push_str(&theme_instance.fg(
+                                ThemeColor::Dim,
+                                &format!(
+                                    " ({} to {})",
+                                    key_text("app.tools.expand"),
+                                    if self.thinking_expanded {
+                                        "collapse"
+                                    } else {
+                                        "expand"
+                                    }
+                                ),
+                            ));
+                        }
                         // A thinking run following earlier sections of the
                         // same message needs its own breathing room — without
                         // it the heading sticks to the preceding answer text.
@@ -298,7 +313,7 @@ impl AssistantMessageComponent {
                                 .add_child(component_ref(Spacer::new(1)));
                         }
                         self.content_container
-                            .add_child(component_ref(Text::new(heading, 0, 0)));
+                            .add_child(component_ref(TruncatedText::new(heading, 0, 0)));
                         if self.thinking_expanded {
                             self.content_container
                                 .add_child(component_ref(Markdown::new(
@@ -322,27 +337,6 @@ impl AssistantMessageComponent {
                                         ..MarkdownOptions::default()
                                     }),
                                 )));
-                        }
-                        // The info line closes the block: under the heading
-                        // collapsed and under the thinking text expanded; the
-                        // runtime lives on the heading line.
-                        if !running {
-                            self.content_container.add_child(component_ref(Text::new(
-                                theme_instance.fg(
-                                    ThemeColor::Dim,
-                                    &format!(
-                                        "({} to {})",
-                                        key_text("app.tools.expand"),
-                                        if self.thinking_expanded {
-                                            "collapse"
-                                        } else {
-                                            "expand"
-                                        }
-                                    ),
-                                ),
-                                thinking_padding,
-                                0,
-                            )));
                         }
                     } else if self.hide_thinking_block {
                         // Show one static label for each run of thinking blocks when hidden.

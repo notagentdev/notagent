@@ -468,7 +468,12 @@ fn badge_style_collapses_thinking_behind_a_muted_heading() {
         rendered.lines().any(|line| line.starts_with("* Thought")),
         "{rendered}"
     );
-    assert!(rendered.contains("to expand)"), "{rendered}");
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("* Thought (") && line.contains("to expand)")),
+        "the expand hint must share the Thought heading: {rendered}"
+    );
     assert!(
         !rendered.contains("secret reasoning"),
         "collapsed thinking stays hidden: {rendered}"
@@ -504,8 +509,8 @@ fn badge_style_expand_toggle_reveals_the_thinking_text() {
     assert!(
         rendered
             .lines()
-            .any(|line| line.starts_with("  (") && line.contains("to collapse)")),
-        "the hint aligns with thinking text: {rendered}"
+            .any(|line| line.starts_with("* Thought (") && line.contains("to collapse)")),
+        "the collapse hint must share the Thought heading: {rendered}"
     );
 }
 
@@ -570,6 +575,43 @@ fn badge_style_thinking_timer_runs_while_streaming_and_freezes_on_text() {
     let rendered = strip_ansi(&component.render(80).join("\n"));
     assert!(rendered.contains("* Thought"), "{rendered}");
     assert!(rendered.contains("to expand)"), "{rendered}");
+}
+
+#[test]
+fn a_collapsed_thought_uses_one_line_even_in_a_narrow_terminal() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+    let mut component = AssistantMessageComponent::new(
+        Some(create_assistant_message(
+            vec![thinking("reasoning")],
+            StopReason::Stop,
+        )),
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    );
+    for width in 1..=80 {
+        let lines = component.render(width);
+        let visible: Vec<_> = lines
+            .iter()
+            .map(|line| strip_ansi(line))
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        assert_eq!(
+            visible.len(),
+            1,
+            "a collapsed thought must occupy only one visible line at width {width}: {visible:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| notagent_tui::utils::visible_width(line) <= width),
+            "thought heading must fit width {width}: {lines:?}"
+        );
+    }
 }
 
 #[test]
