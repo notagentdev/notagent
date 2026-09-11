@@ -255,7 +255,10 @@ fn rows_are_indented_and_their_shapes_uncoloured() {
         .collect();
     assert_eq!(lines.len(), 3);
     for line in &lines {
-        assert!(line.starts_with(' '), "row is not indented: {line:?}");
+        assert!(
+            line.starts_with("  "),
+            "row must be indented by two columns: {line:?}"
+        );
         assert!(!line.contains(&accent), "row carries the accent: {line:?}");
         assert!(
             !line.contains(&success),

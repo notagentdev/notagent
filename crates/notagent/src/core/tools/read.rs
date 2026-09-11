@@ -35,7 +35,9 @@ use crate::utils::mime::detect_supported_image_mime_type_from_file;
 pub const READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
         snippet: "Read file contents",
-        guidelines: &["Use read to examine files instead of cat or sed."],
+        guidelines: &[
+            "Use the attached file-reading tools instead of cat or sed. When read_minified is attached, follow its mandatory source-read policy; plain read is only for the exceptions that policy allows.",
+        ],
     };
 
 fn read_schema() -> Value {
@@ -911,7 +913,7 @@ mod tests {
         assert_eq!(tool.prompt_snippet(), Some("Read file contents"));
         assert_eq!(
             tool.prompt_guidelines(),
-            vec!["Use read to examine files instead of cat or sed.".to_owned()]
+            vec!["Use the attached file-reading tools instead of cat or sed. When read_minified is attached, follow its mandatory source-read policy; plain read is only for the exceptions that policy allows.".to_owned()]
         );
         assert_eq!(tool.parameters()["required"], json!(["path"]));
     }

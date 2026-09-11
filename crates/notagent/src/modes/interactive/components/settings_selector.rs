@@ -4,7 +4,6 @@ use std::rc::Rc;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use notagent_agent::types::ThinkingLevel;
 use notagent_ai::types::Transport;
 use notagent_tui::components::scroll_view::ScrollViewScrollbar;
 use notagent_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
@@ -35,19 +34,6 @@ fn settings_submenu_select_list_layout() -> SelectListLayoutOptions {
         min_primary_column_width: Some(12),
         max_primary_column_width: Some(32),
         truncate_primary: None,
-    }
-}
-
-/// `THINKING_DESCRIPTIONS`.
-fn thinking_description(level: ThinkingLevel) -> &'static str {
-    match level {
-        ThinkingLevel::Off => "No reasoning",
-        ThinkingLevel::Minimal => "Very brief reasoning (~1k tokens)",
-        ThinkingLevel::Low => "Light reasoning (~2k tokens)",
-        ThinkingLevel::Medium => "Moderate reasoning (~8k tokens)",
-        ThinkingLevel::High => "Deep reasoning (~16k tokens)",
-        ThinkingLevel::Xhigh => "Extra-high reasoning (~32k tokens)",
-        ThinkingLevel::Max => "Maximum reasoning",
     }
 }
 
@@ -122,8 +108,6 @@ pub struct SettingsConfig {
     pub follow_up_mode: QueueMode,
     pub transport: Transport,
     pub http_idle_timeout_ms: u64,
-    pub thinking_level: ThinkingLevel,
-    pub available_thinking_levels: Vec<ThinkingLevel>,
     pub current_theme: String,
     pub terminal_theme: TerminalTheme,
     pub available_themes: Vec<String>,
@@ -172,8 +156,6 @@ impl Default for SettingsConfig {
             follow_up_mode: QueueMode::All,
             transport: Transport::Auto,
             http_idle_timeout_ms: 0,
-            thinking_level: ThinkingLevel::Off,
-            available_thinking_levels: Vec::new(),
             current_theme: String::new(),
             terminal_theme: TerminalTheme::Dark,
             available_themes: Vec::new(),
@@ -217,7 +199,6 @@ pub struct SettingsCallbacks {
     pub on_follow_up_mode_change: Box<dyn FnMut(QueueMode)>,
     pub on_transport_change: Box<dyn FnMut(Transport)>,
     pub on_http_idle_timeout_ms_change: Box<dyn FnMut(u64)>,
-    pub on_thinking_level_change: Box<dyn FnMut(ThinkingLevel)>,
     pub on_theme_change: Box<dyn FnMut(&str)>,
     pub on_theme_preview: Option<ValueCallback>,
     pub on_hide_thinking_block_change: Box<dyn FnMut(bool)>,
@@ -258,7 +239,6 @@ impl Default for SettingsCallbacks {
             on_follow_up_mode_change: Box::new(|_| {}),
             on_transport_change: Box::new(|_| {}),
             on_http_idle_timeout_ms_change: Box::new(|_| {}),
-            on_thinking_level_change: Box::new(|_| {}),
             on_theme_change: Box::new(|_| {}),
             on_theme_preview: None,
             on_hide_thinking_block_change: Box::new(|_| {}),
@@ -1110,45 +1090,6 @@ impl SettingsSelectorComponent {
                             Box::new(move || {
                                 *cancel_done.borrow_mut() = Some(None);
                             }),
-                        ))
-                    }) as SubmenuFactory
-                }),
-            },
-            SettingItem {
-                id: "thinking".to_string(),
-                label: "Thinking level".to_string(),
-                description: Some("Reasoning depth for thinking-capable models".to_string()),
-                current_value: wire(&config.thinking_level),
-                values: None,
-                submenu: Some({
-                    let levels = config.available_thinking_levels.clone();
-                    let callbacks = Rc::clone(&callbacks);
-                    Rc::new(move |current_value: &str, done: SubmenuDone| {
-                        let select_callbacks = Rc::clone(&callbacks);
-                        let select_done = Rc::clone(&done);
-                        let cancel_done = done;
-                        component_ref(SelectSubmenu::new(
-                            "Thinking Level",
-                            "Select reasoning depth for thinking-capable models",
-                            levels
-                                .iter()
-                                .map(|level| SelectItem {
-                                    value: wire(level),
-                                    label: wire(level),
-                                    description: Some(thinking_description(*level).to_string()),
-                                })
-                                .collect(),
-                            current_value,
-                            Box::new(move |value| {
-                                if let Some(level) = from_wire::<ThinkingLevel>(value) {
-                                    (select_callbacks.borrow_mut().on_thinking_level_change)(level);
-                                }
-                                *select_done.borrow_mut() = Some(Some(value.to_string()));
-                            }),
-                            Box::new(move || {
-                                *cancel_done.borrow_mut() = Some(None);
-                            }),
-                            None,
                         ))
                     }) as SubmenuFactory
                 }),

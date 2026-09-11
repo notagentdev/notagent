@@ -31,7 +31,7 @@ pub const READ_MINIFIED_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContributio
     SystemPromptContribution {
         snippet: "Read a compact, editable view of a source file",
         guidelines: &[
-            "Prefer read_minified over read when surveying or navigating code, especially large or heavily commented files.",
+            "When read_minified is attached, you must use it for source-file reads; this is mandatory, not a preference. Use keep_comments=true when comments matter. Use plain read only for visual content, exact original line references, the exact source needed for a necessary patch fallback, or a concrete limitation of read_minified; do not use read or shell commands to bypass minified source reads.",
         ],
     };
 
@@ -55,11 +55,11 @@ fn description() -> String {
     [
         "Reads a source file and returns a compact view of it: comments are removed by default, blank lines are dropped, indentation is collapsed to one space per nesting level, and extra whitespace between tokens shrinks to a single space.".to_owned(),
         String::new(),
-        "Prefer this tool over `read` when you want to understand, navigate, or survey code in compact form, especially for large or heavily commented files.".to_owned(),
+        "When this tool is attached, you must use it for source-file reads; this is mandatory, not a preference. Do not bypass it with plain `read` or shell commands. Plain `read` is reserved for visual content, exact original line references, the exact source needed for a necessary `patch` fallback, or a concrete limitation of this tool.".to_owned(),
         String::new(),
         "Usage:".to_owned(),
         "- Supported languages: Rust, Python, JavaScript/JSX, TypeScript/TSX, Go, Java, C, C++, Ruby, Bash, CSS, HTML, JSON. Files in other languages (and files that cannot be parsed) are returned unmodified.".to_owned(),
-        "- The compact view is NOT byte-identical to the file on disk: indentation and comments may differ. Never copy text from this view into the old_string of a `patch` call — read the exact region with `read` first.".to_owned(),
+        "- The compact view is NOT byte-identical to the file on disk: indentation and comments may differ. Use the attached minified editing tools to edit this view. Plain `patch` is a fallback only; if that fallback is necessary, read the exact region with `read` first and never copy minified text into its old_string.".to_owned(),
         "- Output has no line numbers and line positions do not map back to the original file; use `read` or `grep` when you need precise line references.".to_owned(),
         "- Set keep_comments=true to retain comments while still compacting whitespace — useful when doc comments carry information you need.".to_owned(),
         format!(

@@ -48,6 +48,7 @@ const fn command_with_hint(
 /// runtime, and the assertion in the tests keeps the two tied together.
 pub const BUILTIN_SLASH_COMMANDS: &[BuiltinSlashCommand] = &[
     command("settings", "Open settings menu"),
+    command("effort", "Select reasoning effort"),
     command_with_hint(
         "model",
         "Select model (opens selector UI)",
@@ -158,6 +159,7 @@ mod tests {
             names,
             vec![
                 "settings",
+                "effort",
                 "model",
                 "subagent-model",
                 "scoped-models",

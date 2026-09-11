@@ -12,7 +12,6 @@ use notagent::modes::interactive::components::settings_selector::{
 };
 use notagent::modes::interactive::theme::theme::{TerminalTheme, init_theme};
 use notagent::utils::ansi::strip_ansi;
-use notagent_agent::types::ThinkingLevel;
 use notagent_ai::types::Transport;
 use notagent_tui::components::scroll_view::ScrollViewScrollbar;
 use notagent_tui::keybindings::set_keybindings;
@@ -51,13 +50,6 @@ fn config() -> SettingsConfig {
         follow_up_mode: QueueMode::All,
         transport: Transport::Auto,
         http_idle_timeout_ms: 300_000,
-        thinking_level: ThinkingLevel::Medium,
-        available_thinking_levels: vec![
-            ThinkingLevel::Off,
-            ThinkingLevel::Low,
-            ThinkingLevel::Medium,
-            ThinkingLevel::High,
-        ],
         current_theme: "dark".to_string(),
         terminal_theme: TerminalTheme::Dark,
         available_themes: vec![
@@ -110,8 +102,6 @@ fn callbacks(calls: &Calls) -> SettingsCallbacks {
         }),
         on_http_idle_timeout_ms_change: record!("onHttpIdleTimeoutMsChange", calls, value =>
             value.to_string()),
-        on_thinking_level_change: record!("onThinkingLevelChange", calls, value =>
-            format!("{value:?}").to_lowercase()),
         on_warnings_change: record!("onWarningsChange", calls, value =>
             format!("{:?}", value.anthropic_extra_usage)),
         on_theme_change: record!("onThemeChange", calls, value => value.to_string()),
@@ -235,29 +225,15 @@ fn the_warnings_submenu_toggles_and_returns() {
     assert!(harness.take_calls().is_empty());
 }
 
-/// into the row it came from.
 #[test]
-fn the_thinking_submenu_selects_a_level() {
+fn reasoning_effort_is_not_listed_in_settings() {
     let _guard = test_lock();
     let mut harness = Harness::new(config());
     harness.search("Thinking level");
-    harness.key(ENTER);
-    assert_eq!(
-        &harness.lines()[5..9],
-        &[
-            "  off         No reasoning",
-            "  low         Light reasoning (~2k tokens)",
-            "→ medium      Moderate reasoning (~8k tokens)",
-            "  high        Deep reasoning (~16k tokens)",
-        ]
-    );
-
-    harness.key(DOWN);
-    harness.key(ENTER);
-    assert_eq!(harness.lines()[3], "→ Thinking level          high");
-    assert_eq!(
-        harness.take_calls(),
-        vec![("onThinkingLevelChange", "high".to_string())]
+    let rendered = harness.lines().join("\n");
+    assert!(
+        rendered.contains("No matching settings"),
+        "reasoning effort belongs to /effort: {rendered}"
     );
 }
 

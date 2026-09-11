@@ -91,6 +91,51 @@ fn env(pairs: &[(&str, &str)]) -> ProviderEnv {
 }
 
 // ---------------------------------------------------------------------------
+// DeepSeek
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn deepseek_flash_sends_the_native_model_id_and_supported_effort_parameters() {
+    let model = get_builtin_model("deepseek", "deepseek-flash").expect("DeepSeek V4.1 Flash");
+    assert_eq!(
+        get_supported_thinking_levels(&model),
+        vec![
+            ModelThinkingLevel::Off,
+            ModelThinkingLevel::Low,
+            ModelThinkingLevel::High,
+            ModelThinkingLevel::Max,
+        ]
+    );
+    for (reasoning, expected_effort) in [
+        (None, None),
+        (Some(ThinkingLevel::Low), Some("low")),
+        (Some(ThinkingLevel::High), Some("high")),
+        (Some(ThinkingLevel::Max), Some("max")),
+    ] {
+        let request = capture_request(&OpenAICompletionsApi, &model, reasoning, None, None).await;
+        assert_eq!(request.url, "https://api.deepseek.com/chat/completions");
+        let body = body_json(&request);
+        assert_eq!(body["model"], "deepseek-flash");
+        assert_eq!(
+            body["thinking"]["type"],
+            if reasoning.is_some() {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+        assert_eq!(
+            body.get("reasoning_effort").and_then(Value::as_str),
+            expected_effort
+        );
+        assert!(
+            body.get("max_tokens").is_some(),
+            "DeepSeek requires max_tokens: {body}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Xiaomi
 // ---------------------------------------------------------------------------
 

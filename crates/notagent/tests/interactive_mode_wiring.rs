@@ -892,6 +892,65 @@ async fn the_model_command_with_an_exact_reference_switches_the_model() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn effort_selects_and_persists_a_level_and_escape_preserves_it() {
+    local(async {
+        use notagent_agent::types::ThinkingLevel;
+
+        let app = HeadlessApp::create().await;
+        let mut model = app.session().model().expect("a model is configured");
+        model.reasoning = true;
+        app.session().set_model(model).await.expect("model is set");
+        app.session().set_thinking_level(ThinkingLevel::Medium);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/effort").await;
+        driver.wait_for("Moderate reasoning").await;
+        driver.send_keys("\x1b[B").await;
+        driver.send_keys(KEY_ENTER).await;
+        driver.wait_for("Effort: high").await;
+        assert_eq!(app.session().thinking_level(), ThinkingLevel::High);
+        assert_eq!(
+            app.session()
+                .settings_manager()
+                .get_default_thinking_level()
+                .as_deref(),
+            Some("high"),
+            "/effort must persist the selected level"
+        );
+
+        driver.submit("/effort").await;
+        driver.wait_for("Deep reasoning").await;
+        driver.send_keys("\x1b[A").await;
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("Deep reasoning").await;
+        assert_eq!(
+            app.session().thinking_level(),
+            ThinkingLevel::High,
+            "cancelling /effort must preserve the selected level"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn effort_explains_when_the_model_does_not_support_reasoning() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("/effort").await;
+        driver
+            .wait_for("Current model does not support reasoning effort")
+            .await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn the_settings_selector_opens_and_escape_closes_it() {
     local(async {
         let app = HeadlessApp::create().await;

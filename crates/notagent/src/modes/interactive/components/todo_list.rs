@@ -125,9 +125,8 @@ fn panel_icon(status: TodoStatus) -> &'static str {
     }
 }
 
-/// The column every row starts in, so the list lines up with the transcript
-/// around it rather than hanging one character to its left.
-const ROW_INDENT: &str = " ";
+/// Align task rows and summaries with the transcript content.
+const ROW_INDENT: &str = "  ";
 
 /// One rendered row.
 /// The shape carries the status; the icon takes no colour at all. A coloured

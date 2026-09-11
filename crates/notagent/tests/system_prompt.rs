@@ -111,6 +111,72 @@ fn automatic_approval_does_not_forbid_material_clarification() {
 }
 
 #[test]
+fn enabled_minified_tools_are_required_and_plain_patch_is_only_a_fallback() {
+    use notagent::core::tools::{ToolName, create_tool_definition};
+
+    for minified_enabled in [false, true] {
+        let mut names = vec![ToolName::Read, ToolName::Edit];
+        if minified_enabled {
+            names.extend([
+                ToolName::ReadMinified,
+                ToolName::PatchMinified,
+                ToolName::MultiPatchMinified,
+            ]);
+        }
+        let definitions: Vec<_> = names
+            .into_iter()
+            .map(|name| create_tool_definition(name, &cwd(), None))
+            .collect();
+        let prompt = build_system_prompt(&BuildSystemPromptOptions {
+            selected_tools: Some(
+                definitions
+                    .iter()
+                    .map(|tool| tool.name().to_owned())
+                    .collect(),
+            ),
+            prompt_guidelines: definitions
+                .iter()
+                .flat_map(|tool| tool.prompt_guidelines())
+                .collect(),
+            ..options()
+        });
+        assert!(
+            prompt.contains("patch is a fallback only")
+                && prompt.contains("when no minified editing tool is attached"),
+            "patch must remain a fallback and account for disabled minified tools: {prompt}"
+        );
+        for tool in definitions
+            .iter()
+            .filter(|tool| tool.name().ends_with("_minified"))
+        {
+            assert!(
+                prompt.contains(&format!(
+                    "When {} is attached, you must use it",
+                    tool.name()
+                )),
+                "the assembled prompt must require the enabled tool {}: {prompt}",
+                tool.name()
+            );
+            assert!(
+                tool.description().contains("mandatory, not a preference"),
+                "tool descriptions must also require minified use: {}",
+                tool.description()
+            );
+        }
+        assert_eq!(
+            prompt.contains("mandatory, not a preference"),
+            minified_enabled,
+            "disabled minified tools must not contribute mandatory-use instructions: {prompt}"
+        );
+        assert!(
+            !prompt.contains("Prefer read_minified")
+                && !prompt.contains("Use patch for precise changes"),
+            "the prompt must not also recommend the plain path: {prompt}"
+        );
+    }
+}
+
+#[test]
 fn planning_instructions_preserve_history_and_require_file_authorization() {
     let guidance = notagent::core::tools::plan_create::PLAN_CREATE_TOOL_SYSTEM_PROMPT_CONTRIBUTION
         .guidelines

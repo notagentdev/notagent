@@ -132,6 +132,7 @@ use crate::modes::interactive::components::tasks_browser::{
 use crate::modes::interactive::components::text_input_dialog::{
     TextInputDialogComponent, TextInputDialogOptions,
 };
+use crate::modes::interactive::components::thinking_selector::ThinkingSelectorComponent;
 use crate::modes::interactive::components::to_locale_string;
 use crate::modes::interactive::components::todo_list::{
     TodoListComponent, TodoListMode, TodoVisibility,
@@ -225,7 +226,6 @@ enum SettingsEffect {
     ImageWidthCells(u64),
     RebuildAutocomplete,
     HttpIdleTimeout(u64),
-    ThinkingLevel,
     ThemeApplied,
     HideThinkingBlock(bool),
     InvalidateChat,
@@ -808,6 +808,10 @@ enum UiMessage {
     Settings {
         id: u64,
         effect: SettingsEffect,
+    },
+    EffortSelected {
+        id: u64,
+        level: notagent_agent::types::ThinkingLevel,
     },
     ResumeSession {
         id: u64,
@@ -2204,6 +2208,16 @@ impl InteractiveMode {
                 self.close_selector(id);
                 self.apply_selected_model(*model).await;
             }
+            UiMessage::EffortSelected { id, level } => {
+                self.close_selector(id);
+                self.session().set_thinking_level(level);
+                self.footer.borrow_mut().invalidate();
+                self.update_editor_border_color();
+                self.show_status(&format!(
+                    "Effort: {}",
+                    thinking_level_name(self.session().thinking_level())
+                ));
+            }
             UiMessage::SubagentModelSelected { id, model } => {
                 self.close_selector(id);
                 self.apply_selected_subagent_model(*model);
@@ -3496,6 +3510,28 @@ impl InteractiveMode {
         self.show_model_selector_impl(initial_search_input, false);
     }
 
+    fn show_effort_selector(&mut self) {
+        if !self.session().supports_thinking() {
+            self.show_status("Current model does not support reasoning effort");
+            return;
+        }
+        let id = self.selector_id + 1;
+        let select_tx = self.ui_tx.clone();
+        let cancel_tx = self.ui_tx.clone();
+        let selector = Rc::new(RefCell::new(ThinkingSelectorComponent::new(
+            self.session().thinking_level(),
+            self.session().get_available_thinking_levels(),
+            Box::new(move |level| {
+                let _ = select_tx.send(UiMessage::EffortSelected { id, level });
+            }),
+            Box::new(move || {
+                let _ = cancel_tx.send(UiMessage::SelectorCancelled { id });
+            }),
+        )));
+        let focus = selector.borrow().get_select_list() as ComponentRef;
+        self.show_selector(selector, focus, None);
+    }
+
     /// The same selector aimed at the `/subagent-model` setting (port
     /// addition, v0.1.6): only the message the choice sends back differs.
     fn show_subagent_model_selector(&mut self, initial_search_input: Option<&str>) {
@@ -4308,8 +4344,6 @@ impl InteractiveMode {
             follow_up_mode: settings_queue_mode(session.follow_up_mode()),
             transport: parse_transport(&settings.get_transport()),
             http_idle_timeout_ms: settings.get_http_idle_timeout_ms().unwrap_or_default(),
-            thinking_level: session.thinking_level(),
-            available_thinking_levels: session.get_available_thinking_levels(),
             current_theme: settings
                 .get_theme_setting()
                 .unwrap_or_else(|| "dark".to_owned()),
@@ -4416,14 +4450,6 @@ impl InteractiveMode {
                 Box::new(move |timeout_ms| {
                     let _ = settings.set_http_idle_timeout_ms(timeout_ms as f64);
                     effect(&tx, id, SettingsEffect::HttpIdleTimeout(timeout_ms));
-                })
-            },
-            on_thinking_level_change: {
-                let session = Arc::clone(&session);
-                let tx = self.ui_tx.clone();
-                Box::new(move |level| {
-                    session.set_thinking_level(level);
-                    effect(&tx, id, SettingsEffect::ThinkingLevel);
                 })
             },
             on_theme_change: {
@@ -4591,10 +4617,6 @@ impl InteractiveMode {
                     "HTTP idle timeout: {}",
                     format_http_idle_timeout_ms(timeout_ms)
                 ));
-            }
-            SettingsEffect::ThinkingLevel => {
-                self.footer.borrow_mut().invalidate();
-                self.update_editor_border_color();
             }
             SettingsEffect::WorkspaceInFooter(show) => {
                 self.footer.borrow_mut().set_show_workspace(show);
@@ -6624,6 +6646,10 @@ impl InteractiveMode {
         };
 
         match text {
+            "/effort" => {
+                self.clear_editor_text();
+                self.show_effort_selector();
+            }
             "/settings" => {
                 self.show_settings_selector();
                 self.clear_editor_text();

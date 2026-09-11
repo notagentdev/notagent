@@ -4,6 +4,11 @@ A terminal coding agent, written in Rust. It runs as a TUI, talks to LLM
 providers over their native APIs, and drives an agent loop with tools for
 reading, editing, searching, and running commands.
 
+![notagent plans a shipping bug fix, applies a precise patch and runs the tests](assets/demo/notagent.gif)
+
+Scripted model responses; real TUI, file edits and tests.
+[Re-record the demo with VHS](scripts/demo/README.md).
+
 ## Installation
 
 Version 0.1.49 supports Apple Silicon Macs:
@@ -118,6 +123,7 @@ Everything happens inside the TUI:
 - `/index on|off` — the local codebase index
 - `/goal <objective>` — goal mode
 - `/btw <question>` — ask a side question (see below)
+- `/effort` — select the reasoning level
 - `/settings` — everything else
 
 ## Side questions

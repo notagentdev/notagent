@@ -425,6 +425,29 @@ fn cline_pass_reports_no_price() {
     assert!(!stats.contains('$'), "no amount at all: {stats}");
 }
 
+#[test]
+fn zai_coding_plans_report_no_price_and_keep_the_standard_cache_hit_rate() {
+    let _guard = guard();
+    for provider in ["zai", "zai-coding-cn"] {
+        let session = create_session(SessionOptions {
+            provider: Some(provider.to_string()),
+            usage: Some((100, 10, 50, 50, 457.020)),
+            ..SessionOptions::default()
+        });
+        let mut footer = themed_footer(session, 1);
+
+        let stats = strip_ansi(&footer.render(120)[0]);
+        assert!(
+            !stats.contains('$'),
+            "{provider} must show no price: {stats}"
+        );
+        assert!(
+            stats.contains("CHR25.0%"),
+            "{provider} must show the standard cache hit rate: {stats}"
+        );
+    }
+}
+
 /// The rule itself, without the footer: a plan bought outside the tool is a
 /// subscription regardless of how it authenticates, so every caller of the
 /// runtime — not just the footer — gets the same answer.
@@ -434,8 +457,9 @@ fn the_api_key_backed_plans_are_known_to_the_runtime() {
 
     assert!(is_subscription_api_key_provider("cline-pass"));
     assert!(is_subscription_api_key_provider("kimi-coding"));
+    assert!(is_subscription_api_key_provider("zai"));
+    assert!(is_subscription_api_key_provider("zai-coding-cn"));
     // Pay-per-token providers are not, however they sign in.
     assert!(!is_subscription_api_key_provider("openrouter"));
     assert!(!is_subscription_api_key_provider("anthropic"));
-    assert!(!is_subscription_api_key_provider("zai"));
 }

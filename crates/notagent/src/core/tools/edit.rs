@@ -37,15 +37,15 @@ use crate::modes::interactive::theme::theme::{
 
 pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
-        snippet: "Make a precise file edit with one exact text replacement",
+        snippet: "Fallback file edit with one exact text replacement",
         guidelines: &[
-            "Use patch for precise changes with path, old_string and new_string (old_string must match exactly)",
+            "patch is a fallback only: use it when no minified editing tool is attached, or a concrete limitation or failure prevents the minified tools from safely making the requested edit. State the reason before falling back; convenience is not a reason. Supply path, old_string and new_string, with old_string taken from an exact read of the current file.",
             "Each patch call replaces one unique occurrence. Base subsequent changes on the file after the preceding patch.",
             "Keep old_string as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
         ],
     };
 
-const DESCRIPTION: &str = "Edit a single file using exact text replacement. Supply path, old_string and new_string directly. old_string must identify a unique region in the current file. new_string may be empty to delete that region. Do not include large unchanged regions just to connect distant changes.";
+const DESCRIPTION: &str = "Fallback for editing a single file using exact text replacement. When minified editing tools are attached, you must use them instead; use patch only when a concrete limitation or failure prevents them from safely making the requested edit, and state that reason first. If no minified editing tool is attached, patch is available for exact edits. Read the exact current source before falling back; never match against a minified view. Supply path, old_string and new_string directly. old_string must identify a unique region in the current file. new_string may be empty to delete that region. Do not include large unchanged regions just to connect distant changes.";
 
 fn edit_schema() -> Value {
     json!({
@@ -1311,7 +1311,9 @@ mod tests {
         assert_eq!(tool.name(), "patch");
         assert!(
             tool.description()
-                .starts_with("Edit a single file using exact text replacement.")
+                .starts_with("Fallback for editing a single file using exact text replacement."),
+            "patch must describe itself as a fallback: {}",
+            tool.description()
         );
         assert_eq!(
             tool.render_shell(),

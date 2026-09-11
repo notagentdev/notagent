@@ -166,10 +166,10 @@ struct AvailabilityState {
 }
 
 /// Providers whose plan covers the tokens although they authenticate with an
-/// API key, so the auth kind alone cannot identify them: Kimi For Coding and
-/// ClinePass are both subscriptions bought outside the tool (user decision
-/// 2026-08-17, v0.1.17).
-const SUBSCRIPTION_API_KEY_PROVIDERS: [&str; 2] = ["kimi-coding", "cline-pass"];
+/// API key, so the auth kind alone cannot identify them. Both Z.AI providers
+/// use the Coding Plan endpoint.
+const SUBSCRIPTION_API_KEY_PROVIDERS: [&str; 4] =
+    ["kimi-coding", "cline-pass", "zai", "zai-coding-cn"];
 
 /// Whether `provider_id` is one of the plans that authenticate with an API
 /// key. Exposed so that anything mirroring the runtime — a test double, a

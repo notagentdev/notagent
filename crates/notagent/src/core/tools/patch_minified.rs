@@ -82,7 +82,9 @@ fn multi_patch_minified_schema() -> Value {
 }
 
 const SHARED_USAGE: &[&str] = &[
-    "- Read the file with `read_minified` first; copying old_string from that output is the most reliable path.",
+    "- When minified editing tools are attached, you must use them for edits to existing source files; this is mandatory, not a preference. Use patch_minified for one replacement and multi_patch_minified for multiple replacements in one file when attached. Do not bypass them with plain patch, write, or shell commands.",
+    "- If a minified edit fails because the source changed or the match is ambiguous, re-read with read_minified and correct the match before considering a fallback. Plain patch is a fallback only when a concrete limitation or failure still prevents a safe minified edit; state the reason first.",
+    "- Read the file with `read_minified` first when attached; copying old_string from that output is the most reliable path.",
     "- old_string and new_string may be given in compact `read_minified` form or in normal source formatting; if an exact match fails, the tool normalizes them into minified form and retries exact matching.",
     "- This normalization is NOT fuzzy matching: the final search must still match the rebuilt minified view exactly, and ambiguous matches still fail unless replace_all is set.",
     "- keep_comments controls whether comments participate in the minified view and must match the view you used to choose the edit.",
@@ -538,9 +540,9 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
     fn prompt_guidelines(&self) -> Vec<String> {
         vec![
             if self.multi {
-                "When changing multiple locations in one file through the minified view, use one multi_patch_minified call instead of several patch_minified calls."
+                "When multi_patch_minified is attached, you must use it for multiple replacements in one source file. Minified editing tools are mandatory, not a preference; do not bypass them with plain patch, write, or shell commands."
             } else {
-                "Use patch_minified to change code you found via read_minified; never paste a minified view into a plain edit call."
+                "When patch_minified is attached, you must use it for single replacements in existing source files. Minified editing tools are mandatory, not a preference; do not bypass them with plain patch, write, or shell commands. Read with read_minified first when attached; never paste a minified view into a plain patch call."
             }
             .to_owned(),
         ]
