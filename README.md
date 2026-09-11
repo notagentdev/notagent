@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.49 supports Apple Silicon Macs:
+Version 0.1.50 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
