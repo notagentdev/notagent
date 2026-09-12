@@ -15,11 +15,13 @@ use notagent::core::tasks::types::{
     TaskSettlement, TaskSettlementStatus, TaskSink, TaskStatus,
 };
 use notagent::modes::interactive::components::task_lifecycle::{
-    is_background_bash_call, task_lifecycle_line,
+    TaskLifecycleComponent, is_background_bash_call, task_lifecycle_line,
 };
 use notagent::modes::interactive::theme::theme::{ThemeBg, badge, init_theme, theme};
 use notagent::utils::ansi::strip_ansi;
 use notagent_agent::types::BoxFuture;
+use notagent_tui::tui::Component;
+use notagent_tui::utils::visible_width;
 use serde_json::json;
 use suite::{HarnessOptions, create_harness};
 
@@ -171,6 +173,38 @@ fn a_background_bash_gets_separate_start_and_end_lines() {
     assert!(end_line.contains("[BG-Bash]"), "{end_line}");
     assert!(end_line.contains("shell-1 failed"), "{end_line}");
     assert!(end_line.contains("exit 101"), "{end_line}");
+}
+
+#[test]
+fn background_boxes_keep_the_tool_inset_when_their_text_wraps() {
+    let _guard = theme_lock();
+    for record in [
+        TaskLifecycleRecord::started(shell(TaskStatus::Running, None)),
+        TaskLifecycleRecord::ended(subagent(TaskStatus::Completed)),
+    ] {
+        for badge_style in [false, true] {
+            let line = task_lifecycle_line(&record, &theme(), badge_style);
+            let mut component = TaskLifecycleComponent::new(line.clone());
+            let wide = component.render(200);
+            assert_eq!(
+                strip_ansi(&wide[0]).trim_end(),
+                format!(" {}", strip_ansi(&line)),
+                "background boxes must have the same one-column outer inset as tool boxes"
+            );
+            for width in [0, 1, 2, 24] {
+                for rendered in component.render(width) {
+                    assert!(
+                        visible_width(&rendered) <= width,
+                        "row exceeds {width}: {rendered:?}"
+                    );
+                    assert!(
+                        rendered.is_empty() || strip_ansi(&rendered).starts_with(' '),
+                        "continuation rows must retain the tool inset: {rendered:?}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]

@@ -124,7 +124,7 @@ use crate::modes::interactive::components::status_indicator::{
 };
 use crate::modes::interactive::components::subagent_panel::SubagentPanel;
 use crate::modes::interactive::components::task_lifecycle::{
-    is_background_bash_call, task_lifecycle_line,
+    TaskLifecycleComponent, is_background_bash_call, task_lifecycle_line,
 };
 use crate::modes::interactive::components::tasks_browser::{
     TasksBrowserComponent, TasksBrowserProps, TasksFilter,
@@ -3231,7 +3231,7 @@ impl InteractiveMode {
         if !chat.children.is_empty() {
             chat.add_child(component_ref(Spacer::new(1)));
         }
-        chat.add_child(component_ref(Text::new(line, 0, 0)));
+        chat.add_child(component_ref(TaskLifecycleComponent::new(line)));
         drop(chat);
         self.ui.request_render();
     }

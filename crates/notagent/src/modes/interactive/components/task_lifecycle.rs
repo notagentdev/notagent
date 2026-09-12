@@ -10,6 +10,31 @@ use crate::core::tasks::types::{TaskInfo, TaskStatus};
 use crate::modes::interactive::components::subagent_panel::{format_elapsed, format_tokens};
 use crate::modes::interactive::components::tasks_panel::single_line;
 use crate::modes::interactive::theme::theme::{Theme, ThemeBg, ThemeColor, badge};
+use notagent_tui::components::text::Text;
+use notagent_tui::tui::{Component, Line};
+
+pub struct TaskLifecycleComponent {
+    text: Text,
+}
+
+impl TaskLifecycleComponent {
+    pub fn new(line: String) -> Self {
+        Self {
+            text: Text::new(line, 0, 0),
+        }
+    }
+}
+
+impl Component for TaskLifecycleComponent {
+    fn render(&mut self, width: usize) -> Vec<Line> {
+        // Use the tool boxes' outer inset, including continuation lines.
+        super::indent_lines(self.text.render(width.saturating_sub(1)), width)
+    }
+
+    fn invalidate(&mut self) {
+        self.text.invalidate();
+    }
+}
 
 pub fn is_background_bash_call(tool_name: &str, args: &serde_json::Value) -> bool {
     tool_name == "bash"

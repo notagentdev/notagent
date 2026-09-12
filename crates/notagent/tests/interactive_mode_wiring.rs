@@ -361,6 +361,13 @@ async fn a_background_bash_uses_only_purple_lifecycle_rows() {
             2,
             "the transcript needs one start and one end row: {screen}"
         );
+        for line in screen.lines().filter(|line| line.contains("BG-BASH")) {
+            assert_eq!(
+                line.find("BG-BASH"),
+                Some(2),
+                "background badges need the tool inset plus the badge's inner padding: {line:?}"
+            );
+        }
         assert_eq!(
             screen.matches("sleep 0.2").count(),
             1,

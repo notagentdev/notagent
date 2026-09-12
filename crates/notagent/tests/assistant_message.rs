@@ -96,6 +96,28 @@ fn create_assistant_message(
 }
 
 #[test]
+fn raw_json_renders_like_a_pretty_printed_json_code_block() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let raw = r#"{"reviewerId":"A","assessments":[{"outcome":"fail","evidence":"VPN broken"}]}"#;
+    let pretty = "```json\n{\n  \"reviewerId\": \"A\",\n  \"assessments\": [\n    {\n      \"outcome\": \"fail\",\n      \"evidence\": \"VPN broken\"\n    }\n  ]\n}\n```";
+    for streaming in [true, false] {
+        let render = |source: &str| {
+            let message = create_assistant_message(vec![text(source)], StopReason::Stop);
+            let mut component =
+                AssistantMessageComponent::new(None, false, None, None, None, Vec::new());
+            component.update_content(message, Some(streaming));
+            component.render(60)
+        };
+        assert_eq!(
+            render(raw),
+            render(pretty),
+            "raw JSON must get the same indentation and syntax colors as fenced JSON (streaming={streaming})"
+        );
+    }
+}
+
+#[test]
 fn adds_osc_133_zone_markers_to_assistant_messages_without_tool_calls() {
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
