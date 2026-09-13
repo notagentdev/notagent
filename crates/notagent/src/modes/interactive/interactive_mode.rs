@@ -760,6 +760,9 @@ enum AppAction {
 
 /// What the component callbacks post into [`InteractiveMode::run`].
 enum UiMessage {
+    NewSessionFinished {
+        result: Result<(), String>,
+    },
     /// Terminal input was dispatched; the editor's queues may have grown.
     TerminalInput,
     Action(AppAction),
@@ -787,15 +790,18 @@ enum UiMessage {
     },
     /// when it did not produce a file.
     InitFinished {
+        session_id: String,
         error: Option<String>,
     },
     /// The side-question child produced an event. Boxed: `AgentEvent` carries a
     /// whole message and would otherwise set the size of every variant here.
     SideQuestionEvent {
+        session_id: String,
         event: Box<AgentEvent>,
     },
     /// The side question settled; `error` is why, when it did not answer.
     SideQuestionFinished {
+        session_id: String,
         error: Option<String>,
     },
     /// A selector reported a choice or a cancellation.
@@ -1104,8 +1110,8 @@ pub struct InteractiveMode {
     /// Rows shown above the editor while a run is going; they move into the
     /// transcript with the next submission.
     pending_bash_components: Vec<Rc<RefCell<BashExecutionComponent>>>,
-    bash_tx: tokio::sync::mpsc::UnboundedSender<String>,
-    bash_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
+    bash_tx: tokio::sync::mpsc::UnboundedSender<(String, String)>,
+    bash_rx: Option<tokio::sync::mpsc::UnboundedReceiver<(String, String)>>,
     /// Messages submitted while a compaction runs.
     compaction_queued_messages: Vec<CompactionQueuedMessage>,
     /// The escape handler the compaction and the retry replace while they run.
@@ -1151,6 +1157,7 @@ pub struct InteractiveMode {
     /// see any more has nothing left to resolve against.
     pasted_images: HashMap<u32, ImageContent>,
     next_image_paste_id: u32,
+    replacing_session: bool,
     pending_user_inputs: VecDeque<String>,
     pending_compactions: VecDeque<Option<String>>,
 
@@ -1165,8 +1172,8 @@ pub struct InteractiveMode {
     ui_rx: Option<tokio::sync::mpsc::UnboundedReceiver<UiMessage>>,
     /// The event channel outlives every session: a session switch only swaps
     /// the listener, so the loop never sees its receiver close.
-    agent_tx: tokio::sync::mpsc::UnboundedSender<AgentSessionEvent>,
-    agent_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AgentSessionEvent>>,
+    agent_tx: tokio::sync::mpsc::UnboundedSender<(String, AgentSessionEvent)>,
+    agent_rx: Option<tokio::sync::mpsc::UnboundedReceiver<(String, AgentSessionEvent)>>,
     /// Kept alive for as long as the mode runs; dropping it unsubscribes.
     agent_subscription: Option<crate::core::agent_session::ListenerHandle>,
 }
@@ -1384,6 +1391,7 @@ impl InteractiveMode {
             fd_path: None,
             pasted_images: HashMap::new(),
             next_image_paste_id: 1,
+            replacing_session: false,
             pending_user_inputs: VecDeque::new(),
             pending_compactions: VecDeque::new(),
             is_shutting_down: false,
@@ -1719,8 +1727,10 @@ impl InteractiveMode {
     /// into the single-threaded UI over a channel and are handled in the loop.
     fn subscribe_to_agent(&mut self) {
         let tx = self.agent_tx.clone();
-        self.agent_subscription = Some(self.session().subscribe(Arc::new(move |event| {
-            let _ = tx.send(event);
+        let session = self.session();
+        let session_id = session.session_id();
+        self.agent_subscription = Some(session.subscribe(Arc::new(move |event| {
+            let _ = tx.send((session_id.clone(), event));
         })));
     }
 
@@ -1731,12 +1741,39 @@ impl InteractiveMode {
     fn rebind_current_session(&mut self) {
         // Dropping the handle unsubscribes the listener of the old session.
         self.agent_subscription = None;
+        self.reset_session_ui();
         self.apply_runtime_settings();
         self.render_current_session_state();
         self.subscribe_to_agent();
         self.update_available_provider_count();
         self.update_editor_border_color();
         self.update_terminal_title();
+    }
+
+    fn reset_session_ui(&mut self) {
+        self.close_side_question_panel();
+        self.dispose_active_selector();
+        self.clear_status_indicator(None);
+        self.compaction_chat_indicator = None;
+        self.compaction_queued_messages.clear();
+        self.pending_user_inputs.clear();
+        self.pending_compactions.clear();
+        self.pending_bash = None;
+        self.bash_component = None;
+        self.pending_bash_components.clear();
+        self.chat_tool_rows.clear();
+        self.chat_explore_blocks.clear();
+        self.chat_expandables.clear();
+        self.explore_block = None;
+        self.streaming_visible_chars = 0;
+        self.escape_target = EscapeTarget::Default;
+        self.init_running = false;
+        self.clear_pasted_images();
+        self.options.initial_images.clear();
+        self.subagent_panel_signature.clear();
+        self.subagent_panel.borrow_mut().set_tasks(Vec::new());
+        self.subagent_panel_container.borrow_mut().clear();
+        self.has_foreground_tasks.set(false);
     }
 
     fn render_current_session_state(&mut self) {
@@ -1851,11 +1888,20 @@ impl InteractiveMode {
         let mut side: futures::stream::FuturesUnordered<Pin<Box<dyn Future<Output = UiMessage>>>> =
             futures::stream::FuturesUnordered::new();
 
+        let mut bound_session_id = self.session().session_id();
         loop {
+            let current_session_id = self.session().session_id();
+            if current_session_id != bound_session_id {
+                prompt = None;
+                compaction = None;
+                session_load = None;
+                bound_session_id = current_session_id;
+            }
             if let Some(code) = self.exit_code {
                 return code;
             }
-            if prompt.is_none()
+            if !self.replacing_session
+                && prompt.is_none()
                 && let Some(text) = self.pending_user_inputs.pop_front()
             {
                 let session = self.session();
@@ -1878,7 +1924,8 @@ impl InteractiveMode {
                     (submitted_text, result)
                 }));
             }
-            if compaction.is_none()
+            if !self.replacing_session
+                && compaction.is_none()
                 && let Some(instructions) = self.pending_compactions.pop_front()
             {
                 let session = self.session();
@@ -1937,7 +1984,7 @@ impl InteractiveMode {
                 } => {
                     prompt = None;
                     let (submitted_text, result) = result;
-                    if let Err(message) = result {
+                    if let Err(message) = result && !self.replacing_session {
                         self.restore_rejected_prompt(&submitted_text);
                         self.show_error(&message);
                     }
@@ -1959,7 +2006,8 @@ impl InteractiveMode {
                     }
                 } => bash.take().map(|bash| (bash, result)),
                 request = approval_rx.recv() => {
-                    if let Some((request, answer)) = request {
+                    if let Some((request, answer)) = request
+                        && !self.replacing_session && !answer.is_closed() {
                         self.show_approval_selector(request, answer);
                     }
                     None
@@ -1987,7 +2035,8 @@ impl InteractiveMode {
                 chunk = bash_rx.recv() => {
                     // `executeBash`'s chunk callback: the row grows while the
                     // command runs.
-                    if let (Some(chunk), Some(component)) = (chunk, self.bash_component.clone()) {
+                    if let (Some((session_id, chunk)), Some(component)) = (chunk, self.bash_component.clone())
+                        && session_id == self.session().session_id() && !self.replacing_session {
                         component.borrow_mut().append_output(&chunk);
                         self.ui.request_render();
                     }
@@ -2002,7 +2051,11 @@ impl InteractiveMode {
                 }
                 event = agent_rx.recv() => {
                     match event {
-                        Some(event) => self.handle_event(event).await,
+                        Some((session_id, event)) => {
+                            if session_id == self.session().session_id() && !self.replacing_session {
+                                self.handle_event(event).await;
+                            }
+                        },
                         None => return 0,
                     }
                     None
@@ -2032,10 +2085,15 @@ impl InteractiveMode {
             };
 
             // A bash run the select did not finish keeps going in the next pass.
-            if let Some(bash) = bash {
+            if let Some(bash) = bash
+                && bound_session_id == self.session().session_id()
+            {
                 self.pending_bash = Some(bash);
             }
-            if let Some((bash, result)) = outcome {
+            if let Some((bash, result)) = outcome
+                && bound_session_id == self.session().session_id()
+                && !self.replacing_session
+            {
                 self.finish_bash_command(&bash.command, bash.exclude_from_context, result);
             }
         }
@@ -2228,15 +2286,38 @@ impl InteractiveMode {
                 }
                 self.show_status(&message);
             }
-            UiMessage::InitFinished { error } => {
+            UiMessage::NewSessionFinished { result } => {
+                self.replacing_session = false;
+                match result {
+                    Ok(()) => {
+                        self.rebind_current_session();
+                        self.show_status("New session started");
+                    }
+                    Err(message) => {
+                        self.show_error(&format!("Failed to create session: {message}"))
+                    }
+                }
+            }
+            UiMessage::InitFinished { session_id, error } => {
+                if session_id != self.session().session_id() || self.replacing_session {
+                    return;
+                }
                 self.init_running = false;
                 match error {
                     Some(error) => self.show_warning(&error),
                     None => self.show_status("AGENTS.md written."),
                 }
             }
-            UiMessage::SideQuestionEvent { event } => self.handle_side_question_event(*event),
-            UiMessage::SideQuestionFinished { error } => self.handle_side_question_finished(error),
+            UiMessage::SideQuestionEvent { session_id, event } => {
+                if session_id == self.session().session_id() && !self.replacing_session {
+                    self.handle_side_question_event(*event);
+                }
+            }
+            UiMessage::SideQuestionFinished { session_id, error } => {
+                if session_id == self.session().session_id() && !self.replacing_session {
+                    self.handle_side_question_finished(error);
+                }
+            }
             UiMessage::ForkAt {
                 id,
                 entry_id,
@@ -2439,6 +2520,9 @@ impl InteractiveMode {
     /// with the slices that own them; what is wired here is the path a plain
     /// prompt takes.
     async fn handle_submit(&mut self, text: String) {
+        if self.replacing_session {
+            return;
+        }
         let text = text.trim().to_owned();
         if text.is_empty() {
             return;
@@ -6332,6 +6416,7 @@ impl InteractiveMode {
         let session = self.session();
         let command = command.to_owned();
         let tx = self.bash_tx.clone();
+        let session_id = session.session_id();
         self.pending_bash = Some(PendingBash {
             command: command.clone(),
             exclude_from_context,
@@ -6340,7 +6425,7 @@ impl InteractiveMode {
                     .execute_bash(
                         &command,
                         Some(Arc::new(move |chunk: &str| {
-                            let _ = tx.send(chunk.to_owned());
+                            let _ = tx.send((session_id.clone(), chunk.to_owned()));
                         })),
                         ExecuteBashOptions {
                             exclude_from_context,
@@ -7372,22 +7457,21 @@ impl InteractiveMode {
     }
 
     async fn handle_clear_command(&mut self) {
-        self.clear_status_indicator(None);
-        match self.runtime.new_session(None).await {
-            Ok(()) => {
-                self.rebind_current_session();
-                let mut chat = self.chat_container.borrow_mut();
-                chat.add_child(component_ref(Spacer::new(1)));
-                chat.add_child(component_ref(Text::new(
-                    theme().fg(ThemeColor::Accent, "✓ New session started"),
-                    1,
-                    1,
-                )));
-                drop(chat);
-                self.ui.request_render();
-            }
-            Err(message) => self.show_error(&format!("Failed to create session: {message}")),
+        if self.replacing_session {
+            return;
         }
+        self.replacing_session = true;
+        self.session().cancel_side_question();
+        self.session().abort_compaction();
+        self.session().abort_bash();
+        self.reset_session_ui();
+        let runtime = Arc::clone(&self.runtime);
+        // The loop must keep polling the old prompt while teardown waits for it.
+        self.side_futures.push(Box::pin(async move {
+            UiMessage::NewSessionFinished {
+                result: runtime.new_session(None).await,
+            }
+        }));
     }
 
     fn handle_compact_command(&mut self, custom_instructions: Option<String>) {
@@ -7455,19 +7539,23 @@ impl InteractiveMode {
         };
         let session = self.session();
         let tx = self.ui_tx.clone();
+        let session_id = session.session_id();
         self.side_futures.push(Box::pin(async move {
+            let event_session_id = session_id.clone();
             let sink = tx.clone();
             let outcome = session
                 .ask_side_question(
                     &question,
                     Arc::new(move |event| {
                         let _ = sink.send(UiMessage::SideQuestionEvent {
+                            session_id: event_session_id.clone(),
                             event: Box::new(event),
                         });
                     }),
                 )
                 .await;
             UiMessage::SideQuestionFinished {
+                session_id,
                 error: outcome.err(),
             }
         }));
@@ -7604,6 +7692,7 @@ impl InteractiveMode {
         let session = self.session();
         self.side_futures.push(Box::pin(async move {
             UiMessage::InitFinished {
+                session_id: session.session_id(),
                 error: session.run_init().await.err(),
             }
         }));

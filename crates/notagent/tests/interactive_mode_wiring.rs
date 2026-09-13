@@ -751,6 +751,108 @@ async fn new_starts_a_fresh_session() {
     .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn new_removes_the_old_conversation_from_the_next_provider_request() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux().set_responses(vec![reply("OLD_CONTEXT_ANSWER")]);
+        let mut driver = Driver::start(&app, VirtualTerminal::new(COLUMNS, ROWS)).await;
+        driver.wait_for("notagent").await;
+        driver.submit("OLD_CONTEXT_QUESTION").await;
+        driver.wait_for("OLD_CONTEXT_ANSWER").await;
+        driver.submit("/new").await;
+        driver.wait_for("New session started").await;
+        assert!(
+            app.session().messages().is_empty(),
+            "new session must have no conversation history"
+        );
+        app.faux().set_responses(vec![
+            notagent_ai::providers::faux::FauxResponseStep::Factory(Arc::new(|context, _| {
+                let request = serde_json::to_string(context).expect("serialize context");
+                assert!(
+                    !request.contains("OLD_CONTEXT"),
+                    "old messages leaked into request: {request}"
+                );
+                assert!(
+                    request.contains("FRESH_QUESTION"),
+                    "new input missing: {request}"
+                );
+                faux_assistant_message(
+                    vec![notagent_ai::providers::faux::faux_text("FRESH_ANSWER")],
+                    StopReason::Stop,
+                )
+            })),
+        ]);
+        driver.submit("FRESH_QUESTION").await;
+        driver.wait_for("FRESH_ANSWER").await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn new_closes_the_side_question_and_routes_input_to_the_new_main_session() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux().set_responses(vec![reply("OLD_SIDE_ANSWER")]);
+        let mut driver = Driver::start(&app, VirtualTerminal::new(COLUMNS, ROWS)).await;
+        driver.wait_for("notagent").await;
+        driver.submit("/btw old side question").await;
+        driver.wait_for("OLD_SIDE_ANSWER").await;
+        let old_session = app.session();
+        driver.submit("/new").await;
+        driver.wait_for("New session started").await;
+        assert!(
+            old_session
+                .ask_side_question("must not run", Arc::new(|_| {}))
+                .await
+                .is_err(),
+            "disposed session must not retain its side child"
+        );
+        app.faux().set_responses(vec![reply("NEW_MAIN_ANSWER")]);
+        driver.submit("new main question").await;
+        driver.wait_for("NEW_MAIN_ANSWER").await;
+        let messages = format!("{:?}", app.session().messages());
+        assert!(
+            messages.contains("new main question"),
+            "input must reach main session: {messages}"
+        );
+        assert!(
+            !messages.contains("OLD_SIDE"),
+            "side context leaked: {messages}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn new_during_streaming_settles_the_old_prompt_without_hanging_or_restoring_it() {
+    local(async {
+        let app = HeadlessApp::create_slow(100.0).await;
+        app.faux().set_responses(vec![reply(&format!(
+            "OLD_STREAM {}",
+            "long response ".repeat(1000)
+        ))]);
+        let mut driver = Driver::start(&app, VirtualTerminal::new(COLUMNS, ROWS)).await;
+        driver.wait_for("notagent").await;
+        driver.submit("old prompt must not return").await;
+        driver.wait_for("OLD_STREAM").await;
+        let old_session = app.session();
+        driver.submit("/new").await;
+        driver.wait_for("New session started").await;
+        driver.settle_for(100).await;
+        assert_ne!(app.session().session_id(), old_session.session_id());
+        assert!(
+            app.session().messages().is_empty(),
+            "late old events must not populate the new context"
+        );
+        app.faux().set_responses(vec![reply("AFTER_ABORT")]);
+        driver.submit("fresh prompt").await;
+        driver.wait_for("AFTER_ABORT").await;
+        assert!(!format!("{:?}", app.session().messages()).contains("old prompt must not return"));
+    })
+    .await;
+}
+
 // ---------------------------------------------------------------------------
 // Slice 3 — bash mode and the queues
 // ---------------------------------------------------------------------------
@@ -1442,6 +1544,48 @@ async fn the_tree_offers_a_custom_summary_prompt() {
 
         driver.submit("/quit").await;
         assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn new_discards_messages_queued_during_compaction_and_its_late_completion() {
+    local(async {
+        let app = HeadlessApp::create_slow(100.0).await;
+        append_compactable_history(&app);
+        app.faux()
+            .set_responses(vec![reply(&"old summary ".repeat(1000))]);
+        let mut driver = Driver::start(&app, VirtualTerminal::new(COLUMNS, ROWS)).await;
+        driver.wait_for("Old answer must survive compaction").await;
+        driver.submit("/compact").await;
+        driver.wait_for("Compacting context").await;
+        driver.submit("OLD_QUEUED_INPUT").await;
+        driver.wait_for("Queued message for after compaction").await;
+        driver.submit("/new").await;
+        driver.wait_for("New session started").await;
+        driver.settle_for(150).await;
+        assert!(
+            app.session().messages().is_empty(),
+            "compaction queue must not enter the new session: {:?}",
+            app.session().messages()
+        );
+        app.faux().set_responses(vec![
+            notagent_ai::providers::faux::FauxResponseStep::Factory(Arc::new(|context, _| {
+                let request = serde_json::to_string(context).expect("context");
+                assert!(
+                    !request.contains("OLD_QUEUED_INPUT") && !request.contains("old summary"),
+                    "old compaction context leaked: {request}"
+                );
+                faux_assistant_message(
+                    vec![notagent_ai::providers::faux::faux_text(
+                        "CLEAN_AFTER_COMPACT",
+                    )],
+                    StopReason::Stop,
+                )
+            })),
+        ]);
+        driver.submit("fresh after compact").await;
+        driver.wait_for("CLEAN_AFTER_COMPACT").await;
     })
     .await;
 }

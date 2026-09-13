@@ -2453,6 +2453,19 @@ impl AgentSession {
         Arc::clone(&self.todo_store)
     }
 
+    /// Waits for session-owned jobs before another session takes over.
+    pub async fn shutdown_background_tasks(&self) {
+        let manager = {
+            let mut tasks = self.tasks.lock().unwrap_or_else(|error| error.into_inner());
+            tasks.notifier = None;
+            tasks.session_id = None;
+            tasks.manager.take()
+        };
+        if let Some(manager) = manager {
+            manager.shutdown(None).await;
+        }
+    }
+
     /// Stops everything this session started. Called when it is disposed.
     fn stop_background_tasks(&self) {
         let manager = {
@@ -5135,6 +5148,7 @@ impl AgentSession {
     /// Removes all listeners, stops everything running, and disconnects from
     /// the agent. Call this when completely done with the session.
     pub fn dispose(&self) {
+        self.cancel_side_question();
         self.request_abort();
         self.abort_compaction();
         self.abort_branch_summary();

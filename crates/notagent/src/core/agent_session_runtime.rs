@@ -159,6 +159,8 @@ impl AgentSessionRuntime {
         {
             before();
         }
+        session.shutdown_background_tasks().await;
+        session.shutdown_mcp_servers().await;
         session.dispose();
     }
 
