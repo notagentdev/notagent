@@ -5,35 +5,55 @@
 //! appended as separate lines so rendering an outcome never reaches back into
 //! terminal scrollback.
 
+use super::status_marker::{MarkerState, heading};
 use crate::core::tasks::lifecycle::{TaskLifecyclePhase, TaskLifecycleRecord};
 use crate::core::tasks::types::{TaskInfo, TaskStatus};
 use crate::modes::interactive::components::subagent_panel::{format_elapsed, format_tokens};
 use crate::modes::interactive::components::tasks_panel::single_line;
-use crate::modes::interactive::theme::theme::{Theme, ThemeBg, ThemeColor, badge};
+use crate::modes::interactive::theme::theme::{
+    BlockStyle, Theme, ThemeBg, ThemeColor, badge, block_style, theme,
+};
 use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Line};
 
 pub struct TaskLifecycleComponent {
-    text: Text,
+    record: TaskLifecycleRecord,
 }
 
 impl TaskLifecycleComponent {
-    pub fn new(line: String) -> Self {
-        Self {
-            text: Text::new(line, 0, 0),
-        }
+    pub fn new(record: TaskLifecycleRecord) -> Self {
+        Self { record }
     }
 }
 
 impl Component for TaskLifecycleComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
         // Use the tool boxes' outer inset, including continuation lines.
-        super::indent_lines(self.text.render(width.saturating_sub(1)), width)
+        let style = block_style();
+        let line = task_lifecycle_line(&self.record, &theme(), style);
+        let inner = super::tool_content_width(width);
+        let lines = if style == BlockStyle::Dot {
+            // Wrap the text column separately so the marker gutter is counted once.
+            let (marker, body) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+            Text::new(body, 0, 0)
+                .render(inner.saturating_sub(2))
+                .into_iter()
+                .enumerate()
+                .map(|(index, text)| {
+                    Line::from(if index == 0 {
+                        format!("{marker} {text}")
+                    } else {
+                        format!("  {text}")
+                    })
+                })
+                .collect()
+        } else {
+            Text::new(line, 0, 0).render(inner)
+        };
+        super::indent_lines(lines, width)
     }
 
-    fn invalidate(&mut self) {
-        self.text.invalidate();
-    }
+    fn invalidate(&mut self) {}
 }
 
 pub fn is_background_bash_call(tool_name: &str, args: &serde_json::Value) -> bool {
@@ -47,7 +67,7 @@ pub fn is_background_bash_call(tool_name: &str, args: &serde_json::Value) -> boo
 pub fn task_lifecycle_line(
     record: &TaskLifecycleRecord,
     theme: &Theme,
-    badge_style: bool,
+    style: BlockStyle,
 ) -> String {
     let clean = record.task.status() == TaskStatus::Completed;
     // The badge carries where a subagent runs: BG- for a detached child, bare
@@ -90,7 +110,19 @@ pub fn task_lifecycle_line(
         }
     };
 
-    if badge_style {
+    if style == BlockStyle::Dot {
+        let state = if record.phase == TaskLifecyclePhase::Started || clean {
+            MarkerState::Success
+        } else {
+            MarkerState::Error
+        };
+        return format!(
+            "{}  {}",
+            heading(badge_name, state),
+            theme.fg(ThemeColor::CustomMessageText, &detail)
+        );
+    }
+    if style == BlockStyle::Badge {
         return format!(
             "{}  {}",
             badge(theme, ThemeBg::CustomMessageBg, badge_name),

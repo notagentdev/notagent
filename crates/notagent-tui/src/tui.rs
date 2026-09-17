@@ -472,6 +472,7 @@ struct PendingOsc11Query {
 }
 
 struct TuiState {
+    activity: crate::activity::ActivityClock,
     terminal: Box<dyn Terminal>,
     children: Vec<ComponentRef>,
     focused: Option<ComponentRef>,
@@ -535,6 +536,7 @@ impl TuiCore {
                 })
         });
         Self(Rc::new(RefCell::new(TuiState {
+            activity: crate::activity::ActivityClock::default(),
             terminal,
             children: Vec::new(),
             focused: None,
@@ -563,6 +565,75 @@ impl TuiCore {
             dispatching_input: false,
             pending_invalidate: false,
         })))
+    }
+
+    /// Enable live activity markers only while the application can animate.
+    pub fn set_activity_animation(&self, allowed: bool) {
+        let changed = {
+            let mut state = self.0.borrow_mut();
+            let changed = state.activity.allowed != allowed;
+            state.activity.allowed = allowed;
+            if !allowed {
+                state.activity.deadline = None;
+            }
+            changed
+        };
+        if changed {
+            self.request_render();
+        }
+    }
+
+    /// Preserve the shared blink phase when replacing a renderer.
+    pub fn inherit_activity_clock(&self, previous: &TuiCore) {
+        let mut clock = previous.0.borrow().activity.clone();
+        clock.deadline = None;
+        self.0.borrow_mut().activity = clock;
+    }
+
+    pub fn terminal_focused(&self) -> bool {
+        self.0.borrow().activity.focused
+    }
+
+    pub fn set_terminal_focused(&self, focused: bool) {
+        let mut state = self.0.borrow_mut();
+        state.activity.focused = focused;
+        if !focused {
+            state.activity.deadline = None;
+        }
+        drop(state);
+        self.request_render();
+    }
+
+    pub fn activity_deadline(&self) -> Option<Instant> {
+        self.0.borrow().activity.deadline
+    }
+
+    pub fn tick_activity(&self, now: Instant) {
+        let mut state = self.0.borrow_mut();
+        let due = state
+            .activity
+            .deadline
+            .is_some_and(|deadline| deadline <= now);
+        if due {
+            state.activity.deadline = None;
+        }
+        drop(state);
+        if due {
+            self.request_render();
+        }
+    }
+
+    pub(crate) fn paint_activity(
+        &self,
+        lines: &mut [Line],
+        first_visible: usize,
+        previous: &[Line],
+    ) {
+        let blocked = self.get_topmost_visible_overlay().is_some();
+        self.0
+            .borrow_mut()
+            .activity
+            .paint(lines, first_visible, previous, Instant::now(), blocked);
     }
 
     /// Directory for crash and debug logs.
@@ -1202,6 +1273,7 @@ impl TuiCore {
     pub fn stop(&self) {
         let mut state = self.0.borrow_mut();
         state.stopped = true;
+        state.activity.deadline = None;
         state.render_requested = false;
         state.immediate_render_requested = false;
         state.render_notify.notify_waiters();
@@ -1267,8 +1339,11 @@ impl TuiCore {
     /// frame, or immediately after keyboard input.
     pub fn render_deadline(&self) -> Option<Instant> {
         let state = self.0.borrow();
-        if state.stopped || !state.render_requested {
+        if state.stopped {
             return None;
+        }
+        if !state.render_requested {
+            return state.activity.deadline;
         }
         if state.immediate_render_requested {
             return Some(Instant::now());
@@ -1276,7 +1351,13 @@ impl TuiCore {
         let Some(last_render_at) = state.last_render_at else {
             return Some(Instant::now());
         };
-        Some(last_render_at + Duration::from_millis(MIN_RENDER_INTERVAL_MS))
+        let paint = last_render_at + Duration::from_millis(MIN_RENDER_INTERVAL_MS);
+        Some(
+            state
+                .activity
+                .deadline
+                .map_or(paint, |activity| activity.min(paint)),
+        )
     }
 
     /// Mark a frame as rendered; returns `false` when nothing was pending.
@@ -1292,6 +1373,10 @@ impl TuiCore {
     /// Order: OSC 11 reply → color scheme report → input listeners → cell size →
     /// debug key → overlay focus repair → focused component.
     pub fn handle_terminal_input(&self, data: &str) {
+        if data == "\x1b[I" || data == "\x1b[O" {
+            self.set_terminal_focused(data == "\x1b[I");
+            return;
+        }
         if self.consume_osc11_background_response(data) {
             return;
         }

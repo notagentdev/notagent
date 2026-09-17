@@ -191,8 +191,7 @@ async fn renders_the_large_diff_in_the_call_preview_without_a_full_redraw_on_the
         // The preview is the render loop's work, and it only starts once the
         // arguments are complete.
         let call_only = screen.wait_for_row_text("line 50 changed").await;
-        // The badge style (the default) heads the row with an EDIT badge;
-        // the standard style keeps the lowercase name in the call line.
+        // Badge labels are uppercase; the other styles keep the tool name.
         assert!(
             call_only.contains("EDIT") || call_only.contains("edit"),
             "{call_only}"

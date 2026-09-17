@@ -76,30 +76,39 @@ fn counts_the_retry_delay_down_second_by_second() {
 fn working_and_worked_align_with_message_text_and_fit_narrow_terminals() {
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
-    let mut working = StatusIndicator::working("Working...", None);
-    for label in ["Working...", "Worked for "] {
-        let lines = working.render(80);
-        let text = visible(&lines.join("\n"));
-        assert!(
-            text.lines()
-                .any(|line| line.starts_with(&format!("  {label}"))),
-            "status text must align in column two: {text:?}"
-        );
-        for width in 0..=40 {
-            for line in working.render(width) {
-                assert!(
-                    notagent_tui::utils::visible_width(&line) <= width,
-                    "status output must fit width {width}: {line:?}"
-                );
-                let text = visible(&line);
-                assert!(
-                    text.trim().is_empty() || text.starts_with("  "),
-                    "wrapped status text must keep its alignment: {text:?}"
-                );
+    for style in [
+        notagent::core::settings_manager::BlockStyle::Dot,
+        notagent::core::settings_manager::BlockStyle::Badge,
+    ] {
+        notagent::modes::interactive::theme::theme::set_block_style(style);
+        let mut working = StatusIndicator::working("Working...", None);
+        for label in ["Working...", "Worked for "] {
+            let lines = working.render(80);
+            let text = visible(&lines.join("\n"));
+            assert!(
+                text.lines()
+                    .any(|line| line.starts_with(&format!("  {label}"))),
+                "status text must align in column two: {text:?}"
+            );
+            for width in 0..=40 {
+                for line in working.render(width) {
+                    assert!(
+                        notagent_tui::utils::visible_width(&line) <= width,
+                        "status output must fit width {width}: {line:?}"
+                    );
+                    let text = visible(&line);
+                    assert!(
+                        text.trim().is_empty() || text.starts_with("  "),
+                        "wrapped status text must keep its alignment: {text:?}"
+                    );
+                }
             }
+            working.settle();
         }
-        working.settle();
     }
+    notagent::modes::interactive::theme::theme::set_block_style(
+        notagent::core::settings_manager::BlockStyle::Dot,
+    );
 }
 
 #[test]

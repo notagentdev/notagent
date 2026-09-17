@@ -15,6 +15,7 @@
 //! preview, ctrl+o to expand, a summary line counting the kinds separately,
 //! and the pending/success/error state carried by the block.
 
+use super::status_marker::{MarkerState, dot, heading};
 use std::collections::HashMap;
 
 use notagent_tui::tui::{Component, Line, shared_lines};
@@ -53,6 +54,7 @@ struct ExploreEntry {
     range: Option<String>,
     kind: ExploreKind,
     complete: bool,
+    started: bool,
     failed: bool,
 }
 
@@ -130,6 +132,7 @@ impl ExploreEntry {
             range,
             kind,
             complete: false,
+            started: false,
             failed: false,
         }
     }
@@ -203,7 +206,11 @@ impl ExploreBlockComponent {
     /// the entry rather than adding one, so a single call is a single row.
     pub fn push_call(&mut self, tool_name: &str, call_id: String, args: &serde_json::Value) {
         if let Some(index) = self.entry_by_call_id.get(&call_id).copied() {
-            self.entries[index] = ExploreEntry::new(tool_name, call_id, args);
+            let mut entry = ExploreEntry::new(tool_name, call_id, args);
+            entry.started = self.entries[index].started;
+            entry.complete = self.entries[index].complete;
+            entry.failed = self.entries[index].failed;
+            self.entries[index] = entry;
             return;
         }
         let index = self.entries.len();
@@ -216,6 +223,108 @@ impl ExploreBlockComponent {
     #[must_use]
     pub fn has_call(&self, call_id: &str) -> bool {
         self.entry_by_call_id.contains_key(call_id)
+    }
+
+    pub fn mark_execution_started(&mut self, call_id: &str) {
+        if let Some(index) = self.entry_by_call_id.get(call_id) {
+            self.entries[*index].started = true;
+        }
+    }
+
+    fn render_dot(&self, width: usize) -> Vec<Line> {
+        let inner = super::tool_content_width(width);
+        if inner == 0 || self.entries.is_empty() {
+            return Vec::new();
+        }
+        let running = !self.replayed
+            && self
+                .entries
+                .iter()
+                .any(|e| e.started && (!e.complete || self.open));
+        let settled = !self.open && self.entries.iter().all(|e| e.complete);
+        let state = if running {
+            MarkerState::Running
+        } else if self.failed_count() > 0 {
+            MarkerState::Error
+        } else if settled {
+            MarkerState::Success
+        } else {
+            MarkerState::Queued
+        };
+        let label = if settled || self.replayed {
+            "Explored"
+        } else {
+            "Exploring"
+        };
+        let mut header = if self.expanded {
+            format!("  {}", theme().fg(ThemeColor::Muted, label))
+        } else {
+            heading(label, state)
+        };
+        let runtime = if self.is_running() {
+            format_elapsed_live(self.started.elapsed())
+        } else {
+            self.finished.map(format_elapsed_precise)
+        };
+        if let Some(runtime) = runtime {
+            header.push_str(&theme().fg(ThemeColor::Muted, &format!(" ({runtime})")));
+        }
+        let mut lines = vec![String::new(), header];
+        let start = if self.expanded {
+            0
+        } else {
+            self.entries.len().saturating_sub(PREVIEW_ROWS)
+        };
+        if start > 0 {
+            lines.push("  ...".to_owned());
+        }
+        for entry in &self.entries[start..] {
+            let prefix = if self.expanded {
+                let state = if entry.complete {
+                    if entry.failed {
+                        MarkerState::Error
+                    } else {
+                        MarkerState::Success
+                    }
+                } else if entry.started && !self.replayed {
+                    MarkerState::Running
+                } else {
+                    MarkerState::Queued
+                };
+                format!("{} ", dot(state))
+            } else {
+                "  ".to_owned()
+            };
+            let range = entry
+                .range
+                .as_ref()
+                .map(|r| format!(" {r}"))
+                .unwrap_or_default();
+            lines.push(format!(
+                "{prefix}{} {}{range}",
+                theme().fg(ThemeColor::Muted, entry.label),
+                theme().fg(ThemeColor::ToolTitle, &entry.detail)
+            ));
+        }
+        lines.push(format!(
+            "  {}",
+            theme().fg(ThemeColor::Muted, &self.summary())
+        ));
+        if self.entries.len() > PREVIEW_ROWS {
+            let hint = if self.expanded {
+                "(ctrl+o to collapse)".to_owned()
+            } else {
+                format!("({start} more, ctrl+o to expand)")
+            };
+            lines.push(format!("  {}", theme().fg(ThemeColor::Muted, &hint)));
+        }
+        super::indent_lines(
+            lines
+                .into_iter()
+                .map(|line| Line::from(truncate_to_width_opts(&line, inner, "", false)))
+                .collect(),
+            width,
+        )
     }
 
     /// Marks a grouped call complete and records whether it failed.
@@ -326,8 +435,11 @@ impl Component for ExploreBlockComponent {
     fn invalidate(&mut self) {}
 
     fn render(&mut self, width: usize) -> Vec<Line> {
+        if block_style() == BlockStyle::Dot {
+            return self.render_dot(width);
+        }
         let outer_width = width;
-        let width = width.saturating_sub(1);
+        let width = super::tool_content_width(width);
         if self.entries.is_empty() || width == 0 {
             return Vec::new();
         }
@@ -350,7 +462,7 @@ impl Component for ExploreBlockComponent {
         // In the badge style the block sheds surface and padding rows; the
         // state moves into the EXPLORING/EXPLORED badge, with the runtime
         // beside it (the reference's `BlockStyle::Bar` rendering).
-        let badge_style = block_style() == BlockStyle::Badge;
+        let badge_style = block_style().is_compact();
         let mut lines = if badge_style {
             // The label carries the phase: EXPLORING while calls still run,
             // EXPLORED once the block is closed and every call settled.

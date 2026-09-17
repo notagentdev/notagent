@@ -337,9 +337,7 @@ fn format_compact_read_call(
 
     // Badge style: the badge above already says READ, so the header keeps
     // only the kind word (`docs README* …` instead of `read docs README* …`).
-    let title = if crate::modes::interactive::theme::theme::block_style()
-        == crate::modes::interactive::theme::theme::BlockStyle::Badge
-    {
+    let title = if crate::modes::interactive::theme::theme::block_style().is_compact() {
         theme.fg(
             ThemeColor::ToolTitle,
             &theme.bold(classification.kind.as_str()),

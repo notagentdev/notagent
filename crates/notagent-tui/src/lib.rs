@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod alt_screen_search;
 pub mod autocomplete;
 pub mod components;

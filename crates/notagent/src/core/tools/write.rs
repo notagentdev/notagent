@@ -27,7 +27,7 @@ use crate::core::tools::tool_definition::{
 use crate::modes::interactive::components::diff::{info_line_text, washed_added_row};
 use crate::modes::interactive::components::keybinding_hints::key_hint;
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, Theme, ThemeColor, block_style, get_language_from_path, highlight_code,
+    Theme, ThemeColor, block_style, get_language_from_path, highlight_code,
 };
 
 pub const WRITE_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
@@ -276,7 +276,7 @@ fn format_write_call(
     let mut text = format!("{}{path_display}", call_title(theme, "write"));
 
     let Some(file_content) = file_content else {
-        let lead = if block_style() == BlockStyle::Badge {
+        let lead = if block_style().is_compact() {
             "\n"
         } else {
             "\n\n"
@@ -312,7 +312,7 @@ fn format_write_call(
     };
     let display_lines = &lines[..max_lines.min(lines.len())];
     let remaining = lines.len() as isize - max_lines as isize;
-    let badge_style = block_style() == BlockStyle::Badge;
+    let badge_style = block_style().is_compact();
     if badge_style {
         // The badge style shows the written file the way a diff shows it:
         // every line is new, so each preview row is a washed added row with

@@ -1,3 +1,5 @@
+use super::status_marker::{MarkerState, heading};
+use crate::modes::interactive::theme::theme::{BlockStyle, block_style};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -31,6 +33,7 @@ enum Status {
 /// Caches the truncated preview per render width, like the inline component
 struct PreviewLines {
     styled_input: String,
+    padding: usize,
     cached_width: Option<usize>,
     cached_lines: Option<Vec<Line>>,
 }
@@ -38,7 +41,8 @@ struct PreviewLines {
 impl Component for PreviewLines {
     fn render(&mut self, width: usize) -> Vec<Line> {
         if self.cached_lines.is_none() || self.cached_width != Some(width) {
-            let result = truncate_to_visual_lines(&self.styled_input, PREVIEW_LINES, width, 1);
+            let result =
+                truncate_to_visual_lines(&self.styled_input, PREVIEW_LINES, width, self.padding);
             self.cached_lines = Some(result.visual_lines);
             self.cached_width = Some(width);
         }
@@ -64,6 +68,8 @@ pub struct BashExecutionComponent {
     truncation_result: Option<TruncationResult>,
     full_output_path: Option<String>,
     expanded: bool,
+    exclude_from_context: bool,
+    built_style: BlockStyle,
 }
 
 impl BashExecutionComponent {
@@ -129,6 +135,8 @@ impl BashExecutionComponent {
             truncation_result: None,
             full_output_path: None,
             expanded: false,
+            exclude_from_context,
+            built_style: BlockStyle::Standard,
         }
     }
 
@@ -186,6 +194,26 @@ impl BashExecutionComponent {
     }
 
     fn update_display(&mut self) {
+        self.built_style = block_style();
+        let dot_style = self.built_style == BlockStyle::Dot;
+        self.container.clear();
+        self.container.add_child(component_ref(Spacer::new(1)));
+        let color = if self.exclude_from_context {
+            ThemeColor::Dim
+        } else {
+            ThemeColor::BashMode
+        };
+        let border: Rc<dyn Fn(&str) -> String> = Rc::new(move |text| theme().fg(color, text));
+        if !dot_style {
+            self.container
+                .add_child(component_ref(DynamicBorder::new(Some(border.clone()))));
+        }
+        self.container
+            .add_child(self.content_container.clone() as ComponentRef);
+        if !dot_style {
+            self.container
+                .add_child(component_ref(DynamicBorder::new(Some(border))));
+        }
         // Apply truncation for LLM context limits (same limits as bash tool)
         let full_output = self.output_lines.join("\n");
         let context_truncation = truncate_tail(
@@ -212,17 +240,41 @@ impl BashExecutionComponent {
         let mut content_container = self.content_container.borrow_mut();
         content_container.clear();
 
-        // constructor drew the borders in `dim` for a `!!` command (bug-compat).
         let theme_instance = theme();
-        let header = Text::new(
-            theme_instance.fg(
-                ThemeColor::BashMode,
-                &theme_instance.bold(&format!("$ {}", self.command)),
-            ),
-            1,
-            0,
-        );
-        content_container.add_child(component_ref(header));
+        if dot_style {
+            let state = match self.status {
+                Status::Running => MarkerState::Running,
+                Status::Complete => MarkerState::Success,
+                Status::Cancelled | Status::Error => MarkerState::Error,
+            };
+            let label = if self.exclude_from_context {
+                "Bash (excluded from context)"
+            } else {
+                "Bash"
+            };
+            let mut title = heading(label, state);
+            if self.status == Status::Running {
+                title.push_str(&theme_instance.fg(
+                    ThemeColor::Muted,
+                    &format!(" ({} to cancel)", key_text("tui.select.cancel")),
+                ));
+            }
+            content_container.add_child(component_ref(Text::new(title, 0, 0)));
+            content_container.add_child(component_ref(Text::new(
+                theme_instance.fg(color, &format!("$ {}", self.command)),
+                2,
+                0,
+            )));
+        } else {
+            content_container.add_child(component_ref(Text::new(
+                theme_instance.fg(
+                    ThemeColor::BashMode,
+                    &theme_instance.bold(&format!("$ {}", self.command)),
+                ),
+                1,
+                0,
+            )));
+        }
 
         // Output
         if !available_lines.is_empty() {
@@ -235,7 +287,7 @@ impl BashExecutionComponent {
                     .join("\n");
                 content_container.add_child(component_ref(Text::new(
                     format!("\n{display_text}"),
-                    1,
+                    if dot_style { 2 } else { 1 },
                     0,
                 )));
             } else {
@@ -247,6 +299,7 @@ impl BashExecutionComponent {
                     .join("\n");
                 content_container.add_child(component_ref(PreviewLines {
                     styled_input: format!("\n{styled_output}"),
+                    padding: if dot_style { 2 } else { 1 },
                     cached_width: None,
                     cached_lines: None,
                 }));
@@ -255,7 +308,9 @@ impl BashExecutionComponent {
 
         // Loader or status
         if self.status == Status::Running {
-            content_container.add_child(Rc::clone(&self.loader));
+            if !dot_style {
+                content_container.add_child(Rc::clone(&self.loader));
+            }
         } else {
             let mut status_parts: Vec<String> = Vec::new();
 
@@ -306,7 +361,7 @@ impl BashExecutionComponent {
             if !status_parts.is_empty() {
                 content_container.add_child(component_ref(Text::new(
                     format!("\n{}", status_parts.join("\n")),
-                    1,
+                    if dot_style { 2 } else { 1 },
                     0,
                 )));
             }
@@ -334,7 +389,13 @@ fn format_exit_code(exit_code: Option<i64>) -> String {
 
 impl Component for BashExecutionComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
-        super::indent_lines(self.container.render(width.saturating_sub(1)), width)
+        if self.built_style != block_style() {
+            self.update_display();
+        }
+        super::indent_lines(
+            self.container.render(super::tool_content_width(width)),
+            width,
+        )
     }
 
     fn invalidate(&mut self) {

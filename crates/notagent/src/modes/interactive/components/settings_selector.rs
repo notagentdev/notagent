@@ -1,3 +1,4 @@
+use crate::core::settings_manager::BlockStyle;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -120,6 +121,7 @@ pub struct SettingsConfig {
     pub show_hardware_cursor: bool,
     pub editor_padding_x: u64,
     pub output_pad: u64,
+    pub block_style: BlockStyle,
     pub autocomplete_max_visible: u64,
     pub quiet_startup: bool,
     pub default_project_trust: DefaultProjectTrust,
@@ -168,6 +170,7 @@ impl Default for SettingsConfig {
             show_hardware_cursor: false,
             editor_padding_x: 0,
             output_pad: 0,
+            block_style: BlockStyle::Dot,
             autocomplete_max_visible: 0,
             quiet_startup: false,
             default_project_trust: DefaultProjectTrust::Ask,
@@ -210,6 +213,7 @@ pub struct SettingsCallbacks {
     pub on_show_hardware_cursor_change: Box<dyn FnMut(bool)>,
     pub on_editor_padding_x_change: Box<dyn FnMut(u64)>,
     pub on_output_pad_change: Box<dyn FnMut(u64)>,
+    pub on_block_style_change: Box<dyn FnMut(BlockStyle)>,
     pub on_autocomplete_max_visible_change: Box<dyn FnMut(u64)>,
     pub on_quiet_startup_change: Box<dyn FnMut(bool)>,
     pub on_default_project_trust_change: Box<dyn FnMut(DefaultProjectTrust)>,
@@ -250,6 +254,7 @@ impl Default for SettingsCallbacks {
             on_show_hardware_cursor_change: Box::new(|_| {}),
             on_editor_padding_x_change: Box::new(|_| {}),
             on_output_pad_change: Box::new(|_| {}),
+            on_block_style_change: Box::new(|_| {}),
             on_autocomplete_max_visible_change: Box::new(|_| {}),
             on_quiet_startup_change: Box::new(|_| {}),
             on_default_project_trust_change: Box::new(|_| {}),
@@ -1275,6 +1280,19 @@ impl SettingsSelectorComponent {
             },
         );
 
+        insert_after(
+            &mut items,
+            "output-padding",
+            SettingItem {
+                id: "block-style".to_string(),
+                label: "Block style".to_string(),
+                description: Some("Badge labels or status dots for transcript blocks".to_string()),
+                current_value: config.block_style.label().to_string(),
+                values: Some(vec!["Badge".to_string(), "Dot".to_string()]),
+                submenu: None,
+            },
+        );
+
         // Autocomplete max visible toggle (insert after output-padding)
         insert_after(
             &mut items,
@@ -1446,6 +1464,13 @@ impl SettingsSelectorComponent {
                     }
                     "editor-padding" => {
                         (callbacks.on_editor_padding_x_change)(parse_int(new_value))
+                    }
+                    "block-style" => {
+                        (callbacks.on_block_style_change)(if new_value == "Dot" {
+                            BlockStyle::Dot
+                        } else {
+                            BlockStyle::Badge
+                        });
                     }
                     "output-padding" => {
                         (callbacks.on_output_pad_change)(if new_value == "0" { 0 } else { 1 })

@@ -15,7 +15,7 @@ use notagent_tui::tui::ComponentRef;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::modes::interactive::theme::theme::{BlockStyle, Theme, block_style};
+use crate::modes::interactive::theme::theme::{Theme, block_style};
 
 /// The runtime context handed to a tool call.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -174,7 +174,7 @@ pub fn render_text_result(context: &ToolRenderContext, text: &str) -> ComponentR
     // inside the ANSI sequence — so the check is "is the first line visibly
     // empty", not "does the text start with a newline".
     let stripped;
-    let text = if block_style() == BlockStyle::Badge {
+    let text = if block_style().is_compact() {
         match text.split_once('\n') {
             Some((first, rest)) if crate::utils::ansi::strip_ansi(first).trim().is_empty() => {
                 stripped = format!("{first}{rest}");

@@ -330,7 +330,7 @@ async fn a_refused_prompt_returns_to_the_editor_without_reaching_the_transcript(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_background_bash_uses_only_purple_lifecycle_rows() {
+async fn a_background_bash_uses_only_lifecycle_rows() {
     local(async {
         let app = HeadlessApp::create().await;
         let command =
@@ -357,15 +357,16 @@ async fn a_background_bash_uses_only_purple_lifecycle_rows() {
 
         let screen = driver.terminal.get_viewport().join("\n");
         assert_eq!(
-            screen.matches("BG-BASH").count(),
+            screen.matches("BG-Bash").count(),
             2,
             "the transcript needs one start and one end row: {screen}"
         );
-        for line in screen.lines().filter(|line| line.contains("BG-BASH")) {
+        for line in screen.lines().filter(|line| line.contains("BG-Bash")) {
             assert_eq!(
-                line.find("BG-BASH"),
+                line.find("BG-Bash")
+                    .map(|index| notagent_tui::utils::visible_width(&line[..index])),
                 Some(2),
-                "background badges need the tool inset plus the badge's inner padding: {line:?}"
+                "background titles must follow the two-column dot gutter: {line:?}"
             );
         }
         assert_eq!(
@@ -508,11 +509,11 @@ async fn a_streaming_answer_does_not_keep_repainting_the_previous_exploration() 
         );
         let history = driver.terminal.get_scroll_buffer().join("\n");
         assert!(
-            !history.contains("EXPLORING"),
+            !history.contains("Exploring"),
             "the preceding exploration must be settled: {history}"
         );
         assert!(
-            history.contains("EXPLORED"),
+            history.contains("Explored"),
             "the completed exploration must remain in history: {history}"
         );
         app.session().request_abort();

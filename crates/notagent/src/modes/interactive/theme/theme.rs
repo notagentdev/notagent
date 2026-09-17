@@ -373,25 +373,15 @@ pub const ALL_THEME_BGS: [ThemeBg; 14] = [
     ThemeBg::CustomMessageBadgeBg,
 ];
 
-/// v0.1.9; takeover of the reference's `BlockStyle`): `Standard` washes the
-/// block colour across the full width, `Badge` leads with a state badge and
-/// leaves the terminal background untouched. Held as a process global like
-/// the theme itself; the `blockStyle` setting feeds it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum BlockStyle {
-    Standard,
-    /// The default (user decision): badge chips instead of filled surfaces.
-    #[default]
-    Badge,
-}
+pub use crate::core::settings_manager::BlockStyle;
 
-static BLOCK_STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(1);
+static BLOCK_STYLE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(2);
 
 pub fn block_style() -> BlockStyle {
-    if BLOCK_STYLE.load(std::sync::atomic::Ordering::Relaxed) == 0 {
-        BlockStyle::Standard
-    } else {
-        BlockStyle::Badge
+    match BLOCK_STYLE.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => BlockStyle::Standard,
+        2 => BlockStyle::Dot,
+        _ => BlockStyle::Badge,
     }
 }
 
@@ -400,6 +390,7 @@ pub fn set_block_style(style: BlockStyle) {
         match style {
             BlockStyle::Standard => 0,
             BlockStyle::Badge => 1,
+            BlockStyle::Dot => 2,
         },
         std::sync::atomic::Ordering::Relaxed,
     );
@@ -413,10 +404,13 @@ pub fn set_block_style(style: BlockStyle) {
 /// vanish into its own fill. Closed with a full reset so a repaint after it
 /// starts clean.
 pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
+    if block_style() == BlockStyle::Dot {
+        return format!("{} {}", theme.fg(ThemeColor::Dim, "●"), theme.bold(label));
+    }
     format!(
         "{}{}{}\x1b[0m",
         theme.get_bg_ansi(background.badge_fill()),
-        badge_text_ansi(theme),
+        status_badge_text_ansi(theme, background),
         badge_label(label)
     )
 }
@@ -434,8 +428,19 @@ pub fn color_badge(theme: &Theme, color: ThemeColor, label: &str) -> String {
     )
 }
 
-/// The foreground sequence a badge label is painted in: the theme's
-/// `badgeText`, which falls back to its ordinary text colour.
+/// Bright status fills need dark lettering; dim fills retain the theme's label color.
+fn status_badge_text_ansi(theme: &Theme, background: ThemeBg) -> &str {
+    if matches!(
+        background.badge_fill(),
+        ThemeBg::ToolSuccessBadgeBg | ThemeBg::ToolErrorBadgeBg
+    ) && ansi_rgb(theme.get_bg_ansi(background.badge_fill()))
+        .is_some_and(|rgb| luminance(rgb) > 110.0)
+    {
+        return "\x1b[38;2;16;16;16m";
+    }
+    badge_text_ansi(theme)
+}
+
 fn badge_text_ansi(theme: &Theme) -> &str {
     theme.get_fg_ansi(ThemeColor::BadgeText)
 }

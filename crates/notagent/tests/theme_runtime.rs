@@ -466,7 +466,9 @@ fn does_not_watch_the_built_in_themes() {
 fn luminance(ansi: &str) -> f32 {
     let start = ansi.find(";2;").expect("truecolor sequence") + 3;
     let values: Vec<f32> = ansi[start..]
-        .trim_end_matches('m')
+        .split('m')
+        .next()
+        .expect("ANSI color terminator")
         .split(';')
         .filter_map(|part| part.parse::<f32>().ok())
         .collect();
@@ -502,29 +504,29 @@ fn every_badge_keeps_its_label_legible_against_its_fill() {
     let _guard = global_lock();
     init_theme(Some("dark"), false);
     let theme = theme();
-    let label = luminance(theme.get_fg_ansi(ThemeColor::BadgeText));
-
-    let mut fills: Vec<f32> = [
+    use notagent::modes::interactive::theme::theme::{
+        BlockStyle, badge, block_style, color_badge, set_block_style,
+    };
+    let previous_style = block_style();
+    set_block_style(BlockStyle::Badge);
+    let mut badges: Vec<String> = [
         ThemeBg::ToolPendingBadgeBg,
         ThemeBg::ToolSuccessBadgeBg,
         ThemeBg::ToolErrorBadgeBg,
         ThemeBg::CustomMessageBadgeBg,
     ]
     .into_iter()
-    .map(|fill| luminance(theme.get_bg_ansi(fill)))
+    .map(|fill| badge(&theme, fill, "status"))
     .collect();
-    // The tone badge builds its fill from a foreground colour, which is why it
-    // is pulled down; it is measured through the rendered badge itself.
-    let thinking = notagent::modes::interactive::theme::theme::color_badge(
-        &theme,
-        ThemeColor::ThinkingText,
-        "thought",
-    );
-    fills.push(luminance(&thinking));
+    badges.push(color_badge(&theme, ThemeColor::ThinkingText, "thought"));
+    set_block_style(previous_style);
 
-    for fill in fills {
+    for rendered in badges {
+        let fill = luminance(&rendered);
+        let foreground = rendered.find("\x1b[38;2;").expect("truecolor badge label");
+        let label = luminance(&rendered[foreground..]);
         assert!(
-            label - fill > 100.0,
+            (label - fill).abs() > 100.0,
             "a badge label at {label} is unreadable on a fill at {fill}"
         );
     }

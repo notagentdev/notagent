@@ -32,8 +32,8 @@ use crate::core::tools::truncate::{
 use crate::modes::interactive::components::keybinding_hints::key_hint;
 use crate::modes::interactive::components::visual_truncate::truncate_to_visual_lines;
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, Theme, ThemeColor, block_style, format_elapsed, format_elapsed_live,
-    format_elapsed_precise, theme,
+    Theme, ThemeColor, block_style, format_elapsed, format_elapsed_live, format_elapsed_precise,
+    theme,
 };
 use crate::utils::shell::{
     CommandTransport, ShellConfig, get_shell_config, get_shell_env, kill_process_tree,
@@ -1116,7 +1116,7 @@ impl Component for BashPreviewComponent {
         let lines = self.cached_lines.clone().unwrap_or_default();
         // The standard style separates the output from the command with one
         // blank row; the compact badge style stacks them directly.
-        let lead = block_style() != BlockStyle::Badge;
+        let lead = !block_style().is_compact();
         if let Some(skipped) = self.cached_skipped.filter(|skipped| *skipped > 0) {
             let theme = theme();
             let hint = theme.fg(ThemeColor::Muted, &format!("... ({skipped} earlier lines,"))
@@ -1201,7 +1201,7 @@ fn format_bash_call(args: &Value, theme: &Theme, running_for: Option<Duration>) 
     };
     let mut header = format!("{prompt}{command_display}");
     if let Some(elapsed) = running_for
-        && block_style() != BlockStyle::Badge
+        && !block_style().is_compact()
     {
         let (elapsed_text, timeout_text) = bash_running_times(args, elapsed);
         header.push_str(&theme.fg(
@@ -1261,11 +1261,7 @@ fn rebuild_bash_result_component(
         if options.expanded {
             // The badge style stacks the output directly under the command;
             // the standard style keeps its separating blank row.
-            let lead = if block_style() == BlockStyle::Badge {
-                ""
-            } else {
-                "\n"
-            };
+            let lead = if block_style().is_compact() { "" } else { "\n" };
             component.borrow_mut().add_child(component_ref(Text::new(
                 format!("{lead}{styled_output}"),
                 0,
@@ -1308,11 +1304,7 @@ fn rebuild_bash_result_component(
                 ));
             }
         }
-        let lead = if block_style() == BlockStyle::Badge {
-            ""
-        } else {
-            "\n"
-        };
+        let lead = if block_style().is_compact() { "" } else { "\n" };
         component.borrow_mut().add_child(component_ref(Text::new(
             format!(
                 "{lead}{}",
@@ -1328,7 +1320,7 @@ fn rebuild_bash_result_component(
         let elapsed = end_time.saturating_duration_since(started_at);
         // Compact timing stays invisible below one second while live and uses
         // the same parenthesised duration once the command has settled.
-        let timing = if block_style() == BlockStyle::Badge {
+        let timing = if block_style().is_compact() {
             if options.is_partial {
                 format_elapsed_live(elapsed).map(|text| format!("({text})"))
             } else {
@@ -1343,11 +1335,7 @@ fn rebuild_bash_result_component(
             Some(format!("{label} {}", format_duration(elapsed)))
         };
         if let Some(timing) = timing {
-            let lead = if block_style() == BlockStyle::Badge {
-                ""
-            } else {
-                "\n"
-            };
+            let lead = if block_style().is_compact() { "" } else { "\n" };
             component.borrow_mut().add_child(component_ref(Text::new(
                 format!("{lead}{}", theme.fg(ThemeColor::Muted, &timing)),
                 0,

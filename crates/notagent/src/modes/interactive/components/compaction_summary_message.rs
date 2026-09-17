@@ -8,7 +8,7 @@ use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
+    ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
 };
 
 use super::keybinding_hints::key_text;
@@ -51,7 +51,7 @@ impl CompactionSummaryMessageComponent {
     fn update_display(&mut self) {
         // Badge style: no wash, no padding rows — a COMPACTION badge in the
         // block's colour leads (reference `compaction_summary.rs`).
-        let badge_style = block_style() == BlockStyle::Badge;
+        let badge_style = block_style().is_compact();
         if badge_style {
             self.content_box.set_padding(0, 0);
             self.content_box.set_bg_fn(None);
@@ -92,7 +92,11 @@ impl CompactionSummaryMessageComponent {
             let header = format!("**Compacted from {token_str} tokens**\n\n");
             self.content_box.add_child(component_ref(Markdown::new(
                 format!("{header}{}", self.message.summary),
-                0,
+                if block_style() == crate::modes::interactive::theme::theme::BlockStyle::Dot {
+                    2
+                } else {
+                    0
+                },
                 0,
                 self.markdown_theme.clone(),
                 Some(DefaultTextStyle {

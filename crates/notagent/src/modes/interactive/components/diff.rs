@@ -1,6 +1,4 @@
-use crate::modes::interactive::theme::theme::{
-    BlockStyle, ThemeBg, ThemeColor, block_style, theme,
-};
+use crate::modes::interactive::theme::theme::{ThemeBg, ThemeColor, block_style, theme};
 
 pub mod word_diff;
 
@@ -47,7 +45,7 @@ fn diff_wash(added: bool, emphasis: bool) -> String {
 /// emphasis wash restoring to the line's own wash in the badge style, plain
 /// inverse in the standard style (and as the non-truecolor fallback).
 fn emphasis_style(added: bool) -> (String, String) {
-    if block_style() == BlockStyle::Badge {
+    if block_style().is_compact() {
         let emphasis = diff_wash(added, true);
         if !emphasis.is_empty() {
             return (emphasis, diff_wash(added, false));
@@ -392,7 +390,7 @@ pub fn render_diff(diff_text: &str, options: &RenderDiffOptions) -> String {
     let lines: Vec<&str> = diff_text.split('\n').collect();
     let mut result: Vec<String> = Vec::new();
     let theme = theme();
-    let badge_style = block_style() == BlockStyle::Badge;
+    let badge_style = block_style().is_compact();
     // Only the badge style paints the code, so the language is only resolved
     // there; the standard style has no syntax colours to place.
     let lang = badge_style
@@ -542,6 +540,7 @@ pub fn render_diff(diff_text: &str, options: &RenderDiffOptions) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::modes::interactive::theme::theme::BlockStyle;
     use std::sync::MutexGuard;
 
     use notagent_tui::components::text::Text;

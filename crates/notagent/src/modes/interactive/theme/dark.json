@@ -23,8 +23,8 @@
 		"toolDiffRemovedBg": "#4a221d",
 		"customMsgBg": "#2d2838",
 		"toolPendingBadgeBg": "#1c2027",
-		"toolSuccessBadgeBg": "#1c4229",
-		"toolErrorBadgeBg": "#3d0101",
+		"toolSuccessBadgeBg": "#46a75b",
+		"toolErrorBadgeBg": "#e66073",
 		"customMsgBadgeBg": "#573590"
 	},
 	"colors": {
@@ -32,8 +32,8 @@
 		"border": "blue",
 		"borderAccent": "cyan",
 		"borderMuted": "darkGray",
-		"success": "green",
-		"error": "red",
+		"success": "toolSuccessBadgeBg",
+		"error": "toolErrorBadgeBg",
 		"warning": "yellow",
 		"muted": "gray",
 		"dim": "dimGray",

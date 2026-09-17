@@ -9,7 +9,7 @@ use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
+    ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
 };
 
 /// Component that renders a custom message entry.
@@ -63,7 +63,7 @@ impl CustomMessageComponent {
         // Standard: box with purple background. Badge style: no wash, no
         // padding rows — the label becomes a badge in the block's colour and
         // the content follows directly (reference compaction pattern).
-        let badge_style = block_style() == BlockStyle::Badge;
+        let badge_style = block_style().is_compact();
         let mut content_box = if badge_style {
             BoxComponent::new(0, 0, None)
         } else {
@@ -109,7 +109,11 @@ impl CustomMessageComponent {
 
         content_box.add_child(component_ref(Markdown::new(
             text,
-            0,
+            if block_style() == crate::modes::interactive::theme::theme::BlockStyle::Dot {
+                2
+            } else {
+                0
+            },
             0,
             self.markdown_theme.clone(),
             Some(DefaultTextStyle {

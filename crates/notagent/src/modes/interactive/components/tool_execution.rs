@@ -1,3 +1,4 @@
+use super::status_marker::{MarkerState, heading};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -59,9 +60,15 @@ fn under_badge(line: &Line, width: usize) -> Line {
     if visible_width(line) == 0 {
         return Line::clone(line);
     }
+    let inset = if block_style() == BlockStyle::Dot {
+        2
+    } else {
+        1
+    };
     Line::from(format!(
-        " {}",
-        slice_by_column(line, 0, width.saturating_sub(1), true)
+        "{}{}",
+        " ".repeat(inset.min(width)),
+        slice_by_column(line, 0, width.saturating_sub(inset), true)
     ))
 }
 
@@ -107,7 +114,11 @@ impl Component for BadgeCallHeader {
                 return out;
             }
         }
-        let continuation_width = width.saturating_sub(1);
+        let continuation_width = width.saturating_sub(if block_style() == BlockStyle::Dot {
+            2
+        } else {
+            1
+        });
         let lines = if continuation_width == 0 {
             Vec::new()
         } else {
@@ -292,13 +303,30 @@ impl ToolExecutionComponent {
     /// routes every tool — the self-framed edit included — through the
     /// badge header (reference `tool_execution.rs`).
     fn badge_style(&self) -> bool {
-        block_style() == BlockStyle::Badge
+        block_style().is_compact()
     }
 
     /// The state badge of this block: the tool's name, uppercased, on the fill
     /// the standard style would wash the whole block with.
     fn badge_for(&self, state: ThemeBg) -> String {
-        badge(&theme(), state, &self.tool_name)
+        if block_style() == BlockStyle::Dot {
+            let status = if !self.is_partial
+                && let Some(result) = &self.result
+            {
+                if result.is_error {
+                    MarkerState::Error
+                } else {
+                    MarkerState::Success
+                }
+            } else if self.execution_started {
+                MarkerState::Running
+            } else {
+                MarkerState::Queued
+            };
+            heading(&self.tool_name, status)
+        } else {
+            badge(&theme(), state, &self.tool_name)
+        }
     }
 
     /// Metadata belongs after the call arguments, never inside the tool-name
@@ -686,7 +714,15 @@ impl ToolExecutionComponent {
                 // same column the call's continuation lines get from
                 // `under_badge`.
                 let component = if badge_style {
-                    let mut inset = BoxComponent::new(1, 0, None);
+                    let mut inset = BoxComponent::new(
+                        if block_style() == BlockStyle::Dot {
+                            2
+                        } else {
+                            1
+                        },
+                        0,
+                        None,
+                    );
                     inset.add_child(component);
                     component_ref(inset)
                 } else {
@@ -706,7 +742,11 @@ impl ToolExecutionComponent {
                             ThemeColor::Muted,
                             &format!("({} to collapse)", key_text("app.tools.expand")),
                         ),
-                        1,
+                        if block_style() == BlockStyle::Dot {
+                            2
+                        } else {
+                            1
+                        },
                         0,
                     )),
                 );
@@ -744,7 +784,15 @@ impl ToolExecutionComponent {
                     && content != "null"
                     && content != "{}"
                 {
-                    content_box.add_child(component_ref(Text::new(format!("\n{content}"), 1, 0)));
+                    content_box.add_child(component_ref(Text::new(
+                        format!("\n{content}"),
+                        if block_style() == BlockStyle::Dot {
+                            2
+                        } else {
+                            1
+                        },
+                        0,
+                    )));
                 }
             }
             self.container
@@ -798,7 +846,13 @@ impl ToolExecutionComponent {
                     },
                     None,
                 ));
-                self.container.add_child(Rc::clone(&image_component));
+                if block_style() == BlockStyle::Dot {
+                    let mut inset = BoxComponent::new(2, 0, None);
+                    inset.add_child(Rc::clone(&image_component));
+                    self.container.add_child(component_ref(inset));
+                } else {
+                    self.container.add_child(Rc::clone(&image_component));
+                }
                 self.image_components.push(image_component);
             }
         }
@@ -875,7 +929,7 @@ fn image_blocks(
 impl Component for ToolExecutionComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
         let outer_width = width;
-        let width = width.saturating_sub(1);
+        let width = super::tool_content_width(width);
         // A live style switch restyles rows already on screen (reference
         // pattern: rebuild when the built style no longer matches).
         if self.dirty.get() || self.built_style != block_style() {

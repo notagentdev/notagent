@@ -997,11 +997,22 @@ impl SettingsManager {
         self.set_global_field("lastMode", Value::from(mode_id));
     }
 
-    /// Only an explicit `blockStyle: "standard"` in the config disables badges.
-    pub fn get_block_style_badge(&self) -> bool {
-        self.settings_snapshot()
-            .block_style
-            .is_none_or(|style| style != "standard")
+    pub fn get_block_style(&self) -> BlockStyle {
+        BlockStyle::from_setting(
+            self.settings_snapshot()
+                .block_style
+                .as_deref()
+                .unwrap_or("dot"),
+        )
+    }
+
+    pub fn set_block_style(&self, style: BlockStyle) -> Result<(), SettingsError> {
+        // An explicit project choice would otherwise mask the new global value.
+        if self.is_project_trusted() && self.get_project_settings().block_style.is_some() {
+            return self.set_project_field("blockStyle", Value::from(style.as_str()));
+        }
+        self.set_global_field("blockStyle", Value::from(style.as_str()));
+        Ok(())
     }
 
     /// enabled, matching the reference default for `cb_search_enabled`.
@@ -1751,4 +1762,40 @@ pub fn migrate_settings(mut settings: Map<String, Value>) -> Map<String, Value> 
     }
 
     settings
+}
+
+/// Presentation of transcript blocks; persisted as the existing string setting.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BlockStyle {
+    Standard,
+    Badge,
+    #[default]
+    Dot,
+}
+
+impl BlockStyle {
+    pub fn from_setting(value: &str) -> Self {
+        match value {
+            "standard" => Self::Standard,
+            "badge" => Self::Badge,
+            _ => Self::Dot,
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Badge => "badge",
+            Self::Dot => "dot",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Standard => "Standard",
+            Self::Badge => "Badge",
+            Self::Dot => "Dot",
+        }
+    }
+    pub fn is_compact(self) -> bool {
+        self != Self::Standard
+    }
 }

@@ -419,6 +419,12 @@ fn answer_markers_keep_wrapped_text_aligned_without_moving_the_thought_star() {
         Vec::new(),
     );
     let lines = component.render(16);
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains(&theme().fg(ThemeColor::Text, "⠿"))),
+        "the answer marker must use the text color"
+    );
     let plain: Vec<_> = lines.iter().map(|line| strip_ansi(line)).collect();
     assert!(
         plain.iter().any(|line| line.starts_with("* Thought")),

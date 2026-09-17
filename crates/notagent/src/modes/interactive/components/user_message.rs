@@ -64,11 +64,7 @@ impl UserMessageComponent {
         self.container.clear();
         // The badge style sheds the padding rows but keeps the wash, so the
         // user's turns stay visually anchored (reference `user_message.rs`).
-        let padding_y = if self.built_style == BlockStyle::Badge {
-            0
-        } else {
-            1
-        };
+        let padding_y = if self.built_style.is_compact() { 0 } else { 1 };
         let mut content_box = BoxComponent::new(
             0,
             padding_y,

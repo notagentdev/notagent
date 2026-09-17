@@ -103,11 +103,10 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
 
         // The row names the tool, its target and the error the tool returned.
         // The path is the one assertion that has to survive the wrap: it is
-        // longer than the 80 columns of the terminal. The badge style (the
-        // default) names the tool uppercase in its state badge. A read-only
+        // longer than the 80 columns of the terminal. Dot mode names the tool beside its status marker. A read-only
         // tool would be grouped into the explore block instead, so this uses
         // one that keeps its own row.
-        driver.wait_for("PATCH").await;
+        driver.wait_for("● patch").await;
         driver.wait_for_across_wraps("does-not-exist.txt").await;
         driver.assert_shows("Could not edit file");
         driver.wait_for("The file is missing.").await;
@@ -165,7 +164,7 @@ async fn consecutive_exploration_calls_stay_in_one_block() {
 
         let screen = driver.screen();
         assert_eq!(
-            screen.matches("EXPLORED").count(),
+            screen.matches("Explored").count(),
             1,
             "one block for the whole run:\n{screen}"
         );
@@ -224,11 +223,11 @@ async fn a_skill_between_streamed_calls_keeps_each_exploration_in_its_original_b
 
         let screen = driver.screen();
         assert!(
-            !screen.contains("EXPLORING"),
+            !screen.contains("Exploring"),
             "completed calls must leave no running block:\n{screen}"
         );
         assert_eq!(
-            screen.matches("EXPLORED").count(),
+            screen.matches("Explored").count(),
             2,
             "the skill must separate exactly two exploration blocks:\n{screen}"
         );
@@ -270,12 +269,12 @@ async fn a_writing_tool_ends_the_exploration_run() {
 
         let screen = driver.screen();
         assert_eq!(
-            screen.matches("EXPLORED").count(),
+            screen.matches("Explored").count(),
             2,
             "the write splits the exploration in two:\n{screen}"
         );
         assert!(
-            screen.contains("WRITE"),
+            screen.contains("● write"),
             "the write keeps its own row:\n{screen}"
         );
     })
@@ -302,7 +301,7 @@ async fn narration_separates_explorations_without_splitting_its_own_calls() {
 
         let screen = driver.screen();
         assert_eq!(
-            screen.matches("EXPLORED").count(),
+            screen.matches("Explored").count(),
             2,
             "new narration settles the preceding run:\n{screen}"
         );
@@ -338,7 +337,7 @@ async fn a_new_turn_starts_its_own_block() {
 
         let screen = driver.screen();
         assert_eq!(
-            screen.matches("EXPLORED").count(),
+            screen.matches("Explored").count(),
             2,
             "each turn has its own block:\n{screen}"
         );
@@ -355,7 +354,7 @@ async fn a_new_turn_starts_its_own_block() {
 /// did not, and send them looking for a fault in the wrong place.
 #[tokio::test(flavor = "current_thread")]
 async fn a_finished_search_keeps_its_result_when_the_turn_fails() {
-    use notagent::modes::interactive::theme::theme::{ThemeBg, badge, theme};
+    use notagent::modes::interactive::theme::theme::{ThemeColor, theme};
 
     run_local(async {
         let e2e = InteractiveE2e::new().await;
@@ -368,21 +367,28 @@ async fn a_finished_search_keeps_its_result_when_the_turn_fails() {
         driver.wait_for(APP_NAME).await;
 
         driver.submit("look around").await;
-        driver.wait_for("EXPLORED").await;
+        driver.wait_for("Explored").await;
         // The turn really did fail — otherwise this proves nothing.
         driver.wait_for("the provider gave up").await;
 
-        // The fill only exists as an escape sequence, so it is read off the raw
-        // writes rather than off the screen.
+        // The dot color only exists in the raw terminal writes.
         let raw = driver.terminal().get_writes();
         let theme = theme();
         assert!(
-            raw.contains(&badge(&theme, ThemeBg::ToolSuccessBg, "explored")),
+            raw.contains(&format!(
+                "{} {}",
+                theme.fg(ThemeColor::Success, "●"),
+                theme.bold("Explored")
+            )),
             "the search that finished settles green:\n{}",
             driver.screen()
         );
         assert!(
-            !raw.contains(&badge(&theme, ThemeBg::ToolErrorBg, "explored")),
+            !raw.contains(&format!(
+                "{} {}",
+                theme.fg(ThemeColor::Error, "●"),
+                theme.bold("Explored")
+            )),
             "and is not repainted red by the turn's failure:\n{}",
             driver.screen()
         );

@@ -1034,7 +1034,7 @@ fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
 
     let models = builtin_models(None);
     let list = models.get_models(Some("cline-pass"));
-    assert_eq!(list.len(), 12, "every ClinePass model is present");
+    assert_eq!(list.len(), 13, "every ClinePass model is present");
     for model in &list {
         assert!(model.id.starts_with("cline-pass/"), "{}", model.id);
         assert_eq!(model.api, "openai-completions");
@@ -1059,6 +1059,7 @@ fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
         [
             "cline-pass/deepseek-v4-flash",
             "cline-pass/deepseek-v4-pro",
+            "cline-pass/deepseek-v4.1-flash",
             "cline-pass/glm-5.2",
             "cline-pass/kimi-k2.6",
             "cline-pass/kimi-k2.7-code",
@@ -1072,6 +1073,12 @@ fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
         ],
         "the catalog contains exactly the public Cline Pass lineup"
     );
+
+    let flash = models
+        .get_model("cline-pass", "cline-pass/deepseek-v4.1-flash")
+        .expect("DeepSeek V4.1 Flash is available through the plan");
+    assert_eq!(flash.context_window, 1_048_576);
+    assert_eq!(flash.max_tokens, 384_000);
 
     let qwen = models
         .get_model("cline-pass", "cline-pass/qwen3.8-max")

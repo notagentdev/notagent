@@ -17,7 +17,9 @@ use notagent::core::tasks::types::{
 use notagent::modes::interactive::components::task_lifecycle::{
     TaskLifecycleComponent, is_background_bash_call, task_lifecycle_line,
 };
-use notagent::modes::interactive::theme::theme::{ThemeBg, badge, init_theme, theme};
+use notagent::modes::interactive::theme::theme::{
+    BlockStyle, ThemeBg, badge, init_theme, set_block_style, theme,
+};
 use notagent::utils::ansi::strip_ansi;
 use notagent_agent::types::BoxFuture;
 use notagent_tui::tui::Component;
@@ -105,9 +107,17 @@ fn shell(status: TaskStatus, exit_code: Option<i32>) -> TaskInfo {
 }
 
 fn line(record: &TaskLifecycleRecord, badge_style: bool) -> String {
-    strip_ansi(&task_lifecycle_line(record, &theme(), badge_style))
-        .trim()
-        .to_owned()
+    strip_ansi(&task_lifecycle_line(
+        record,
+        &theme(),
+        if badge_style {
+            BlockStyle::Badge
+        } else {
+            BlockStyle::Standard
+        },
+    ))
+    .trim()
+    .to_owned()
 }
 
 #[test]
@@ -183,8 +193,14 @@ fn background_boxes_keep_the_tool_inset_when_their_text_wraps() {
         TaskLifecycleRecord::ended(subagent(TaskStatus::Completed)),
     ] {
         for badge_style in [false, true] {
-            let line = task_lifecycle_line(&record, &theme(), badge_style);
-            let mut component = TaskLifecycleComponent::new(line.clone());
+            let style = if badge_style {
+                BlockStyle::Badge
+            } else {
+                BlockStyle::Standard
+            };
+            set_block_style(style);
+            let line = task_lifecycle_line(&record, &theme(), style);
+            let mut component = TaskLifecycleComponent::new(record.clone());
             let wide = component.render(200);
             assert_eq!(
                 strip_ansi(&wide[0]).trim_end(),
@@ -221,7 +237,7 @@ fn every_background_badge_uses_the_compaction_colour() {
             TaskLifecycleRecord::ended(subagent(TaskStatus::Completed)),
         ),
     ] {
-        let rendered = task_lifecycle_line(&record, &current_theme, true);
+        let rendered = task_lifecycle_line(&record, &current_theme, BlockStyle::Badge);
         let expected = badge(&current_theme, ThemeBg::CustomMessageBg, label);
         assert!(
             rendered.starts_with(&expected),
@@ -336,4 +352,44 @@ async fn a_fast_background_terminal_emits_one_ordered_session_pair() {
             "{source} must keep both lines attached to {task_id}: {records:?}"
         );
     }
+}
+
+#[test]
+fn background_dot_records_restyle_without_becoming_live() {
+    let _guard = theme_lock();
+    let previous = notagent::modes::interactive::theme::theme::block_style();
+    set_block_style(BlockStyle::Dot);
+    for record in [
+        TaskLifecycleRecord::started(shell(TaskStatus::Running, None)),
+        TaskLifecycleRecord::ended(shell(TaskStatus::Failed, Some(1))),
+        TaskLifecycleRecord::started(subagent(TaskStatus::Running)),
+        TaskLifecycleRecord::ended(subagent(TaskStatus::Completed)),
+    ] {
+        let mut component = TaskLifecycleComponent::new(record.clone());
+        let dot = component.render(120);
+        let label = match &record.task {
+            TaskInfo::Shell(_) => "BG-Bash",
+            TaskInfo::Subagent(_) => "BG-Subagent",
+        };
+        assert!(strip_ansi(&dot[0]).starts_with(&format!("● {label}")));
+        assert!(
+            dot.iter()
+                .all(|line| !line.contains(notagent_tui::activity::RUNNING_DOT))
+        );
+        set_block_style(BlockStyle::Badge);
+        assert!(strip_ansi(&component.render(120)[0]).contains(&label.to_uppercase()));
+        set_block_style(BlockStyle::Dot);
+        for width in [0, 1, 2, 20, 40, 80] {
+            for (index, line) in component.render(width).into_iter().enumerate() {
+                if index > 0 && width >= 20 {
+                    assert!(
+                        strip_ansi(&line).starts_with("  "),
+                        "lifecycle continuations must start in the text column: {line:?}"
+                    );
+                }
+                assert!(visible_width(&line) <= width, "{width}: {line:?}");
+            }
+        }
+    }
+    set_block_style(previous);
 }

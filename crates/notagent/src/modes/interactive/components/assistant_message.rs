@@ -10,8 +10,7 @@ use notagent_tui::components::truncated_text::TruncatedText;
 use notagent_tui::tui::{Component, Container, Line, component_ref};
 
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, ThemeColor, block_style, format_elapsed_live, format_elapsed_precise,
-    get_markdown_theme, theme,
+    ThemeColor, block_style, format_elapsed_live, format_elapsed_precise, get_markdown_theme, theme,
 };
 
 use super::keybinding_hints::key_text;
@@ -245,7 +244,7 @@ impl AssistantMessageComponent {
                     // Hidden thinking is hidden in every style. The compact
                     // style has no static label to fall back to, so hiding
                     // drops the block whole.
-                    if self.hide_thinking_block && block_style() == BlockStyle::Badge {
+                    if self.hide_thinking_block && block_style().is_compact() {
                         continue;
                     }
 
@@ -255,7 +254,7 @@ impl AssistantMessageComponent {
                     let has_visible_content_after =
                         message.content[index..].iter().any(is_visible_content);
 
-                    if block_style() == BlockStyle::Badge {
+                    if block_style().is_compact() {
                         // The compact style renders thinking as its own block:
                         // a muted heading with a live timer while it streams,
                         // then the text itself behind the expand toggle.

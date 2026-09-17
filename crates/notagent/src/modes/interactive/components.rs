@@ -49,15 +49,39 @@ pub mod user_message;
 pub mod user_message_selector;
 pub mod visual_truncate;
 
+fn tool_outer_inset() -> usize {
+    usize::from(
+        crate::modes::interactive::theme::theme::block_style()
+            != crate::modes::interactive::theme::theme::BlockStyle::Dot,
+    )
+}
+
+fn tool_content_width(width: usize) -> usize {
+    width.saturating_sub(tool_outer_inset())
+}
+
 fn indent_lines(lines: Vec<notagent_tui::tui::Line>, width: usize) -> Vec<notagent_tui::tui::Line> {
+    let inset = tool_outer_inset().min(width);
     lines
         .into_iter()
         .map(|line| {
             if width == 0 {
-                notagent_tui::tui::Line::from("")
-            } else if line.is_empty() {
-                line
-            } else if width == 1 {
+                return notagent_tui::tui::Line::from("");
+            }
+            if line.is_empty() {
+                return line;
+            }
+            if inset == 0 {
+                if !notagent_tui::terminal_image::is_image_line(&line)
+                    && notagent_tui::utils::visible_width(&line) > width
+                {
+                    return notagent_tui::tui::Line::from(notagent_tui::utils::slice_by_column(
+                        &line, 0, width, true,
+                    ));
+                }
+                return line;
+            }
+            if width == 1 {
                 notagent_tui::tui::Line::from(" ")
             } else {
                 notagent_tui::tui::Line::from(format!(" {line}"))
@@ -99,3 +123,5 @@ mod tests {
         assert_eq!(to_locale_string(12_345_678), "12,345,678");
     }
 }
+
+pub mod status_marker;

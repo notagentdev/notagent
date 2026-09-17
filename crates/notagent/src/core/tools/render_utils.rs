@@ -129,8 +129,8 @@ pub fn invalid_arg_text(theme: &Theme) -> String {
 /// arguments alone and the block header reads `READ (src/lib.rs)` instead of
 /// repeating the name.
 pub fn call_title(theme: &Theme, title: &str) -> String {
-    use crate::modes::interactive::theme::theme::{BlockStyle, block_style};
-    if block_style() == BlockStyle::Badge {
+    use crate::modes::interactive::theme::theme::block_style;
+    if block_style().is_compact() {
         String::new()
     } else {
         format!("{} ", theme.fg(ThemeColor::ToolTitle, &theme.bold(title)))
@@ -156,8 +156,8 @@ pub fn render_mutation_tool_path(
     cwd: &str,
     empty_fallback: Option<&str>,
 ) -> String {
-    use crate::modes::interactive::theme::theme::{BlockStyle, block_style};
-    let color = if block_style() == BlockStyle::Badge {
+    use crate::modes::interactive::theme::theme::block_style;
+    let color = if block_style().is_compact() {
         ThemeColor::ToolOutput
     } else {
         ThemeColor::Accent

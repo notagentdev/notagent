@@ -31,9 +31,7 @@ use crate::core::tools::tool_definition::{
     wrap_tool_definition,
 };
 use crate::modes::interactive::components::diff::{RenderDiffOptions, render_diff};
-use crate::modes::interactive::theme::theme::{
-    BlockStyle, Theme, ThemeBg, ThemeColor, block_style,
-};
+use crate::modes::interactive::theme::theme::{Theme, ThemeBg, ThemeColor, block_style};
 
 pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
@@ -345,8 +343,7 @@ fn build_edit_call_component(
     // In the badge style the wash and padding rows go; the badge the tool
     // block prepends pairs with the header as the first line (reference
     // `build_patch_call_component`).
-    let badge_style = crate::modes::interactive::theme::theme::block_style()
-        == crate::modes::interactive::theme::theme::BlockStyle::Badge;
+    let badge_style = crate::modes::interactive::theme::theme::block_style().is_compact();
     if badge_style {
         component.header.set_padding(0, 0);
         component.header.set_bg_fn(None);
@@ -606,7 +603,7 @@ impl ToolDefinition for EditToolDefinition {
         };
         // The blank row separates the result in the standard style's box; the
         // badge style stacks it directly under the badge line.
-        if block_style() != BlockStyle::Badge {
+        if !block_style().is_compact() {
             container
                 .borrow_mut()
                 .add_child(component_ref(Spacer::new(1)));

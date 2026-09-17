@@ -4,8 +4,8 @@ use std::sync::OnceLock;
 
 use notagent::core::keybindings::KeybindingsManager;
 use notagent::core::settings_manager::{
-    DefaultProjectTrust, DoubleEscapeAction, FullscreenExitOutput, MermaidRenderingMode, QueueMode,
-    TreeFilterMode, TuiMode, WarningSettings,
+    BlockStyle, DefaultProjectTrust, DoubleEscapeAction, FullscreenExitOutput,
+    MermaidRenderingMode, QueueMode, TreeFilterMode, TuiMode, WarningSettings,
 };
 use notagent::modes::interactive::components::settings_selector::{
     SettingsCallbacks, SettingsConfig, SettingsSelectorComponent,
@@ -66,6 +66,7 @@ fn config() -> SettingsConfig {
         show_hardware_cursor: false,
         editor_padding_x: 1,
         output_pad: 0,
+        block_style: BlockStyle::Badge,
         autocomplete_max_visible: 10,
         quiet_startup: false,
         default_project_trust: DefaultProjectTrust::Ask,
@@ -89,6 +90,7 @@ fn callbacks(calls: &Calls) -> SettingsCallbacks {
     }
 
     SettingsCallbacks {
+        on_block_style_change: record!("onBlockStyleChange", calls, value => value.as_str().to_owned()),
         on_fullscreen_exit_output_change: record!("onFullscreenExitOutputChange", calls, value =>
         match value {
             FullscreenExitOutput::Transcript => "transcript".to_string(),
@@ -146,14 +148,21 @@ impl Harness {
 }
 
 #[test]
-fn block_style_is_not_available_in_the_settings_menu() {
+fn block_style_cycles_between_badge_and_dot() {
     let _guard = test_lock();
     let mut harness = Harness::new(config());
     harness.search("Block style");
-    let rendered = harness.lines().join("\n");
-    assert!(
-        rendered.contains("No matching settings"),
-        "block style must be configurable only through the config file: {rendered}"
+    assert!(harness.lines().join("\n").contains("Badge"));
+    harness.key(ENTER);
+    assert_eq!(
+        harness.take_calls(),
+        vec![("onBlockStyleChange", "dot".to_owned())]
+    );
+    assert!(harness.lines().join("\n").contains("Dot"));
+    harness.key(ENTER);
+    assert_eq!(
+        harness.take_calls(),
+        vec![("onBlockStyleChange", "badge".to_owned())]
     );
 }
 
@@ -396,4 +405,25 @@ fn an_automatic_theme_setting_opens_the_automatic_menu() {
         harness.take_calls(),
         vec![("onThemePreview", "solarized".to_string())]
     );
+}
+
+#[test]
+fn opening_settings_keeps_standard_until_an_explicit_choice() {
+    let _guard = test_lock();
+    let mut c = config();
+    c.block_style = BlockStyle::Standard;
+    let mut harness = Harness::new(c);
+    harness.search("Block style");
+    assert!(harness.lines().join("\n").contains("Standard"));
+    assert!(harness.take_calls().is_empty());
+    harness.key(ENTER);
+    assert_eq!(
+        harness.take_calls(),
+        vec![("onBlockStyleChange", "badge".to_owned())]
+    );
+}
+
+#[test]
+fn new_settings_default_to_dot_style() {
+    assert_eq!(SettingsConfig::default().block_style, BlockStyle::Dot);
 }

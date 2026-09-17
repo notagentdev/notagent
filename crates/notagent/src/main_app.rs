@@ -1147,14 +1147,7 @@ pub async fn main(args: Vec<String>) -> i32 {
         settings_manager.get_theme().as_deref(),
         app_mode == AppMode::Interactive,
     );
-    // The block style is config-only and takes effect at startup.
-    crate::modes::interactive::theme::theme::set_block_style(
-        if settings_manager.get_block_style_badge() {
-            crate::modes::interactive::theme::theme::BlockStyle::Badge
-        } else {
-            crate::modes::interactive::theme::theme::BlockStyle::Standard
-        },
-    );
+    crate::modes::interactive::theme::theme::set_block_style(settings_manager.get_block_style());
     time("initTheme");
 
     time("resolveModelScope");

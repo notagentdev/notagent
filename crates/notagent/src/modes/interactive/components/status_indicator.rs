@@ -319,7 +319,18 @@ impl Component for StatusIndicator {
             if width < 4 {
                 return vec![Line::from(""); 2];
             }
-            return super::indent_lines(self.loader.render(width - 1), width);
+            return self
+                .loader
+                .render(width - 1)
+                .into_iter()
+                .map(|line| {
+                    if line.is_empty() {
+                        line
+                    } else {
+                        Line::from(format!(" {line}"))
+                    }
+                })
+                .collect();
         }
         self.loader.render(width)
     }

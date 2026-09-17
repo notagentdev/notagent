@@ -7,7 +7,7 @@ use notagent_tui::tui::{Component, Line, component_ref};
 
 use crate::core::agent_session::ParsedSkillBlock;
 use crate::modes::interactive::theme::theme::{
-    BlockStyle, ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
+    ThemeBg, ThemeColor, badge, block_style, get_markdown_theme, theme,
 };
 
 use super::keybinding_hints::key_text;
@@ -50,7 +50,7 @@ impl SkillInvocationMessageComponent {
     fn update_display(&mut self) {
         // Badge style: no wash, no padding rows — a SKILL badge in the
         // block's colour leads, the name beside it (reference pattern).
-        let badge_style = block_style() == BlockStyle::Badge;
+        let badge_style = block_style().is_compact();
         if badge_style {
             self.content_box.set_padding(0, 0);
             self.content_box.set_bg_fn(None);
@@ -74,7 +74,11 @@ impl SkillInvocationMessageComponent {
             let header = format!("**{}**\n\n", self.skill_block.name);
             self.content_box.add_child(component_ref(Markdown::new(
                 header + &self.skill_block.content,
-                0,
+                if block_style() == crate::modes::interactive::theme::theme::BlockStyle::Dot {
+                    2
+                } else {
+                    0
+                },
                 0,
                 self.markdown_theme.clone(),
                 Some(DefaultTextStyle {
@@ -101,7 +105,10 @@ impl SkillInvocationMessageComponent {
 
 impl Component for SkillInvocationMessageComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
-        super::indent_lines(self.content_box.render(width.saturating_sub(1)), width)
+        super::indent_lines(
+            self.content_box.render(super::tool_content_width(width)),
+            width,
+        )
     }
 
     fn invalidate(&mut self) {

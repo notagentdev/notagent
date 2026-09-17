@@ -31,7 +31,7 @@ impl Component for MessageMarker {
                     marked = true;
                     format!(
                         "{}{}",
-                        theme().fg(ThemeColor::Muted, self.marker),
+                        theme().fg(ThemeColor::Text, self.marker),
                         " ".repeat(left - 1)
                     )
                 } else {

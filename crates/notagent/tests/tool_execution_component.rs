@@ -36,6 +36,7 @@ struct StubTool {
     render_shell: RenderShell,
     call_text: Option<&'static str>,
     result_text: Option<&'static str>,
+    result_renders: std::sync::atomic::AtomicUsize,
 }
 
 impl StubTool {
@@ -46,6 +47,7 @@ impl StubTool {
             render_shell: RenderShell::Default,
             call_text: None,
             result_text: None,
+            result_renders: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 }
@@ -107,6 +109,8 @@ impl ToolDefinition for StubTool {
         _theme: &Theme,
         _context: &ToolRenderContext,
     ) -> Option<ComponentRef> {
+        self.result_renders
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.result_text
             .map(|text| component_ref(Text::new(text, 0, 0)) as ComponentRef)
     }
@@ -138,7 +142,7 @@ fn cwd() -> String {
 fn tool_gutters_reserve_width_in_both_styles_and_render_shells() {
     let _guard = guard();
     init_theme(Some("dark"), false);
-    for style in [BlockStyle::Standard, BlockStyle::Badge] {
+    for style in [BlockStyle::Standard, BlockStyle::Badge, BlockStyle::Dot] {
         set_block_style(style);
         for render_shell in [RenderShell::Default, RenderShell::SelfManaged] {
             let tool: ToolDef = std::sync::Arc::new(StubTool {
@@ -163,7 +167,7 @@ fn tool_gutters_reserve_width_in_both_styles_and_render_shells() {
                         notagent_tui::utils::visible_width(&line) <= width,
                         "the gutter must fit inside width {width}: {line:?}"
                     );
-                    if !line.is_empty() {
+                    if !line.is_empty() && style != BlockStyle::Dot {
                         assert!(
                             line.starts_with(' '),
                             "the block must keep its outer gutter: {line:?}"
@@ -618,4 +622,48 @@ fn switching_the_style_restyles_an_already_rendered_row() {
     let badge = strip_ansi(&component.render(60).join("\n"));
     assert!(badge.contains("CUSTOM TOOL"), "{badge}");
     set_block_style(BlockStyle::Standard);
+}
+
+#[test]
+fn activity_frames_reuse_custom_result_renderers() {
+    let _guard = guard();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Dot);
+    let definition = std::sync::Arc::new(StubTool {
+        call_text: Some("cached output"),
+        result_text: Some("a result body that must not be rebuilt by animation"),
+        ..StubTool::new("custom_tool")
+    });
+    let mut component = ToolExecutionComponent::new(
+        "custom_tool",
+        "cached",
+        json!({}),
+        ToolExecutionOptions::default(),
+        Some(definition.clone()),
+        no_render(),
+        cwd(),
+    );
+    component.mark_execution_started();
+    component.update_result(text_result(&"large output\n".repeat(10000)), true);
+    let terminal = notagent_tui::test_terminal::VirtualTerminal::new(80, 24);
+    let mut screen = notagent_tui::tui_main_screen::TuiMainScreen::new(Box::new(terminal));
+    let core = screen.core().clone();
+    core.set_activity_animation(true);
+    core.add_child(component_ref(component));
+    screen.render_now(false);
+    let baseline = definition
+        .result_renders
+        .load(std::sync::atomic::Ordering::Relaxed);
+    for _ in 0..4 {
+        core.tick_activity(core.activity_deadline().expect("live dot deadline"));
+        screen.render_now(false);
+    }
+    assert_eq!(
+        definition
+            .result_renders
+            .load(std::sync::atomic::Ordering::Relaxed),
+        baseline,
+        "marker frames must not call the result renderer again"
+    );
+    set_block_style(BlockStyle::Badge);
 }

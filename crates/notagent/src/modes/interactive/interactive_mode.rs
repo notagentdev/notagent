@@ -124,7 +124,7 @@ use crate::modes::interactive::components::status_indicator::{
 };
 use crate::modes::interactive::components::subagent_panel::SubagentPanel;
 use crate::modes::interactive::components::task_lifecycle::{
-    TaskLifecycleComponent, is_background_bash_call, task_lifecycle_line,
+    TaskLifecycleComponent, is_background_bash_call,
 };
 use crate::modes::interactive::components::tasks_browser::{
     TasksBrowserComponent, TasksBrowserProps, TasksFilter,
@@ -233,6 +233,7 @@ enum SettingsEffect {
     ShowHardwareCursor(bool),
     EditorPaddingX(u64),
     OutputPad(u64),
+    BlockStyle(Result<(), String>),
     AutocompleteMaxVisible(u64),
     ClearOnShrink(bool),
     TuiMode(TuiMode),
@@ -676,6 +677,7 @@ impl RendererCell {
             ActiveRenderer::Main(screen) => screen.core().clone(),
             ActiveRenderer::Alt(screen) => screen.core().clone(),
         };
+        next_core.inherit_activity_clock(&core);
         next_core.set_clear_on_shrink(clear_on_shrink);
         next_core.set_show_hardware_cursor(show_hardware_cursor);
         for child in children {
@@ -1270,6 +1272,9 @@ impl InteractiveMode {
             .borrow_mut()
             .add_child(Rc::clone(&footer) as ComponentRef);
 
+        crate::modes::interactive::theme::theme::set_block_style(
+            settings_manager.get_block_style(),
+        );
         let hide_thinking_block = settings_manager.get_hide_thinking_block();
         let output_pad = settings_manager.get_output_pad() as usize;
 
@@ -2101,6 +2106,11 @@ impl InteractiveMode {
 
     /// The next animation deadline the loop has to wake for.
     fn next_deadline(&self) -> Option<Instant> {
+        self.ui.set_activity_animation(
+            block_style() == BlockStyle::Dot
+                && self.active_selector.is_none()
+                && !self.replacing_session,
+        );
         // `startTasksPanelRefresh` — the one-second interval of the panels.
         let mut deadline: Option<Instant> = self.next_panel_refresh;
         if let Some(notice) = self
@@ -2134,6 +2144,9 @@ impl InteractiveMode {
         if let Some(candidate) = self.editor.borrow().editor().autocomplete_deadline() {
             deadline = Some(deadline.map_or(candidate, |current: Instant| current.min(candidate)));
         }
+        if let Some(activity) = self.ui.activity_deadline() {
+            deadline = Some(deadline.map_or(activity, |current| current.min(activity)));
+        }
         deadline
     }
 
@@ -2166,6 +2179,7 @@ impl InteractiveMode {
 
     /// One pass over everything a deadline was due for.
     fn tick(&mut self) {
+        self.ui.tick_activity(Instant::now());
         if self
             .next_panel_refresh
             .is_none_or(|deadline| deadline <= Instant::now())
@@ -3309,20 +3323,19 @@ impl InteractiveMode {
 
     /// Appends one lifecycle line to the transcript. It is a non-search
     /// addition, so it also ends an open search block.
-    fn append_task_entry(&mut self, line: String) {
+    fn append_task_entry(&mut self, record: TaskLifecycleRecord) {
         self.close_explore_block();
         let mut chat = self.chat_container.borrow_mut();
         if !chat.children.is_empty() {
             chat.add_child(component_ref(Spacer::new(1)));
         }
-        chat.add_child(component_ref(TaskLifecycleComponent::new(line)));
+        chat.add_child(component_ref(TaskLifecycleComponent::new(record)));
         drop(chat);
         self.ui.request_render();
     }
 
     fn append_task_lifecycle(&mut self, record: &TaskLifecycleRecord) {
-        let line = task_lifecycle_line(record, &theme(), block_style() == BlockStyle::Badge);
-        self.append_task_entry(line);
+        self.append_task_entry(record.clone());
     }
 
     fn refresh_subagent_panel(&mut self, tasks: &[TaskInfo]) {
@@ -4442,6 +4455,7 @@ impl InteractiveMode {
             show_hardware_cursor: settings.get_show_hardware_cursor(),
             editor_padding_x: settings.get_editor_padding_x(),
             output_pad: settings.get_output_pad(),
+            block_style: settings.get_block_style(),
             autocomplete_max_visible: settings.get_autocomplete_max_visible(),
             quiet_startup: settings.get_quiet_startup(),
             default_project_trust: settings.get_default_project_trust(),
@@ -4596,6 +4610,16 @@ impl InteractiveMode {
                     effect(&tx, id, SettingsEffect::EditorPaddingX(padding));
                 })
             },
+            on_block_style_change: {
+                let settings = Arc::clone(&settings);
+                let tx = self.ui_tx.clone();
+                Box::new(move |style| {
+                    let result = settings
+                        .set_block_style(style)
+                        .map_err(|error| error.message);
+                    effect(&tx, id, SettingsEffect::BlockStyle(result));
+                })
+            },
             on_output_pad_change: {
                 let settings = Arc::clone(&settings);
                 let tx = self.ui_tx.clone();
@@ -4724,6 +4748,22 @@ impl InteractiveMode {
             }
             SettingsEffect::EditorPaddingX(padding) => {
                 self.editor.borrow_mut().set_padding_x(padding as usize);
+            }
+            SettingsEffect::BlockStyle(result) => {
+                if let Err(message) = result {
+                    self.show_error(&message);
+                    self.show_settings_selector();
+                }
+                crate::modes::interactive::theme::theme::set_block_style(
+                    self.settings().get_block_style(),
+                );
+                self.chat_container.borrow_mut().invalidate();
+                for component in &self.pending_bash_components {
+                    component.borrow_mut().invalidate();
+                }
+                if let Some(component) = &self.bash_component {
+                    component.borrow_mut().invalidate();
+                }
             }
             SettingsEffect::OutputPad(padding) => {
                 self.output_pad = padding as usize;
@@ -7742,6 +7782,7 @@ impl InteractiveMode {
 
         self.session().reload().await;
         self.hide_thinking_block = self.settings().get_hide_thinking_block();
+        crate::modes::interactive::theme::theme::set_block_style(self.settings().get_block_style());
         self.output_pad = self.settings().get_output_pad() as usize;
         self.rebuild_chat_from_messages();
         self.keybindings.borrow_mut().reload();
@@ -7788,6 +7829,7 @@ impl InteractiveMode {
                 as Arc<dyn crate::modes::interactive::components::footer::FooterSession>);
         }
         self.footer_data.set_cwd(&self.cwd());
+        crate::modes::interactive::theme::theme::set_block_style(settings.get_block_style());
         self.hide_thinking_block = settings.get_hide_thinking_block();
         self.output_pad = settings.get_output_pad() as usize;
         self.update_editor_border_color();
@@ -8402,6 +8444,10 @@ impl InteractiveMode {
                 }
                 if let Some(component) = self.tool_component(&tool_call_id) {
                     component.borrow_mut().mark_execution_started();
+                } else {
+                    for block in &self.chat_explore_blocks {
+                        block.borrow_mut().mark_execution_started(&tool_call_id);
+                    }
                 }
                 self.ui.request_render();
             }

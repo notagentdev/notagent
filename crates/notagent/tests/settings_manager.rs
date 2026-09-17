@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use notagent::core::settings_manager::{
-    DefaultProjectTrust, DoubleEscapeAction, InMemorySettingsStorage, QueueMode,
+    BlockStyle, DefaultProjectTrust, DoubleEscapeAction, InMemorySettingsStorage, QueueMode,
     ResolvedBranchSummarySettings, ResolvedCompactionSettings, ResolvedProviderRetrySettings,
     ResolvedRetrySettings, SettingsManager, SettingsManagerCreateOptions, SettingsScope,
     TreeFilterMode, WarningSettings, migrate_settings,
@@ -56,24 +56,26 @@ fn manager(harness: &Harness) -> SettingsManager {
 }
 
 #[test]
-fn badges_are_the_default_and_standard_requires_an_explicit_config_value() {
+fn dots_are_the_default_and_explicit_styles_remain_available() {
     let harness = harness();
-    assert!(
-        manager(&harness).get_block_style_badge(),
-        "missing config must default to badge mode"
+    assert_eq!(
+        manager(&harness).get_block_style(),
+        BlockStyle::Dot,
+        "missing config must default to dot mode"
     );
     let settings_path = harness.agent_dir.join("settings.json");
     for (config, badge) in [
-        (json!({}), true),
-        (json!({ "blockStyle": "badge" }), true),
-        (json!({ "blockStyle": "standard" }), false),
-        (json!({ "blockStyle": "unknown" }), true),
+        (json!({}), BlockStyle::Dot),
+        (json!({ "blockStyle": "badge" }), BlockStyle::Badge),
+        (json!({ "blockStyle": "standard" }), BlockStyle::Standard),
+        (json!({ "blockStyle": "unknown" }), BlockStyle::Dot),
+        (json!({ "blockStyle": "dot" }), BlockStyle::Dot),
     ] {
         std::fs::write(&settings_path, config.to_string()).expect("write config");
         assert_eq!(
-            manager(&harness).get_block_style_badge(),
+            manager(&harness).get_block_style(),
             badge,
-            "only an explicit standard setting may disable badges: {config}"
+            "style resolution must preserve defaults and explicit choices: {config}"
         );
     }
 }
@@ -848,4 +850,27 @@ fn the_bash_filter_is_off_until_it_is_turned_on() {
     manager.flush();
     assert!(!manager.get_bash_filter_enabled());
     assert_eq!(global_settings(&harness)["bashFilter"], json!(false));
+}
+
+#[test]
+fn dot_style_persists_and_updates_an_explicit_project_choice() {
+    let h = harness();
+    let settings = manager(&h);
+    settings.set_block_style(BlockStyle::Dot).unwrap();
+    assert_eq!(manager(&h).get_block_style(), BlockStyle::Dot);
+    settings.set_project_trusted(true);
+    settings
+        .set_project_field("blockStyle", json!("standard"))
+        .unwrap();
+    settings.set_block_style(BlockStyle::Badge).unwrap();
+    assert_eq!(settings.get_block_style(), BlockStyle::Badge);
+    assert_eq!(
+        read_settings(&h.project_dir.join(".notagent/settings.json"))["blockStyle"],
+        "badge"
+    );
+    assert_eq!(
+        read_settings(&h.agent_dir.join("settings.json"))["blockStyle"],
+        "dot",
+        "project overrides must not overwrite the global preference"
+    );
 }

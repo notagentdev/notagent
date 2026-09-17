@@ -178,6 +178,11 @@ impl TuiMainScreen {
 
     /// Stop the TUI and write the document into the scrollback.
     pub fn stop(&mut self, options: TuiStopOptions) {
+        let animated = self.core.activity_deadline().is_some();
+        self.core.set_activity_animation(false);
+        if animated && !options.preserve_screen {
+            self.render_now(false);
+        }
         if !options.preserve_screen && !self.previous_lines.is_empty() {
             let target_row = self.previous_lines.len() as i64;
             let line_diff = target_row - self.hardware_cursor_row as i64;
@@ -418,6 +423,10 @@ impl TuiMainScreen {
         if self.core.has_overlay_entries() {
             new_lines = self.core.composite_overlays(new_lines, width, height);
         }
+
+        let first_visible = new_lines.len().saturating_sub(height);
+        self.core
+            .paint_activity(&mut new_lines, first_visible, &self.previous_lines);
 
         // Extract the cursor position before the line resets (the marker must be
         // found first).

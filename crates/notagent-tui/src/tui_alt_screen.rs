@@ -1840,6 +1840,9 @@ impl TuiAltScreen {
                 .iter()
                 .map(|line| Line::from(strip_osc133_zone_prefix(line).replace(CURSOR_MARKER, "")))
                 .collect();
+            for line in &mut document {
+                *line = Line::from(crate::activity::static_markers(line));
+            }
             self.core.apply_line_resets(&mut document);
             self.last_document = document
                 .into_iter()
@@ -1981,6 +1984,7 @@ impl TuiAltScreen {
         screen = self.apply_selection(screen);
         screen = self.composite_flashes(screen, width, height);
 
+        self.core.paint_activity(&mut screen, 0, &[]);
         let cursor_pos = self.core.extract_cursor_position(&mut screen, height);
         self.core.apply_line_resets(&mut screen);
         let mut screen: Vec<Line> = screen

@@ -25,7 +25,7 @@ use crate::core::tools::tool_definition::{
     tool_render_state, wrap_tool_definition,
 };
 use crate::modes::interactive::components::diff::{RenderDiffOptions, diff_info_line, render_diff};
-use crate::modes::interactive::theme::theme::{BlockStyle, Theme, block_style};
+use crate::modes::interactive::theme::theme::{Theme, block_style};
 
 fn minified_edit_properties() -> Value {
     json!({
@@ -587,7 +587,7 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
                 .and_then(Value::as_str)
                 .filter(|diff| !diff.is_empty())
         };
-        let badge_style = block_style() == BlockStyle::Badge;
+        let badge_style = block_style().is_compact();
         if let Some(diff) = diff {
             sections.push(render_diff(
                 diff,

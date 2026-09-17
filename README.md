@@ -126,6 +126,18 @@ Everything happens inside the TUI:
 - `/effort` — select the reasoning level
 - `/settings` — everything else
 
+## Tool display
+
+In `/settings`, choose **Block style → Badge or Dot**. Dot is the default.
+Dot uses plain tool labels with a status dot: dim while queued or running,
+green on success, and red on failure or cancellation. Running dots blink
+together every 600 ms; they pause while hidden, unfocused, or behind a dialog.
+Background launch records and replayed history stay static.
+
+The choice is saved as `blockStyle` and can change during a running command.
+An explicit project setting is updated in that project; otherwise the choice
+is global. Existing `standard` configurations remain supported.
+
 ## Side questions
 
 `/btw <question>` opens a panel above the input and answers there. The question

@@ -687,7 +687,7 @@ impl Terminal for ProcessTerminal {
 
         // Enable bracketed paste mode — the terminal wraps pastes in
         // \x1b[200~ … \x1b[201~.
-        self.write_out("\x1b[?2004h");
+        self.write_out("\x1b[?2004h\x1b[?1004h");
 
         #[cfg(unix)]
         {
@@ -737,7 +737,7 @@ impl Terminal for ProcessTerminal {
         }
 
         // Disable bracketed paste mode.
-        self.write_out("\x1b[?2004l");
+        self.write_out("\x1b[?1004l\x1b[?2004l");
 
         let should_disable_kitty_protocol =
             self.keyboard_protocol_pushed || self.kitty_protocol_active;
