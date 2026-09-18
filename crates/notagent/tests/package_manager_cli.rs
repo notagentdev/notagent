@@ -533,9 +533,15 @@ async fn reports_that_the_latest_version_could_not_be_determined_when_offline() 
 #[tokio::test]
 async fn a_homebrew_self_update_prints_the_command_without_running_it() {
     let mut fixture = Fixture::new();
-    let server =
-        TestServer::start(Vec::new(), CannedResponse::json(r#"{"version":"999.0.0"}"#)).await;
-    set_latest_version_url_for_tests(Some(format!("{}/api/latest-version.json", server.base_url)));
+    let server = TestServer::start(
+        Vec::new(),
+        CannedResponse::json(r#"{"tag_name":"v999.0.0"}"#),
+    )
+    .await;
+    set_latest_version_url_for_tests(Some(format!(
+        "{}/repos/notagentdev/notagent/releases/latest",
+        server.base_url
+    )));
     fixture.runtime.install_env = InstallEnv {
         package_dir: PathBuf::from("/opt/homebrew/Caskroom/notagent/0.1.46"),
         exec_path: PathBuf::from("/opt/homebrew/Caskroom/notagent/0.1.46/notagent"),

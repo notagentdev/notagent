@@ -23,8 +23,10 @@ brew install --cask notagentdev/tap/notagent
 brew upgrade notagent
 ```
 
-notagent checks `notagent.dev` for new versions in the background and shows
-this command when an update is available. It never runs Homebrew or replaces
+notagent checks the latest stable GitHub release in the background and shows
+this command when an update is available. Results are cached locally for one
+hour; failed checks are held for five minutes. Explicit update commands check
+GitHub again. It never runs Homebrew or replaces
 its own executable.
 
 ### Building from source

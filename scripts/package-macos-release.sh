@@ -77,10 +77,8 @@ cask "notagent" do
   homepage "https://notagent.dev/"
 
   livecheck do
-    url "https://notagent.dev/api/latest-version.json"
-    strategy :json do |json|
-      json["version"]
-    end
+    url "https://github.com/notagentdev/notagent"
+    strategy :github_latest
   end
 
   depends_on arch: :arm64

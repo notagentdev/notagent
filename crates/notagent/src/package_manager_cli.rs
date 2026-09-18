@@ -691,6 +691,7 @@ async fn get_self_update_plan(
         VERSION,
         VersionCheckOptions {
             retry: true,
+            force_refresh: true,
             ..VersionCheckOptions::default()
         },
     )
