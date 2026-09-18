@@ -85,6 +85,24 @@ impl TaskStore {
         }
     }
 
+    pub async fn retain_output(
+        &self,
+        task_id: &str,
+        output: &super::output::OutputSnapshot,
+    ) -> Result<(), String> {
+        assert_task_id(task_id)?;
+        let bytes = serde_json::to_vec(output).map_err(|e| e.to_string())?;
+        write_private_atomic(&self.dir.join(task_id).join("retained-output.json"), &bytes).await
+    }
+
+    pub async fn retained_output(&self, task_id: &str) -> Option<super::output::OutputSnapshot> {
+        assert_task_id(task_id).ok()?;
+        let bytes = tokio::fs::read(self.dir.join(task_id).join("retained-output.json"))
+            .await
+            .ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
     pub async fn read_record(&self, task_id: &str) -> Option<TaskInfo> {
         let path = self.record_path(task_id).ok()?;
         let text = tokio::fs::read_to_string(path).await.ok()?;
@@ -234,4 +252,24 @@ async fn write_file_mode(path: &Path, contents: &[u8], mode: u32) -> std::io::Re
 #[cfg(not(unix))]
 async fn write_file_mode(path: &Path, contents: &[u8], _mode: u32) -> std::io::Result<()> {
     tokio::fs::write(path, contents).await
+}
+
+/// Private, atomic publication shared by retained output and child histories.
+pub(crate) async fn write_private_atomic(path: &Path, contents: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Missing storage directory".to_owned())?;
+    create_dir_all_mode(parent, 0o700)
+        .await
+        .map_err(|e| e.to_string())?;
+    let temporary = path.with_extension(format!("{}.tmp", notagent_ai::uuidv7()));
+    let result = async {
+        write_file_mode(&temporary, contents, 0o600).await?;
+        tokio::fs::rename(&temporary, path).await
+    }
+    .await;
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&temporary).await;
+    }
+    result.map_err(|e| e.to_string())
 }

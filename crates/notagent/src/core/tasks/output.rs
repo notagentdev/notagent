@@ -23,7 +23,7 @@ Redirect large output to a file and inspect it in slices instead."
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct OutputSnapshot {
     /// Path to the complete log, when one exists.
     pub output_path: Option<String>,

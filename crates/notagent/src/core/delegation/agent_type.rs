@@ -16,7 +16,7 @@
 use crate::core::modes::shells::{ShellId, tools_for_shell};
 use crate::core::tools::ToolName;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SubagentType {
     /// Reads, searches, plans. Cannot change anything.
     ReadOnly,

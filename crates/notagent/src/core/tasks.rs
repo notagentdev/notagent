@@ -6,4 +6,5 @@ pub mod serial_queue;
 pub mod shell_task;
 pub mod store;
 pub mod subagent_task;
+pub mod transcripts;
 pub mod types;

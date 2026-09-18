@@ -98,7 +98,7 @@ impl Flag {
     }
 
     fn set(&self) {
-        let _ = self.0.send(true);
+        self.0.send_replace(true);
     }
 
     async fn wait(&self) {
@@ -428,7 +428,13 @@ impl ManagedTask {
 
 impl TaskSinkTarget for ManagedTask {
     fn append_output(&self, chunk: &str) {
-        self.output.append(chunk);
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !is_terminal_task_status(state.status) {
+            self.output.append(chunk);
+        }
     }
 
     fn settle<'a>(&'a self, settlement: TaskSettlement) -> BoxFuture<'a, bool> {
@@ -439,10 +445,23 @@ impl TaskSinkTarget for ManagedTask {
     }
 }
 
+enum TaskEntry {
+    Running(Arc<ManagedTask>),
+    Finished(TaskInfo),
+}
+
+impl TaskEntry {
+    fn info(&self) -> TaskInfo {
+        match self {
+            Self::Running(entry) => entry.to_info(),
+            Self::Finished(info) => info.clone(),
+        }
+    }
+}
+
 struct ManagerInner {
-    /// A `Vec` preserves registration order for `list()`, and the configured
-    /// running-task ceiling keeps the live collection bounded.
-    tasks: Mutex<Vec<Arc<ManagedTask>>>,
+    /// Replacing entries in place preserves registration order after retirement.
+    tasks: Mutex<Vec<TaskEntry>>,
     /// Records restored from disk, with no live work behind them.
     restored: Mutex<Vec<TaskInfo>>,
     store: Arc<TaskStore>,
@@ -561,7 +580,7 @@ impl TaskManager {
 
         {
             let mut tasks = self.inner.tasks.lock().expect("poisoned");
-            tasks.push(Arc::clone(&entry));
+            tasks.push(TaskEntry::Running(Arc::clone(&entry)));
         }
         self.inner
             .restored
@@ -574,6 +593,8 @@ impl TaskManager {
             on_registered(entry.to_info()).await;
         }
         if entry.is_terminal() {
+            entry.lifecycle.set();
+            Self::retire(&Arc::downgrade(&self.inner), &entry).await;
             return Ok(task_id);
         }
 
@@ -584,6 +605,9 @@ impl TaskManager {
             Arc::clone(&entry) as Arc<dyn TaskSinkTarget>,
         );
         let lifecycle_entry = Arc::clone(&entry);
+        let owner = Arc::downgrade(&self.inner);
+        let registered = Flag::new();
+        let ready = registered.clone();
         tokio::spawn(async move {
             let result = lifecycle_entry.task.start(sink).await;
             if let Err(message) = result {
@@ -615,6 +639,8 @@ impl TaskManager {
                 .await;
             }
             lifecycle_entry.lifecycle.set();
+            ready.wait().await;
+            Self::retire(&owner, &lifecycle_entry).await;
         });
 
         if entry.is_detached() {
@@ -632,6 +658,7 @@ impl TaskManager {
                 on_started(entry.to_info());
             }
         }
+        registered.set();
         Ok(task_id)
     }
 
@@ -654,12 +681,58 @@ impl TaskManager {
         Err(TaskLimitError { running, max })
     }
 
+    async fn retire(owner: &Weak<ManagerInner>, entry: &Arc<ManagedTask>) {
+        if !entry.is_terminal() {
+            return;
+        }
+        entry.output.drained().await;
+        entry.record_queue.drained().await;
+        // Keep the bounded tail even if a full log was unavailable or failed to write.
+        // A failed archive leaves the live entry intact, so output is never silently lost.
+        if entry
+            .store
+            .retain_output(&entry.task_id, &entry.output.snapshot(usize::MAX))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let Some(owner) = owner.upgrade() else {
+            return;
+        };
+        let mut tasks = owner
+            .tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(slot) = tasks.iter_mut().find(
+            |slot| matches!(slot, TaskEntry::Running(candidate) if Arc::ptr_eq(candidate, entry)),
+        ) {
+            *slot = TaskEntry::Finished(entry.to_info());
+        }
+    }
+
+    fn finished_record(&self, task_id: &str) -> Option<TaskInfo> {
+        self.inner
+            .tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .find_map(|entry| match entry {
+                TaskEntry::Finished(info) if info.task_id() == task_id => Some(info.clone()),
+                _ => None,
+            })
+    }
+
     fn running_detached_count(&self) -> usize {
         self.inner
             .tasks
             .lock()
             .expect("poisoned")
             .iter()
+            .filter_map(|entry| match entry {
+                TaskEntry::Running(entry) => Some(entry),
+                TaskEntry::Finished(_) => None,
+            })
             .filter(|entry| {
                 let state = entry.state.lock().expect("poisoned");
                 !is_terminal_task_status(state.status) && state.detached
@@ -673,11 +746,16 @@ impl TaskManager {
             .lock()
             .expect("poisoned")
             .iter()
-            .find(|entry| entry.task_id == task_id)
-            .cloned()
+            .find_map(|entry| match entry {
+                TaskEntry::Running(entry) if entry.task_id == task_id => Some(Arc::clone(entry)),
+                _ => None,
+            })
     }
 
     fn restored_record(&self, task_id: &str) -> Option<TaskInfo> {
+        if let Some(info) = self.finished_record(task_id) {
+            return Some(info);
+        }
         self.inner
             .restored
             .lock()
@@ -710,16 +788,15 @@ impl TaskManager {
             info.is_detached()
         };
         let mut result: Vec<TaskInfo> = Vec::new();
-        let entries: Vec<Arc<ManagedTask>> = self
+        let entries: Vec<TaskInfo> = self
             .inner
             .tasks
             .lock()
             .expect("poisoned")
             .iter()
-            .cloned()
+            .map(TaskEntry::info)
             .collect();
-        for entry in entries {
-            let info = entry.to_info();
+        for info in entries {
             if !wanted(&info) {
                 continue;
             }
@@ -781,7 +858,19 @@ impl TaskManager {
             Some(entry) => entry
                 .output
                 .snapshot(usize::try_from(max_preview_bytes).unwrap_or(usize::MAX)),
-            None => empty_output_snapshot(),
+            None => {
+                let Some(mut snapshot) = self.inner.store.retained_output(task_id).await else {
+                    return empty_output_snapshot();
+                };
+                let limit = usize::try_from(max_preview_bytes).unwrap_or(usize::MAX);
+                let bytes = snapshot.preview.len().min(limit);
+                let start = snapshot.preview.len() - bytes;
+                snapshot.preview =
+                    String::from_utf8_lossy(&snapshot.preview.as_bytes()[start..]).into_owned();
+                snapshot.preview_bytes = bytes as u64;
+                snapshot.truncated = snapshot.total_bytes > bytes as u64;
+                snapshot
+            }
         }
     }
 
@@ -801,7 +890,11 @@ impl TaskManager {
     /// Waits for a foreground task to release its tool call, either by settling
     /// or by being moved to the background.
     pub async fn wait_for_foreground_release(&self, task_id: &str) -> Option<ForegroundRelease> {
-        let entry = self.entry(task_id)?;
+        let Some(entry) = self.entry(task_id) else {
+            return self
+                .restored_record(task_id)
+                .map(|_| ForegroundRelease::Terminal);
+        };
         if entry.is_terminal() {
             entry.record_queue.drained().await;
             return Some(ForegroundRelease::Terminal);
@@ -886,7 +979,7 @@ impl TaskManager {
             .lock()
             .expect("poisoned")
             .iter()
-            .map(|entry| entry.task_id.clone())
+            .map(|entry| entry.info().task_id().to_owned())
             .collect();
         let settled = futures::future::join_all(
             task_ids
@@ -915,17 +1008,34 @@ impl TaskManager {
     /// Used when the result is being handed back directly — stopping a task from
     /// a tool call, or ending the session — so the model is never told twice.
     pub async fn suppress_notification(&self, task_id: &str) {
-        let Some(entry) = self.entry(task_id) else {
-            return;
-        };
-        {
-            let mut state = entry.state.lock().expect("poisoned");
-            if state.notification_suppressed == Some(true) {
-                return;
+        if let Some(entry) = self.entry(task_id) {
+            {
+                let mut state = entry
+                    .state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                state.notification_suppressed = Some(true);
             }
-            state.notification_suppressed = Some(true);
+            entry.persist().await;
         }
-        entry.persist().await;
+        // Retirement can race the await above; update the lightweight entry too.
+        let finished = {
+            let mut tasks = self
+                .inner
+                .tasks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            tasks.iter_mut().find_map(|entry| match entry {
+                TaskEntry::Finished(info) if info.task_id() == task_id => {
+                    info.base_mut().notification_suppressed = Some(true);
+                    Some(info.clone())
+                }
+                _ => None,
+            })
+        };
+        if let Some(info) = finished {
+            let _ = self.inner.store.write_record(&info).await;
+        }
     }
 
     // ── restore ────────────────────────────────────────────────────────
@@ -934,7 +1044,7 @@ impl TaskManager {
     /// left running. Returns the tasks that were lost, so the caller can say so.
     pub async fn reconcile(&self) -> Vec<TaskInfo> {
         for record in self.inner.store.list_records().await {
-            if self.entry(record.task_id()).is_some() {
+            if self.get(record.task_id()).is_some() {
                 continue;
             }
             let mut restored = self.inner.restored.lock().expect("poisoned");

@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::agent::Agent;
 use notagent_agent::types::{
-    AgentMessage, AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
+    AgentToolResult, AgentToolUpdateCallback, BoxFuture, ToolExecutionError,
 };
 use notagent_ai::types::{ConstrainedSampling, Model, TextContent, TextOrImageContent};
 use notagent_ai::uuidv7;
@@ -102,22 +101,8 @@ impl Default for TaskToolSources {
     }
 }
 
-/// Transcripts of children started in this session, for continuation.
-/// hands the same map around explicitly, so it outlives a rebuilt tool exactly
-/// as the `WeakMap` entry does.
-#[derive(Clone, Default)]
-pub struct TaskTranscriptStore {
-    shared: Arc<Mutex<HashMap<String, KeptTranscript>>>,
-}
-
-#[derive(Clone)]
-struct KeptTranscript {
-    agent: SubagentType,
-    /// The name the user already saw. A continued child keeps it, or a name
-    /// that meant one conversation an hour ago would mean another one now.
-    alias: String,
-    messages: Vec<AgentMessage>,
-}
+use crate::core::tasks::transcripts::KeptTranscript;
+pub use crate::core::tasks::transcripts::TaskTranscriptStore;
 
 /// The types this session may delegate to.
 /// Two filters, and they answer different questions. The shell is the hard one:
@@ -654,11 +639,9 @@ impl ToolDefinition for TaskToolDefinition {
                 let kept = self
                     .sources
                     .transcripts
-                    .shared
-                    .lock()
-                    .expect("poisoned")
-                    .get(session_id)
-                    .cloned();
+                    .load(session_id)
+                    .await
+                    .map_err(ToolExecutionError::new)?;
                 let Some(kept) = kept else {
                     return Err(ToolExecutionError::new(format!(
                         "Unknown subagent session \"{session_id}\". Start a new subagent instead."
@@ -766,8 +749,18 @@ impl ToolDefinition for TaskToolDefinition {
                 let releasing = aliases.clone();
                 let released = alias.clone();
                 let hooks = self.sources.hooks.clone();
+                let transcripts = self.sources.transcripts.clone();
+                let kept_alias = alias.clone();
                 tokio::spawn(async move {
-                    let result = run_delegation_with_hooks(delegation, hooks, hook_info).await;
+                    let mut result = run_delegation_with_hooks(delegation, hooks, hook_info).await;
+                    let history = KeptTranscript {
+                        agent,
+                        alias: kept_alias,
+                        messages: std::mem::take(&mut result.transcript),
+                    };
+                    if let Err(error) = transcripts.save(&result.session_id, &history).await {
+                        result.text.push_str(&format!("\n\nSubagent history could not be saved; this run cannot be safely continued: {error}"));
+                    }
                     // Returned however the run ended, including a failure: a
                     // name held by a child that is gone would shrink the pool
                     // every time something went wrong.
@@ -793,7 +786,6 @@ impl ToolDefinition for TaskToolDefinition {
                 for entry in launched {
                     // The transcript is still recorded, so a later call can
                     // continue a backgrounded subagent by its session id.
-                    self.keep_later(entry.run, agent, entry.alias.clone());
                     text_blocks.push(render_background_result(
                         entry.task_id.as_deref().unwrap_or(""),
                         &entry.session_id,
@@ -837,7 +829,6 @@ impl ToolDefinition for TaskToolDefinition {
                                 alias: entry.alias.clone(),
                                 task: entry.task,
                                 run: None,
-                                pending: Some((entry.run, entry.alias)),
                             };
                         }
                     }
@@ -848,7 +839,6 @@ impl ToolDefinition for TaskToolDefinition {
                         alias: entry.alias,
                         task: entry.task,
                         run,
-                        pending: None,
                     }
                 }
             }))
@@ -858,12 +848,8 @@ impl ToolDefinition for TaskToolDefinition {
             let mut text_blocks = Vec::new();
             let count = settled.len();
             for (index, entry) in settled.into_iter().enumerate() {
-                if let Some((run, alias)) = entry.pending {
-                    self.keep_later(run, agent, alias);
-                }
                 match &entry.run {
                     Some(run) => {
-                        self.keep(&run.session_id, agent, &entry.alias, run.transcript.clone());
                         let label = if count > 1 {
                             format!("Task {}", index + 1)
                         } else {
@@ -917,63 +903,6 @@ struct SettledEntry {
     alias: String,
     task: String,
     run: Option<DelegationRun>,
-    /// A child that outlived the call still records its transcript when it ends.
-    pending: Option<(oneshot::Receiver<DelegationRun>, String)>,
-}
-
-impl TaskToolDefinition {
-    fn keep(
-        &self,
-        session_id: &str,
-        agent: SubagentType,
-        alias: &str,
-        messages: Vec<AgentMessage>,
-    ) {
-        self.sources
-            .transcripts
-            .shared
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(
-                session_id.to_owned(),
-                KeptTranscript {
-                    agent,
-                    alias: alias.to_owned(),
-                    messages,
-                },
-            );
-    }
-
-    /// `void run.then((result) => kept.set(…))` — the record is written when the
-    /// detached child finally answers.
-    fn keep_later(
-        &self,
-        run: oneshot::Receiver<DelegationRun>,
-        agent: SubagentType,
-        alias: String,
-    ) {
-        let kept = self.sources.transcripts.handle();
-        tokio::spawn(async move {
-            if let Ok(result) = run.await {
-                kept.lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(
-                        result.session_id.clone(),
-                        KeptTranscript {
-                            agent,
-                            alias,
-                            messages: result.transcript,
-                        },
-                    );
-            }
-        });
-    }
-}
-
-impl TaskTranscriptStore {
-    fn handle(&self) -> Arc<Mutex<HashMap<String, KeptTranscript>>> {
-        Arc::clone(&self.shared)
-    }
 }
 
 fn truncate_description(task: &str) -> String {

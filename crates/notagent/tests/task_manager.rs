@@ -948,3 +948,211 @@ async fn stops_everything_and_suppresses_the_notes_nobody_is_left_to_read() {
         vec![Some(true)]
     );
 }
+
+async fn wait_until_released(task: &std::sync::Weak<dyn BackgroundTask>) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while task.strong_count() != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("finished tasks must release their runtime objects");
+}
+
+#[tokio::test]
+async fn finished_tasks_release_their_runtime_and_keep_output_and_wait_semantics() {
+    for detached in [false, true] {
+        let (_directory, store) = workspace();
+        let manager = TaskManager::new(Arc::clone(&store), TaskManagerOptions::default());
+        let task = immediate(TaskSettlementStatus::Completed, "full answer");
+        let weak = Arc::downgrade(&task);
+        let id = manager
+            .register(
+                task,
+                RegisterTaskOptions {
+                    detached,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        manager.wait(&id, 2000, None).await;
+        wait_until_released(&weak).await;
+        assert_eq!(manager.get(&id).unwrap().status(), TaskStatus::Completed);
+        assert_eq!(
+            manager.wait_for_foreground_release(&id).await,
+            Some(ForegroundRelease::Terminal)
+        );
+        assert_eq!(
+            manager.wait(&id, 2000, None).await.unwrap().status(),
+            TaskStatus::Completed
+        );
+        assert_eq!(
+            manager.stop(&id, None).await.unwrap().status(),
+            TaskStatus::Completed
+        );
+        assert_eq!(manager.detach(&id).unwrap().status(), TaskStatus::Completed);
+        let snapshot = manager.output_snapshot(&id, 6).await;
+        assert_eq!(snapshot.preview, "answer");
+        assert_eq!(snapshot.total_bytes, 11);
+        assert!(snapshot.truncated);
+        assert_eq!(snapshot.full_output_available, detached);
+        assert_eq!(store.log_exists(&id), detached);
+        assert_eq!(manager.read_output(&id, None).await, "full answer");
+        manager.suppress_notification(&id).await;
+        assert_eq!(
+            manager.get(&id).unwrap().base().notification_suppressed,
+            Some(true)
+        );
+    }
+}
+
+#[tokio::test]
+async fn retirement_keeps_registration_order_and_does_not_duplicate_reconciled_tasks() {
+    let (_directory, store) = workspace();
+    let manager = TaskManager::new(store, TaskManagerOptions::default());
+    let mut ids = Vec::new();
+    for _ in 0..8 {
+        let task = immediate(TaskSettlementStatus::Completed, "done");
+        let weak = Arc::downgrade(&task);
+        let id = manager
+            .register(task, RegisterTaskOptions::default())
+            .await
+            .unwrap();
+        wait_until_released(&weak).await;
+        ids.push(id);
+    }
+    manager.reconcile().await;
+    assert_eq!(
+        manager
+            .list(false, None)
+            .iter()
+            .map(|info| info.task_id().to_owned())
+            .collect::<Vec<_>>(),
+        ids
+    );
+    assert!(manager.list(true, None).is_empty());
+}
+
+#[tokio::test]
+async fn an_archive_failure_keeps_the_runtime_output_readable() {
+    let directory = tempfile::tempdir().unwrap();
+    let blocked = directory.path().join("blocked");
+    std::fs::write(&blocked, "not a directory").unwrap();
+    let manager = TaskManager::new(
+        Arc::new(TaskStore::new(blocked)),
+        TaskManagerOptions::default(),
+    );
+    let task = immediate(TaskSettlementStatus::Completed, "keep this answer");
+    let weak = Arc::downgrade(&task);
+    let id = manager
+        .register(
+            task,
+            RegisterTaskOptions {
+                detached: false,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    manager.wait_for_foreground_release(&id).await;
+    assert_eq!(manager.read_output(&id, None).await, "keep this answer");
+    assert!(
+        weak.upgrade().is_some(),
+        "failed storage must not discard the only output copy"
+    );
+}
+
+struct SettledButBusy {
+    settled: tokio_util::sync::CancellationToken,
+    finish: tokio_util::sync::CancellationToken,
+}
+
+impl BackgroundTask for SettledButBusy {
+    fn kind(&self) -> TaskKind {
+        TaskKind::Shell
+    }
+    fn id_prefix(&self) -> &str {
+        "bash"
+    }
+    fn description(&self) -> String {
+        "settled but unwinding".to_owned()
+    }
+    fn to_info(&self, base: TaskInfoBase) -> TaskInfo {
+        TaskInfo::Shell(ShellTaskInfo {
+            base,
+            command: "true".to_owned(),
+            pid: 3,
+            exit_code: Some(0),
+        })
+    }
+    fn start<'a>(&'a self, sink: TaskSink) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            sink.append_output("final");
+            sink.settle(TaskSettlement::new(TaskSettlementStatus::Completed))
+                .await;
+            sink.append_output("late output must not change a terminal result");
+            self.settled.cancel();
+            self.finish.cancelled().await;
+            Ok(())
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_terminal_status_does_not_retire_work_that_has_not_returned() {
+    let (_directory, store) = workspace();
+    let manager = TaskManager::new(store, TaskManagerOptions::default());
+    let settled = CancellationToken::new();
+    let finish = CancellationToken::new();
+    let task: Arc<dyn BackgroundTask> = Arc::new(SettledButBusy {
+        settled: settled.clone(),
+        finish: finish.clone(),
+    });
+    let weak = Arc::downgrade(&task);
+    let id = manager
+        .register(task, RegisterTaskOptions::default())
+        .await
+        .unwrap();
+    settled.cancelled().await;
+    assert!(
+        weak.upgrade().is_some(),
+        "the still-running future owns its resources"
+    );
+    assert_eq!(manager.read_output(&id, None).await, "final");
+    finish.cancel();
+    wait_until_released(&weak).await;
+    assert_eq!(manager.read_output(&id, None).await, "final");
+}
+
+#[tokio::test]
+async fn cancellation_before_start_releases_the_unused_task() {
+    let (_directory, store) = workspace();
+    let owner = Arc::new(Mutex::new(None::<TaskManager>));
+    let callback_owner = Arc::clone(&owner);
+    let manager = TaskManager::new(
+        store,
+        TaskManagerOptions {
+            on_registered: Some(Arc::new(move |info| {
+                let manager = callback_owner.lock().unwrap().as_ref().unwrap().clone();
+                Box::pin(async move {
+                    manager.stop(info.task_id(), None).await;
+                })
+            })),
+            ..Default::default()
+        },
+    );
+    *owner.lock().unwrap() = Some(manager.clone());
+    let task = immediate(TaskSettlementStatus::Completed, "must never run");
+    let weak = Arc::downgrade(&task);
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        manager.register(task, RegisterTaskOptions::default()),
+    )
+    .await;
+    owner.lock().unwrap().take();
+    let id = result.unwrap().unwrap();
+    wait_until_released(&weak).await;
+    assert_eq!(manager.get(&id).unwrap().status(), TaskStatus::Killed);
+    assert_eq!(manager.read_output(&id, None).await, "");
+}

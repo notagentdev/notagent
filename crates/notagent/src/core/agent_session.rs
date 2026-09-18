@@ -1811,7 +1811,15 @@ impl AgentSession {
                 let weak = Arc::downgrade(self);
                 Arc::new(move || weak.upgrade().map(|session| session.child_tool_options()))
             }),
-            transcripts: TaskTranscriptStore::default(),
+            transcripts: TaskTranscriptStore::new(
+                get_session_tasks_dir(
+                    self.session_manager
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .get_session_id(),
+                )
+                .join("subagents"),
+            ),
             cwd: Some({
                 let cwd = self.cwd.clone();
                 Arc::new(move || cwd.clone())

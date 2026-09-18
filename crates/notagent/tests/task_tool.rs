@@ -82,6 +82,8 @@ struct Harness {
     tool: notagent::core::tools::task::TaskToolDefinition,
     manager: TaskManager,
     calls: Arc<AtomicUsize>,
+    sources: TaskToolSources,
+    contexts: Arc<std::sync::Mutex<Vec<Value>>>,
 }
 
 impl Harness {
@@ -124,6 +126,8 @@ fn harness_with_stream(
 ) -> Harness {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&calls);
+    let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = Arc::clone(&contexts);
     let parent = Agent::new(AgentOptions {
         model: Some(model()),
         system_prompt: Some("P".to_owned()),
@@ -131,7 +135,11 @@ fn harness_with_stream(
         get_api_key: Some(Arc::new(|_provider| {
             Box::pin(async { Some("test-key".to_owned()) })
         })),
-        stream_fn: Some(Arc::new(move |_model, _context, _options| {
+        stream_fn: Some(Arc::new(move |_model, context, _options| {
+            observed
+                .lock()
+                .unwrap()
+                .push(serde_json::to_value(context).unwrap());
             let index = counter.fetch_add(1, Ordering::SeqCst) + 1;
             Box::pin(async move {
                 let stream = create_assistant_message_event_stream();
@@ -161,7 +169,7 @@ fn harness_with_stream(
         TaskManagerOptions::default(),
     );
     let source_manager = manager.clone();
-    let tool = create_task_tool_definition(Some(TaskToolSources {
+    let sources = TaskToolSources {
         modes: Arc::new(modes),
         skills: None,
         aliases: Some(aliases),
@@ -173,15 +181,20 @@ fn harness_with_stream(
         resolve_tool: None,
         tool_options: None,
         hooks: None,
-        transcripts: Default::default(),
+        transcripts: notagent::core::tools::task::TaskTranscriptStore::new(
+            directory.path().join("subagents"),
+        ),
         cwd: None,
         subagent_model: None,
-    }));
+    };
+    let tool = create_task_tool_definition(Some(sources.clone()));
     Harness {
         _directory: directory,
         tool,
         manager,
         calls,
+        sources,
+        contexts,
     }
 }
 
@@ -711,5 +724,40 @@ async fn refuses_a_skill_it_cannot_resolve_rather_than_starting_without_it() {
         error.message.contains("Unknown skill \"nonexistent\""),
         "{}",
         error.message
+    );
+}
+
+#[tokio::test]
+async fn a_rebuilt_tool_continues_from_disk_with_the_full_prior_context() {
+    let mut harness = harness(ShellId::Worker, false);
+    let first = harness
+        .run(json!({"tasks": ["remember the violet lighthouse"], "agent": "worker"}))
+        .await
+        .unwrap();
+    let id = results_of(&first)[0]["sessionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    harness.sources.transcripts = notagent::core::tools::task::TaskTranscriptStore::new(
+        harness._directory.path().join("subagents"),
+    );
+    harness.tool = create_task_tool_definition(Some(harness.sources.clone()));
+    harness
+        .run(json!({"tasks": ["continue the investigation"], "agent": "worker", "session_id": id}))
+        .await
+        .unwrap();
+    let contexts = harness.contexts.lock().unwrap();
+    let restored = contexts.last().unwrap().to_string();
+    assert!(
+        restored.contains("violet lighthouse"),
+        "continuation must restore the prior user task"
+    );
+    assert!(
+        restored.contains("answer 1"),
+        "continuation must restore the prior child response"
+    );
+    assert!(
+        restored.contains("continue the investigation"),
+        "continuation must include the new task"
     );
 }
