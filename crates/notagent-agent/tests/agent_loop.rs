@@ -118,6 +118,7 @@ fn base_config(stream_fn_model: Model) -> AgentLoopConfig {
         model: stream_fn_model,
         convert_to_llm: identity_converter(),
         transform_context: None,
+        prepare_context: None,
         get_api_key: None,
         should_stop_after_turn: None,
         prepare_next_turn: None,
@@ -1387,4 +1388,64 @@ async fn continue_resumes_without_emitting_prompt_events() {
         1,
         "only the new assistant message is returned"
     );
+}
+
+#[tokio::test]
+async fn request_preparation_sees_steering_and_can_stop_before_the_provider() {
+    let delivered = Arc::new(AtomicUsize::new(0));
+    let mut config = base_config(model());
+    config.get_steering_messages = Some(Arc::new(move || {
+        let delivered = Arc::clone(&delivered);
+        Box::pin(async move {
+            if delivered.fetch_add(1, Ordering::SeqCst) == 0 {
+                vec![user_message("steering must be included")]
+            } else {
+                Vec::new()
+            }
+        })
+    }));
+    let preparations = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&preparations);
+    config.prepare_context = Some(Arc::new(move |messages, _signal| {
+        let count = Arc::clone(&count);
+        Box::pin(async move {
+            if count.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Ok(messages);
+            }
+            assert!(
+                matches!(messages.last(), Some(AgentMessage::User(user))
+                if matches!(&user.content, UserContent::Text(text) if text == "steering must be included")),
+                "preparation must see queued input before measuring the next request"
+            );
+            Err(notagent_agent::agent::AgentError(
+                "preparation failed".to_string(),
+            ))
+        })
+    }));
+    let (stream_fn, calls) = scripted_stream_fn(vec![assistant_message(
+        vec![AssistantContent::Text(TextContent::new("first"))],
+        StopReason::Stop,
+    )]);
+    let (events, messages) = collect(agent_loop(
+        vec![user_message("run")],
+        AgentContext {
+            system_prompt: String::new(),
+            messages: Vec::new(),
+            tools: None,
+        },
+        config,
+        None,
+        Some(stream_fn),
+    ))
+    .await;
+    assert_eq!(preparations.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "failed preparation must prevent the next provider request"
+    );
+    assert!(
+        matches!(messages.last(), Some(AgentMessage::Assistant(message)) if message.stop_reason == StopReason::Error)
+    );
+    assert_eq!(event_names(&events).last(), Some(&"agent_end"));
 }

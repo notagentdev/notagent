@@ -540,8 +540,19 @@ pub async fn generate_summary_with_usage(
         ));
     }
 
+    if response.stop_reason == StopReason::Aborted {
+        return Err("Compaction cancelled".to_string());
+    }
+    if response.stop_reason == StopReason::Length {
+        return Err("Summarization stopped before the summary was complete".to_string());
+    }
+    let text = content_text(&response.content);
+    if text.trim().is_empty() {
+        return Err("Summarization returned an empty summary".to_string());
+    }
+
     Ok(GeneratedSummary {
-        text: content_text(&response.content),
+        text,
         usage: response.usage,
         dropped_tokens: conversation.dropped_tokens,
     })
@@ -714,18 +725,27 @@ pub async fn compact(
         // retry at half the budget covers that without turning the rejection
         // into the mechanism: a compaction that cannot be written at all costs
         // the session, and a second call costs one round trip.
-        Err(error) if budget > 0 => generate_summary_with_usage(
-            &preparation.messages_to_summarize,
-            model,
-            preparation.settings.reserve_tokens,
-            budget / 2,
-            custom_instructions,
-            request,
-        )
-        .await
-        .map_err(|retry_error| {
-            format!("{error}\nRetrying with a smaller request also failed: {retry_error}")
-        })?,
+        Err(error)
+            if budget > 0
+                && error != "Compaction cancelled"
+                && !request
+                    .signal
+                    .as_ref()
+                    .is_some_and(CancellationToken::is_cancelled) =>
+        {
+            generate_summary_with_usage(
+                &preparation.messages_to_summarize,
+                model,
+                preparation.settings.reserve_tokens,
+                budget / 2,
+                custom_instructions,
+                request,
+            )
+            .await
+            .map_err(|retry_error| {
+                format!("{error}\nRetrying with a smaller request also failed: {retry_error}")
+            })?
+        }
         Err(error) => return Err(error),
     };
 

@@ -525,6 +525,23 @@ async fn stream_assistant_response(
         return finish_cancelled_response(context, config, false, &emit).await;
     }
 
+    if let Some(prepare_context) = &config.prepare_context {
+        let prepared = prepare_context(context.messages.clone(), signal.clone()).await;
+        if signal.as_ref().is_some_and(CancellationToken::is_cancelled) {
+            return finish_cancelled_response(context, config, false, &emit).await;
+        }
+        match prepared {
+            Ok(messages) => context.messages = messages,
+            Err(error) => {
+                let mut message = create_aborted_assistant_message(config, None);
+                message.stop_reason = StopReason::Error;
+                message.error_message = Some(error.to_string());
+                finish_assistant_message(context, &message, false, &emit).await;
+                return message;
+            }
+        }
+    }
+
     let mut messages = context.messages.clone();
     if let Some(transform_context) = &config.transform_context {
         messages = transform_context(messages, signal.clone()).await;

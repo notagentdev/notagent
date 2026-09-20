@@ -8541,9 +8541,10 @@ impl InteractiveMode {
                 will_retry,
                 error_message,
             } => {
+                let resumes = will_retry && !aborted && result.is_some();
                 if self.settings().get_show_terminal_progress() {
                     self.ui
-                        .with_terminal(|terminal| terminal.set_progress(false));
+                        .with_terminal(|terminal| terminal.set_progress(resumes));
                 }
                 if self.escape_target == EscapeTarget::Compaction {
                     self.escape_target = EscapeTarget::Default;
@@ -8578,6 +8579,13 @@ impl InteractiveMode {
                             0,
                         )));
                     }
+                }
+                if resumes && self.working_visible {
+                    let message = self
+                        .working_message
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_WORKING_MESSAGE.to_owned());
+                    self.show_status_indicator(StatusIndicator::working(message, None));
                 }
                 self.flush_compaction_queue(will_retry).await;
                 self.ui.request_render();

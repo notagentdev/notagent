@@ -11,9 +11,9 @@ use crate::agent_loop::{AgentEventSink, run_agent_loop, run_agent_loop_continue}
 use crate::stream_fn::get_default_stream_fn;
 use crate::types::{
     AfterToolCallFn, AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool,
-    AgentToolResult, BeforeToolCallFn, BoxFuture, ConvertToLlmFn, GetApiKeyFn, PrepareNextTurnFn,
-    QueueMode, ShouldStopAfterTurnFn, StreamFn, ThinkingLevel, ToolExecutionMode,
-    TransformContextFn,
+    AgentToolResult, BeforeToolCallFn, BoxFuture, ConvertToLlmFn, GetApiKeyFn, PrepareContextFn,
+    PrepareNextTurnFn, QueueMode, ShouldStopAfterTurnFn, StreamFn, ThinkingLevel,
+    ToolExecutionMode, TransformContextFn,
 };
 
 pub fn default_model() -> Model {
@@ -115,6 +115,7 @@ pub struct AgentOptions {
     pub messages: Option<Vec<AgentMessage>>,
     pub convert_to_llm: Option<ConvertToLlmFn>,
     pub transform_context: Option<TransformContextFn>,
+    pub prepare_context: Option<PrepareContextFn>,
     pub stream_fn: Option<StreamFn>,
     pub get_api_key: Option<GetApiKeyFn>,
     pub on_payload: Option<notagent_ai::types::OnPayload<Model>>,
@@ -515,6 +516,7 @@ impl Agent {
                 .clone()
                 .unwrap_or_else(default_convert_to_llm),
             transform_context: options.transform_context.clone(),
+            prepare_context: options.prepare_context.clone(),
             get_api_key: options.get_api_key.clone(),
             should_stop_after_turn: options.should_stop_after_turn.clone(),
             prepare_next_turn: options.prepare_next_turn.clone(),

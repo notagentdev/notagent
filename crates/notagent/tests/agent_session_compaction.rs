@@ -409,3 +409,285 @@ async fn the_context_usage_reports_the_catalogs_current_window() {
     // The session snapshot still says otherwise — the catalog outranks it.
     assert_ne!(harness.model().context_window, 50_000);
 }
+
+struct CompactionOutputTool {
+    parameters: serde_json::Value,
+}
+
+impl notagent_agent::types::AgentTool for CompactionOutputTool {
+    fn name(&self) -> &str {
+        "compaction_output"
+    }
+    fn label(&self) -> &str {
+        "Compaction output"
+    }
+    fn description(&self) -> &str {
+        "Returns output of a requested size"
+    }
+    fn parameters(&self) -> &serde_json::Value {
+        &self.parameters
+    }
+    fn execute<'a>(
+        &'a self,
+        _id: &'a str,
+        params: serde_json::Value,
+        _signal: Option<tokio_util::sync::CancellationToken>,
+        _update: Option<notagent_agent::types::AgentToolUpdateCallback>,
+    ) -> notagent_agent::types::BoxFuture<
+        'a,
+        Result<notagent_agent::types::AgentToolResult, notagent_agent::types::ToolExecutionError>,
+    > {
+        Box::pin(async move {
+            let repetitions = params["repetitions"].as_f64().unwrap() as usize;
+            Ok(notagent_agent::types::AgentToolResult {
+                content: vec![notagent_ai::types::TextOrImageContent::Text(
+                    notagent_ai::types::TextContent::new("old-tool-output ".repeat(repetitions)),
+                )],
+                ..Default::default()
+            })
+        })
+    }
+}
+
+fn tool_compaction_harness(enabled: bool) -> suite::Harness {
+    create_harness(HarnessOptions {
+        settings: Some(json!({
+            "compaction": { "enabled": enabled, "retainedUserTokens": 100 },
+            "retry": { "enabled": false }
+        })),
+        runtime_window_override: Some(16_384 + 20_000),
+        tools: Some(vec![Arc::new(CompactionOutputTool {
+            parameters: json!({"type": "object", "properties": {"repetitions": {"type": "integer"}}, "required": ["repetitions"]}),
+        })]),
+        ..HarnessOptions::default()
+    })
+}
+
+fn output_call(id: &str, repetitions: usize) -> FauxResponseStep {
+    faux_assistant_message(
+        vec![notagent_ai::providers::faux::faux_tool_call(
+            "compaction_output",
+            json!({"repetitions": repetitions}),
+            Some(id.to_string()),
+        )],
+        StopReason::ToolUse,
+    )
+    .into()
+}
+
+#[tokio::test]
+async fn compacts_tool_results_before_the_next_request_and_keeps_the_new_context() {
+    let harness = tool_compaction_harness(true);
+    let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let responses = vec![
+        output_call("large", 6_000),
+        reply("## Goal\ncompact-marker: continue the task"),
+        output_call("small", 1),
+        reply("finished within the same turn"),
+    ];
+    harness.set_responses(
+        responses
+            .into_iter()
+            .map(|response| {
+                let requests = Arc::clone(&requests);
+                let FauxResponseStep::Message(response) = response else {
+                    panic!("expected a fixed response")
+                };
+                FauxResponseStep::Factory(Arc::new(move |context, _| {
+                    requests
+                        .lock()
+                        .unwrap()
+                        .push(serde_json::to_string(context).unwrap());
+                    response.clone()
+                }))
+            })
+            .collect(),
+    );
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        harness
+            .session
+            .prompt("complete this task", PromptOptions::default()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(harness.pending_response_count(), 0);
+    let requests = requests.lock().unwrap();
+    assert_eq!(
+        requests.len(),
+        4,
+        "one summary must occur between the two tool iterations"
+    );
+    assert!(
+        requests[1].contains("old-tool-output"),
+        "the summary must include completed tool results"
+    );
+    assert!(
+        requests[2].contains("compact-marker"),
+        "the next request must use the summary"
+    );
+    assert!(
+        !requests[2].contains("old-tool-output"),
+        "the pre-compaction snapshot must be replaced"
+    );
+    assert!(
+        requests[3].contains("compact-marker"),
+        "later iterations must retain the summary"
+    );
+    assert!(
+        requests[3].len() < 30_000,
+        "old large tool results must not return"
+    );
+    let events = harness.events();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, AgentSessionEvent::CompactionStart { .. }))
+            .count(),
+        1
+    );
+    assert!(
+        harness
+            .session
+            .messages()
+            .iter()
+            .any(|message| matches!(message, AgentMessage::CompactionSummary(_)))
+    );
+    assert!(!harness.session.is_compacting());
+}
+
+#[tokio::test]
+async fn a_failed_mid_turn_compaction_stops_before_another_provider_request() {
+    let harness = tool_compaction_harness(true);
+    let mut failure = faux_assistant_message(Vec::new(), StopReason::Error);
+    failure.error_message = Some("summary unavailable".to_string());
+    harness.set_responses(vec![
+        output_call("large", 6_000),
+        failure.clone().into(),
+        failure.into(),
+        reply("must not run"),
+    ]);
+    harness
+        .session
+        .prompt("complete this task", PromptOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        harness.pending_response_count(),
+        1,
+        "exhausted summary attempts must not restart compaction or continue with overflowing history"
+    );
+    assert!(
+        !harness
+            .session
+            .messages()
+            .iter()
+            .any(|message| matches!(message, AgentMessage::CompactionSummary(_))),
+        "failed compaction must preserve the original context"
+    );
+    assert!(
+        harness
+            .session
+            .messages()
+            .iter()
+            .any(|message| matches!(message, AgentMessage::ToolResult(_)))
+    );
+    assert!(!harness.session.is_compacting());
+}
+
+#[tokio::test]
+async fn cancelling_mid_turn_compaction_preserves_history_and_stops_the_turn() {
+    let harness = tool_compaction_harness(true);
+    let weak = Arc::downgrade(&harness.session);
+    let _subscription = harness.session.subscribe(Arc::new(move |event| {
+        if matches!(event, AgentSessionEvent::CompactionStart { .. }) {
+            weak.upgrade().unwrap().abort_compaction();
+        }
+    }));
+    harness.set_responses(vec![
+        output_call("large", 6_000),
+        reply("summary must not be applied"),
+        reply("must not run"),
+    ]);
+    harness
+        .session
+        .prompt("complete this task", PromptOptions::default())
+        .await
+        .unwrap();
+    assert!(
+        !harness
+            .session
+            .messages()
+            .iter()
+            .any(|message| matches!(message, AgentMessage::CompactionSummary(_)))
+    );
+    assert!(
+        matches!(harness.session.messages().last(), Some(AgentMessage::Assistant(message)) if message.stop_reason == StopReason::Aborted)
+    );
+    assert!(
+        harness.pending_response_count() >= 1,
+        "cancellation must prevent continuation"
+    );
+    assert!(!harness.session.is_compacting());
+}
+
+#[tokio::test]
+async fn disabled_auto_compaction_leaves_the_tool_loop_unmodified() {
+    let harness = tool_compaction_harness(false);
+    harness.set_responses(vec![output_call("large", 6_000), reply("finished")]);
+    harness
+        .session
+        .prompt("complete this task", PromptOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(harness.pending_response_count(), 0);
+    assert!(
+        !harness
+            .events()
+            .iter()
+            .any(|event| matches!(event, AgentSessionEvent::CompactionStart { .. }))
+    );
+}
+
+#[tokio::test]
+async fn empty_or_truncated_mid_turn_summaries_never_replace_the_history() {
+    for (text, stop) in [
+        ("", StopReason::Stop),
+        ("partial summary", StopReason::Length),
+    ] {
+        let harness = tool_compaction_harness(true);
+        let summary = faux_assistant_message(vec![faux_text(text)], stop);
+        harness.set_responses(vec![
+            output_call("large", 6_000),
+            summary.clone().into(),
+            summary.into(),
+            reply("must not run"),
+        ]);
+        harness
+            .session
+            .prompt("complete this task", PromptOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            harness.pending_response_count(),
+            1,
+            "unusable summaries must prevent continuation"
+        );
+        assert!(
+            !harness
+                .session
+                .messages()
+                .iter()
+                .any(|message| matches!(message, AgentMessage::CompactionSummary(_))),
+            "unusable summaries must never replace the original history"
+        );
+        assert!(
+            harness
+                .session
+                .messages()
+                .iter()
+                .any(|message| matches!(message, AgentMessage::ToolResult(_)))
+        );
+    }
+}

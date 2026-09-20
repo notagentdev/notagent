@@ -118,6 +118,17 @@ pub type TransformContextFn = Arc<
         + Sync,
 >;
 
+/// Prepares the authoritative history before each request, after tool results
+/// and queued input have been recorded. Failure prevents the provider call.
+pub type PrepareContextFn = Arc<
+    dyn Fn(
+            Vec<AgentMessage>,
+            Option<CancellationToken>,
+        ) -> BoxFuture<'static, Result<Vec<AgentMessage>, crate::agent::AgentError>>
+        + Send
+        + Sync,
+>;
+
 /// Resolves the API key for each turn so short-lived credentials can refresh.
 pub type GetApiKeyFn = Arc<dyn Fn(String) -> BoxFuture<'static, Option<String>> + Send + Sync>;
 
@@ -160,6 +171,7 @@ pub struct AgentLoopConfig {
     pub model: Model,
     pub convert_to_llm: ConvertToLlmFn,
     pub transform_context: Option<TransformContextFn>,
+    pub prepare_context: Option<PrepareContextFn>,
     pub get_api_key: Option<GetApiKeyFn>,
     pub should_stop_after_turn: Option<ShouldStopAfterTurnFn>,
     pub prepare_next_turn: Option<PrepareNextTurnFn>,
@@ -177,6 +189,7 @@ impl fmt::Debug for AgentLoopConfig {
             .debug_struct("AgentLoopConfig")
             .field("model", &self.model.id)
             .field("transform_context", &self.transform_context.is_some())
+            .field("prepare_context", &self.prepare_context.is_some())
             .field("get_api_key", &self.get_api_key.is_some())
             .field(
                 "should_stop_after_turn",

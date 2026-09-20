@@ -516,6 +516,7 @@ pub struct AgentSession {
     // Compaction state
     compaction_signal: Mutex<Option<CancellationToken>>,
     auto_compaction_signal: Mutex<Option<CancellationToken>>,
+    context_preparation_failed: AtomicBool,
     overflow_recovery_attempted: AtomicBool,
     branch_summary_signal: Mutex<Option<CancellationToken>>,
 
@@ -576,6 +577,7 @@ impl AgentSession {
             lent_tools: Mutex::new(None),
             compaction_signal: Mutex::new(None),
             auto_compaction_signal: Mutex::new(None),
+            context_preparation_failed: AtomicBool::new(false),
             overflow_recovery_attempted: AtomicBool::new(false),
             branch_summary_signal: Mutex::new(None),
             retry_signal: Mutex::new(None),
@@ -612,6 +614,7 @@ impl AgentSession {
         *session.unsubscribe_agent.lock().expect("poisoned") = Some(Box::new(unsubscribe));
 
         session.install_agent_next_turn_refresh();
+        session.install_agent_context_preparation();
         session.install_agent_after_tool_call();
         session.build_runtime(BuildRuntimeOptions {
             active_tool_names: session.initial_active_tool_names.clone(),
@@ -816,6 +819,9 @@ impl AgentSession {
     }
 
     fn will_retry_after_agent_end(&self, messages: &[AgentMessage]) -> bool {
+        if self.context_preparation_failed.load(Ordering::SeqCst) {
+            return false;
+        }
         let settings = self.settings_manager.get_retry_settings();
         if !settings.enabled || self.retry_attempt.load(Ordering::SeqCst) >= settings.max_retries {
             return false;
@@ -2876,6 +2882,11 @@ impl AgentSession {
 
     async fn handle_post_agent_run(self: &Arc<Self>) -> bool {
         let message = self.last_assistant_message.lock().expect("poisoned").take();
+        // A failed request preparation already reported its compaction error.
+        // Retrying here would repeat the failed summary or send the full history.
+        let preparation_failed = self
+            .context_preparation_failed
+            .swap(false, Ordering::SeqCst);
         let Some(message) = message else {
             return false;
         };
@@ -2885,6 +2896,10 @@ impl AgentSession {
             // Letting one survive would immediately create a fresh run with a
             // fresh cancellation token after Escape.
             self.clear_queue();
+            return false;
+        }
+
+        if preparation_failed {
             return false;
         }
 
@@ -3752,6 +3767,115 @@ impl AgentSession {
 
     fn compaction_settings(&self) -> CompactionSettings {
         self.settings_manager.get_compaction_settings().into()
+    }
+
+    fn install_agent_context_preparation(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        self.agent.update_options(|options| {
+            let previous = options.prepare_context.clone();
+            options.prepare_context = Some(Arc::new(move |messages, signal| {
+                let weak = weak.clone();
+                let previous = previous.clone();
+                Box::pin(async move {
+                    let messages = match previous {
+                        Some(previous) => previous(messages, signal.clone()).await?,
+                        None => messages,
+                    };
+                    let Some(session) = weak.upgrade() else {
+                        return Ok(messages);
+                    };
+                    session.compact_before_request(messages, signal).await
+                })
+            }));
+        });
+    }
+
+    async fn compact_before_request(
+        self: &Arc<Self>,
+        messages: Vec<AgentMessage>,
+        parent_signal: Option<CancellationToken>,
+    ) -> Result<Vec<AgentMessage>, notagent_agent::agent::AgentError> {
+        let settings = self.compaction_settings();
+        if parent_signal
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+            || !should_compact(
+                estimate_context_tokens(&messages).tokens,
+                self.current_context_window(),
+                &settings,
+            )
+        {
+            return Ok(messages);
+        }
+        let entries = self
+            .session_manager
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_branch(None)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        if prepare_compaction(&entries, &settings).is_none() {
+            return Ok(messages);
+        }
+
+        let signal = parent_signal
+            .as_ref()
+            .map(CancellationToken::child_token)
+            .unwrap_or_default();
+        *self
+            .auto_compaction_signal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(signal.clone());
+        self.emit(AgentSessionEvent::CompactionStart {
+            reason: CompactionReason::Threshold,
+        });
+        let outcome = self
+            .run_compaction(CompactionReason::Threshold, None, signal.clone(), true)
+            .await;
+        *self
+            .auto_compaction_signal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+
+        match outcome {
+            Ok(result) if !signal.is_cancelled() => {
+                self.emit(AgentSessionEvent::CompactionEnd {
+                    reason: CompactionReason::Threshold,
+                    result: Some(Box::new(result)),
+                    aborted: false,
+                    will_retry: true,
+                    error_message: None,
+                });
+                // The loop owns a separate snapshot. Replacing only Agent state
+                // would leave the next and all later requests using stale history.
+                Ok(self.agent.state().messages)
+            }
+            outcome => {
+                let aborted = signal.is_cancelled();
+                let error = if aborted {
+                    "Compaction cancelled".to_string()
+                } else {
+                    format!(
+                        "Auto-compaction failed: {}",
+                        outcome.err().unwrap_or_default()
+                    )
+                };
+                self.context_preparation_failed
+                    .store(true, Ordering::SeqCst);
+                if aborted && let Some(parent_signal) = parent_signal {
+                    parent_signal.cancel();
+                }
+                self.emit(AgentSessionEvent::CompactionEnd {
+                    reason: CompactionReason::Threshold,
+                    result: None,
+                    aborted,
+                    will_retry: false,
+                    error_message: (!aborted).then(|| error.clone()),
+                });
+                Err(notagent_agent::agent::AgentError(error))
+            }
+        }
     }
 
     /// Compacts the session context by hand. Aborts the current run first.
