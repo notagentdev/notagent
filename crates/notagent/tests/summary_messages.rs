@@ -117,7 +117,7 @@ fn badge_style_compaction_shares_the_badge_row_with_the_detail() {
         .map(|line| strip_ansi(line).trim_end().to_string())
         .collect();
     assert_eq!(collapsed.len(), 1, "{collapsed:?}");
-    assert!(collapsed[0].contains("COMPACTION"), "{collapsed:?}");
+    assert!(collapsed[0].contains("Compaction"), "{collapsed:?}");
     assert!(
         collapsed[0].contains("Compacted from 123,456 tokens ("),
         "{collapsed:?}"
@@ -149,7 +149,7 @@ fn badge_style_branch_summary_shares_the_badge_row_with_the_detail() {
         .map(|line| strip_ansi(line).trim_end().to_string())
         .collect();
     assert_eq!(collapsed.len(), 1, "{collapsed:?}");
-    assert!(collapsed[0].contains("BRANCH"), "{collapsed:?}");
+    assert!(collapsed[0].contains("Branch"), "{collapsed:?}");
     assert!(collapsed[0].contains("Branch summary ("), "{collapsed:?}");
 
     component.set_expanded(true);

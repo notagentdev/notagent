@@ -1,3 +1,4 @@
+use crate::core::tools::render_utils::tool_display_name;
 use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 
 #[derive(Clone, Copy)]
@@ -19,5 +20,5 @@ pub fn dot(state: MarkerState) -> String {
 }
 
 pub fn heading(label: &str, state: MarkerState) -> String {
-    format!("{} {}", dot(state), theme().bold(label))
+    format!("{} {}", dot(state), theme().bold(&tool_display_name(label)))
 }

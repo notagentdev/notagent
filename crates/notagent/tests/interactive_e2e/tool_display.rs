@@ -106,7 +106,7 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
         // longer than the 80 columns of the terminal. Dot mode names the tool beside its status marker. A read-only
         // tool would be grouped into the explore block instead, so this uses
         // one that keeps its own row.
-        driver.wait_for("● patch").await;
+        driver.wait_for("● Patch").await;
         driver.wait_for_across_wraps("does-not-exist.txt").await;
         driver.assert_shows("Could not edit file");
         driver.wait_for("The file is missing.").await;
@@ -274,7 +274,7 @@ async fn a_writing_tool_ends_the_exploration_run() {
             "the write splits the exploration in two:\n{screen}"
         );
         assert!(
-            screen.contains("● write"),
+            screen.contains("● Write"),
             "the write keeps its own row:\n{screen}"
         );
     })

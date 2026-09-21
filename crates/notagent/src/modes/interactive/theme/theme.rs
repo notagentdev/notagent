@@ -405,7 +405,11 @@ pub fn set_block_style(style: BlockStyle) {
 /// starts clean.
 pub fn badge(theme: &Theme, background: ThemeBg, label: &str) -> String {
     if block_style() == BlockStyle::Dot {
-        return format!("{} {}", theme.fg(ThemeColor::Dim, "●"), theme.bold(label));
+        return format!(
+            "{} {}",
+            theme.fg(ThemeColor::Dim, "●"),
+            theme.bold(&crate::core::tools::render_utils::tool_display_name(label))
+        );
     }
     format!(
         "{}{}{}\x1b[0m",
@@ -445,10 +449,12 @@ fn badge_text_ansi(theme: &Theme) -> &str {
     theme.get_fg_ansi(ThemeColor::BadgeText)
 }
 
-/// Badge labels read as words: uppercase with pill padding, underscores
-/// become spaces (the reference's `badge_label`).
+/// Badge labels use the same display names as tool headings, with pill padding.
 fn badge_label(label: &str) -> String {
-    format!(" {} ", label.to_uppercase().replace('_', " "))
+    format!(
+        " {} ",
+        crate::core::tools::render_utils::tool_display_name(label).replace('_', " ")
+    )
 }
 
 /// Serialises the tests that install a theme or a block style.

@@ -188,7 +188,12 @@ impl ToolDefinition for TaskListToolDefinition {
             context,
             &format!(
                 "{} {}",
-                theme.fg(ThemeColor::ToolTitle, &theme.bold("task_list")),
+                theme.fg(
+                    ThemeColor::ToolTitle,
+                    &theme.bold(&crate::core::tools::render_utils::tool_display_name(
+                        "task_list"
+                    ))
+                ),
                 theme.fg(ThemeColor::Muted, scope)
             ),
         ))
@@ -323,7 +328,12 @@ impl ToolDefinition for TaskOutputToolDefinition {
             context,
             &format!(
                 "{} {}",
-                theme.fg(ThemeColor::ToolTitle, &theme.bold("task_output")),
+                theme.fg(
+                    ThemeColor::ToolTitle,
+                    &theme.bold(&crate::core::tools::render_utils::tool_display_name(
+                        "task_output"
+                    ))
+                ),
                 theme.fg(ThemeColor::Accent, &task_id)
             ),
         ))
@@ -488,7 +498,12 @@ impl ToolDefinition for TaskStopToolDefinition {
             context,
             &format!(
                 "{} {}",
-                theme.fg(ThemeColor::ToolTitle, &theme.bold("task_stop")),
+                theme.fg(
+                    ThemeColor::ToolTitle,
+                    &theme.bold(&crate::core::tools::render_utils::tool_display_name(
+                        "task_stop"
+                    ))
+                ),
                 theme.fg(ThemeColor::Accent, &task_id)
             ),
         ))

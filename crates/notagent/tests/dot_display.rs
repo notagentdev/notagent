@@ -64,7 +64,7 @@ fn tool_dots_distinguish_queue_partial_output_and_final_outcomes() {
         );
         let queued = render(&mut tool);
         assert!(!queued.contains(RUNNING_DOT), "queued tools cannot blink");
-        assert!(strip_ansi(&queued).contains("● bash"), "{queued:?}");
+        assert!(strip_ansi(&queued).contains("● Bash"), "{queued:?}");
         tool.mark_execution_started();
         assert!(render(&mut tool).contains(RUNNING_DOT));
         tool.update_result(result(false), true);

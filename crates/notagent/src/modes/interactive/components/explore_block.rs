@@ -460,12 +460,12 @@ impl Component for ExploreBlockComponent {
         };
 
         // In the badge style the block sheds surface and padding rows; the
-        // state moves into the EXPLORING/EXPLORED badge, with the runtime
+        // state moves into the Exploring/Explored badge, with the runtime
         // beside it (the reference's `BlockStyle::Bar` rendering).
         let badge_style = block_style().is_compact();
         let mut lines = if badge_style {
-            // The label carries the phase: EXPLORING while calls still run,
-            // EXPLORED once the block is closed and every call settled.
+            // The label carries the phase: Exploring while calls still run,
+            // Explored once the block is closed and every call settled.
             let label = if self.open || self.entries.iter().any(|entry| !entry.complete) {
                 "Exploring"
             } else {
@@ -864,7 +864,7 @@ mod tests {
         // below — no surface padding rows.
         let expected = vec![
             "",
-            "  EXPLORED  (0ms)",
+            "  Explored  (0ms)",
             "  Searched code workspace lock",
             "  1 search, 1 failed",
         ];
@@ -882,8 +882,8 @@ mod tests {
             &serde_json::json!({"pattern": "config"}),
         );
         let actual = rendered(&mut block).join("\n");
-        assert!(actual.contains("EXPLORING"), "{actual}");
-        assert!(!actual.contains("EXPLORED "), "{actual}");
+        assert!(actual.contains("Exploring"), "{actual}");
+        assert!(!actual.contains("Explored "), "{actual}");
     }
 
     #[test]
@@ -934,8 +934,8 @@ mod tests {
         assert!(!block.is_running(), "nothing will complete it now");
         assert_eq!(block.background(), ThemeBg::ToolErrorBg);
         let actual = rendered(&mut block).join("\n");
-        assert!(actual.contains("EXPLORED"), "{actual}");
-        assert!(!actual.contains("EXPLORING"), "{actual}");
+        assert!(actual.contains("Explored"), "{actual}");
+        assert!(!actual.contains("Exploring"), "{actual}");
         assert!(actual.contains("1 failed"), "{actual}");
     }
 
@@ -971,7 +971,7 @@ mod tests {
         block.complete_call("call-1", false);
         block.close();
         let actual = rendered(&mut block).join("\n");
-        assert!(actual.contains("EXPLORED"), "{actual}");
+        assert!(actual.contains("Explored"), "{actual}");
         assert!(!actual.contains("ms)"), "{actual}");
     }
 

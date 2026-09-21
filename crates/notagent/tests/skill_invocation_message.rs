@@ -79,7 +79,7 @@ fn badge_style_leads_with_a_skill_badge_on_one_row() {
     let mut component = SkillInvocationMessageComponent::new(skill_block(), None);
     let rendered = strip_ansi(&component.render(60).join("\n"));
 
-    assert!(rendered.contains("SKILL"), "{rendered}");
+    assert!(rendered.contains("Skill"), "{rendered}");
     assert!(!rendered.contains("[skill]"), "{rendered}");
     assert!(rendered.contains("commit"), "{rendered}");
     assert!(rendered.contains("to expand"), "{rendered}");

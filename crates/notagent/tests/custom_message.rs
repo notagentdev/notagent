@@ -68,7 +68,7 @@ fn badge_style_leads_with_a_type_badge_and_sheds_the_wash() {
     let raw = component.render(40).join("\n");
     let rendered = strip_ansi(&raw);
 
-    assert!(rendered.contains("TEST"), "{rendered}");
+    assert!(rendered.contains("Test"), "{rendered}");
     assert!(!rendered.contains("[test]"), "{rendered}");
     assert!(rendered.contains("custom"), "{rendered}");
 }

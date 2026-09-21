@@ -123,17 +123,38 @@ pub fn invalid_arg_text(theme: &Theme) -> String {
     theme.fg(ThemeColor::Error, "[invalid arg]")
 }
 
+/// Visible tool names are independent of the identifiers sent to the model.
+pub fn tool_display_name(name: &str) -> String {
+    let name = match name {
+        "patch_minified" | "multi_patch_minified" | "patch minified" | "multi patch minified" => {
+            "patch"
+        }
+        _ => name,
+    };
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 /// The call line's bold tool-name prefix, with its trailing space (takeover
 /// of the reference's `call_title`). The badge style returns an empty prefix:
 /// the badge above already names the tool, so the call line carries the
-/// arguments alone and the block header reads `READ (src/lib.rs)` instead of
+/// arguments alone and the block header reads `Read (src/lib.rs)` instead of
 /// repeating the name.
 pub fn call_title(theme: &Theme, title: &str) -> String {
     use crate::modes::interactive::theme::theme::block_style;
     if block_style().is_compact() {
         String::new()
     } else {
-        format!("{} ", theme.fg(ThemeColor::ToolTitle, &theme.bold(title)))
+        format!(
+            "{} ",
+            theme.fg(
+                ThemeColor::ToolTitle,
+                &theme.bold(&tool_display_name(title))
+            )
+        )
     }
 }
 

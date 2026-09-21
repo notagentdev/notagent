@@ -266,7 +266,7 @@ fn uses_built_in_rendering_for_built_in_overrides_without_custom_renderers() {
     );
 
     let rendered = strip_ansi(&component.render(120).join("\n"));
-    assert!(rendered.contains("patch"), "{rendered}");
+    assert!(rendered.contains("Patch"), "{rendered}");
     assert!(rendered.contains("README.md"), "{rendered}");
     assert!(!rendered.contains(":1"), "{rendered}");
 }
@@ -287,7 +287,7 @@ fn preserves_legacy_file_path_rendering_compatibility_for_built_in_tools() {
     );
 
     let rendered = strip_ansi(&component.render(120).join("\n"));
-    assert!(rendered.contains("read"), "{rendered}");
+    assert!(rendered.contains("Read"), "{rendered}");
     assert!(rendered.contains("README.md"), "{rendered}");
 }
 
@@ -308,7 +308,7 @@ fn falls_back_to_the_plain_header_and_output_without_any_definition() {
     component.update_result(text_result("the output"), false);
 
     let rendered = strip_ansi(&component.render(120).join("\n"));
-    assert!(rendered.contains("not_a_tool"), "{rendered}");
+    assert!(rendered.contains("Not_a_tool"), "{rendered}");
     assert!(rendered.contains("\"some\": \"argument\""), "{rendered}");
     assert!(rendered.contains("the output"), "{rendered}");
 }
@@ -346,7 +346,7 @@ fn badge_style_leads_with_a_state_badge_and_drops_the_padding_rows() {
 
     // Spacer, then badge and call sharing one row — no surface, no padding
     // rows, with one outer column before the badge.
-    let expected = vec!["".to_string(), "  CUSTOM TOOL  (custom call)".to_string()];
+    let expected = vec!["".to_string(), "  Custom tool  (custom call)".to_string()];
     assert_eq!(stripped, expected);
 }
 
@@ -382,7 +382,7 @@ fn badge_style_keeps_continuation_and_result_lines_under_the_badge_column() {
     // continuation and result lines align with that text.
     let expected = vec![
         "".to_string(),
-        "  CUSTOM TOOL  (first line)".to_string(),
+        "  Custom tool  (first line)".to_string(),
         "  second line".to_string(),
         "  the output".to_string(),
     ];
@@ -553,7 +553,7 @@ fn badge_style_fallback_shares_the_badge_row_with_the_first_output_line() {
     // Spacer, then the badge (with its pill padding) sharing its row with
     // the output — no padding rows, no second name line, no argument JSON
     // while collapsed.
-    let expected = vec!["".to_string(), "  GOAL  done".to_string()];
+    let expected = vec!["".to_string(), "  Goal  done".to_string()];
     assert_eq!(stripped, expected);
 }
 
@@ -616,11 +616,11 @@ fn switching_the_style_restyles_an_already_rendered_row() {
     );
     component.update_result(text_result(""), false);
     let standard = strip_ansi(&component.render(60).join("\n"));
-    assert!(!standard.contains("CUSTOM TOOL"), "{standard}");
+    assert!(!standard.contains("Custom tool"), "{standard}");
 
     set_block_style(BlockStyle::Badge);
     let badge = strip_ansi(&component.render(60).join("\n"));
-    assert!(badge.contains("CUSTOM TOOL"), "{badge}");
+    assert!(badge.contains("Custom tool"), "{badge}");
     set_block_style(BlockStyle::Standard);
 }
 

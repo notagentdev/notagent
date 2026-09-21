@@ -15,7 +15,7 @@ use serde_json::Value;
 use similar::{ChangeTag, TextDiff};
 
 use crate::core::tools::bash::format_bash_badge_running_suffix;
-use crate::core::tools::render_utils::get_text_output;
+use crate::core::tools::render_utils::{get_text_output, tool_display_name};
 use crate::core::tools::tool_definition::{
     RenderShell, ToolRenderContext, ToolRenderResult, ToolRenderResultOptions,
     new_tool_render_state,
@@ -306,7 +306,7 @@ impl ToolExecutionComponent {
         block_style().is_compact()
     }
 
-    /// The state badge of this block: the tool's name, uppercased, on the fill
+    /// The state badge of this block: the tool's display name on the fill
     /// the standard style would wash the whole block with.
     fn badge_for(&self, state: ThemeBg) -> String {
         if block_style() == BlockStyle::Dot {
@@ -453,7 +453,10 @@ impl ToolExecutionComponent {
     fn create_call_fallback(&self) -> ComponentRef {
         let theme_instance = theme();
         component_ref(Text::new(
-            theme_instance.fg(ThemeColor::ToolTitle, &theme_instance.bold(&self.tool_name)),
+            theme_instance.fg(
+                ThemeColor::ToolTitle,
+                &theme_instance.bold(&tool_display_name(&self.tool_name)),
+            ),
             0,
             0,
         ))
@@ -879,8 +882,10 @@ impl ToolExecutionComponent {
 
     fn format_tool_execution(&self) -> String {
         let theme_instance = theme();
-        let mut text =
-            theme_instance.fg(ThemeColor::ToolTitle, &theme_instance.bold(&self.tool_name));
+        let mut text = theme_instance.fg(
+            ThemeColor::ToolTitle,
+            &theme_instance.bold(&tool_display_name(&self.tool_name)),
+        );
         if let Ok(content) = serde_json::to_string_pretty(&self.args)
             && !content.is_empty()
         {

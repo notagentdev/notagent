@@ -110,7 +110,7 @@ async fn live_settings_preserve_output_and_new_retains_dot_in_both_renderers() {
             driver.submit("First answer").await;
             driver.wait("DOT_BEFORE").await;
             driver.submit("Run the command").await;
-            driver.wait("BASH").await;
+            driver.wait("Bash").await;
             driver.change_style().await;
             assert_eq!(app.session().settings_manager().get_block_style(), BlockStyle::Dot);
             driver.wait("DOT_BEFORE").await;
