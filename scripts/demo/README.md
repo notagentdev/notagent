@@ -15,7 +15,7 @@ its first run. See the [VHS documentation](https://github.com/charmbracelet/vhs)
 The output is `assets/demo/notagent.gif`, with an MP4 and two PNG checkpoints
 alongside it. Edit `notagent.tape` for dimensions, typing speed and reading pauses.
 
-The demo shows a shipping threshold bug: inspect with `read_minified`, plan,
+The demo shows a shipping threshold bug: inspect with `read`, plan,
 switch from plan to auto with Shift+Tab twice, apply `patch_minified`, then
 compile and run three real Rust tests. The recorder checks that the only source
 change is `>` to `>=` and that the actual tool output reports three passing tests.

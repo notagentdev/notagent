@@ -143,6 +143,13 @@ async fn offers_it_once_a_task_can_be_observed() {
 async fn describes_the_behaviour_that_is_actually_in_force() {
     let (_a, without, _m1) = harness(false, scripted(None, 0, false));
     let (_b, with, _m2) = harness(true, scripted(None, 0, false));
+    for tool in [&without, &with] {
+        assert!(
+            tool.description()
+                .starts_with(notagent::core::tools::bash::BASH_CRITICAL_TOOL_POLICY),
+            "all bash variants must begin with the critical tools-first rule"
+        );
+    }
     assert!(without.description().contains("not available here"));
     assert!(with.description().contains("moved to the background"));
 }

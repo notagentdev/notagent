@@ -117,11 +117,7 @@ fn enabled_minified_tools_are_required_and_plain_patch_is_only_a_fallback() {
     for minified_enabled in [false, true] {
         let mut names = vec![ToolName::Read, ToolName::Edit];
         if minified_enabled {
-            names.extend([
-                ToolName::ReadMinified,
-                ToolName::PatchMinified,
-                ToolName::MultiPatchMinified,
-            ]);
+            names.extend([ToolName::PatchMinified, ToolName::MultiPatchMinified]);
         }
         let definitions: Vec<_> = names
             .into_iter()
@@ -169,8 +165,11 @@ fn enabled_minified_tools_are_required_and_plain_patch_is_only_a_fallback() {
             "disabled minified tools must not contribute mandatory-use instructions: {prompt}"
         );
         assert!(
-            !prompt.contains("Prefer read_minified")
-                && !prompt.contains("Use patch for precise changes"),
+            prompt.contains("must set keep_comments=true"),
+            "comment guidance must reach the assembled prompt: {prompt}"
+        );
+        assert!(
+            !prompt.contains("read_minified") && !prompt.contains("Use patch for precise changes"),
             "the prompt must not also recommend the plain path: {prompt}"
         );
     }
@@ -341,5 +340,71 @@ fn deduplicates_and_trims_prompt_guidelines() {
     assert_eq!(
         prompt.matches("- Use dynamic_tool for summaries.").count(),
         1
+    );
+}
+
+#[test]
+fn bash_critical_policy_heads_both_prompt_paths_and_the_tool_description() {
+    use notagent::core::tools::bash::{BASH_CRITICAL_TOOL_POLICY, create_bash_tool_definition};
+    use notagent::core::tools::tool_definition::ToolDefinition;
+    for custom_prompt in [None, Some("Custom instructions".to_owned())] {
+        for attached in [false, true] {
+            let prompt = build_system_prompt(&BuildSystemPromptOptions {
+                custom_prompt: custom_prompt.clone(),
+                selected_tools: tools(if attached {
+                    &["bash", "read"]
+                } else {
+                    &["read"]
+                }),
+                ..options()
+            });
+            assert_eq!(
+                prompt.starts_with(BASH_CRITICAL_TOOL_POLICY),
+                attached,
+                "the critical policy must lead whenever bash is attached: {prompt}"
+            );
+            assert!(
+                !prompt.contains("Use bash for file operations like ls, rg, find"),
+                "generic shell advice must not undermine the tools-first rule: {prompt}"
+            );
+        }
+    }
+    let tool = create_bash_tool_definition("/tmp", None);
+    assert!(
+        tool.description().starts_with(BASH_CRITICAL_TOOL_POLICY),
+        "the critical rule must precede bash usage instructions: {}",
+        tool.description()
+    );
+}
+
+#[test]
+fn skill_loading_is_critical_in_both_prompt_paths_and_the_tool_description() {
+    use notagent::core::skills::SKILL_CRITICAL_LOADING_POLICY;
+    use notagent::core::tools::skill::create_skill_tool_definition;
+    use notagent::core::tools::tool_definition::ToolDefinition;
+    for custom_prompt in [None, Some("Custom instructions".to_owned())] {
+        for attached in [false, true] {
+            let prompt = build_system_prompt(&BuildSystemPromptOptions {
+                custom_prompt: custom_prompt.clone(),
+                selected_tools: tools(if attached {
+                    &["skill", "read"]
+                } else {
+                    &["read"]
+                }),
+                ..options()
+            });
+            assert_eq!(
+                prompt.starts_with(SKILL_CRITICAL_LOADING_POLICY),
+                attached,
+                "mandatory skill loading must lead whenever skill is attached: {prompt}"
+            );
+        }
+    }
+    let tool = create_skill_tool_definition(None);
+    assert!(
+        tool.description()
+            .starts_with(SKILL_CRITICAL_LOADING_POLICY),
+        "the critical rule must precede skill usage instructions: {}",
+        tool.description()
     );
 }

@@ -87,7 +87,7 @@ fn working_and_worked_align_with_message_text_and_fit_narrow_terminals() {
             let text = visible(&lines.join("\n"));
             assert!(
                 text.lines()
-                    .any(|line| line.starts_with(&format!("  {label}"))),
+                    .any(|line| { line.starts_with(&format!("* {label}")) }),
                 "status text must align in column two: {text:?}"
             );
             for width in 0..=40 {
@@ -98,7 +98,7 @@ fn working_and_worked_align_with_message_text_and_fit_narrow_terminals() {
                     );
                     let text = visible(&line);
                     assert!(
-                        text.trim().is_empty() || text.starts_with("  "),
+                        text.trim().is_empty() || text.starts_with("  ") || text.starts_with("* "),
                         "wrapped status text must keep its alignment: {text:?}"
                     );
                 }
@@ -179,7 +179,12 @@ fn settles_into_what_the_work_took() {
 
     assert!(working.is_settled());
     let settled = visible(&working.render(80).join("\n"));
-    assert!(settled.contains("Worked for "), "{settled}");
+    assert!(
+        settled
+            .lines()
+            .any(|line| line.starts_with("* Worked for ")),
+        "{settled}"
+    );
     assert!(!settled.contains("Working..."), "{settled}");
     // Nothing is animating any more.
     assert!(working.loader_mut().next_frame_deadline().is_none());

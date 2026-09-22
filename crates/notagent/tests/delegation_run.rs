@@ -392,7 +392,6 @@ async fn gets_its_modes_tools() {
             // `core/tools/plan_create.rs` for why that keeps the gate intact.
             "plan_create",
             "read",
-            "read_minified",
             "skill",
         ]
     );

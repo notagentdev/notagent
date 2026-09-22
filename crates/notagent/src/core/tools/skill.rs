@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
 use crate::core::modes::indicator::estimate_injected_tokens;
+use crate::core::skills::SKILL_CRITICAL_LOADING_POLICY;
 use crate::core::tools::render_utils::{call_title, str_arg};
 use crate::core::tools::tool_definition::{
     SystemPromptContribution, ToolContext, ToolDefinition, ToolRenderContext, ToolRenderResult,
@@ -21,10 +22,8 @@ use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
 
 pub const SKILL_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
-        snippet: "Load a skill's full instructions on demand",
-        guidelines: &[
-            "Load a skill with the skill tool when the task matches its description, instead of guessing at its content.",
-        ],
+        snippet: "CRITICAL: load named or matching skills BEFORE doing the work they cover",
+        guidelines: &[SKILL_CRITICAL_LOADING_POLICY],
     };
 
 fn skill_schema() -> Value {
@@ -166,6 +165,7 @@ fn available_names(sources: &SkillToolSources) -> Vec<String> {
 
 pub struct SkillToolDefinition {
     sources: SkillToolSources,
+    description: String,
     parameters: Value,
     constrained_sampling: Option<ConstrainedSampling>,
 }
@@ -173,6 +173,7 @@ pub struct SkillToolDefinition {
 pub fn create_skill_tool_definition(sources: Option<SkillToolSources>) -> SkillToolDefinition {
     SkillToolDefinition {
         sources: sources.unwrap_or_default(),
+        description: format!("{SKILL_CRITICAL_LOADING_POLICY}\n\n{DESCRIPTION}"),
         parameters: skill_schema(),
         constrained_sampling: get_experimental_tool_sampling(),
     }
@@ -188,7 +189,7 @@ impl ToolDefinition for SkillToolDefinition {
     }
 
     fn description(&self) -> &str {
-        DESCRIPTION
+        &self.description
     }
 
     fn prompt_snippet(&self) -> Option<&str> {

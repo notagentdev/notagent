@@ -1,5 +1,6 @@
 use crate::config::DOCUMENTATION_URL;
-use crate::core::skills::{Skill, format_skills_for_prompt};
+use crate::core::skills::{SKILL_CRITICAL_LOADING_POLICY, Skill, format_skills_for_prompt};
+use crate::core::tools::bash::BASH_CRITICAL_TOOL_POLICY;
 
 /// One preloaded context file: `AGENTS.md`, `CLAUDE.md` and the like.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,7 +14,7 @@ pub struct ContextFile {
 pub struct BuildSystemPromptOptions {
     /// Custom system prompt; replaces the default body.
     pub custom_prompt: Option<String>,
-    /// Tools to include in the prompt. Default: the seven built-in editing tools.
+    /// Tools to include in the prompt. Default: the six built-in editing tools.
     pub selected_tools: Option<Vec<String>>,
     /// One-line tool snippets keyed by tool name.
     pub tool_snippets: Vec<(String, String)>,
@@ -36,9 +37,8 @@ impl BuildSystemPromptOptions {
 }
 
 /// The tools named when the caller names none.
-const DEFAULT_TOOLS: [&str; 7] = [
+const DEFAULT_TOOLS: [&str; 6] = [
     "read",
-    "read_minified",
     "bash",
     "patch",
     "patch_minified",
@@ -75,9 +75,18 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
         None => DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
     };
     let has_skill = tools.iter().any(|name| name == "skill");
+    let mut critical_tool_policy = if tools.iter().any(|name| name == "bash") {
+        format!("{BASH_CRITICAL_TOOL_POLICY}\n\n")
+    } else {
+        String::new()
+    };
+    if has_skill {
+        critical_tool_policy.push_str(SKILL_CRITICAL_LOADING_POLICY);
+        critical_tool_policy.push_str("\n\n");
+    }
 
     if let Some(custom_prompt) = options.custom_prompt.as_deref() {
-        let mut prompt = custom_prompt.to_string();
+        let mut prompt = format!("{critical_tool_policy}{custom_prompt}");
 
         if !append_section.is_empty() {
             prompt.push_str(&append_section);
@@ -120,19 +129,6 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
         list.push(guideline);
     };
 
-    let has = |name: &str| tools.iter().any(|tool| tool == name);
-    let has_bash = has("bash");
-    let has_grep = has("grep");
-    let has_find = has("find_filesystem");
-    let has_ls = has("ls");
-
-    if has_bash && !has_grep && !has_find && !has_ls {
-        add_guideline(
-            "Use bash for file operations like ls, rg, find".to_string(),
-            &mut guidelines_list,
-        );
-    }
-
     for guideline in &options.prompt_guidelines {
         let normalized = guideline.trim();
         if !normalized.is_empty() {
@@ -164,7 +160,7 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
         .join("\n");
 
     let mut prompt = format!(
-        "You are an expert coding assistant operating inside notagent, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+        "{critical_tool_policy}You are an expert coding assistant operating inside notagent, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
 Tool reference:
 {tools_list}

@@ -4,8 +4,8 @@
 //! (v0.1.8), renamed back to the reference's "Exploring..." / "Explored"
 //! in v0.1.12.
 //! It groups every tool that only looks at the project — the searches
-//! (`grep`, `find_filesystem`, `find_codebase`), the reads (`read`,
-//! `read_minified`) and the listing (`ls`). That is exactly
+//! (`grep`, `find_filesystem`, `find_codebase`), the reader (`read`)
+//! and the listing (`ls`). That is exactly
 //! [`crate::core::tools::read_only_tool_names`], and it is the point of the
 //! block: looking around is one activity, so it costs one block instead of a
 //! row per call. Anything that changes the project keeps its own row. The
@@ -617,17 +617,18 @@ mod tests {
     /// Every read-only tool is grouped, and nothing that changes the project.
     #[test]
     fn the_read_only_tools_and_only_those_are_grouped() {
-        for name in [
-            "grep",
-            "find_filesystem",
-            "find_codebase",
-            "read",
-            "read_minified",
-            "ls",
-        ] {
+        for name in ["grep", "find_filesystem", "find_codebase", "read", "ls"] {
             assert!(is_explore_tool(name), "{name}");
         }
-        for name in ["bash", "todo_write", "write", "edit", "task", "skill"] {
+        for name in [
+            "bash",
+            "todo_write",
+            "write",
+            "edit",
+            "task",
+            "skill",
+            "read_minified",
+        ] {
             assert!(!is_explore_tool(name), "{name}");
         }
         // The grouping is the read-only list itself, so the two never drift.

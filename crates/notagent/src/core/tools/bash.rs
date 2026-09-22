@@ -72,9 +72,16 @@ const EXIT_STDIO_GRACE_MS: u64 = 100;
 
 const BASH_UPDATE_THROTTLE_MS: u64 = 100;
 
+pub const BASH_CRITICAL_TOOL_POLICY: &str = "!!! CRITICAL: BASH IS A LAST RESORT — TOOLS FIRST !!!
+BASH IS FORBIDDEN WHEN AN AVAILABLE TOOL CAN PERFORM THE OPERATION.
+Before EVERY bash call, check the tools actually attached to this request, including project and MCP tools. You MUST use the matching tool. Bash is allowed ONLY when NO available tool can perform that specific operation.
+Convenience, habit, speed, batching, output formatting, or a failed first attempt are NOT exceptions. Do not bypass a tool with shell commands, scripts, pipelines, or command-line clients. For a compound command, this rule applies to EVERY operation in it.
+This is a REQUIREMENT, not a preference. Builds, tests, git, and other commands are permitted through bash ONLY if no available tool provides the required operation.
+!!! STOP: IF A TOOL CAN DO IT, DO NOT USE BASH !!!";
+
 pub const BASH_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
-        snippet: "Execute bash commands (ls, grep, find, etc.)",
+        snippet: "LAST RESORT ONLY: commands for operations no available tool can perform",
         guidelines: &[
             "You can inspect NOTAGENT_* environment variables for current model and session details.",
         ],
@@ -570,7 +577,7 @@ fn description_without_background() -> String {
 
 fn base_description() -> String {
     format!(
-        "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last {DEFAULT_MAX_LINES} lines or {}KB (whichever is hit first). If truncated, full output is saved to a temp file.",
+        "{BASH_CRITICAL_TOOL_POLICY}\n\nExecute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last {DEFAULT_MAX_LINES} lines or {}KB (whichever is hit first). If truncated, full output is saved to a temp file.",
         DEFAULT_MAX_BYTES / 1024
     )
 }

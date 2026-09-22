@@ -16,7 +16,6 @@ pub mod patch_minified;
 pub mod path_utils;
 pub mod plan_create;
 pub mod read;
-pub mod read_minified;
 pub mod render_utils;
 pub mod skill;
 pub mod task;
@@ -37,6 +36,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum ToolName {
     Read,
+    /// Preserves the stored tool tag; never advertised as a separate tool.
     ReadMinified,
     Bash,
     Edit,
@@ -66,9 +66,8 @@ pub enum ToolName {
 }
 
 /// Every tool name, in the order `allToolNames` inserts them.
-pub const ALL_TOOL_NAMES: [ToolName; 21] = [
+pub const ALL_TOOL_NAMES: [ToolName; 20] = [
     ToolName::Read,
-    ToolName::ReadMinified,
     ToolName::Bash,
     ToolName::Edit,
     ToolName::PatchMinified,
@@ -164,9 +163,6 @@ use crate::core::tools::plan_create::{
     PlanCreateToolOptions, create_plan_create_tool, create_plan_create_tool_definition,
 };
 use crate::core::tools::read::{ReadToolOptions, create_read_tool, create_read_tool_definition};
-use crate::core::tools::read_minified::{
-    ReadMinifiedToolOptions, create_read_minified_tool, create_read_minified_tool_definition,
-};
 use crate::core::tools::skill::{
     SkillToolSources, create_skill_tool, create_skill_tool_definition,
 };
@@ -195,7 +191,6 @@ pub type Tool = Arc<dyn AgentTool>;
 #[derive(Clone, Default)]
 pub struct ToolsOptions {
     pub read: Option<ReadToolOptions>,
-    pub read_minified: Option<ReadMinifiedToolOptions>,
     pub patch_minified: Option<PatchMinifiedToolOptions>,
     pub multi_patch_minified: Option<PatchMinifiedToolOptions>,
     pub skill: Option<SkillToolSources>,
@@ -222,13 +217,9 @@ pub fn create_tool_definition(
     options: Option<&ToolsOptions>,
 ) -> ToolDef {
     match tool_name {
-        ToolName::Read => Arc::new(create_read_tool_definition(
+        ToolName::Read | ToolName::ReadMinified => Arc::new(create_read_tool_definition(
             cwd,
             options.and_then(|options| options.read.clone()),
-        )),
-        ToolName::ReadMinified => Arc::new(create_read_minified_tool_definition(
-            cwd,
-            options.and_then(|options| options.read_minified.clone()),
         )),
         ToolName::Bash => Arc::new(create_bash_tool_definition(
             cwd,
@@ -303,11 +294,9 @@ pub fn create_tool_definition(
 
 pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions>) -> Tool {
     match tool_name {
-        ToolName::Read => create_read_tool(cwd, options.and_then(|options| options.read.clone())),
-        ToolName::ReadMinified => create_read_minified_tool(
-            cwd,
-            options.and_then(|options| options.read_minified.clone()),
-        ),
+        ToolName::Read | ToolName::ReadMinified => {
+            create_read_tool(cwd, options.and_then(|options| options.read.clone()))
+        }
         ToolName::Bash => create_bash_tool(cwd, options.and_then(|options| options.bash.clone())),
         ToolName::Edit => create_edit_tool(cwd, options.and_then(|options| options.edit.clone())),
         ToolName::PatchMinified => create_patch_minified_tool(
@@ -355,9 +344,8 @@ pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions
     }
 }
 
-const CODING_TOOL_NAMES: [ToolName; 7] = [
+const CODING_TOOL_NAMES: [ToolName; 6] = [
     ToolName::Read,
-    ToolName::ReadMinified,
     ToolName::Bash,
     ToolName::Edit,
     ToolName::PatchMinified,
@@ -365,9 +353,8 @@ const CODING_TOOL_NAMES: [ToolName; 7] = [
     ToolName::Write,
 ];
 
-const READ_ONLY_TOOL_NAMES: [ToolName; 6] = [
+const READ_ONLY_TOOL_NAMES: [ToolName; 5] = [
     ToolName::Read,
-    ToolName::ReadMinified,
     ToolName::Grep,
     ToolName::FindFilesystem,
     ToolName::FindCodebase,

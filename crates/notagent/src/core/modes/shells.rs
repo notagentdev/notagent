@@ -88,7 +88,6 @@ impl std::fmt::Display for ShellId {
 /// grep, find and ls.
 const READ_ONLY_TOOLS: &[ToolName] = &[
     ToolName::Read,
-    ToolName::ReadMinified,
     ToolName::Grep,
     ToolName::FindFilesystem,
     ToolName::FindCodebase,

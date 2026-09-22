@@ -210,12 +210,14 @@ impl StatusIndicator {
 
     /// `WorkingStatusIndicator`.
     pub fn working(message: impl Into<String>, indicator: Option<LoaderIndicatorOptions>) -> Self {
-        Self::animated(
+        let mut status = Self::animated(
             StatusIndicatorKind::Working,
             ThemeColor::Text,
             message,
             indicator,
-        )
+        );
+        status.loader.set_message_prefix("* ");
+        status
     }
 
     /// `RetryStatusIndicator`.
@@ -319,13 +321,20 @@ impl Component for StatusIndicator {
             if width < 4 {
                 return vec![Line::from(""); 2];
             }
-            return self
-                .loader
-                .render(width - 1)
+            let lines = self.loader.render(width - 1);
+            let prefix = self.loader.rendered_message_prefix();
+            let mut first_content_line = true;
+            return lines
                 .into_iter()
                 .map(|line| {
                     if line.is_empty() {
                         line
+                    } else if first_content_line && !prefix.is_empty() {
+                        first_content_line = false;
+                        Line::from(format!(
+                            "{prefix}{}",
+                            line.strip_prefix(' ').unwrap_or(&line)
+                        ))
                     } else {
                         Line::from(format!(" {line}"))
                     }

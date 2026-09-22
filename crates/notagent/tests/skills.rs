@@ -295,7 +295,8 @@ fn puts_the_intro_text_before_the_xml() {
 
     assert!(intro.contains("The following skills provide specialized instructions"));
     assert!(intro.contains("Use the skill tool with the skill's name"));
-    assert!(intro.contains("Do not load skill instructions with the read tool."));
+    assert!(intro.contains(notagent::core::skills::SKILL_CRITICAL_LOADING_POLICY));
+    assert!(intro.contains("substitute read, bash, or another tool for loading it"));
     assert!(!intro.contains("Use the read tool to load"));
 }
 

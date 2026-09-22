@@ -52,7 +52,7 @@ def tool(name, arguments):
 
 STEPS = [
     ("I'll inspect the shipping rule using a compact source read.",
-     tool("read_minified", {"path": "src/pricing.rs"})),
+     tool("read", {"path": "src/pricing.rs"})),
     ("The boundary is off by one: `> 5000` excludes exactly $50.\n\n"
      "**Plan**\n"
      "1. Change `>` to `>=`; keep the surrounding source intact.\n"

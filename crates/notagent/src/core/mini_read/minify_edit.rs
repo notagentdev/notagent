@@ -2,7 +2,7 @@
 //! Adapted from the Rust reference implementation
 //! `notagent-main-rust/crates/notagent_services/src/tool_services/minify_edit.rs`
 //! (see [`super::minify`] for why the reference is the source here).
-//! Counterpart of the `read_minified` tool: the agent matches and replaces
+//! Counterpart of the `read` tool: the agent matches and replaces
 //! text in the minified rendering, and this module maps the match back onto
 //! the original file via the byte-level source map, re-indents the
 //! replacement using the file's own indentation widths, and splices it in.
@@ -28,7 +28,7 @@ pub struct MinifiedEdit {
 
 /// Applies a single replace in minified space. Returns `None` when the
 /// language is unsupported by the minifier; callers should then treat the
-/// edit as a plain patch on the raw source (mirroring `read_minified`'s raw
+/// edit as a plain patch on the raw source (mirroring `read`'s raw
 /// fallback).
 pub fn apply_minified_edit(
     path: &Path,
@@ -97,11 +97,11 @@ fn splice(
                 && normalized != old_string
             {
                 return Err(format!(
-                    "Could not find match for search text in the minified view of the file. Tried the original search text and its normalized minified form: '{normalized}'. Re-read the file with read_minified (using the same keep_comments setting) or provide a narrower search string."
+                    "Could not find match for search text in the minified view of the file. Tried the original search text and its normalized minified form: '{normalized}'. Re-read the file with read (using the same keep_comments setting) or provide a narrower search string."
                 ));
             }
             return Err(format!(
-                "Could not find match for search text: '{old_string}' in the minified view of the file. Re-read the file with read_minified (using the same keep_comments setting) and try again."
+                "Could not find match for search text: '{old_string}' in the minified view of the file. Re-read the file with read (using the same keep_comments setting) and try again."
             ));
         }
     };
@@ -872,7 +872,7 @@ mod tests {
     fn test_no_match_errors_with_reread_hint() {
         let fixture = "fn main() {}\n";
         let actual = edit("main.rs", fixture, "does_not_exist", "x", false);
-        assert!(actual.unwrap_err().contains("read_minified"));
+        assert!(actual.unwrap_err().contains("read"));
     }
 
     #[test]

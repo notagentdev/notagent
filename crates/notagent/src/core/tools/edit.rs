@@ -37,7 +37,7 @@ pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
         snippet: "Fallback file edit with one exact text replacement",
         guidelines: &[
-            "patch is a fallback only: use it when no minified editing tool is attached, or a concrete limitation or failure prevents the minified tools from safely making the requested edit. State the reason before falling back; convenience is not a reason. Supply path, old_string and new_string, with old_string taken from an exact read of the current file.",
+            "patch is a fallback only: use it when no minified editing tool is attached, or a concrete limitation or failure prevents the minified tools from safely making the requested edit. State the reason before falling back; convenience is not a reason. Supply path, old_string and new_string, with old_string taken from read with view=original and a concrete reason for the current file.",
             "Each patch call replaces one unique occurrence. Base subsequent changes on the file after the preceding patch.",
             "Keep old_string as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
         ],

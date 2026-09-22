@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use notagent::core::tools::patch_minified::{
     create_multi_patch_minified_tool_definition, create_patch_minified_tool_definition,
 };
-use notagent::core::tools::read_minified::create_read_minified_tool_definition;
+use notagent::core::tools::read::create_read_tool_definition;
 use notagent::core::tools::tool_definition::ToolDefinition;
 use notagent_agent::types::AgentToolResult;
 use notagent_ai::types::TextOrImageContent;
@@ -335,7 +335,7 @@ async fn collects_warnings_from_every_edit() {
 }
 
 // ---------------------------------------------------------------------------
-// read_minified
+// read
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -343,7 +343,7 @@ async fn returns_the_compact_view_of_a_source_file() {
     let workspace = Workspace::new();
     let source = "/// Doc comment.\nfn main() {\n    // gone\n    let x = 1;\n}\n";
     let path = workspace.write("main.rs", source);
-    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
+    let tool = create_read_tool_definition(&workspace.dir(), None);
 
     let result = run(&tool, json!({ "path": path })).await.expect("reads");
     let compact = text_output(&result);
@@ -360,7 +360,7 @@ async fn a_commented_source_file_saves_at_least_half_the_estimated_tokens() {
     let workspace = Workspace::new();
     let source = "/// Doc comment.\nfn main() {\n    // gone\n    let x = 1;\n}\n";
     let path = workspace.write("main.rs", source);
-    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
+    let tool = create_read_tool_definition(&workspace.dir(), None);
 
     let result = run(&tool, json!({ "path": path })).await.expect("reads");
     let compact = text_output(&result);
@@ -385,7 +385,7 @@ async fn keeps_comments_when_asked() {
         "main.rs",
         "fn main() {\n    // keep me\n    let x = 1;\n}\n",
     );
-    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
+    let tool = create_read_tool_definition(&workspace.dir(), None);
 
     let result = run(&tool, json!({ "path": path, "keep_comments": true }))
         .await
@@ -401,20 +401,23 @@ async fn applies_the_offset_and_limit_range_before_minification() {
         "main.rs",
         "fn a() {\n    let x = 1;\n}\nfn b() {\n    let y = 2;\n}\n",
     );
-    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
+    let tool = create_read_tool_definition(&workspace.dir(), None);
 
     let result = run(&tool, json!({ "path": path, "offset": 4, "limit": 3 }))
         .await
         .expect("reads");
 
-    assert_eq!(text_output(&result), "fn b() {\n let y = 2;\n}");
+    assert_eq!(
+        text_output(&result),
+        "fn b() {\n let y = 2;\n}\n\n[1 more lines in file. Use offset=7 to continue.]"
+    );
 }
 
 #[tokio::test]
 async fn rejects_an_offset_beyond_the_end_of_the_file() {
     let workspace = Workspace::new();
     let path = workspace.write("main.rs", "fn a() {}\n");
-    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
+    let tool = create_read_tool_definition(&workspace.dir(), None);
 
     let error = run(&tool, json!({ "path": path, "offset": 99 }))
         .await
@@ -430,13 +433,13 @@ async fn rejects_an_offset_beyond_the_end_of_the_file() {
 async fn falls_back_to_raw_content_for_an_unsupported_language() {
     let workspace = Workspace::new();
     let path = workspace.write("notes.txt", "alpha\n\nbeta\n");
-    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
+    let tool = create_read_tool_definition(&workspace.dir(), None);
 
     let result = run(&tool, json!({ "path": path })).await.expect("reads");
 
     let text = text_output(&result);
     assert!(text.starts_with("alpha\n\nbeta\n"), "{text}");
-    assert!(text.contains("[Language not supported for minification; raw content shown.]"));
+    assert_eq!(text, "alpha\n\nbeta\n");
     assert_eq!(
         result.details.as_ref().expect("details")["minified"],
         json!(false)
@@ -444,29 +447,77 @@ async fn falls_back_to_raw_content_for_an_unsupported_language() {
 }
 
 #[tokio::test]
-async fn rejects_visual_content() {
+async fn rejects_pdfs_instead_of_returning_binary_text() {
     let workspace = Workspace::new();
-    // A one-pixel PNG: enough of a header for the mime sniffer.
-    let png: Vec<u8> = {
-        use std::io::Write;
-        let mut bytes = vec![
-            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H',
-            b'D', b'R', 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
-            0x00,
-        ];
-        bytes.write_all(&[0x1f, 0x15, 0xc4, 0x89]).expect("writes");
-        bytes
-    };
-    let path = workspace.path.join("shot.png");
-    std::fs::write(&path, &png).expect("writes");
-    let tool = create_read_minified_tool_definition(&workspace.dir(), None);
-
-    let error = run(&tool, json!({ "path": path.to_string_lossy() }))
+    let path = workspace.write("document.pdf", "%PDF-1.7\n");
+    let tool = create_read_tool_definition(&workspace.dir(), None);
+    let error = run(&tool, json!({ "path": path }))
         .await
-        .expect_err("visual content");
-    assert!(
-        error.message.contains("is visual content (image/PDF)"),
-        "{}",
-        error.message
-    );
+        .expect_err("unsupported PDF");
+    assert!(error.message.contains("PDF reading is not supported"));
+}
+
+#[tokio::test]
+async fn original_view_requires_a_reason_and_preserves_exact_source() {
+    let workspace = Workspace::new();
+    let source = "/// Documentation.\nfn main() {\n    // keep me\n}\n";
+    let path = workspace.write("main.rs", source);
+    let tool = create_read_tool_definition(&workspace.dir(), None);
+    for reason in [json!(null), json!(""), json!("  ")] {
+        let error = run(
+            &tool,
+            json!({"path": path, "view": "original", "reason": reason}),
+        )
+        .await
+        .expect_err("original requires a reason");
+        assert!(error.message.contains("keep_comments=true"));
+    }
+    let result = run(
+        &tool,
+        json!({"path": path, "view": "original", "reason": "Check exact source line references"}),
+    )
+    .await
+    .expect("original source");
+    assert_eq!(text_output(&result), source);
+    assert_eq!(result.details.as_ref().unwrap()["minified"], json!(false));
+    assert_eq!(result.details.as_ref().unwrap()["view"], json!("original"));
+}
+
+#[test]
+fn tool_presets_offer_one_reader_with_explicit_comment_instructions() {
+    use notagent::core::tools::{
+        create_all_tool_definitions, create_coding_tool_definitions,
+        create_read_only_tool_definitions,
+    };
+    let presets = [
+        create_all_tool_definitions("/tmp", None)
+            .into_values()
+            .collect::<Vec<_>>(),
+        create_coding_tool_definitions("/tmp", None),
+        create_read_only_tool_definitions("/tmp", None),
+    ];
+    for tools in presets {
+        assert_eq!(tools.iter().filter(|tool| tool.name() == "read").count(), 1);
+        assert!(tools.iter().all(|tool| tool.name() != "read_minified"));
+        let read = tools.iter().find(|tool| tool.name() == "read").unwrap();
+        assert!(read.description().contains("must set keep_comments=true"));
+        assert!(
+            read.prompt_guidelines()
+                .join(" ")
+                .contains("must set keep_comments=true")
+        );
+    }
+}
+
+#[tokio::test]
+async fn comment_only_source_requires_the_comment_switch_to_be_visible() {
+    let workspace = Workspace::new();
+    let path = workspace.write("notes.rs", "// important instruction\n");
+    let tool = create_read_tool_definition(&workspace.dir(), None);
+    let compact = run(&tool, json!({"path": path})).await.unwrap();
+    assert!(!text_output(&compact).contains("important instruction"));
+    let commented = run(&tool, json!({"path": path, "keep_comments": true}))
+        .await
+        .unwrap();
+    assert!(text_output(&commented).contains("important instruction"));
 }

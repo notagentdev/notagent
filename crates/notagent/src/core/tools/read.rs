@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::experimental::get_experimental_tool_sampling;
+use crate::core::mini_read::minify_for_path;
 use crate::core::tools::path_utils::resolve_read_path;
 use crate::core::tools::path_utils::resolve_to_cwd;
 use crate::core::tools::render_utils::{
@@ -34,9 +35,9 @@ use crate::utils::mime::detect_supported_image_mime_type_from_file;
 
 pub const READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
-        snippet: "Read file contents",
+        snippet: "Read files (compact source by default); set keep_comments=true when comments matter",
         guidelines: &[
-            "Use the attached file-reading tools instead of cat or sed. When read_minified is attached, follow its mandatory source-read policy; plain read is only for the exceptions that policy allows.",
+            "When read is attached, use it for file reads instead of cat or sed. Source files are compact by default: comments are omitted. You must set keep_comments=true when comments, docstrings, documentation comments, or commented instructions matter; this preserves comments while still compacting whitespace. Use view=original only for exact original line references, formatting-sensitive work, or the exact source needed for a necessary patch fallback, and supply a concrete reason. Request only the needed offset/limit range. Do not bypass compact source reads with shell commands, unless no available tool can read the requested oversized line.",
         ],
     };
 
@@ -47,6 +48,19 @@ fn read_schema() -> Value {
             "path": { "type": "string", "description": "Path to the file to read (relative or absolute)" },
             "offset": { "type": "number", "description": "Line number to start reading from (1-indexed)" },
             "limit": { "type": "number", "description": "Maximum number of lines to read" },
+            "keep_comments": {
+                "type": "boolean",
+                "description": "Default false: comments are omitted from compact source. Set true when comments, docstrings, documentation comments, or commented instructions matter. Whitespace is still compacted.",
+            },
+            "view": {
+                "type": "string",
+                "enum": ["compact", "original"],
+                "description": "Default compact. Use original only for exact source line references, formatting-sensitive work, or a necessary plain-patch fallback. Original requires a concrete reason; use the smallest needed offset/limit range.",
+            },
+            "reason": {
+                "type": "string",
+                "description": "Required when view=original: explain why compact output with keep_comments=true cannot serve this read.",
+            },
         },
         "required": ["path"],
     })
@@ -139,13 +153,22 @@ pub fn create_read_tool_definition(
         operations: options
             .operations
             .unwrap_or_else(|| Arc::new(LocalReadOperations)),
-        description: format!(
-            "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to {DEFAULT_MAX_LINES} lines or {}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
-            DEFAULT_MAX_BYTES / 1024
-        ),
+        description: description(),
         parameters: read_schema(),
         constrained_sampling: get_experimental_tool_sampling(),
     }
+}
+
+fn description() -> String {
+    [
+        "Read file contents. Source files are compact by default: comments and blank lines are removed, indentation is reduced, and extra whitespace is collapsed. Other text files are returned unchanged; if compaction is unavailable, source text is returned unchanged. Images (jpg, png, gif, webp, bmp) are detected automatically and sent as attachments. PDFs are not supported.".to_owned(),
+        "Comments are omitted by default. You must set keep_comments=true when comments, docstrings, documentation comments, or commented instructions are relevant. This preserves comments while still compacting whitespace; needing comments is not a reason to switch to original view.".to_owned(),
+        "Supported compact languages: Rust, Python, JavaScript/JSX, TypeScript/TSX, Go, Java, C, C++, Ruby, Bash, CSS, HTML, JSON.".to_owned(),
+        "Use view=original only for exact original line references, formatting-sensitive work, or the exact source needed for a necessary plain patch fallback. A non-empty reason explaining the need is required. Request the smallest relevant offset/limit range. Unsupported languages already return unchanged text and do not require original view.".to_owned(),
+        "Compact output is not byte-identical to the file and its line positions do not map to original lines. Edit it with patch_minified or multi_patch_minified. Never copy compact output into plain patch's old_string; for a necessary fallback, first read the exact region with view=original and a reason.".to_owned(),
+        format!("Text output is truncated to {DEFAULT_MAX_LINES} lines or {}KB. offset (1-indexed) and limit select original source lines before compaction. Continuation offsets always refer to the original file. Use keep_comments=true to include comments in compact output.", DEFAULT_MAX_BYTES / 1024),
+        "Use this tool for file reads; do not use shell commands to bypass the compact default, unless no available tool can read the requested oversized line.".to_owned(),
+    ].join("\n\n")
 }
 
 fn get_non_vision_image_note(model: Option<&Model>) -> Option<&'static str> {
@@ -431,6 +454,20 @@ fn format_read_result(
         };
         text += &format!("\n{}", theme.fg(ThemeColor::Warning, &warning));
     }
+    if !is_error
+        && result.details.is_some_and(|details| {
+            details.get("view").and_then(Value::as_str) == Some("compact")
+                && details.get("minified").and_then(Value::as_bool) == Some(false)
+        })
+    {
+        text += &format!(
+            "\n{}",
+            theme.fg(
+                ThemeColor::Dim,
+                "[Compaction unavailable; original text shown]"
+            )
+        );
+    }
     text
 }
 
@@ -478,10 +515,15 @@ impl ToolDefinition for ReadToolDefinition {
         } else {
             get_compact_read_classification(args, &context.cwd)
         };
-        let text = match &classification {
+        let mut text = match &classification {
             Some(classification) => format_compact_read_call(classification, args, theme),
             None => format_read_call(args, theme, &context.cwd),
         };
+        if args.get("view").and_then(Value::as_str) == Some("original") {
+            text += &theme.fg(ThemeColor::Dim, " [original]");
+        } else if args.get("keep_comments").and_then(Value::as_bool) == Some(true) {
+            text += &theme.fg(ThemeColor::Dim, " +comments");
+        }
         Some(render_text_call(context, &text))
     }
 
@@ -518,6 +560,30 @@ impl ToolDefinition for ReadToolDefinition {
             if aborted() {
                 return Err(ToolExecutionError::new("Operation aborted"));
             }
+
+            let original = match params.get("view").and_then(Value::as_str) {
+                None | Some("compact") => false,
+                Some("original") => true,
+                Some(value) => {
+                    return Err(ToolExecutionError::new(format!(
+                        "Unknown read view {value:?}; use compact or original"
+                    )));
+                }
+            };
+            if original
+                && params
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .is_none_or(|reason| reason.trim().is_empty())
+            {
+                return Err(ToolExecutionError::new(
+                    "view=original requires a concrete reason. For comments, use keep_comments=true with the default compact view.",
+                ));
+            }
+            let keep_comments = params
+                .get("keep_comments")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
 
             let path = params
                 .get("path")
@@ -605,6 +671,14 @@ impl ToolDefinition for ReadToolDefinition {
                 .read_file(&absolute_path)
                 .await
                 .map_err(ToolExecutionError::new)?;
+            if aborted() {
+                return Err(ToolExecutionError::new("Operation aborted"));
+            }
+            if bytes.starts_with(b"%PDF-") {
+                return Err(ToolExecutionError::new(
+                    "PDF reading is not supported. Provide extracted text or rendered page images.",
+                ));
+            }
             let text_content = String::from_utf8_lossy(&bytes).into_owned();
             let all_lines: Vec<&str> = text_content.split('\n').collect();
             let total_file_lines = all_lines.len();
@@ -633,15 +707,31 @@ impl ToolDefinition for ReadToolDefinition {
             };
 
             let truncation = truncate_head(&selected_content, TruncationOptions::default());
-            let mut details: Option<Value> = None;
+            let compact = if original {
+                None
+            } else {
+                minify_for_path(
+                    std::path::Path::new(&path),
+                    &truncation.content,
+                    keep_comments,
+                )
+            };
+            let minified = compact.is_some();
+            let content = compact.as_deref().unwrap_or(&truncation.content);
+            let mut details = json!({
+                "minified": minified,
+                "view": if original { "original" } else { "compact" },
+                "startLine": start_line_display,
+                "endLine": start_line + truncation.output_lines,
+                "totalFileLines": total_file_lines,
+            });
             let output_text = if truncation.first_line_exceeds_limit {
                 // Point the model at a bash fallback for a single oversized line.
                 let first_line_size = format_size(all_lines[start_line].len());
-                details = Some(json!({
-                    "truncation": serde_json::to_value(&truncation).expect("truncation"),
-                }));
+                details["truncation"] = serde_json::to_value(&truncation)
+                    .map_err(|error| ToolExecutionError::new(error.to_string()))?;
                 format!(
-                    "[Line {start_line_display} is {first_line_size}, exceeds {} limit. Use bash: sed -n '{start_line_display}p' {path} | head -c {DEFAULT_MAX_BYTES}]",
+                    "[Line {start_line_display} is {first_line_size}, exceeds {} limit. Only if no available tool can read this oversized line, use bash: sed -n '{start_line_display}p' {path} | head -c {DEFAULT_MAX_BYTES}]",
                     format_size(DEFAULT_MAX_BYTES)
                 )
             } else if truncation.truncated {
@@ -657,10 +747,9 @@ impl ToolDefinition for ReadToolDefinition {
                         format_size(DEFAULT_MAX_BYTES)
                     )
                 };
-                details = Some(json!({
-                    "truncation": serde_json::to_value(&truncation).expect("truncation"),
-                }));
-                format!("{}{notice}", truncation.content)
+                details["truncation"] = serde_json::to_value(&truncation)
+                    .map_err(|error| ToolExecutionError::new(error.to_string()))?;
+                format!("{content}{notice}")
             } else if user_limited_lines.is_some_and(|lines| start_line + lines < all_lines.len()) {
                 // The user limit stopped early while the file still has content.
                 let user_limited_lines = user_limited_lines.expect("checked");
@@ -668,10 +757,10 @@ impl ToolDefinition for ReadToolDefinition {
                 let next_offset = start_line + user_limited_lines + 1;
                 format!(
                     "{}\n\n[{remaining} more lines in file. Use offset={next_offset} to continue.]",
-                    truncation.content
+                    content
                 )
             } else {
-                truncation.content.clone()
+                content.to_owned()
             };
 
             if aborted() {
@@ -679,7 +768,7 @@ impl ToolDefinition for ReadToolDefinition {
             }
             Ok(AgentToolResult {
                 content: vec![TextOrImageContent::Text(TextContent::new(output_text))],
-                details,
+                details: Some(details),
                 usage: None,
                 added_tool_names: None,
                 terminate: None,
@@ -749,7 +838,7 @@ mod tests {
             .await
             .expect("read");
         assert_eq!(text_of(&result), "one\ntwo\nthree\n");
-        assert_eq!(result.details, None);
+        assert_eq!(result.details.as_ref().unwrap()["minified"], json!(false));
     }
 
     #[tokio::test]
@@ -839,7 +928,7 @@ mod tests {
             .expect("read");
         assert_eq!(
             text_of(&result),
-            "[Line 1 is 60.0KB, exceeds 50.0KB limit. Use bash: sed -n '1p' long.txt | head -c 51200]"
+            "[Line 1 is 60.0KB, exceeds 50.0KB limit. Only if no available tool can read this oversized line, use bash: sed -n '1p' long.txt | head -c 51200]"
         );
         assert_eq!(
             result.details.expect("details")["truncation"]["firstLineExceedsLimit"],
@@ -901,6 +990,61 @@ mod tests {
     }
 
     #[test]
+    fn read_headers_show_the_comment_switch_for_source_and_documentation() {
+        let _guard = crate::modes::interactive::theme::theme::test_lock();
+        crate::modes::interactive::theme::theme::init_theme(Some("dark"), false);
+        let theme = crate::modes::interactive::theme::theme::theme();
+        let tool = create_read_tool_definition("/tmp", None);
+        for path in ["main.rs", "AGENTS.md", "example/SKILL.md"] {
+            for expanded in [false, true] {
+                let args = json!({"path": path, "keep_comments": true});
+                let mut context = ToolRenderContext::new("read", args.clone(), "/tmp");
+                context.expanded = expanded;
+                let component = tool.render_call(&args, &theme, &context).unwrap();
+                let rows = component.borrow_mut().render(160);
+                assert!(
+                    rows.iter().any(|row| row.contains("+comments")),
+                    "the comment switch must remain visible for {path}, expanded={expanded}: {rows:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn read_results_distinguish_fallback_text_from_requested_originals_and_images() {
+        let _guard = crate::modes::interactive::theme::theme::test_lock();
+        crate::modes::interactive::theme::theme::init_theme(Some("dark"), false);
+        let theme = crate::modes::interactive::theme::theme::theme();
+        let content = vec![TextOrImageContent::Text(TextContent::new("example"))];
+        for (details, should_mark) in [
+            (Some(json!({"view": "compact", "minified": false})), true),
+            (Some(json!({"view": "compact", "minified": true})), false),
+            (Some(json!({"view": "original", "minified": false})), false),
+            (None, false),
+        ] {
+            let output = format_read_result(
+                &json!({"path": "notes.txt"}),
+                ToolRenderResult {
+                    content: &content,
+                    details: details.as_ref(),
+                },
+                ToolRenderResultOptions {
+                    expanded: true,
+                    is_partial: false,
+                },
+                &theme,
+                true,
+                false,
+            );
+            assert_eq!(
+                output.contains("Compaction unavailable"),
+                should_mark,
+                "only a compact read falling back to original text needs a marker: {output}"
+            );
+        }
+    }
+
+    #[test]
     fn advertises_its_description_and_schema() {
         let tool = create_read_tool_definition("/tmp", None);
         assert_eq!(tool.name(), "read");
@@ -908,10 +1052,22 @@ mod tests {
             tool.description()
                 .contains("truncated to 2000 lines or 50KB")
         );
-        assert_eq!(tool.prompt_snippet(), Some("Read file contents"));
-        assert_eq!(
-            tool.prompt_guidelines(),
-            vec!["Use the attached file-reading tools instead of cat or sed. When read_minified is attached, follow its mandatory source-read policy; plain read is only for the exceptions that policy allows.".to_owned()]
+        assert!(
+            tool.prompt_snippet()
+                .unwrap()
+                .contains("keep_comments=true")
+        );
+        assert!(
+            tool.prompt_guidelines()
+                .join(" ")
+                .contains("must set keep_comments=true")
+        );
+        assert!(tool.description().contains("must set keep_comments=true"));
+        assert!(
+            tool.parameters()["properties"]["keep_comments"]["description"]
+                .as_str()
+                .unwrap()
+                .contains("comments")
         );
         assert_eq!(tool.parameters()["required"], json!(["path"]));
     }

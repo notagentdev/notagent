@@ -19,6 +19,12 @@ const MAX_DESCRIPTION_LENGTH: usize = 1024;
 
 const IGNORE_FILE_NAMES: [&str; 3] = [".gitignore", ".ignore", ".fdignore"];
 
+pub const SKILL_CRITICAL_LOADING_POLICY: &str = "!!! CRITICAL: MATCHING SKILLS MUST BE LOADED BEFORE YOU ACT !!!
+Before starting work, review the available skill descriptions. If the user names an available skill OR the task matches its description, you MUST load its FULL instructions with the skill tool BEFORE doing the work it covers.
+Use the skill tool with the skill's name. Reading the catalog or description is NOT loading the skill. Do not guess, rely on memory, skip it because the task looks easy, or substitute read, bash, or another tool for loading it.
+If the full instructions are already present in this conversation, apply them without reloading. Otherwise, loading is MANDATORY, not optional. Load only named or applicable skills, then follow their instructions.
+!!! STOP: DO NOT START COVERED WORK WITH AN APPLICABLE SKILL UNLOADED !!!";
+
 fn to_posix_path(path: &Path) -> String {
     path.components()
         .map(|component| match component {
@@ -472,8 +478,7 @@ pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
 
     let mut lines = vec![
         "\n\nThe following skills provide specialized instructions for specific tasks.".to_string(),
-        "Use the skill tool with the skill's name to load its instructions when the task matches its description. Do not load skill instructions with the read tool."
-            .to_string(),
+        SKILL_CRITICAL_LOADING_POLICY.to_string(),
         "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands."
             .to_string(),
         String::new(),

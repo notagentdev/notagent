@@ -52,12 +52,14 @@ warming a new agent from scratch.
 **Cut compactable tool output by at least 50% in the checked workloads.** Two
 features reduce the part of the context spent on source reads and shell output:
 
-- *Minified tools.* `read_minified` returns a compact view of a source file:
+- *Minified tools.* `read` returns a compact view of a source file:
   comments removed, blank lines dropped, indentation collapsed to one space
   per nesting level. `patch_minified` and `multi_patch_minified` edit through
   that same view — a source map translates the edit back to the real file, and
   nothing is written until every edit succeeds. Surveying and navigating code
-  costs a fraction of a full `read`.
+  costs a fraction of reading the original source. Set `keep_comments=true`
+  when comments or documentation matter. Images are detected automatically;
+  `view="original"` requires a concrete `reason`.
 - *Bash filter.* Conservative, process-free compaction of shell output before
   it enters the context (`/bash-filter on|off`). Verbose build, test, and
   package-manager output shrinks to what the agent actually needs. The filter

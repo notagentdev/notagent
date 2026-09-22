@@ -1066,7 +1066,6 @@ impl AgentSession {
                 .collect(),
             None => vec![
                 "read".to_string(),
-                "read_minified".to_string(),
                 "grep".to_string(),
                 "find_filesystem".to_string(),
                 "find_codebase".to_string(),
