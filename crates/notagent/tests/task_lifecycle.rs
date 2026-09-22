@@ -121,6 +121,61 @@ fn line(record: &TaskLifecycleRecord, badge_style: bool) -> String {
 }
 
 #[test]
+fn lifecycle_layout_is_shared_until_its_width_style_or_theme_changes() {
+    let _guard = theme_lock();
+    set_block_style(BlockStyle::Dot);
+    let mut component = TaskLifecycleComponent::new(TaskLifecycleRecord::started(shell(
+        TaskStatus::Running,
+        None,
+    )));
+    let first = component.render(80);
+    let second = component.render(80);
+    assert!(!first.is_empty());
+    assert!(
+        first.iter().zip(&second).all(|(a, b)| Arc::ptr_eq(a, b)),
+        "unchanged lifecycle lines must retain their shared allocation"
+    );
+
+    let narrow = component.render(18);
+    assert!(
+        narrow.len() > first.len(),
+        "narrow terminals must rewrap the record"
+    );
+    assert!(narrow.iter().all(|line| visible_width(line) <= 18));
+
+    set_block_style(BlockStyle::Standard);
+    let standard = component.render(80);
+    assert!(
+        standard
+            .iter()
+            .any(|line| strip_ansi(line).contains("[BG-Bash]")),
+        "a style switch must replace the cached dot heading"
+    );
+
+    init_theme(Some("light"), false);
+    let light = component.render(80);
+    assert_ne!(
+        standard, light,
+        "a theme switch must recolor cached records"
+    );
+    let stable = component.render(80);
+    assert!(light.iter().zip(&stable).all(|(a, b)| Arc::ptr_eq(a, b)));
+
+    component.invalidate();
+    let invalidated = component.render(80);
+    assert_eq!(
+        light, invalidated,
+        "invalidation must preserve the record's appearance"
+    );
+    assert!(
+        !Arc::ptr_eq(&light[0], &invalidated[0]),
+        "explicit invalidation must discard the layout"
+    );
+    init_theme(None, false);
+    set_block_style(BlockStyle::Dot);
+}
+
+#[test]
 fn a_background_subagent_gets_separate_start_and_end_lines() {
     let _guard = theme_lock();
     let started = TaskLifecycleRecord::started(subagent(TaskStatus::Running));

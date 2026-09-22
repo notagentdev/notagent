@@ -81,6 +81,7 @@ pub struct TuiMainScreen {
     max_lines_rendered: usize,
     previous_viewport_top: usize,
     full_redraw_count: usize,
+    previous_cursor_pos: Option<(usize, usize)>,
 }
 
 impl TuiMainScreen {
@@ -105,6 +106,7 @@ impl TuiMainScreen {
             max_lines_rendered: 0,
             previous_viewport_top: 0,
             full_redraw_count: 0,
+            previous_cursor_pos: None,
         }
     }
 
@@ -139,6 +141,8 @@ impl TuiMainScreen {
     /// Restore a snapshot; image lines are dropped because their transmission
     /// state does not survive the handover.
     pub fn restore_render_state(&mut self, state: TuiMainScreenRenderState) {
+        self.core.clear_activity_frame();
+        self.previous_cursor_pos = None;
         self.previous_lines = state
             .previous_lines
             .iter()
@@ -160,6 +164,8 @@ impl TuiMainScreen {
     }
 
     fn reset_render_state(&mut self) {
+        self.core.clear_activity_frame();
+        self.previous_cursor_pos = None;
         self.previous_lines = Vec::new();
         self.previous_width = -1;
         self.previous_height = -1;
@@ -223,6 +229,11 @@ impl TuiMainScreen {
     /// Counterpart of [`TuiCore::wait_until_render_due`]: it consumes the
     /// pending request, so a loop that waits and then calls this cannot spin.
     pub fn render_pending_frame(&mut self) {
+        if let Some(now) = self.core.begin_activity_frame()
+            && self.render_activity(now)
+        {
+            return;
+        }
         if self.core.begin_frame() {
             self.do_render();
         }
@@ -239,9 +250,59 @@ impl TuiMainScreen {
         if deadline > now {
             tokio::time::sleep(deadline - now).await;
         }
-        if self.core.begin_frame() {
-            self.do_render();
+        self.render_pending_frame();
+    }
+
+    fn render_activity(&mut self, now: std::time::Instant) -> bool {
+        let width = self.core.columns();
+        let height = self.core.rows();
+        if self.previous_lines.is_empty()
+            || self.previous_width != width as i64
+            || self.previous_height != height as i64
+            || self.core.has_overlay_entries()
+        {
+            return false;
         }
+        let updates = self.core.repaint_activity(now);
+        if updates
+            .iter()
+            .any(|(_, line)| is_image_line(line) || visible_width(line) > width)
+        {
+            return false;
+        }
+        let mut buffer = String::new();
+        for (index, line) in updates {
+            if index < self.previous_viewport_top
+                || index >= self.previous_viewport_top.saturating_add(height)
+            {
+                continue;
+            }
+            let Some(previous) = self.previous_lines.get_mut(index) else {
+                return false;
+            };
+            if Line::ptr_eq(previous, &line) || *previous == line {
+                continue;
+            }
+            if buffer.is_empty() {
+                buffer.push_str("\x1b[?2026h");
+            }
+            // Absolute viewport coordinates avoid touching intervening rows or
+            // scrolling when the final transcript line fills the terminal.
+            buffer.push_str(&format!(
+                "\x1b[{};1H\x1b[2K{}",
+                index - self.previous_viewport_top + 1,
+                line
+            ));
+            *previous = line;
+            self.hardware_cursor_row = index;
+        }
+        if !buffer.is_empty() {
+            self.core.with_terminal(|terminal| terminal.write(&buffer));
+            self.position_hardware_cursor(self.previous_cursor_pos, self.previous_lines.len());
+            self.core
+                .with_terminal(|terminal| terminal.write("\x1b[?2026l"));
+        }
+        true
     }
 
     fn collect_kitty_image_ids(lines: &[Line]) -> BTreeSet<u32> {
@@ -431,6 +492,7 @@ impl TuiMainScreen {
         // Extract the cursor position before the line resets (the marker must be
         // found first).
         let cursor_pos = self.core.extract_cursor_position(&mut new_lines, height);
+        self.previous_cursor_pos = cursor_pos;
         self.core.apply_line_resets(&mut new_lines);
 
         // First render — output everything without clearing (assumes a clean screen).

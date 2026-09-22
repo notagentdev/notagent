@@ -15,14 +15,26 @@ use crate::modes::interactive::theme::theme::{
 };
 use notagent_tui::components::text::Text;
 use notagent_tui::tui::{Component, Line};
+use std::sync::Arc;
 
 pub struct TaskLifecycleComponent {
     record: TaskLifecycleRecord,
+    cache: Option<LifecycleLayout>,
+}
+
+struct LifecycleLayout {
+    width: usize,
+    style: BlockStyle,
+    theme: Arc<Theme>,
+    lines: Vec<Line>,
 }
 
 impl TaskLifecycleComponent {
     pub fn new(record: TaskLifecycleRecord) -> Self {
-        Self { record }
+        Self {
+            record,
+            cache: None,
+        }
     }
 }
 
@@ -30,7 +42,15 @@ impl Component for TaskLifecycleComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
         // Use the tool boxes' outer inset, including continuation lines.
         let style = block_style();
-        let line = task_lifecycle_line(&self.record, &theme(), style);
+        let theme = theme();
+        if let Some(cache) = &self.cache
+            && cache.width == width
+            && cache.style == style
+            && Arc::ptr_eq(&cache.theme, &theme)
+        {
+            return cache.lines.clone();
+        }
+        let line = task_lifecycle_line(&self.record, &theme, style);
         let inner = super::tool_content_width(width);
         let lines = if style == BlockStyle::Dot {
             // Wrap the text column separately so the marker gutter is counted once.
@@ -50,10 +70,19 @@ impl Component for TaskLifecycleComponent {
         } else {
             Text::new(line, 0, 0).render(inner)
         };
-        super::indent_lines(lines, width)
+        let lines = super::indent_lines(lines, width);
+        self.cache = Some(LifecycleLayout {
+            width,
+            style,
+            theme,
+            lines: lines.clone(),
+        });
+        lines
     }
 
-    fn invalidate(&mut self) {}
+    fn invalidate(&mut self) {
+        self.cache = None;
+    }
 }
 
 pub fn is_background_bash_call(tool_name: &str, args: &serde_json::Value) -> bool {

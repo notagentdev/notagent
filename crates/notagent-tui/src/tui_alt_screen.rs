@@ -110,6 +110,7 @@ pub struct TuiAltScreen {
     last_document: Vec<Line>,
     previous_screen_width: usize,
     previous_screen_height: usize,
+    previous_cursor_pos: Option<(usize, usize)>,
     layout_root: Option<ComponentRef>,
     current_layout: Option<LayoutFrame>,
     implicit_scroll_view: ComponentRef,
@@ -266,6 +267,7 @@ impl TuiAltScreen {
             last_document: Vec::new(),
             previous_screen_width: 0,
             previous_screen_height: 0,
+            previous_cursor_pos: None,
             layout_root: None,
             current_layout: None,
             implicit_scroll_view: component_ref(scroll_view),
@@ -1674,6 +1676,8 @@ impl TuiAltScreen {
     }
 
     fn reset_render_state(&mut self) {
+        self.core.clear_activity_frame();
+        self.previous_cursor_pos = None;
         self.previous_screen = Vec::new();
         self.previous_screen_width = 0;
         self.previous_screen_height = 0;
@@ -1899,6 +1903,11 @@ impl TuiAltScreen {
     /// Counterpart of [`TuiCore::wait_until_render_due`]: it consumes the
     /// pending request, so a loop that waits and then calls this cannot spin.
     pub fn render_pending_frame(&mut self) {
+        if let Some(now) = self.core.begin_activity_frame()
+            && self.render_activity(now)
+        {
+            return;
+        }
         if self.core.begin_frame() {
             self.do_render();
         }
@@ -1915,9 +1924,52 @@ impl TuiAltScreen {
         if deadline > now {
             tokio::time::sleep(deadline - now).await;
         }
-        if self.core.begin_frame() {
-            self.do_render();
+        self.render_pending_frame();
+    }
+
+    fn render_activity(&mut self, now: std::time::Instant) -> bool {
+        let width = self.core.columns().max(1);
+        let height = self.core.rows().max(1);
+        if !self.alt_screen_active
+            || self.previous_screen.is_empty()
+            || self.previous_screen_width != width
+            || self.previous_screen_height != height
+            || self.core.has_overlay_entries()
+            || self.flashes.borrow().next_deadline().is_some()
+        {
+            return false;
         }
+        let updates = self.core.repaint_activity(now);
+        if updates.iter().any(|(_, line)| is_image_line(line)) {
+            return false;
+        }
+        let mut buffer = String::new();
+        for (row, line) in updates {
+            let Some(previous) = self.previous_screen.get_mut(row) else {
+                return false;
+            };
+            let line = if visible_width(&line) > width {
+                Line::from(slice_by_column(&line, 0, width, true))
+            } else {
+                line
+            };
+            if Line::ptr_eq(previous, &line) || *previous == line {
+                continue;
+            }
+            if buffer.is_empty() {
+                buffer.push_str(BEGIN_SYNCHRONIZED_OUTPUT);
+            }
+            buffer.push_str(&format!("\x1b[{};1H\x1b[2K{}", row + 1, line));
+            *previous = line;
+        }
+        if !buffer.is_empty() {
+            if let Some((row, col)) = self.previous_cursor_pos {
+                buffer.push_str(&format!("\x1b[{};{}H", row + 1, col.min(width) + 1));
+            }
+            buffer.push_str(END_SYNCHRONIZED_OUTPUT);
+            self.core.with_terminal(|terminal| terminal.write(&buffer));
+        }
+        true
     }
 
     fn composite_flashes(&mut self, screen: Vec<Line>, width: usize, height: usize) -> Vec<Line> {
@@ -1986,6 +2038,7 @@ impl TuiAltScreen {
 
         self.core.paint_activity(&mut screen, 0, &[]);
         let cursor_pos = self.core.extract_cursor_position(&mut screen, height);
+        self.previous_cursor_pos = cursor_pos;
         self.core.apply_line_resets(&mut screen);
         let mut screen: Vec<Line> = screen
             .into_iter()

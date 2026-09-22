@@ -1,5 +1,5 @@
 //! Status markers are resolved after clipping, so hidden rows cannot drive animation.
-use crate::tui::Line;
+use crate::tui::{CURSOR_MARKER, Line, SEGMENT_RESET, finish_line};
 use std::time::{Duration, Instant};
 
 const START: &str = "\x1b_notagent:a\x07";
@@ -13,6 +13,23 @@ pub(crate) struct ActivityClock {
     pub focused: bool,
     pub allowed: bool,
     pub deadline: Option<Instant>,
+    visible_rows: Vec<ActivityRow>,
+}
+
+#[derive(Clone)]
+struct ActivityRow {
+    index: usize,
+    shown: Line,
+    blank: Line,
+}
+
+fn finished_marker_line(text: &str) -> Line {
+    let text = text.replace(CURSOR_MARKER, "");
+    Line::from(if text.ends_with(SEGMENT_RESET) {
+        text
+    } else {
+        finish_line(&text)
+    })
 }
 impl Default for ActivityClock {
     fn default() -> Self {
@@ -21,6 +38,7 @@ impl Default for ActivityClock {
             focused: true,
             allowed: false,
             deadline: None,
+            visible_rows: Vec::new(),
         }
     }
 }
@@ -37,6 +55,7 @@ impl ActivityClock {
         let elapsed = now.saturating_duration_since(self.epoch);
         let hidden = enabled && (elapsed.as_millis() / 600) % 2 == 1;
         let mut active = false;
+        self.visible_rows.clear();
         for (index, line) in lines.iter_mut().enumerate() {
             if !line.contains(START) && !line.contains(END) {
                 continue;
@@ -49,6 +68,13 @@ impl ActivityClock {
                 .replace(RUNNING_DOT, " ")
                 .replace(START, "")
                 .replace(END, "");
+            if visible && running {
+                self.visible_rows.push(ActivityRow {
+                    index,
+                    shown: finished_marker_line(&shown),
+                    blank: finished_marker_line(&blank),
+                });
+            }
             // Main-screen scrollback cannot be repainted by a blink tick.
             if !visible
                 && let Some(old) = previous.get(index)
@@ -64,6 +90,30 @@ impl ActivityClock {
         }
         self.deadline = (enabled && active)
             .then(|| now + INTERVAL - Duration::from_millis((elapsed.as_millis() % 600) as u64));
+    }
+
+    /// Only visible marker rows survive into a blink frame. Transcript layout,
+    /// marker discovery and string allocation belong to content frames.
+    pub fn repaint(&mut self, now: Instant, blocked: bool) -> Vec<(usize, Line)> {
+        let enabled = self.allowed && self.focused && !blocked;
+        let elapsed = now.saturating_duration_since(self.epoch);
+        let hidden = enabled && (elapsed.as_millis() / 600) % 2 == 1;
+        self.deadline = (enabled && !self.visible_rows.is_empty())
+            .then(|| now + INTERVAL - Duration::from_millis((elapsed.as_millis() % 600) as u64));
+        self.visible_rows
+            .iter()
+            .map(|row| {
+                (
+                    row.index,
+                    if hidden { &row.blank } else { &row.shown }.clone(),
+                )
+            })
+            .collect()
+    }
+
+    pub fn clear_frame(&mut self) {
+        self.visible_rows.clear();
+        self.deadline = None;
     }
 }
 

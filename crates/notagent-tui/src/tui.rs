@@ -473,6 +473,7 @@ struct PendingOsc11Query {
 
 struct TuiState {
     activity: crate::activity::ActivityClock,
+    activity_requested_at: Option<Instant>,
     terminal: Box<dyn Terminal>,
     children: Vec<ComponentRef>,
     focused: Option<ComponentRef>,
@@ -537,6 +538,7 @@ impl TuiCore {
         });
         Self(Rc::new(RefCell::new(TuiState {
             activity: crate::activity::ActivityClock::default(),
+            activity_requested_at: None,
             terminal,
             children: Vec::new(),
             focused: None,
@@ -586,7 +588,7 @@ impl TuiCore {
     /// Preserve the shared blink phase when replacing a renderer.
     pub fn inherit_activity_clock(&self, previous: &TuiCore) {
         let mut clock = previous.0.borrow().activity.clone();
-        clock.deadline = None;
+        clock.clear_frame();
         self.0.borrow_mut().activity = clock;
     }
 
@@ -616,11 +618,41 @@ impl TuiCore {
             .is_some_and(|deadline| deadline <= now);
         if due {
             state.activity.deadline = None;
+            state.activity_requested_at = Some(now);
+            state.render_notify.notify_waiters();
         }
-        drop(state);
-        if due {
-            self.request_render();
+    }
+
+    /// A content request always wins over a coalesced animation tick.
+    pub(crate) fn begin_activity_frame(&self) -> Option<Instant> {
+        let mut state = self.0.borrow_mut();
+        if state.stopped || state.render_requested {
+            return None;
         }
+        let now = state.activity_requested_at.unwrap_or_else(Instant::now);
+        if state.activity_requested_at.is_none()
+            && state
+                .activity
+                .deadline
+                .is_none_or(|deadline| deadline > now)
+        {
+            return None;
+        }
+        state.activity_requested_at = None;
+        state.activity.deadline = None;
+        state.last_render_at = Some(Instant::now());
+        Some(now)
+    }
+
+    pub(crate) fn repaint_activity(&self, now: Instant) -> Vec<(usize, Line)> {
+        let blocked = self.get_topmost_visible_overlay().is_some();
+        self.0.borrow_mut().activity.repaint(now, blocked)
+    }
+
+    pub(crate) fn clear_activity_frame(&self) {
+        let mut state = self.0.borrow_mut();
+        state.activity.clear_frame();
+        state.activity_requested_at = None;
     }
 
     pub(crate) fn paint_activity(
@@ -670,6 +702,7 @@ impl TuiCore {
     /// Append a root component.
     pub fn add_child(&self, component: ComponentRef) {
         self.0.borrow_mut().children.push(component);
+        self.request_render();
     }
 
     /// Remove a root component.
@@ -682,11 +715,14 @@ impl TuiCore {
         {
             state.children.remove(index);
         }
+        drop(state);
+        self.request_render();
     }
 
     /// Drop all root components.
     pub fn clear(&self) {
         self.0.borrow_mut().children.clear();
+        self.request_render();
     }
 
     /// Whether the hardware cursor is shown.
@@ -1163,6 +1199,7 @@ impl TuiCore {
     /// below would borrow it a second time, so the call is queued and runs the
     /// between the two points).
     pub fn invalidate(&self) {
+        self.request_render();
         if self.0.borrow().dispatching_input {
             self.0.borrow_mut().pending_invalidate = true;
             return;
@@ -1274,6 +1311,7 @@ impl TuiCore {
         let mut state = self.0.borrow_mut();
         state.stopped = true;
         state.activity.deadline = None;
+        state.activity_requested_at = None;
         state.render_requested = false;
         state.immediate_render_requested = false;
         state.render_notify.notify_waiters();
@@ -1343,7 +1381,7 @@ impl TuiCore {
             return None;
         }
         if !state.render_requested {
-            return state.activity.deadline;
+            return state.activity_requested_at.or(state.activity.deadline);
         }
         if state.immediate_render_requested {
             return Some(Instant::now());
@@ -1356,6 +1394,7 @@ impl TuiCore {
             state
                 .activity
                 .deadline
+                .or(state.activity_requested_at)
                 .map_or(paint, |activity| activity.min(paint)),
         )
     }
@@ -1364,6 +1403,7 @@ impl TuiCore {
     pub fn begin_frame(&self) -> bool {
         let mut state = self.0.borrow_mut();
         state.render_requested = false;
+        state.activity_requested_at = None;
         state.immediate_render_requested = false;
         state.last_render_at = Some(Instant::now());
         !state.stopped
