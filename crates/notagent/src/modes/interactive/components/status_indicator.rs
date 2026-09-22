@@ -138,6 +138,12 @@ impl StatusIndicator {
         if indicator.is_none() {
             status.loader.set_shimmer(shimmer_palette(base));
         }
+        if matches!(
+            kind,
+            StatusIndicatorKind::Working | StatusIndicatorKind::Compaction
+        ) {
+            status.loader.set_message_prefix("* ");
+        }
         // A retry already counts, downwards; a second figure beside it would be
         // two clocks disagreeing about what they measure.
         if kind != StatusIndicatorKind::Retry {
@@ -210,14 +216,12 @@ impl StatusIndicator {
 
     /// `WorkingStatusIndicator`.
     pub fn working(message: impl Into<String>, indicator: Option<LoaderIndicatorOptions>) -> Self {
-        let mut status = Self::animated(
+        Self::animated(
             StatusIndicatorKind::Working,
             ThemeColor::Text,
             message,
             indicator,
-        );
-        status.loader.set_message_prefix("* ");
-        status
+        )
     }
 
     /// `RetryStatusIndicator`.
@@ -316,7 +320,10 @@ impl StatusIndicator {
 
 impl Component for StatusIndicator {
     fn render(&mut self, width: usize) -> Vec<Line> {
-        if self.kind == StatusIndicatorKind::Working {
+        if matches!(
+            self.kind,
+            StatusIndicatorKind::Working | StatusIndicatorKind::Compaction
+        ) {
             // Reserve the output gutter as well as the loader's own margins.
             if width < 4 {
                 return vec![Line::from(""); 2];

@@ -257,3 +257,48 @@ fn every_running_time_is_written_the_same_way() {
     assert_eq!(format_elapsed_live(Duration::from_millis(450)), None);
     assert_eq!(format_elapsed_precise(Duration::from_millis(450)), "450ms");
 }
+
+#[test]
+fn compaction_uses_the_working_gutter_for_every_reason_and_width() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    for reason in [
+        CompactionStatusReason::Manual,
+        CompactionStatusReason::Threshold,
+        CompactionStatusReason::Overflow,
+    ] {
+        let mut status = StatusIndicator::compaction(reason);
+        let full = visible(&status.render(100).join(
+            "
+",
+        ));
+        let label = match reason {
+            CompactionStatusReason::Manual => "Compacting context...",
+            CompactionStatusReason::Threshold => "Auto-compacting...",
+            CompactionStatusReason::Overflow => "Context overflow detected, Auto-compacting...",
+        };
+        assert!(
+            full.lines()
+                .any(|line| line.starts_with(&format!("* {label}"))),
+            "compaction must place the star in the working gutter: {full:?}"
+        );
+        assert!(
+            status.loader_mut().next_frame_deadline().is_some(),
+            "compaction must keep shimmering"
+        );
+        for width in 0..=60 {
+            let lines = status.render(width);
+            for (index, line) in lines.iter().filter(|line| !line.is_empty()).enumerate() {
+                assert!(
+                    notagent_tui::utils::visible_width(line) <= width,
+                    "line exceeds width {width}: {line:?}"
+                );
+                let text = visible(line);
+                assert!(
+                    text.starts_with(if index == 0 { "* " } else { "  " }),
+                    "the marker must occupy the gutter once, with continuation text aligned: {text:?}"
+                );
+            }
+        }
+    }
+}
