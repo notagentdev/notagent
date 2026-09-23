@@ -271,6 +271,53 @@ pub struct StdinBuffer {
     paste_mode: bool,
     paste_buffer: String,
     pending_kitty_printable_codepoint: Option<u32>,
+    /// Bytes of a character a read cut in half, kept for the next read.
+    pending_utf8: Vec<u8>,
+}
+
+/// The first byte of a multi-byte UTF-8 character.
+fn is_utf8_lead(byte: u8) -> bool {
+    (0xC2..=0xF4).contains(&byte)
+}
+
+fn is_utf8_continuation(byte: u8) -> bool {
+    (0x80..=0xBF).contains(&byte)
+}
+
+/// An 8-bit meta key: the high bit set on an ASCII byte means Alt.
+fn meta_sequence(byte: u8) -> String {
+    format!("\x1b{}", char::from(byte - 128))
+}
+
+/// Decodes `data` after `pending`, leaving an incomplete trailing character in
+/// `pending`. Invalid bytes become U+FFFD.
+fn decode_utf8_stream(pending: &mut Vec<u8>, data: &[u8]) -> String {
+    let mut bytes = std::mem::take(pending);
+    bytes.extend_from_slice(data);
+    let mut decoded = String::with_capacity(bytes.len());
+    let mut rest: &[u8] = &bytes;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(text) => {
+                decoded.push_str(text);
+                return decoded;
+            }
+            Err(error) => {
+                let valid_up_to = error.valid_up_to();
+                decoded.push_str(&String::from_utf8_lossy(&rest[..valid_up_to]));
+                match error.error_len() {
+                    None => {
+                        pending.extend_from_slice(&rest[valid_up_to..]);
+                        return decoded;
+                    }
+                    Some(length) => {
+                        decoded.push('\u{FFFD}');
+                        rest = &rest[valid_up_to + length..];
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl StdinBuffer {
@@ -283,16 +330,44 @@ impl StdinBuffer {
             paste_mode: false,
             paste_buffer: String::new(),
             pending_kitty_printable_codepoint: None,
+            pending_utf8: Vec::new(),
         }
     }
 
-    /// single byte > 127 becomes ESC + (byte - 128).
+    /// Feed raw stdin bytes. A read ends wherever the terminal's write was cut,
+    /// which inside a large paste is often the middle of a character; that tail
+    /// waits for the next read instead of becoming two U+FFFD. A single byte
+    /// above 127 that cannot start a character is an 8-bit meta key
+    /// (ESC + byte - 128); one that can start a character waits for its
+    /// continuation and is taken as meta only when none follows.
     pub fn process_bytes(&mut self, data: &[u8]) -> Vec<StdinEvent> {
-        if data.len() == 1 && data[0] > 127 {
-            let byte = char::from(data[0] - 128);
-            return self.process(&format!("\x1b{byte}"));
+        let mut events = Vec::new();
+        if self.pending_utf8.len() == 1
+            && data
+                .first()
+                .is_some_and(|byte| !is_utf8_continuation(*byte))
+        {
+            let byte = self.pending_utf8[0];
+            self.pending_utf8.clear();
+            self.process_into(&meta_sequence(byte), &mut events);
         }
-        self.process(&String::from_utf8_lossy(data))
+        if data.is_empty() {
+            self.process_into("", &mut events);
+            return events;
+        }
+        if self.pending_utf8.is_empty() && data.len() == 1 && data[0] > 127 {
+            if is_utf8_lead(data[0]) {
+                self.pending_utf8.push(data[0]);
+            } else {
+                self.process_into(&meta_sequence(data[0]), &mut events);
+            }
+            return events;
+        }
+        let text = decode_utf8_stream(&mut self.pending_utf8, data);
+        if !text.is_empty() {
+            self.process_into(&text, &mut events);
+        }
+        events
     }
 
     /// Feed decoded input and return the resulting events in order.
@@ -382,7 +457,7 @@ impl StdinBuffer {
     /// [`Self::process`] call cancels the timer.
     pub fn pending_timeout_ms(&self) -> Option<u64> {
         if self.buffer.is_empty() {
-            return None;
+            return (!self.pending_utf8.is_empty()).then_some(self.escape_timeout_ms);
         }
         Some(if self.buffer == ESC {
             self.escape_timeout_ms
@@ -392,6 +467,12 @@ impl StdinBuffer {
     }
 
     pub fn flush_timeout(&mut self) -> Vec<StdinEvent> {
+        let pending = std::mem::take(&mut self.pending_utf8);
+        match pending.as_slice() {
+            [] => {}
+            [byte] => self.buffer.push_str(&meta_sequence(*byte)),
+            bytes => self.buffer.push_str(&String::from_utf8_lossy(bytes)),
+        }
         let mut events = Vec::new();
         for sequence in self.flush() {
             self.emit_data_sequence(&sequence, &mut events);
@@ -412,6 +493,7 @@ impl StdinBuffer {
     /// Drop all buffered state.
     pub fn clear(&mut self) {
         self.buffer.clear();
+        self.pending_utf8.clear();
         self.paste_mode = false;
         self.paste_buffer.clear();
         self.pending_kitty_printable_codepoint = None;

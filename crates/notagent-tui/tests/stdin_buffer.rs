@@ -462,9 +462,50 @@ fn should_handle_buffer_input() {
 }
 
 #[test]
-fn should_convert_a_single_high_byte_to_an_escape_prefixed_sequence() {
+fn a_single_high_byte_that_cannot_start_a_character_is_a_meta_key_at_once() {
     let mut buffer = new_buffer();
-    assert_eq!(data_events(&buffer.process_bytes(&[0xe1])), ["\x1ba"]);
+    assert_eq!(data_events(&buffer.process_bytes(&[0xfa])), ["\x1bz"]);
+}
+
+#[test]
+fn a_single_high_byte_that_can_start_a_character_is_a_meta_key_once_nothing_continues_it() {
+    let mut buffer = new_buffer();
+    assert!(data_events(&buffer.process_bytes(&[0xe1])).is_empty());
+    assert_eq!(buffer.pending_timeout_ms(), Some(10));
+    assert_eq!(data_events(&buffer.flush_timeout()), ["\x1ba"]);
+
+    assert!(data_events(&buffer.process_bytes(&[0xe1])).is_empty());
+    assert_eq!(
+        data_events(&buffer.process_bytes(b"x")),
+        ["\x1ba", "x"],
+        "input that does not continue the character ends the wait"
+    );
+}
+
+#[test]
+fn a_character_split_between_two_reads_arrives_whole() {
+    let text = "Grüße 🙈 世界";
+    let bytes = text.as_bytes();
+    for split in 1..bytes.len() {
+        let mut buffer = new_buffer();
+        let mut received: Vec<String> = data_events(&buffer.process_bytes(&bytes[..split]));
+        received.extend(data_events(&buffer.process_bytes(&bytes[split..])));
+        received.extend(data_events(&buffer.flush_timeout()));
+        assert_eq!(received.concat(), text, "split at byte {split}");
+    }
+}
+
+#[test]
+fn a_bracketed_paste_split_inside_a_character_keeps_the_character() {
+    let pasted = "ä".repeat(3000);
+    let payload = format!("\x1b[200~{pasted}\x1b[201~");
+    let bytes = payload.as_bytes();
+    let mut buffer = new_buffer();
+    let mut events = Vec::new();
+    for chunk in bytes.chunks(4095) {
+        events.extend(buffer.process_bytes(chunk));
+    }
+    assert_eq!(paste_events(&events), [pasted]);
 }
 
 #[test]
