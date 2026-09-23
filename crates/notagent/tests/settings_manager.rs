@@ -874,3 +874,43 @@ fn dot_style_persists_and_updates_an_explicit_project_choice() {
         "project overrides must not overwrite the global preference"
     );
 }
+
+#[test]
+fn a_settings_file_broken_while_running_is_not_overwritten_by_the_next_change() {
+    let harness = harness();
+    write_global(
+        &harness,
+        json!({ "theme": "light", "defaultProvider": "anthropic" }),
+    );
+    let manager = manager(&harness);
+    assert!(manager.drain_errors().is_empty());
+
+    // The user edits the file by hand and leaves it invalid for a moment.
+    let path = harness.agent_dir.join("settings.json");
+    let hand_edited =
+        "{\n  \"theme\": \"light\",\n  \"defaultProvider\": \"anthropic\",\n  // mine\n}\n";
+    std::fs::write(&path, hand_edited).expect("writes");
+
+    manager.set_global_field("theme", json!("dark"));
+
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("reads"),
+        hand_edited,
+        "a file that does not parse keeps every byte instead of being replaced by the changed keys"
+    );
+    let errors = manager.drain_errors();
+    assert_eq!(errors.len(), 1, "the refused save is reported: {errors:?}");
+    assert!(errors[0].message.contains("not valid JSON"), "{errors:?}");
+    assert_eq!(manager.get_theme_setting().as_deref(), Some("dark"));
+
+    // Once the file is fixed, the kept change is written with the next save.
+    write_global(
+        &harness,
+        json!({ "theme": "light", "defaultProvider": "anthropic" }),
+    );
+    manager.set_global_field("quietStartup", json!(true));
+    let saved = global_settings(&harness);
+    assert_eq!(saved["theme"], "dark");
+    assert_eq!(saved["quietStartup"], true);
+    assert_eq!(saved["defaultProvider"], "anthropic");
+}

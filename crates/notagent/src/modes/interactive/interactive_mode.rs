@@ -1927,6 +1927,11 @@ impl InteractiveMode {
             if let Some(code) = self.exit_code {
                 return code;
             }
+            // A setting that could not be saved is otherwise silent until the
+            // next start, when the change is already gone.
+            for error in self.session().settings_manager().drain_errors() {
+                self.show_warning(&error.message);
+            }
             if !self.replacing_session
                 && prompt.is_none()
                 && let Some(text) = self.pending_user_inputs.pop_front()

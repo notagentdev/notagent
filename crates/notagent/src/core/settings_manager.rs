@@ -344,12 +344,15 @@ pub struct SettingsError {
 }
 
 /// returns the contents to write, or `None` to leave the file untouched.
+/// A file that exists but cannot be read, or contents that cannot be written,
+/// come back as `Err`; `body` is not called when the current contents are
+/// unknown, because anything it returned would replace them blindly.
 pub trait SettingsStorage: Send + Sync {
     fn with_lock(
         &self,
         scope: SettingsScope,
         body: &mut dyn FnMut(Option<String>) -> Option<String>,
-    );
+    ) -> Result<(), String>;
 }
 
 pub struct FileSettingsStorage {
@@ -378,28 +381,40 @@ impl SettingsStorage for FileSettingsStorage {
         &self,
         scope: SettingsScope,
         body: &mut dyn FnMut(Option<String>) -> Option<String>,
-    ) {
+    ) -> Result<(), String> {
         let path = self.path(scope).to_path_buf();
         let file_exists = path.exists();
         let lock = file_exists.then(|| acquire_lock_with_retry(&path));
         let current = if file_exists {
-            std::fs::read_to_string(&path).ok()
+            Some(
+                std::fs::read_to_string(&path)
+                    .map_err(|error| format!("Could not read {}: {error}", path.display()))?,
+            )
         } else {
             None
         };
-        let next = body(current);
-        if let Some(next) = next {
-            if let Some(directory) = path.parent()
-                && !directory.exists()
-            {
-                let _ = std::fs::create_dir_all(directory);
-            }
-            let _lock = match lock {
-                Some(lock) => lock,
-                None => acquire_lock_with_retry(&path),
-            };
-            let _ = std::fs::write(&path, next);
-        }
+        let Some(next) = body(current) else {
+            return Ok(());
+        };
+        let directory = path.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(directory)
+            .map_err(|error| format!("Could not create {}: {error}", directory.display()))?;
+        let _lock = match lock {
+            Some(lock) => lock,
+            None => acquire_lock_with_retry(&path),
+        };
+        // Written beside the target and renamed over it: another instance
+        // reading while this one writes sees the old file or the new one,
+        // never a truncated one it would take for empty settings.
+        let write = || -> std::io::Result<()> {
+            use std::io::Write;
+            let mut file = tempfile::NamedTempFile::new_in(directory)?;
+            file.write_all(next.as_bytes())?;
+            file.as_file().sync_all()?;
+            file.persist(&path).map_err(|error| error.error)?;
+            Ok(())
+        };
+        write().map_err(|error| format!("Could not write {}: {error}", path.display()))
     }
 }
 
@@ -456,7 +471,7 @@ impl SettingsStorage for InMemorySettingsStorage {
         &self,
         scope: SettingsScope,
         body: &mut dyn FnMut(Option<String>) -> Option<String>,
-    ) {
+    ) -> Result<(), String> {
         let slot = match scope {
             SettingsScope::Global => &self.global,
             SettingsScope::Project => &self.project,
@@ -465,6 +480,7 @@ impl SettingsStorage for InMemorySettingsStorage {
         if let Some(next) = body(current) {
             *slot.lock().expect("settings mutex") = Some(next);
         }
+        Ok(())
     }
 }
 
@@ -553,7 +569,7 @@ impl SettingsManager {
         let migrated = migrate_settings(to_map(settings));
         let serialized =
             serde_json::to_string_pretty(&Value::Object(migrated)).expect("settings serialize");
-        storage.with_lock(SettingsScope::Global, &mut |_| Some(serialized.clone()));
+        let _ = storage.with_lock(SettingsScope::Global, &mut |_| Some(serialized.clone()));
         Self::from_storage(storage, options)
     }
 
@@ -750,15 +766,25 @@ impl SettingsManager {
         if blocked {
             return;
         }
-        self.persist_scoped(
+        let outcome = self.persist_scoped(
             SettingsScope::Global,
             &snapshot,
             &modified_fields,
             &modified_nested,
         );
         let mut state = self.lock();
-        state.modified_fields.clear();
-        state.modified_nested_fields.clear();
+        match outcome {
+            Ok(()) => {
+                state.modified_fields.clear();
+                state.modified_nested_fields.clear();
+            }
+            // The changes stay marked, so the next save writes them once the
+            // file can be written again.
+            Err(message) => state.errors.push(SettingsError {
+                scope: SettingsScope::Global,
+                message,
+            }),
+        }
     }
 
     fn save_project(&self) {
@@ -775,15 +801,23 @@ impl SettingsManager {
         if blocked {
             return;
         }
-        self.persist_scoped(
+        let outcome = self.persist_scoped(
             SettingsScope::Project,
             &snapshot,
             &modified_fields,
             &modified_nested,
         );
         let mut state = self.lock();
-        state.modified_project_fields.clear();
-        state.modified_project_nested_fields.clear();
+        match outcome {
+            Ok(()) => {
+                state.modified_project_fields.clear();
+                state.modified_project_nested_fields.clear();
+            }
+            Err(message) => state.errors.push(SettingsError {
+                scope: SettingsScope::Project,
+                message,
+            }),
+        }
     }
 
     /// file's current contents so concurrent writers keep their keys.
@@ -793,15 +827,37 @@ impl SettingsManager {
         snapshot: &Settings,
         modified_fields: &BTreeSet<String>,
         modified_nested_fields: &BTreeMap<String, BTreeSet<String>>,
-    ) {
+    ) -> Result<(), String> {
         let snapshot_map = to_map(snapshot);
+        let mut refused: Option<String> = None;
         self.storage.with_lock(scope, &mut |current| {
-            let current_map = current
+            // A file that no longer parses, typically one being edited by hand,
+            // is left alone: merging into an empty map would write back only
+            // the changed keys and drop everything else the user had.
+            let current_map = match current
                 .as_deref()
-                .and_then(|content| serde_json::from_str::<Value>(content).ok())
-                .and_then(|value| value.as_object().cloned())
-                .map(migrate_settings)
-                .unwrap_or_default();
+                .filter(|content| !content.trim().is_empty())
+            {
+                None => Map::new(),
+                Some(content) => match serde_json::from_str::<Value>(content) {
+                    Ok(Value::Object(map)) => migrate_settings(map),
+                    Ok(_) => {
+                        refused = Some(
+                            "Settings not saved: the settings file must contain an object. \
+                             The change is kept for this session."
+                                .to_owned(),
+                        );
+                        return None;
+                    }
+                    Err(error) => {
+                        refused = Some(format!(
+                            "Settings not saved: the settings file is not valid JSON ({error}). \
+                             The change is kept for this session."
+                        ));
+                        return None;
+                    }
+                },
+            };
             let mut merged = current_map.clone();
             for field in modified_fields {
                 let value = snapshot_map.get(field).cloned().unwrap_or(Value::Null);
@@ -834,7 +890,11 @@ impl SettingsManager {
                 }
             }
             Some(serde_json::to_string_pretty(&Value::Object(merged)).expect("settings serialize"))
-        });
+        })?;
+        match refused {
+            Some(message) => Err(message),
+            None => Ok(()),
+        }
     }
 }
 
@@ -1686,10 +1746,12 @@ fn try_load(
         return (Settings::default(), None);
     }
     let mut content: Option<String> = None;
-    storage.with_lock(scope, &mut |current| {
+    if let Err(error) = storage.with_lock(scope, &mut |current| {
         content = current;
         None
-    });
+    }) {
+        return (Settings::default(), Some(error));
+    }
     let Some(content) = content.filter(|content| !content.is_empty()) else {
         return (Settings::default(), None);
     };
