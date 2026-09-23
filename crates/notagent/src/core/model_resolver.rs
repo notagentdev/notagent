@@ -78,10 +78,10 @@ pub fn is_valid_thinking_level(level: &str) -> bool {
 pub const DEFAULT_MODEL_PER_PROVIDER: [(&str, &str); 39] = [
     ("amazon-bedrock", "us.anthropic.claude-opus-4-6-v1"),
     ("ant-ling", "Ring-2.6-1T"),
-    ("anthropic", "claude-opus-4-8"),
-    ("openai", "gpt-5.5"),
+    ("anthropic", "claude-opus-5-5"),
+    ("openai", "gpt-6-astra"),
     ("azure-openai-responses", "gpt-5.4"),
-    ("openai-codex", "gpt-5.5"),
+    ("openai-codex", "gpt-6-astra"),
     ("radius", "auto"),
     ("nvidia", "nvidia/nemotron-3-super-120b-a12b"),
     ("deepseek", "deepseek-v4-pro"),

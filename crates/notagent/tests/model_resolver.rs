@@ -777,8 +777,15 @@ fn with_explicit_thinking_the_suffix_is_kept_in_the_model_id() {
 
 #[test]
 fn provider_defaults_track_current_models() {
-    assert_eq!(default_model_for_provider("openai"), Some("gpt-5.5"));
-    assert_eq!(default_model_for_provider("openai-codex"), Some("gpt-5.5"));
+    assert_eq!(
+        default_model_for_provider("anthropic"),
+        Some("claude-opus-5-5")
+    );
+    assert_eq!(default_model_for_provider("openai"), Some("gpt-6-astra"));
+    assert_eq!(
+        default_model_for_provider("openai-codex"),
+        Some("gpt-6-astra")
+    );
     assert_eq!(default_model_for_provider("zai"), Some("glm-5.1"));
     assert_eq!(default_model_for_provider("minimax"), Some("MiniMax-M2.7"));
     assert_eq!(
@@ -796,6 +803,15 @@ fn provider_defaults_track_current_models() {
         Some("qwen3.8-max")
     );
     assert_eq!(DEFAULT_MODEL_PER_PROVIDER.len(), 39);
+    // A default missing from the catalog silently falls back to whatever is
+    // listed first, so the subscription and API defaults must resolve.
+    for provider in ["anthropic", "openai", "openai-codex"] {
+        let default_id = default_model_for_provider(provider).expect(provider);
+        assert!(
+            notagent_ai::model_catalog::get_builtin_model(provider, default_id).is_some(),
+            "{provider}/{default_id} is in the built-in catalog"
+        );
+    }
 }
 
 #[test]
