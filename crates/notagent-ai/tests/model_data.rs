@@ -941,20 +941,39 @@ fn gpt_6_sol_and_luna_are_offered_through_the_api_and_the_codex_plan() {
 }
 
 #[test]
-fn claude_opus_5_5_is_in_the_anthropic_catalog() {
-    let model = get_builtin_model("anthropic", "claude-opus-5-5").expect("Opus 5.5");
+fn claude_opus_5_5_and_fable_5_1_are_in_the_anthropic_catalog() {
+    for (model_id, input, output, cache_read, cache_write) in [
+        ("claude-opus-5-5", 4.0, 20.0, 0.2, 5.0),
+        ("claude-fable-5-1", 10.0, 50.0, 0.25, 12.5),
+    ] {
+        let model = get_builtin_model("anthropic", model_id).expect(model_id);
 
-    assert_eq!(model.context_window, 1_000_000);
-    assert_eq!(model.max_tokens, 128_000);
-    assert_eq!((model.cost.input, model.cost.output), (4.0, 20.0));
-    assert_eq!((model.cost.cache_read, model.cost.cache_write), (0.2, 5.0));
-    assert_eq!(
-        get_supported_thinking_levels(&model),
-        get_supported_thinking_levels(
-            &get_builtin_model("anthropic", "claude-opus-5").expect("Opus 5")
-        ),
-        "Opus 5.5 thinks like Opus 5: adaptive, up to max"
-    );
+        assert_eq!(model.context_window, 1_000_000, "{model_id}");
+        assert_eq!(model.max_tokens, 128_000, "{model_id}");
+        assert_eq!(
+            (model.cost.input, model.cost.output),
+            (input, output),
+            "{model_id}"
+        );
+        assert_eq!(
+            (model.cost.cache_read, model.cost.cache_write),
+            (cache_read, cache_write),
+            "{model_id}"
+        );
+        // Both think adaptively and cannot have thinking switched off.
+        assert_eq!(
+            get_supported_thinking_levels(&model),
+            vec![
+                ModelThinkingLevel::Minimal,
+                ModelThinkingLevel::Low,
+                ModelThinkingLevel::Medium,
+                ModelThinkingLevel::High,
+                ModelThinkingLevel::Xhigh,
+                ModelThinkingLevel::Max,
+            ],
+            "{model_id}"
+        );
+    }
 }
 
 #[test]
