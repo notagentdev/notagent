@@ -63,8 +63,25 @@ pub const MAX_BACKGROUND_TIMEOUT_S: f64 = 24.0 * 60.0 * 60.0;
 
 /// How long a command told to stop is given before it is killed.
 /// Short on purpose: this is the escalation inside a single command, while the
-/// task manager's own grace window covers work that has no process at all.
-const ABORT_ESCALATION_MS: u64 = 2_000;
+/// task manager's own grace window covers work that has no process at all. It
+/// must also end before the agent loop gives up on a cancelled tool (two
+/// seconds): at equal lengths the loop could drop this future first, and the
+/// kill that a command ignoring SIGTERM needs would never be sent.
+const ABORT_ESCALATION_MS: u64 = 1_500;
+
+/// Kills the command's process group when the future driving it is dropped
+/// while the shell still runs. Nothing else would stop a command whose caller
+/// stopped waiting for it.
+struct KillTreeOnDrop(Option<u32>);
+
+impl Drop for KillTreeOnDrop {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0.take() {
+            kill_process_tree(pid);
+            untrack_detached_child_pid(pid);
+        }
+    }
+}
 
 /// Re-armed on every chunk that arrives after the shell exited, so a detached
 /// descendant still writing keeps us reading while a quiet inherited handle
@@ -258,6 +275,7 @@ impl BashOperations for LocalBashOperations {
             }
 
             let pid = child.id();
+            let mut kill_on_drop = KillTreeOnDrop(pid);
             if let Some(pid) = pid {
                 track_detached_child_pid(pid);
                 if let Some(on_spawn) = &options.on_spawn {
@@ -327,6 +345,9 @@ impl BashOperations for LocalBashOperations {
                     },
                     status = &mut wait, if !exited => {
                         exited = true;
+                        // What the shell left running in the background is the
+                        // command's business once the shell itself is gone.
+                        kill_on_drop.0 = None;
                         exit_code = status.ok().and_then(|status| status.code());
                         idle_deadline =
                             Some(Instant::now() + Duration::from_millis(EXIT_STDIO_GRACE_MS));
@@ -359,6 +380,7 @@ impl BashOperations for LocalBashOperations {
                 }
             }
 
+            kill_on_drop.0 = None;
             if let Some(pid) = pid {
                 untrack_detached_child_pid(pid);
             }

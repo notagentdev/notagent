@@ -763,3 +763,27 @@ async fn moves_to_the_background_instead_of_failing_when_its_deadline_fires() {
         "auto-backgrounding stays on by default"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_command_whose_caller_stops_waiting_is_killed_even_if_it_ignores_sigterm() {
+    let directory = TempDir::new();
+    let marker = directory.path.join("survived");
+    let operations = create_local_bash_operations(None);
+    let command = format!("trap '' TERM; sleep 1; touch '{}'", marker.display());
+    let cwd = directory.as_str();
+    {
+        let execution = operations.exec(&command, &cwd, BashExecOptions::default());
+        // The caller gives up while the command still sleeps; the future is dropped.
+        let outcome = tokio::time::timeout(std::time::Duration::from_millis(300), execution).await;
+        assert!(
+            outcome.is_err(),
+            "the command is still running when the wait ends"
+        );
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    assert!(
+        !marker.exists(),
+        "dropping the running command kills its process group, so it never reaches the touch"
+    );
+}
