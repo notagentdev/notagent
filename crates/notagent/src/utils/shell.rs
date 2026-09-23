@@ -263,6 +263,55 @@ fn signal_process_tree(pid: u32, signal: i32) {
     }
 }
 
+/// Lines of a child's stderr kept in an error message.
+const STDERR_SUMMARY_LINES: usize = 20;
+
+/// A child's stderr as an error message: trimmed, and cut after the first
+/// lines. A search over a large tree can report thousands of unreadable paths,
+/// and all of them would land in the model's context as one tool error.
+pub fn stderr_summary(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.trim().lines().collect();
+    if lines.len() <= STDERR_SUMMARY_LINES {
+        return lines.join("\n");
+    }
+    format!(
+        "{}\n[{} more lines]",
+        lines[..STDERR_SUMMARY_LINES].join("\n"),
+        lines.len() - STDERR_SUMMARY_LINES
+    )
+}
+
+/// A child's pipe being read to its end on a task of its own.
+pub struct PipeDrain(Option<tokio::task::JoinHandle<Vec<u8>>>);
+
+impl PipeDrain {
+    /// Everything the pipe delivered, once the child closed it.
+    pub async fn collect(self) -> Vec<u8> {
+        match self.0 {
+            Some(handle) => handle.await.unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+}
+
+/// Reads a piped child stream concurrently with whatever the caller reads.
+/// A child writing into a full pipe that nobody drains stops there, so a
+/// caller that only reads stdout until it closes waits forever on a child
+/// that has a lot to say on stderr.
+pub fn drain_in_background<R>(pipe: Option<R>) -> PipeDrain
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    PipeDrain(pipe.map(|mut pipe| {
+        tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let mut buffer = Vec::new();
+            let _ = pipe.read_to_end(&mut buffer).await;
+            buffer
+        })
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

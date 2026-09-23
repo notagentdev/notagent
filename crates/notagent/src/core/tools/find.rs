@@ -24,6 +24,7 @@ use crate::core::tools::truncate::{
 };
 use crate::modes::interactive::components::keybinding_hints::key_hint;
 use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
+use crate::utils::shell::{drain_in_background, stderr_summary};
 use crate::utils::tools_manager::{ManagedTool, ensure_tool};
 
 pub const FIND_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
@@ -464,29 +465,44 @@ impl ToolDefinition for FindToolDefinition {
                 .map_err(|error| ToolExecutionError::new(format!("Failed to run fd: {error}")))?;
 
             use tokio::io::AsyncBufReadExt;
-            let stdout = child.stdout.take().expect("piped stdout");
-            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            // stderr is read alongside stdout: fd reports every unreadable
+            // directory there, and once that pipe is full it blocks before
+            // closing stdout, which this loop would wait on forever.
+            let stderr_reader = drain_in_background(child.stderr.take());
+            let Some(stdout) = child.stdout.take() else {
+                let _ = child.kill().await;
+                return Err(ToolExecutionError::new("Failed to run fd: no output pipe"));
+            };
+            // Split on bytes: a file name that is not UTF-8 is still a result,
+            // and a line reader would stop at it and leave fd blocked on a
+            // pipe nobody drains.
+            let mut lines = tokio::io::BufReader::new(stdout).split(b'\n');
             let mut collected: Vec<String> = Vec::new();
             loop {
                 let next = match &signal {
                     Some(signal) => tokio::select! {
-                        line = lines.next_line() => line,
+                        line = lines.next_segment() => line,
                         () = signal.cancelled() => {
                             let _ = child.kill().await;
                             return Err(ToolExecutionError::new("Operation aborted"));
                         }
                     },
-                    None => lines.next_line().await,
+                    None => lines.next_segment().await,
                 };
                 match next {
-                    Ok(Some(line)) => collected.push(line),
-                    Ok(None) | Err(_) => break,
+                    Ok(Some(line)) => collected.push(String::from_utf8_lossy(&line).into_owned()),
+                    Ok(None) => break,
+                    Err(_) => {
+                        let _ = child.kill().await;
+                        break;
+                    }
                 }
             }
-            let output = child
-                .wait_with_output()
+            let status = child
+                .wait()
                 .await
                 .map_err(|error| ToolExecutionError::new(format!("Failed to run fd: {error}")))?;
+            let stderr_bytes = stderr_reader.collect().await;
             if aborted() {
                 return Err(ToolExecutionError::new("Operation aborted"));
             }
@@ -498,10 +514,10 @@ impl ToolDefinition for FindToolDefinition {
                 .map(|line| relativize_find_result_path(line, &search_path))
                 .collect();
 
-            if !output.status.success() && relativized.is_empty() {
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            if !status.success() && relativized.is_empty() {
+                let stderr = stderr_summary(&String::from_utf8_lossy(&stderr_bytes));
                 let message = if stderr.is_empty() {
-                    match output.status.code() {
+                    match status.code() {
                         Some(code) => format!("fd exited with code {code}"),
                         None => "fd exited with code null".to_owned(),
                     }

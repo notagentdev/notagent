@@ -26,6 +26,7 @@ use crate::core::tools::truncate::{
 };
 use crate::modes::interactive::components::keybinding_hints::key_hint;
 use crate::modes::interactive::theme::theme::{Theme, ThemeColor};
+use crate::utils::shell::{drain_in_background, stderr_summary};
 use crate::utils::tools_manager::{ManagedTool, ensure_tool};
 
 pub const GREP_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
@@ -392,7 +393,16 @@ impl ToolDefinition for GrepToolDefinition {
                     ToolExecutionError::new(format!("Failed to run ripgrep: {error}"))
                 })?;
 
-            let stdout = child.stdout.take().expect("piped stdout");
+            // stderr is read alongside stdout: ripgrep reports every unreadable
+            // path there, and once that pipe is full it blocks before closing
+            // stdout, which this loop would wait on forever.
+            let stderr_reader = drain_in_background(child.stderr.take());
+            let Some(stdout) = child.stdout.take() else {
+                let _ = child.kill().await;
+                return Err(ToolExecutionError::new(
+                    "Failed to run ripgrep: no output pipe",
+                ));
+            };
             let mut lines = tokio::io::BufReader::new(stdout).lines();
             let mut matches: Vec<GrepMatch> = Vec::new();
             let mut match_count = 0usize;
@@ -411,7 +421,16 @@ impl ToolDefinition for GrepToolDefinition {
                     },
                     None => lines.next_line().await,
                 };
-                let Ok(Some(line)) = next else { break };
+                let line = match next {
+                    Ok(Some(line)) => line,
+                    Ok(None) => break,
+                    // Nobody reads stdout any more, so the child could block on
+                    // it; it is stopped rather than waited for.
+                    Err(_) => {
+                        let _ = child.kill().await;
+                        break;
+                    }
+                };
                 if line.trim().is_empty() || match_count >= effective_limit {
                     continue;
                 }
@@ -442,15 +461,22 @@ impl ToolDefinition for GrepToolDefinition {
                 }
             }
 
-            let output = child.wait_with_output().await.map_err(|error| {
+            let status = child.wait().await.map_err(|error| {
                 ToolExecutionError::new(format!("Failed to run ripgrep: {error}"))
             })?;
+            let stderr_bytes = stderr_reader.collect().await;
             if aborted() {
                 return Err(ToolExecutionError::new("Operation aborted"));
             }
-            let exit_code = output.status.code();
-            if !killed_due_to_limit && exit_code != Some(0) && exit_code != Some(1) {
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            let exit_code = status.code();
+            // Exit code 2 also covers "some paths could not be read"; the
+            // matches from the rest of the tree are still the answer then.
+            if !killed_due_to_limit
+                && exit_code != Some(0)
+                && exit_code != Some(1)
+                && match_count == 0
+            {
+                let stderr = stderr_summary(&String::from_utf8_lossy(&stderr_bytes));
                 let message = if stderr.is_empty() {
                     match exit_code {
                         Some(code) => format!("ripgrep exited with code {code}"),
@@ -660,6 +686,47 @@ mod tests {
         lines.sort_unstable();
         assert_eq!(lines, vec!["a.txt:2: beta", "b.txt:2: beta"]);
         assert_eq!(result.details, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_search_that_hits_thousands_of_unreadable_directories_still_finishes() {
+        use std::os::unix::fs::PermissionsExt;
+        if !ripgrep_available() {
+            return;
+        }
+        let directory = TempDir::new();
+        directory.write("hit.txt", "needle\n");
+        let locked: Vec<std::path::PathBuf> = (0..3000)
+            .map(|index| directory.path.join(format!("locked-{index}")))
+            .collect();
+        for path in &locked {
+            std::fs::create_dir(path).expect("mkdir");
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+        }
+        // A privileged user reads them anyway, and then there is nothing to test.
+        if std::fs::read_dir(&locked[0]).is_ok() {
+            return;
+        }
+
+        let tool = create_grep_tool_definition(&directory.cwd(), None);
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            tool.execute("call-1", json!({ "pattern": "needle" }), None, None, None),
+        )
+        .await;
+        for path in &locked {
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let result = outcome
+            .expect("ripgrep's stderr is drained while stdout is read, so the search ends")
+            .expect("grep");
+        assert!(
+            text_of(&result).contains("hit.txt:1: needle"),
+            "{}",
+            text_of(&result)
+        );
     }
 
     #[tokio::test]
