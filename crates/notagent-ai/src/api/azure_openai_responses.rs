@@ -685,8 +685,7 @@ async fn run_request(
                 }
                 let chunk =
                     chunk.map_err(|error| AzureTransportError::message(error.to_string()))?;
-                let text = String::from_utf8_lossy(&chunk).to_string();
-                pump(decoder.feed(&text), state)?;
+                pump(decoder.feed_bytes(&chunk), state)?;
             }
             pump(decoder.finish(), state)?;
         }

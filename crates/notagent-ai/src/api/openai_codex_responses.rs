@@ -30,6 +30,7 @@ use crate::utils::event_stream::{
     AssistantMessageEventStream, create_assistant_message_event_stream,
 };
 use crate::utils::fetch::{FetchBody, FetchFunction, FetchRequest, ReqwestFetch};
+use crate::utils::utf8_stream::Utf8StreamDecoder;
 use crate::utils::uuid::uuidv7;
 
 // ---------------------------------------------------------------------------
@@ -2032,8 +2033,10 @@ async fn drive_sse(
     http_timeout_ms: Option<u64>,
 ) -> Result<(), CodexError> {
     let mut parser = CodexSseParser::new();
-    let mut feed = |text: &str, pump: &mut CodexEventPump<'_>| -> Result<(), CodexError> {
-        for event in parser.feed(text)? {
+    let mut utf8 = Utf8StreamDecoder::new();
+    let mut feed = |bytes: &[u8], pump: &mut CodexEventPump<'_>| -> Result<(), CodexError> {
+        let text = utf8.decode(bytes);
+        for event in parser.feed(&text)? {
             for emitted in pump.push(&event)? {
                 stream.push(emitted);
             }
@@ -2043,7 +2046,7 @@ async fn drive_sse(
 
     match body {
         FetchBody::Bytes(bytes) => {
-            feed(&String::from_utf8_lossy(&bytes), pump)?;
+            feed(&bytes, pump)?;
         }
         FetchBody::Stream(mut receiver) => loop {
             if request
@@ -2072,7 +2075,7 @@ async fn drive_sse(
                 break;
             };
             let chunk = chunk.map_err(|error| CodexError::transport(error.to_string()))?;
-            feed(&String::from_utf8_lossy(&chunk), pump)?;
+            feed(&chunk, pump)?;
         },
     }
     Ok(())

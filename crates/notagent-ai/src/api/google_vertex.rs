@@ -569,8 +569,8 @@ async fn run_request(
     });
 
     let mut decoder = SseDecoder::new();
-    let mut feed = |text: &str, state: &mut GoogleStreamState| {
-        for event in decoder.feed(text) {
+    let mut feed = |bytes: &[u8], state: &mut GoogleStreamState| {
+        for event in decoder.feed_bytes(bytes) {
             if event.data.trim().is_empty() {
                 continue;
             }
@@ -584,7 +584,7 @@ async fn run_request(
     };
 
     match response.body {
-        FetchBody::Bytes(bytes) => feed(&String::from_utf8_lossy(&bytes), state),
+        FetchBody::Bytes(bytes) => feed(&bytes, state),
         FetchBody::Stream(mut receiver) => {
             while let Some(chunk) = receiver.recv().await {
                 if request
@@ -595,7 +595,7 @@ async fn run_request(
                     return Err(GoogleError::from_message("Request was aborted"));
                 }
                 let chunk = chunk.map_err(|error| GoogleError::from_message(error.to_string()))?;
-                feed(&String::from_utf8_lossy(&chunk), state);
+                feed(&chunk, state);
             }
         }
     }

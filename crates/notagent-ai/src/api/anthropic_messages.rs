@@ -781,8 +781,7 @@ async fn run_request(
             return Err(AnthropicStreamError("Request was aborted".to_string()));
         }
         let chunk = chunk.map_err(|error| AnthropicStreamError(error.to_string()))?;
-        let text = String::from_utf8_lossy(&chunk).to_string();
-        for event in decoder.feed(&text) {
+        for event in decoder.feed_bytes(&chunk) {
             process_sse_event(&event, state, stream)?;
         }
     }

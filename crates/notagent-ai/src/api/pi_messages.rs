@@ -17,6 +17,7 @@ use crate::utils::fetch::{FetchBody, FetchRequest, ReqwestFetch};
 use crate::utils::headers::provider_headers_to_record;
 use crate::utils::json_parse::parse_streaming_json;
 use crate::utils::provider_env::get_provider_env_value;
+use crate::utils::utf8_stream::Utf8StreamDecoder;
 
 const MAX_DIAGNOSTIC_STRING_LENGTH: usize = 8192;
 
@@ -723,6 +724,7 @@ async fn run_request(
     }
 
     let mut buffer = String::new();
+    let mut utf8 = Utf8StreamDecoder::new();
     let mut body = response.body;
     loop {
         let chunk = match &mut body {
@@ -732,9 +734,9 @@ async fn run_request(
                 if text.is_empty() { None } else { Some(text) }
             }
             FetchBody::Stream(receiver) => match receiver.recv().await {
-                Some(Ok(bytes)) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+                Some(Ok(bytes)) => Some(utf8.decode(&bytes)),
                 Some(Err(error)) => return Err(PiMessagesError::Plain(error.to_string())),
-                None => None,
+                None => Some(utf8.finish()).filter(|tail| !tail.is_empty()),
             },
         };
         let Some(chunk) = chunk else { break };
@@ -783,11 +785,11 @@ async fn read_body(body: FetchBody) -> String {
     match body {
         FetchBody::Bytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         FetchBody::Stream(mut receiver) => {
-            let mut text = String::new();
+            let mut bytes = Vec::new();
             while let Some(Ok(chunk)) = receiver.recv().await {
-                text.push_str(&String::from_utf8_lossy(&chunk));
+                bytes.extend_from_slice(&chunk);
             }
-            text
+            String::from_utf8_lossy(&bytes).into_owned()
         }
     }
 }

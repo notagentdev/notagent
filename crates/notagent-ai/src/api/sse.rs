@@ -1,3 +1,5 @@
+use crate::utils::utf8_stream::Utf8StreamDecoder;
+
 /// `ServerSentEvent { event, data, raw }`
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ServerSentEvent {
@@ -14,6 +16,11 @@ pub struct SseDecoder {
     event: Option<String>,
     data: Vec<String>,
     raw: Vec<String>,
+    /// Bytes of a character a network chunk cut in half.
+    utf8: Utf8StreamDecoder,
+    /// The previous chunk ended in `\r`, so a `\n` opening the next one is
+    /// the second half of that CRLF and not an empty line of its own.
+    skip_leading_newline: bool,
 }
 
 impl SseDecoder {
@@ -63,6 +70,12 @@ impl SseDecoder {
 
     /// `consumeLine(text)` — the next line plus the rest, or `None` while incomplete.
     fn consume_line(&mut self) -> Option<String> {
+        if self.skip_leading_newline && !self.buffer.is_empty() {
+            self.skip_leading_newline = false;
+            if self.buffer.starts_with('\n') {
+                self.buffer.drain(..1);
+            }
+        }
         let carriage_return = self.buffer.find('\r');
         let newline = self.buffer.find('\n');
         let break_index = match (carriage_return, newline) {
@@ -72,13 +85,15 @@ impl SseDecoder {
         };
 
         let mut next_index = break_index + 1;
-        if self.buffer.as_bytes()[break_index] == b'\r'
-            && self.buffer.as_bytes().get(next_index) == Some(&b'\n')
-        {
-            next_index += 1;
+        if self.buffer.as_bytes()[break_index] == b'\r' {
+            match self.buffer.as_bytes().get(next_index) {
+                Some(b'\n') => next_index += 1,
+                None => self.skip_leading_newline = true,
+                Some(_) => {}
+            }
         }
         let line = self.buffer[..break_index].to_string();
-        self.buffer = self.buffer[next_index..].to_string();
+        self.buffer.drain(..next_index);
         Some(line)
     }
 
@@ -94,8 +109,17 @@ impl SseDecoder {
         events
     }
 
+    /// Feeds raw bytes as they came off the wire. A multi-byte character split
+    /// between two chunks is held back until it is complete.
+    pub fn feed_bytes(&mut self, chunk: &[u8]) -> Vec<ServerSentEvent> {
+        let text = self.utf8.decode(chunk);
+        self.feed(&text)
+    }
+
     /// Ends the stream: decodes a trailing partial line and flushes a pending event.
     pub fn finish(&mut self) -> Vec<ServerSentEvent> {
+        let tail = self.utf8.finish();
+        self.buffer.push_str(&tail);
         let mut events = Vec::new();
         while let Some(line) = self.consume_line() {
             if let Some(event) = self.decode_line(&line) {
@@ -220,6 +244,33 @@ mod tests {
         let single_chars: Vec<String> = payload.chars().map(|c| c.to_string()).collect();
         let chunks: Vec<&str> = single_chars.iter().map(String::as_str).collect();
         assert_eq!(decode_all(&chunks), expected);
+    }
+
+    #[test]
+    fn a_crlf_split_between_two_chunks_is_one_line_break() {
+        let payload = "event: e\r\ndata: d\r\n\r\nevent: f\r\ndata: g\r\n\r\n";
+        let expected = decode_all(&[payload]);
+        assert_eq!(expected.len(), 2);
+        for split in 1..payload.len() {
+            let (head, tail) = payload.split_at(split);
+            assert_eq!(decode_all(&[head, tail]), expected, "split at {split}");
+        }
+    }
+
+    #[test]
+    fn a_character_split_between_two_byte_chunks_is_decoded_whole() {
+        let payload = "event: e\ndata: {\"text\":\"Grüße 🙈\"}\n\n".as_bytes();
+        for split in 1..payload.len() {
+            let mut decoder = SseDecoder::new();
+            let mut events = decoder.feed_bytes(&payload[..split]);
+            events.extend(decoder.feed_bytes(&payload[split..]));
+            events.extend(decoder.finish());
+            assert_eq!(events.len(), 1, "split at {split}");
+            assert_eq!(
+                events[0].data, "{\"text\":\"Grüße 🙈\"}",
+                "split at {split}"
+            );
+        }
     }
 
     #[test]

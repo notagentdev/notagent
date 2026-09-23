@@ -17,5 +17,6 @@ pub mod retry;
 pub mod sanitize_unicode;
 pub mod text;
 pub mod typebox_helpers;
+pub mod utf8_stream;
 pub mod uuid;
 pub mod validation;

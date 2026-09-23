@@ -390,16 +390,16 @@ async fn read_body(body: FetchBody) -> Result<String, String> {
     match body {
         FetchBody::Bytes(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
         FetchBody::Stream(mut receiver) => {
-            let mut text = String::new();
+            let mut bytes = Vec::new();
             while let Some(chunk) = receiver.recv().await {
                 match chunk {
-                    Ok(chunk) => text.push_str(&String::from_utf8_lossy(&chunk)),
+                    Ok(chunk) => bytes.extend_from_slice(&chunk),
                     // truncated body must not pass as the response — it would
                     // surface as a misleading JSON parse error.
                     Err(error) => return Err(error.to_string()),
                 }
             }
-            Ok(text)
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
         }
     }
 }

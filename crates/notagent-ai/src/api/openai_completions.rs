@@ -1159,8 +1159,7 @@ async fn run_request(
                 }
                 let chunk = chunk
                     .map_err(|error| OpenAICompletionsStreamError::message(error.to_string()))?;
-                let text = String::from_utf8_lossy(&chunk).to_string();
-                done = pump(decoder.feed(&text), state)?;
+                done = pump(decoder.feed_bytes(&chunk), state)?;
             }
             if !done {
                 pump(decoder.finish(), state)?;

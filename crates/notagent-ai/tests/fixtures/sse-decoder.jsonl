@@ -171,7 +171,7 @@
 {"chunks":["event:"," a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
 {"chunks":["event: ","a\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
 {"chunks":["event: a","\r\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
-{"chunks":["event: a\r","\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"","raw":["event: a"]},{"event":null,"data":"b","raw":["data: b"]}]}
+{"chunks":["event: a\r","\ndata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
 {"chunks":["event: a\r\n","data: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
 {"chunks":["event: a\r\nd","ata: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
 {"chunks":["event: a\r\nda","ta: b\r\n\r\n"],"events":[{"event":"a","data":"b","raw":["event: a","data: b"]}]}
