@@ -104,12 +104,18 @@ never blocks a file.
 **New models**
 
 - *Claude Opus 5.5* (`claude-opus-5-5`) for the Anthropic API and the Claude
-  subscription login: 1M context, 128K output, adaptive thinking up to `max`,
-  $4 / $20 per million input / output tokens.
+  subscription login: 1M context, 128K output, adaptive thinking up to `max`
+  that cannot be switched off, $4 / $20 per million input / output tokens.
+- *Claude Fable 5.1* (`claude-fable-5-1`), Anthropic's model for the most
+  demanding reasoning: 1M context, 128K output, $10 / $50 per million input /
+  output tokens.
 - *GPT-6 Sol* (`gpt-6-sol`) and *GPT-6 Luna* (`gpt-6-luna`) for the OpenAI API
   (1.05M context) and the Codex plan (872K context), with reasoning up to
   `max`. Sol costs $2 / $10, Luna $0.10 / $0.50 per million input / output
   tokens; prompts above 272K input tokens are billed at the long-context rate.
+- New defaults: `claude-opus-5-5` for the Anthropic API and the Claude
+  subscription, `gpt-6-astra` for the OpenAI API and the Codex plan. A model
+  chosen explicitly or saved in the settings is kept.
 - Claude Sonnet 5.5 and Haiku 5.5 are announced but not yet released; they
   will be added once Anthropic publishes their model IDs.
 
