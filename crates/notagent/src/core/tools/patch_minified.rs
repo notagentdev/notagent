@@ -307,7 +307,15 @@ async fn run_edits(
                 .read_file(&absolute_path)
                 .await
                 .map_err(ToolExecutionError::new)?;
-            let raw_content = String::from_utf8_lossy(&buffer).into_owned();
+            // The whole file is written back, so a lossy decode would replace
+            // every invalid byte in it, not only the ones the edit touched.
+            let raw_content = String::from_utf8(buffer).map_err(|_| {
+                ToolExecutionError::new(format!(
+                    "Could not edit file: {path}. The file is not valid UTF-8 \
+                     (binary or unsupported encoding); editing it would corrupt \
+                     bytes outside the edited range."
+                ))
+            })?;
             throw_if_aborted()?;
 
             // Strip the BOM before matching: the model will not include an invisible
@@ -749,6 +757,29 @@ mod tests {
             )
             .await
             .expect("plant");
+    }
+
+    #[tokio::test]
+    async fn refuses_a_file_that_is_not_utf8_and_leaves_its_bytes_alone() {
+        let directory = TempDir::new();
+        let original: &[u8] = b"fn main() {\n    let a = 1; // gr\xfc\xdfe\n}\n";
+        std::fs::write(directory.path.join("file.rs"), original).expect("write");
+        let tool = create_patch_minified_tool_definition(&directory.cwd(), with_leases(false));
+        let error = tool
+            .execute("call-1", one_patch(), None, None, None)
+            .await
+            .expect_err("not utf-8");
+
+        assert!(
+            error.message.contains("not valid UTF-8"),
+            "{}",
+            error.message
+        );
+        assert_eq!(
+            std::fs::read(directory.path.join("file.rs")).expect("read"),
+            original,
+            "a Latin-1 file keeps every byte when the patch is refused"
+        );
     }
 
     #[tokio::test]
