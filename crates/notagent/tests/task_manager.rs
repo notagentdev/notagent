@@ -999,6 +999,11 @@ async fn finished_tasks_release_their_runtime_and_keep_output_and_wait_semantics
         assert_eq!(snapshot.full_output_available, detached);
         assert_eq!(store.log_exists(&id), detached);
         assert_eq!(manager.read_output(&id, None).await, "full answer");
+        assert_eq!(
+            manager.read_output(&id, Some(6)).await,
+            "answer",
+            "a tail is the last bytes of the output, from the log or from memory"
+        );
         manager.suppress_notification(&id).await;
         assert_eq!(
             manager.get(&id).unwrap().base().notification_suppressed,

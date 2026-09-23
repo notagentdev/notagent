@@ -874,15 +874,13 @@ impl TaskManager {
         }
     }
 
+    /// The task's output, or only its last `tail` bytes. The tail is read from
+    /// the end of the log rather than cut from the whole: a server that has
+    /// been logging for hours can have written more than is sensible to load
+    /// for a few kilobytes of preview.
     pub async fn read_output(&self, task_id: &str, tail: Option<usize>) -> String {
-        let output = self.output_snapshot(task_id, u64::MAX).await.preview;
-        match tail {
-            None => output,
-            Some(tail) => {
-                let offset = output.len().saturating_sub(tail);
-                String::from_utf8_lossy(&output.as_bytes()[offset..]).into_owned()
-            }
-        }
+        let limit = tail.map_or(u64::MAX, |tail| u64::try_from(tail).unwrap_or(u64::MAX));
+        self.output_snapshot(task_id, limit).await.preview
     }
 
     // ── waiting ────────────────────────────────────────────────────────
