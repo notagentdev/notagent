@@ -361,6 +361,24 @@ impl ExploreBlockComponent {
         }
     }
 
+    /// A closed block holding only `call_id`, completed. A result that arrives
+    /// after its block settled gets this row, because the settled block may
+    /// already be in native scrollback, which cannot be edited.
+    #[must_use]
+    pub fn detached_result(&self, call_id: &str, failed: bool) -> Option<Self> {
+        let index = *self.entry_by_call_id.get(call_id)?;
+        let mut entry = self.entries[index].clone();
+        entry.started = true;
+        entry.complete = true;
+        entry.failed = failed;
+        let mut block = Self::new();
+        block.entry_by_call_id.insert(entry.call_id.clone(), 0);
+        block.entries.push(entry);
+        block.expanded = self.expanded;
+        block.close();
+        Some(block)
+    }
+
     /// Returns whether this block is still accepting consecutive search calls.
     #[must_use]
     pub fn is_open(&self) -> bool {
@@ -612,6 +630,43 @@ mod tests {
                 .any(|line| line.contains("needle")),
             "the row shows the arguments that arrived last"
         );
+    }
+
+    #[test]
+    fn a_late_result_becomes_a_settled_block_of_its_own() {
+        let _guard = theme_lock();
+        let mut block = ExploreBlockComponent::new();
+        block.push_call(
+            "grep",
+            "call-1".to_string(),
+            &serde_json::json!({ "pattern": "a" }),
+        );
+        block.push_call(
+            "grep",
+            "call-2".to_string(),
+            &serde_json::json!({ "pattern": "late" }),
+        );
+        block.fail_running_calls();
+        block.close();
+        let before = rendered(&mut block);
+
+        let mut detached = block
+            .detached_result("call-2", false)
+            .expect("the block carries the call");
+        assert_eq!(
+            rendered(&mut block),
+            before,
+            "the settled block may be in scrollback and must not change"
+        );
+        assert!(!detached.is_running() && !detached.is_open());
+        assert_eq!(detached.failed_count(), 0, "the late result succeeded");
+        assert!(detached.has_call("call-2") && !detached.has_call("call-1"));
+        assert!(
+            rendered(&mut detached)
+                .iter()
+                .any(|line| line.contains("late"))
+        );
+        assert!(block.detached_result("call-9", false).is_none());
     }
 
     /// Every read-only tool is grouped, and nothing that changes the project.

@@ -30,6 +30,12 @@ pub trait Terminal {
     fn columns(&self) -> usize;
     fn rows(&self) -> usize;
 
+    /// Screen row (0-based) of the cursor when `start` ran, if the terminal
+    /// reported it. A renderer that writes below the shell output starts there.
+    fn start_cursor_row(&self) -> Option<usize> {
+        None
+    }
+
     fn kitty_protocol_active(&self) -> bool;
 
     fn move_by(&mut self, lines: isize);
@@ -195,6 +201,8 @@ pub struct ProcessTerminal {
     /// Bumped by every `start()`/`stop()`; leases from an older epoch belong to
     /// a reader thread that no longer exists and are dropped instead of restored.
     pump_epoch: u64,
+    start_cursor_row: Option<usize>,
+    late_cursor_report_until: Option<Instant>,
 }
 
 impl Default for ProcessTerminal {
@@ -227,6 +235,8 @@ impl ProcessTerminal {
             columns_override: None,
             rows_override: None,
             pump_epoch: 0,
+            start_cursor_row: None,
+            late_cursor_report_until: None,
         }
     }
 
@@ -297,6 +307,25 @@ impl ProcessTerminal {
         self.dispatch_events(events)
     }
 
+    /// The reply to a start-up cursor query that timed out still arrives as
+    /// input. A modified F3 shares its shape (`CSI 1 ; 5 R`), so only one
+    /// report within a short window after the timeout is swallowed.
+    fn consume_late_cursor_report(&mut self, sequence: &str) -> bool {
+        let Some(until) = self.late_cursor_report_until else {
+            return false;
+        };
+        if Instant::now() > until {
+            self.late_cursor_report_until = None;
+            return false;
+        }
+        let whole = find_cursor_report(sequence.as_bytes())
+            .is_some_and(|(_, range)| range == (0..sequence.len()));
+        if whole {
+            self.late_cursor_report_until = None;
+        }
+        whole
+    }
+
     fn dispatch_events(&mut self, events: Vec<StdinEvent>) -> Vec<String> {
         let mut forwards = Vec::new();
         for event in events {
@@ -311,6 +340,9 @@ impl ProcessTerminal {
                             self.handle_keyboard_protocol_negotiation_sequence(negotiation);
                         }
                         NegotiationRead::None => {
+                            if self.consume_late_cursor_report(&sequence) {
+                                continue;
+                            }
                             forwards.push(normalize_forwarded_input(&sequence))
                         }
                     }
@@ -676,6 +708,96 @@ fn env_usize(name: &str) -> Option<usize> {
     std::env::var(name).ok()?.trim().parse().ok()
 }
 
+/// Terminals answer a cursor position request within a few milliseconds; a
+/// missing answer must not hold up the first frame for long.
+const CURSOR_REPORT_TIMEOUT: Duration = Duration::from_millis(500);
+/// How long after that timeout a reply is still expected, e.g. over SSH.
+const LATE_CURSOR_REPORT_WINDOW: Duration = Duration::from_secs(3);
+
+/// Locate a cursor position report (`ESC [ row ; col R`) and return its
+/// 0-based row with the byte range it occupies.
+pub(crate) fn find_cursor_report(bytes: &[u8]) -> Option<(usize, std::ops::Range<usize>)> {
+    let mut start = 0;
+    while let Some(offset) = bytes[start..].windows(2).position(|pair| pair == b"\x1b[") {
+        let begin = start + offset;
+        let body = &bytes[begin + 2..];
+        let row_len = body.iter().take_while(|byte| byte.is_ascii_digit()).count();
+        let after_row = &body[row_len..];
+        if row_len > 0 && after_row.first() == Some(&b';') {
+            let column_len = after_row[1..]
+                .iter()
+                .take_while(|byte| byte.is_ascii_digit())
+                .count();
+            if column_len > 0 && after_row.get(1 + column_len) == Some(&b'R') {
+                let row = std::str::from_utf8(&body[..row_len])
+                    .ok()
+                    .and_then(|row| row.parse::<usize>().ok())?;
+                let end = begin + 2 + row_len + 1 + column_len + 1;
+                return Some((row.saturating_sub(1), begin..end));
+            }
+        }
+        start = begin + 1;
+    }
+    None
+}
+
+/// Read the reply to a `CSI 6 n` written just before. Bytes that arrive around
+/// it are typed input and are returned so they still reach the input handler.
+#[cfg(unix)]
+fn read_cursor_report(timeout: Duration) -> (Option<usize>, Vec<u8>) {
+    // SAFETY: `isatty` only inspects the descriptor.
+    if unsafe { libc::isatty(libc::STDIN_FILENO) } != 1 {
+        return (None, Vec::new());
+    }
+    let deadline = std::time::Instant::now() + timeout;
+    let mut received = Vec::new();
+    loop {
+        if let Some((row, range)) = find_cursor_report(&received) {
+            received.drain(range);
+            return (Some(row), received);
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return (None, received);
+        }
+        let mut descriptor = libc::pollfd {
+            fd: libc::STDIN_FILENO,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let millis = i32::try_from(remaining.as_millis())
+            .unwrap_or(i32::MAX)
+            .max(1);
+        // SAFETY: `descriptor` is one valid pollfd for the duration of the call.
+        let ready = unsafe { libc::poll(&mut descriptor, 1, millis) };
+        if ready < 0 {
+            if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return (None, received);
+        }
+        if ready == 0 {
+            return (None, received);
+        }
+        let mut chunk = [0u8; 256];
+        // SAFETY: `chunk` is writable for its full length.
+        let read =
+            unsafe { libc::read(libc::STDIN_FILENO, chunk.as_mut_ptr().cast(), chunk.len()) };
+        let Ok(read) = usize::try_from(read) else {
+            return (None, received);
+        };
+        if read == 0 {
+            return (None, received);
+        }
+        received.extend_from_slice(&chunk[..read]);
+    }
+}
+
+#[cfg(not(unix))]
+fn read_cursor_report(_timeout: Duration) -> (Option<usize>, Vec<u8>) {
+    (None, Vec::new())
+}
+
 #[async_trait(?Send)]
 impl Terminal for ProcessTerminal {
     fn start(&mut self, on_input: InputHandler, on_resize: ResizeHandler) {
@@ -705,8 +827,25 @@ impl Terminal for ProcessTerminal {
         // resets console mode flags.
         enable_windows_vt_input();
 
+        // Only before the first reader thread exists: a reader from an earlier
+        // start stays blocked in `read` after `stop()` and would take the reply.
+        let mut early_input = Vec::new();
+        self.start_cursor_row = None;
+        if self.pump_epoch == 0 && matches!(self.output, OutputSink::Stdout) {
+            self.write_out("\x1b[6n");
+            let (row, pending) = read_cursor_report(CURSOR_REPORT_TIMEOUT);
+            self.start_cursor_row = row;
+            if row.is_none() {
+                self.late_cursor_report_until = Some(Instant::now() + LATE_CURSOR_REPORT_WINDOW);
+            }
+            early_input = pending;
+        }
+
         // Spawn the blocking stdin reader; the channel feeds `pump()`.
         let (tx, rx) = mpsc::unbounded_channel();
+        if !early_input.is_empty() {
+            let _ = tx.send(early_input);
+        }
         std::thread::spawn(move || {
             let mut stdin = std::io::stdin();
             let mut chunk = [0u8; 4096];
@@ -806,6 +945,10 @@ impl Terminal for ProcessTerminal {
             .map(|(_, rows)| rows)
             .or_else(|| env_usize("LINES"))
             .unwrap_or(24)
+    }
+
+    fn start_cursor_row(&self) -> Option<usize> {
+        self.start_cursor_row
     }
 
     fn kitty_protocol_active(&self) -> bool {
@@ -1027,6 +1170,10 @@ impl Terminal for SharedProcessTerminal {
 
     fn rows(&self) -> usize {
         self.0.borrow().rows()
+    }
+
+    fn start_cursor_row(&self) -> Option<usize> {
+        self.0.borrow().start_cursor_row()
     }
 
     fn kitty_protocol_active(&self) -> bool {
@@ -1304,5 +1451,41 @@ impl ProcessTerminalPump {
             .handle_stdin_chunk(data.as_bytes());
         self.forward_input(forwards);
         PumpResult::Input
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Duration, Instant, ProcessTerminal, find_cursor_report};
+
+    #[test]
+    fn one_late_cursor_report_is_swallowed_and_later_keys_pass() {
+        let mut terminal = ProcessTerminal::new();
+        assert!(
+            !terminal.consume_late_cursor_report("\x1b[1;5R"),
+            "without a timed-out query the sequence is a key"
+        );
+        terminal.late_cursor_report_until = Some(Instant::now() + Duration::from_secs(3));
+        assert!(!terminal.consume_late_cursor_report("a"));
+        assert!(terminal.consume_late_cursor_report("\x1b[7;1R"));
+        assert!(
+            !terminal.consume_late_cursor_report("\x1b[1;5R"),
+            "only the one expected reply is swallowed"
+        );
+    }
+
+    #[test]
+    fn a_cursor_report_is_found_between_typed_input() {
+        let bytes = b"ab\x1b[A\x1b[12;40Rcd";
+        let (row, range) = find_cursor_report(bytes).expect("report present");
+        assert_eq!(row, 11, "rows are reported 1-based");
+        assert_eq!(&bytes[range], b"\x1b[12;40R");
+    }
+
+    #[test]
+    fn an_incomplete_or_foreign_sequence_is_not_a_cursor_report() {
+        assert_eq!(find_cursor_report(b"\x1b[12;40"), None);
+        assert_eq!(find_cursor_report(b"\x1b[1;5A"), None);
+        assert_eq!(find_cursor_report(b"\x1b[;5R"), None);
     }
 }

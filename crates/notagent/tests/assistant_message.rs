@@ -667,3 +667,435 @@ fn badge_style_replayed_thought_carries_no_runtime() {
         "{rendered}"
     );
 }
+
+#[test]
+fn plain_stream_paragraphs_enter_history_once_while_the_tail_stays_mutable() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(vec![text("First paragraph.\n\nTail")], StopReason::Stop),
+        Some(true),
+    );
+    let first = strip_ansi(&component.take_stream_history(60).join("\n"));
+    assert!(first.contains("First paragraph."), "{first}");
+    assert!(component.take_stream_history(60).is_empty());
+    let preview = strip_ansi(&component.render(60).join("\n"));
+    assert!(
+        preview.contains("Tail") && !preview.contains("First paragraph."),
+        "{preview}"
+    );
+
+    component.update_content(
+        create_assistant_message(
+            vec![text("First paragraph.\n\nSecond paragraph.\n\nTail")],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    let second = strip_ansi(&component.take_stream_history(60).join("\n"));
+    assert!(second.contains("Second paragraph."), "{second}");
+    assert!(!second.contains("First paragraph."), "{second}");
+    assert!(component.has_stream_history());
+}
+
+#[test]
+fn a_stream_delta_ending_inside_a_multibyte_character_does_not_break_the_next_scan() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(vec![text("")], StopReason::Stop),
+        Some(true),
+    );
+    assert!(component.append_stream_delta(0, "Größ", false));
+    assert!(component.take_stream_history(60).is_empty());
+    assert!(component.append_stream_delta(0, "e bleibt.\n\nTail", false));
+    let history = strip_ansi(&component.take_stream_history(60).join("\n"));
+    assert!(
+        history.contains("Größe bleibt."),
+        "the finished paragraph must enter history: {history}"
+    );
+}
+
+#[test]
+fn unfinished_prose_has_a_bounded_regular_preview_and_tables_stay_mutable() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    let long = "word ".repeat(20_000);
+    component.update_content(
+        create_assistant_message(vec![text(&long)], StopReason::Stop),
+        Some(true),
+    );
+    assert!(component.take_stream_history(60).is_empty());
+    assert!(
+        component.render(60).len() < 100,
+        "preview must not grow with source length"
+    );
+
+    component.update_content(
+        create_assistant_message(
+            vec![text("| A | B |\n|---|---|\n| one | two |\n\nTail")],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    assert!(
+        component.take_stream_history(60).is_empty(),
+        "a table can reshape earlier rows"
+    );
+}
+
+#[test]
+fn authoritative_stream_rewrite_requests_a_bounded_reflow() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(vec![text("Earlier.\n\nTail")], StopReason::Stop),
+        Some(true),
+    );
+    assert!(!component.take_stream_history(60).is_empty());
+    component.update_content(
+        create_assistant_message(vec![text("Rewritten.\n\nTail")], StopReason::Stop),
+        Some(true),
+    );
+    assert!(component.take_stream_reflow());
+    assert!(!component.take_stream_reflow());
+}
+
+#[test]
+fn regular_stream_holds_structural_markdown_until_final_render() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    for source in [
+        "```rust\nfn main() {}\n\n",
+        "$$\nx + y\n\n",
+        "```mermaid\ngraph TD\n\n",
+        "1. first item\n\n",
+    ] {
+        component.update_content(
+            create_assistant_message(vec![text(source)], StopReason::Stop),
+            Some(true),
+        );
+        assert!(
+            component.take_stream_history(60).is_empty(),
+            "mutable Markdown must remain in the active tail: {source:?}"
+        );
+    }
+}
+
+#[test]
+fn resizing_a_running_stream_replays_its_stable_prefix_once() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(
+            vec![text("Stable paragraph.\n\nMutable tail")],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    assert!(!component.take_stream_history(60).is_empty());
+    Component::prepare_reflow(&mut component, 20);
+    let prefix = strip_ansi(&component.take_stream_history(20).join("\n"));
+    let tail = strip_ansi(&component.render(20).join("\n"));
+    assert_eq!(prefix.matches("Stable paragraph.").count(), 1);
+    assert!(
+        !tail.contains("Stable paragraph."),
+        "prefix repeated in tail: {tail}"
+    );
+    assert!(tail.contains("Mutable tail"));
+}
+
+#[test]
+fn thinking_and_text_blocks_advance_history_without_repeating_the_active_tail() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(vec![thinking("Reasoning")], StopReason::Stop),
+        Some(true),
+    );
+    assert!(component.take_stream_history(60).is_empty());
+
+    component.update_content(
+        create_assistant_message(
+            vec![thinking("Reasoning"), text("First answer.\n\nTail")],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    let history = strip_ansi(&component.take_stream_history(60).join("\n"));
+    assert_eq!(history.matches("Reasoning").count(), 1, "{history}");
+    assert_eq!(history.matches("First answer.").count(), 1, "{history}");
+    assert!(component.take_stream_history(60).is_empty());
+    let tail = strip_ansi(&component.render(60).join("\n"));
+    assert!(tail.contains("Tail"), "{tail}");
+    assert!(
+        !tail.contains("Reasoning") && !tail.contains("First answer."),
+        "{tail}"
+    );
+
+    component.update_content(
+        create_assistant_message(
+            vec![
+                thinking("Reasoning"),
+                text("First answer.\n\nTail"),
+                tool_call("call-1", "read"),
+            ],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    let settled = strip_ansi(&component.take_stream_history(60).join("\n"));
+    assert_eq!(settled.matches("Tail").count(), 1, "{settled}");
+    assert!(component.render(60).is_empty());
+}
+
+#[test]
+fn streamed_rows_are_the_start_of_the_finished_message() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let without_zones = |line: &str| {
+        [OSC133_ZONE_START, OSC133_ZONE_END, OSC133_ZONE_FINAL]
+            .iter()
+            .fold(line.to_string(), |line, zone| line.replace(zone, ""))
+    };
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    let mut streamed = Vec::new();
+    let mut source = String::new();
+    for delta in [
+        "First paragraph that is long enough to wrap across more than one row here.",
+        "\n\nSecond paragraph.",
+        "\n\nThird ",
+        "paragraph with an ending.",
+    ] {
+        source.push_str(delta);
+        component.update_content(
+            create_assistant_message(vec![thinking("Reasoning"), text(&source)], StopReason::Stop),
+            Some(true),
+        );
+        streamed.extend(component.take_stream_history(40));
+    }
+    assert!(!streamed.is_empty(), "complete paragraphs must stream");
+
+    component.update_content(
+        create_assistant_message(vec![thinking("Reasoning"), text(&source)], StopReason::Stop),
+        Some(false),
+    );
+    let finished = component.render(40);
+    assert!(
+        finished.len() > streamed.len(),
+        "the unfinished paragraph must remain to be appended"
+    );
+    for (index, (streamed_row, finished_row)) in streamed.iter().zip(&finished).enumerate() {
+        assert_eq!(
+            without_zones(streamed_row),
+            without_zones(finished_row),
+            "streamed row {index} differs from the finished message, so the end of the stream \
+             would need a scrollback rebuild"
+        );
+    }
+}
+
+#[test]
+fn a_long_streamed_answer_matches_its_finished_render_row_for_row() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let without_zones = |line: &str| {
+        [OSC133_ZONE_START, OSC133_ZONE_END, OSC133_ZONE_FINAL]
+            .iter()
+            .fold(line.to_string(), |line, zone| line.replace(zone, ""))
+    };
+    for width in [37, 80] {
+        let mut component =
+            AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+        component.set_regular_streaming(true);
+        let mut source = String::new();
+        let mut streamed = Vec::new();
+        for index in 0..30 {
+            let words = "word ".repeat(3 + (index * 7) % 23);
+            source.push_str(&format!("Paragraph {index} {words}ends.\n\n"));
+            component.update_content(
+                create_assistant_message(
+                    vec![thinking("Reasoning"), text(&source)],
+                    StopReason::Stop,
+                ),
+                Some(true),
+            );
+            streamed.extend(component.take_stream_history(width));
+        }
+        source.push_str("Unfinished tail");
+        component.update_content(
+            create_assistant_message(vec![thinking("Reasoning"), text(&source)], StopReason::Stop),
+            Some(false),
+        );
+        let finished = component.render(width);
+        assert!(finished.len() > streamed.len());
+        for (index, (streamed_row, finished_row)) in streamed.iter().zip(&finished).enumerate() {
+            assert_eq!(
+                without_zones(streamed_row),
+                without_zones(finished_row),
+                "width {width}: streamed row {index} differs from the finished message"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_streamed_thought_before_a_tool_has_no_transient_blank_row() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    let message = create_assistant_message(
+        vec![thinking("Reasoning"), tool_call("call-1", "read")],
+        StopReason::Stop,
+    );
+    component.update_content(message.clone(), Some(true));
+    let history = component.take_stream_history(60);
+    assert_eq!(
+        history.len(),
+        2,
+        "a tool call must not add an empty row after the thought: {history:?}"
+    );
+    assert!(
+        !strip_ansi(&history[1]).is_empty(),
+        "the final emitted row must be the thought heading"
+    );
+    component.update_content(message, Some(false));
+    assert_eq!(
+        component.render(60).len(),
+        history.len(),
+        "final consolidation must preserve the thought height"
+    );
+}
+
+#[test]
+fn streamed_text_before_a_tool_has_no_transient_blank_row() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    let message = create_assistant_message(
+        vec![text("Answer"), tool_call("call-1", "read")],
+        StopReason::Stop,
+    );
+    component.update_content(message.clone(), Some(true));
+    let history = component.take_stream_history(60);
+    component.update_content(message, Some(false));
+    assert_eq!(
+        history.len(),
+        component.render(60).len(),
+        "a tool call must not add an empty row after completed text: {history:?}"
+    );
+}
+
+#[test]
+fn long_running_thinking_keeps_the_regular_preview_bounded() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(
+            vec![thinking(&"reasoning ".repeat(20_000))],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    assert!(component.take_stream_history(60).is_empty());
+    assert!(
+        component.render(60).len() < 100,
+        "a long mutable thought must stay within the preview limit"
+    );
+}
+
+#[test]
+fn text_deltas_advance_the_stream_without_reloading_its_emitted_prefix() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(vec![text("First.\n\nTail")], StopReason::Stop),
+        Some(true),
+    );
+    assert!(component.append_stream_delta(0, "\n\nSecond.\n\nNew tail", false));
+    let history = strip_ansi(&component.take_stream_history(60).join("\n"));
+    assert_eq!(history.matches("First.").count(), 1, "{history}");
+    assert_eq!(history.matches("Second.").count(), 1, "{history}");
+    let preview = strip_ansi(&component.render(60).join("\n"));
+    assert!(preview.contains("New tail"), "{preview}");
+    assert!(!preview.contains("First.") && !preview.contains("Second."));
+    assert!(component.take_stream_history(60).is_empty());
+}
+
+#[test]
+fn a_paragraph_boundary_split_across_deltas_enters_history_once() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(vec![text("A long paragraph")], StopReason::Stop),
+        Some(true),
+    );
+    assert!(component.take_stream_history(60).is_empty());
+    assert!(component.append_stream_delta(0, "\n", false));
+    assert!(component.take_stream_history(60).is_empty());
+    assert!(component.append_stream_delta(0, "\nTail", false));
+    let history = strip_ansi(&component.take_stream_history(60).join("\n"));
+    assert_eq!(history.matches("A long paragraph").count(), 1, "{history}");
+    assert!(component.take_stream_history(60).is_empty());
+    assert!(strip_ansi(&component.render(60).join("\n")).contains("Tail"));
+}
+
+#[test]
+fn a_structural_block_holds_later_deltas_until_it_settles() {
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut component =
+        AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    component.set_regular_streaming(true);
+    component.update_content(
+        create_assistant_message(
+            vec![text("| A | B |\n|---|---|\n| one | two |\n\n")],
+            StopReason::Stop,
+        ),
+        Some(true),
+    );
+    assert!(component.take_stream_history(60).is_empty());
+    assert!(component.append_stream_delta(0, "Plain text.\n\n", false));
+    assert!(
+        component.take_stream_history(60).is_empty(),
+        "later prose cannot pass a mutable table"
+    );
+}

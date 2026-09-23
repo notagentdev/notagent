@@ -214,8 +214,162 @@ async fn keeps_an_explicit_dock_fixed_while_the_transcript_scrolls() {
 // Transcript search corpus and match mapping.
 
 use notagent_tui::alt_screen_search::{
-    find_alt_screen_search_matches, get_alt_screen_search_match_key,
+    SearchScanner, find_alt_screen_search_matches, get_alt_screen_search_match_key,
 };
+
+#[test]
+fn incremental_search_keeps_matches_across_chunk_and_empty_row_boundaries() {
+    let lines = vec![
+        Line::from("\x1b[31mHello\x1b[0m"),
+        Line::from(""),
+        Line::from("   "),
+        Line::from("world and hello"),
+        Line::from("world"),
+    ];
+    let mut scanner = SearchScanner::new("hello world");
+    for (row, line) in lines.iter().enumerate() {
+        scanner.push_line(row, line);
+    }
+    assert_eq!(
+        scanner.finish(),
+        find_alt_screen_search_matches(&lines, "hello world"),
+        "chunked search must retain the same row and column mapping"
+    );
+}
+
+#[test]
+fn changing_a_query_cancels_the_incomplete_transcript_scan() {
+    use notagent_tui::transcript_container::TranscriptContainer;
+
+    let terminal = VirtualTerminal::new(60, 8);
+    let mut tui = TuiAltScreen::new(Box::new(terminal.clone()), TuiAltScreenOptions::default());
+    let mut transcript = TranscriptContainer::new();
+    for row in 0..1_000 {
+        transcript.add_child(component_ref(Text::new(
+            if row == 999 {
+                "needle".to_string()
+            } else {
+                format!("row {row}")
+            },
+            0,
+            0,
+        )));
+    }
+    let root = component_ref(ScrollView::new(
+        component_ref(transcript),
+        ScrollViewOptions {
+            follow_end: true,
+            primary: true,
+            ..ScrollViewOptions::default()
+        },
+    ));
+    tui.set_layout_root(Some(root));
+    tui.start();
+    tui.render_now(false);
+    tui.handle_terminal_input("\x1b[102;6u");
+    tui.handle_terminal_input("wrong");
+    tui.render_now(false);
+    let first_screen = terminal.get_viewport().join("\n");
+    assert!(
+        first_screen.contains("wrong"),
+        "search query: {first_screen}"
+    );
+    tui.handle_terminal_input("\x15");
+    tui.handle_terminal_input("needle");
+    for _ in 0..5 {
+        tui.render_now(false);
+    }
+    let screen = terminal.get_viewport().join("\n");
+    assert!(
+        screen.contains("1/1"),
+        "new query must replace the old scan: {screen}"
+    );
+    tui.stop(TuiStopOptions {
+        preserve_screen: true,
+    });
+}
+
+#[test]
+fn search_follows_a_plain_component_whose_text_changes() {
+    let terminal = VirtualTerminal::new(60, 8);
+    let mut tui = TuiAltScreen::new(Box::new(terminal.clone()), TuiAltScreenOptions::default());
+    let text = Rc::new(RefCell::new(Text::new("nothing here", 0, 0)));
+    let root = component_ref(ScrollView::new(
+        Rc::clone(&text) as ComponentRef,
+        ScrollViewOptions {
+            follow_end: true,
+            primary: true,
+            ..ScrollViewOptions::default()
+        },
+    ));
+    tui.set_layout_root(Some(root));
+    tui.start();
+    tui.render_now(false);
+    tui.handle_terminal_input("\x1b[102;6u");
+    tui.handle_terminal_input("needle");
+    tui.render_now(false);
+    assert!(
+        !terminal.get_viewport().join("\n").contains("1/1"),
+        "no match yet"
+    );
+
+    text.borrow_mut().set_text("the needle arrived");
+    tui.render_now(false);
+    let screen = terminal.get_viewport().join("\n");
+    assert!(
+        screen.contains("1/1"),
+        "a component without a revision must still be searched afresh: {screen}"
+    );
+    tui.stop(TuiStopOptions {
+        preserve_screen: true,
+    });
+}
+
+#[test]
+fn a_transcript_that_changes_every_frame_still_completes_its_search() {
+    use notagent_tui::transcript_container::TranscriptContainer;
+
+    let terminal = VirtualTerminal::new(60, 8);
+    let mut tui = TuiAltScreen::new(Box::new(terminal.clone()), TuiAltScreenOptions::default());
+    let transcript = Rc::new(RefCell::new(TranscriptContainer::new()));
+    transcript
+        .borrow_mut()
+        .add_child(component_ref(Text::new("needle", 0, 0)));
+    for row in 1..1_000 {
+        transcript
+            .borrow_mut()
+            .add_child(component_ref(Text::new(format!("row {row}"), 0, 0)));
+    }
+    let streaming = Rc::new(RefCell::new(Text::new("tick 0", 0, 0)));
+    let streaming_ref = Rc::clone(&streaming) as ComponentRef;
+    transcript.borrow_mut().add_child(Rc::clone(&streaming_ref));
+    let root = component_ref(ScrollView::new(
+        Rc::clone(&transcript) as ComponentRef,
+        ScrollViewOptions {
+            follow_end: true,
+            primary: true,
+            ..ScrollViewOptions::default()
+        },
+    ));
+    tui.set_layout_root(Some(root));
+    tui.start();
+    tui.render_now(false);
+    tui.handle_terminal_input("\x1b[102;6u");
+    tui.handle_terminal_input("needle");
+    for tick in 1..=10 {
+        streaming.borrow_mut().set_text(format!("tick {tick}"));
+        transcript.borrow_mut().mark_changed(&streaming_ref);
+        tui.render_now(false);
+    }
+    let screen = terminal.get_viewport().join("\n");
+    assert!(
+        screen.contains("1/1"),
+        "a streaming change must not restart the scan forever: {screen}"
+    );
+    tui.stop(TuiStopOptions {
+        preserve_screen: true,
+    });
+}
 
 #[test]
 fn finds_matches_with_row_and_column_mapping() {
@@ -304,6 +458,67 @@ async fn snaps_mouse_selection_to_wide_grapheme_boundaries() {
     assert_eq!(terminal.get_writes().matches(expected.as_str()).count(), 2);
 
     tui.stop(TuiStopOptions::default());
+}
+
+#[tokio::test]
+async fn a_selection_keeps_its_entry_when_an_earlier_entry_grows() {
+    use notagent_tui::transcript_container::TranscriptContainer;
+    use std::cell::Cell;
+
+    struct GrowingRow(Rc<Cell<usize>>);
+    impl Component for GrowingRow {
+        fn render(&mut self, _width: usize) -> Vec<Line> {
+            (0..self.0.get())
+                .map(|row| Line::from(format!("leading {row}")))
+                .collect()
+        }
+
+        fn invalidate(&mut self) {}
+    }
+
+    let terminal = VirtualTerminal::new(30, 5);
+    let mut tui = TuiAltScreen::new(Box::new(terminal.clone()), TuiAltScreenOptions::default());
+    let transcript = Rc::new(RefCell::new(TranscriptContainer::new()));
+    let height = Rc::new(Cell::new(1));
+    let earlier = component_ref(GrowingRow(Rc::clone(&height)));
+    transcript.borrow_mut().add_child(Rc::clone(&earlier));
+    for row in 1..30 {
+        transcript
+            .borrow_mut()
+            .add_child(component_ref(Text::new(format!("row {row}"), 0, 0)));
+    }
+    let scroll = ScrollView::new(
+        Rc::clone(&transcript) as ComponentRef,
+        ScrollViewOptions::default(),
+    );
+    let state = scroll.state();
+    tui.set_layout_root(Some(component_ref(scroll)));
+    tui.start();
+    tui.wait_for_render().await;
+    state.borrow_mut().scroll_to(
+        10,
+        notagent_tui::components::scroll_view::ScrollToOptions {
+            disable_follow: true,
+        },
+    );
+    tui.render_now(false);
+    assert!(terminal.get_viewport()[0].contains("row 10"));
+
+    tui.handle_terminal_input("\x1b[<0;1;1M");
+    tui.handle_terminal_input("\x1b[<32;4;1M");
+    height.set(4);
+    transcript.borrow_mut().mark_changed(&earlier);
+    tui.render_now(false);
+    tui.handle_terminal_input("\x1b[<0;4;1m");
+    assert_eq!(state.borrow().scroll_top(), 13);
+    let writes = terminal.get_writes();
+    assert!(
+        writes.contains(&format!("\x1b]52;c;{}\x07", base64("row"))),
+        "selection must still copy text from row 10: {writes:?}"
+    );
+    tui.stop(TuiStopOptions {
+        preserve_screen: true,
+    });
 }
 
 #[tokio::test]

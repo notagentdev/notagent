@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::layout_node::{LayoutNode, ScrollLayoutState};
-use crate::tui::{Component, ComponentRef, Container, Line};
+use crate::tui::{Component, ComponentRef, Container, Line, TranscriptAnchor};
 
 /// Scrollbar visibility policy.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -80,6 +80,7 @@ pub struct ScrollViewState {
     scrollbar_active: bool,
     scrollbar_hide_deadline: Option<Instant>,
     render_requested: bool,
+    transcript_anchor: Option<(TranscriptAnchor, usize)>,
 }
 
 impl ScrollViewState {
@@ -267,6 +268,14 @@ impl ScrollViewState {
 }
 
 impl ScrollLayoutState for ScrollViewState {
+    fn transcript_anchor(&self) -> Option<(TranscriptAnchor, usize)> {
+        self.transcript_anchor
+    }
+
+    fn set_transcript_anchor(&mut self, anchor: Option<(TranscriptAnchor, usize)>) {
+        self.transcript_anchor = anchor;
+    }
+
     fn scroll_top(&self) -> usize {
         self.current_scroll_top
     }
@@ -380,6 +389,7 @@ impl ScrollView {
                 scrollbar_active: false,
                 scrollbar_hide_deadline: None,
                 render_requested: false,
+                transcript_anchor: None,
             })),
         }
     }

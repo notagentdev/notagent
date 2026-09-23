@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use notagent_ai::types::{AssistantContent, AssistantMessage, StopReason};
+use notagent_ai::types::{
+    AssistantContent, AssistantMessage, StopReason, TextContent, ThinkingContent,
+};
 use notagent_tui::components::markdown::{
     DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme,
 };
@@ -44,6 +46,23 @@ pub struct AssistantMessageComponent {
     /// The last rendered timer second, so a tick rebuilds at most once per
     /// second.
     last_thinking_tick: Option<u64>,
+    regular_streaming: bool,
+    stream_committed_block: usize,
+    stream_committed_source: String,
+    stream_scan_offset: usize,
+    stream_structural_holdback: bool,
+    /// Rows of the committed render already handed to native history.
+    stream_emitted_lines: usize,
+    /// Byte range, in `stream_committed_source`, of the chunk committed last.
+    stream_last_chunk: Option<(usize, usize)>,
+    /// Width those rows were rendered at.
+    stream_width: Option<usize>,
+    stream_pending_scan: bool,
+    stream_needs_reflow: bool,
+    stream_preview_cache: Option<(usize, Vec<Line>)>,
+    marker: &'static str,
+    leading_spacer: bool,
+    zone_markers: bool,
 }
 
 impl AssistantMessageComponent {
@@ -73,6 +92,20 @@ impl AssistantMessageComponent {
             thinking_started: None,
             thinking_finished: None,
             last_thinking_tick: None,
+            regular_streaming: false,
+            stream_committed_block: 0,
+            stream_committed_source: String::new(),
+            stream_scan_offset: 0,
+            stream_structural_holdback: false,
+            stream_emitted_lines: 0,
+            stream_last_chunk: None,
+            stream_width: None,
+            stream_pending_scan: true,
+            stream_needs_reflow: false,
+            stream_preview_cache: None,
+            marker: "\u{283f}",
+            leading_spacer: true,
+            zone_markers: true,
         };
         if let Some(message) = message {
             component.update_content(message, None);
@@ -102,6 +135,252 @@ impl AssistantMessageComponent {
         if let Some(message) = self.last_message.clone() {
             self.update_content(message, None);
         }
+    }
+
+    pub fn set_regular_streaming(&mut self, regular: bool) {
+        if self.regular_streaming != regular {
+            self.reset_stream_history();
+        }
+        self.regular_streaming = regular;
+    }
+
+    pub fn has_stream_history(&self) -> bool {
+        self.stream_emitted_lines > 0
+    }
+
+    pub fn take_stream_reflow(&mut self) -> bool {
+        std::mem::take(&mut self.stream_needs_reflow)
+    }
+
+    pub fn append_stream_delta(
+        &mut self,
+        content_index: usize,
+        delta: &str,
+        thinking: bool,
+    ) -> bool {
+        if !self.regular_streaming || !self.is_streaming {
+            return false;
+        }
+        let Some(block) = self
+            .last_message
+            .as_mut()
+            .and_then(|message| message.content.get_mut(content_index))
+        else {
+            return false;
+        };
+        match (block, thinking) {
+            (AssistantContent::Text(text), false) => text.text.push_str(delta),
+            (AssistantContent::Thinking(content), true) => content.thinking.push_str(delta),
+            _ => return false,
+        }
+        if content_index < self.stream_committed_block {
+            self.reset_stream_history();
+            self.stream_needs_reflow = true;
+        }
+        if !delta.trim().is_empty() {
+            if thinking && self.thinking_started.is_none() && self.thinking_finished.is_none() {
+                self.thinking_started = Some(std::time::Instant::now());
+            } else if !thinking
+                && let Some(started) = self.thinking_started
+                && self.thinking_finished.is_none()
+            {
+                self.thinking_finished = Some(started.elapsed());
+            }
+        }
+        self.stream_preview_cache = None;
+        self.stream_pending_scan = true;
+        true
+    }
+
+    fn render_stream_message(
+        &self,
+        message: AssistantMessage,
+        width: usize,
+        first: bool,
+    ) -> Vec<Line> {
+        let mut fragment = Self::new(
+            None,
+            self.hide_thinking_block,
+            Some(self.markdown_theme.clone()),
+            Some(self.hidden_thinking_label.clone()),
+            Some(self.output_pad),
+            self.markdown_transformers.clone(),
+        );
+        fragment.marker = if first { "\u{283f}" } else { " " };
+        fragment.leading_spacer = first;
+        fragment.zone_markers = first;
+        fragment.thinking_expanded = self.thinking_expanded;
+        fragment.thinking_started = self.thinking_started;
+        fragment.thinking_finished = self.thinking_finished;
+        fragment.update_content(message, Some(true));
+        fragment.render(width)
+    }
+
+    fn content_fragment(
+        message: &AssistantMessage,
+        content: Vec<AssistantContent>,
+    ) -> AssistantMessage {
+        AssistantMessage {
+            content,
+            api: message.api.clone(),
+            provider: message.provider.clone(),
+            model: message.model.clone(),
+            response_model: message.response_model.clone(),
+            response_id: message.response_id.clone(),
+            diagnostics: message.diagnostics.clone(),
+            usage: message.usage,
+            stop_reason: message.stop_reason,
+            deferred: message.deferred.clone(),
+            error_message: message.error_message.clone(),
+            raw_stop_reason: message.raw_stop_reason.clone(),
+            end_turn: message.end_turn,
+            timestamp: message.timestamp,
+        }
+    }
+
+    /// The committed part of the stream rendered exactly as the finished
+    /// message will render it, so its lines are a prefix of the final render
+    /// and the end of the stream only appends the rest. Rendering each
+    /// paragraph on its own drifted from the whole-message layout and forced a
+    /// scrollback rebuild after every streamed answer.
+    fn render_committed_stream(&self, message: &AssistantMessage, width: usize) -> Vec<Line> {
+        let mut content = message.content[..self.stream_committed_block].to_vec();
+        if !self.stream_committed_source.is_empty() {
+            content.push(AssistantContent::Text(TextContent::new(
+                self.stream_committed_source.as_str(),
+            )));
+        }
+        let mut committed = Self::content_fragment(message, content);
+        // A failure notice belongs after the whole message, not after a prefix.
+        committed.stop_reason = StopReason::Stop;
+        committed.error_message = None;
+        let mut fragment = Self::new(
+            None,
+            self.hide_thinking_block,
+            Some(self.markdown_theme.clone()),
+            Some(self.hidden_thinking_label.clone()),
+            Some(self.output_pad),
+            self.markdown_transformers.clone(),
+        );
+        // The zone end belongs to the final row, which a prefix never has.
+        fragment.zone_markers = false;
+        fragment.thinking_expanded = self.thinking_expanded;
+        fragment.thinking_started = self.thinking_started;
+        fragment.thinking_finished = self.thinking_finished;
+        fragment.update_content(committed, Some(false));
+        let mut lines = fragment.render(width);
+        if !fragment.has_tool_calls
+            && let Some(first) = lines.first_mut()
+        {
+            *first = Line::from(format!("{OSC133_ZONE_START}{first}"));
+        }
+        lines
+    }
+
+    /// Rows `appended` adds after `previous` in the same text block, rendered
+    /// from those two chunks alone. Committed chunks are plain paragraphs, so
+    /// the pair renders as `previous` followed by the new rows; the check
+    /// that it does keeps a long answer from re-rendering everything above it
+    /// on every paragraph, and a pair that fails it falls back to the whole.
+    fn render_appended_rows(
+        &self,
+        message: &AssistantMessage,
+        previous: &str,
+        appended: &str,
+        width: usize,
+    ) -> Option<Vec<Line>> {
+        if !self.markdown_transformers.is_empty() {
+            // A transformer sees the whole text and may join across chunks.
+            return None;
+        }
+        let render = |text: &str| {
+            let mut fragment = Self::new(
+                None,
+                self.hide_thinking_block,
+                Some(self.markdown_theme.clone()),
+                Some(self.hidden_thinking_label.clone()),
+                Some(self.output_pad),
+                Vec::new(),
+            );
+            fragment.leading_spacer = false;
+            fragment.zone_markers = false;
+            let mut chunk = Self::content_fragment(
+                message,
+                vec![AssistantContent::Text(TextContent::new(text))],
+            );
+            chunk.stop_reason = StopReason::Stop;
+            chunk.error_message = None;
+            fragment.update_content(chunk, Some(false));
+            fragment.render(width)
+        };
+        let alone = render(previous);
+        let pair = render(&format!("{previous}{appended}"));
+        (pair.len() >= alone.len() && pair[..alone.len()] == alone[..])
+            .then(|| pair[alone.len()..].to_vec())
+    }
+
+    fn reset_stream_history(&mut self) {
+        self.stream_committed_block = 0;
+        self.stream_committed_source.clear();
+        self.stream_scan_offset = 0;
+        self.stream_structural_holdback = false;
+        self.stream_emitted_lines = 0;
+        self.stream_last_chunk = None;
+        self.stream_width = None;
+        self.stream_pending_scan = true;
+        self.stream_preview_cache = None;
+    }
+
+    fn stream_preview(&self, width: usize) -> Vec<Line> {
+        let Some(message) = self.last_message.as_ref() else {
+            return Vec::new();
+        };
+        let mut remaining = 2_048;
+        let mut content = Vec::new();
+        for (index, block) in message.content.iter().enumerate().rev() {
+            if index < self.stream_committed_block || remaining == 0 {
+                break;
+            }
+            match block {
+                AssistantContent::Text(text) => {
+                    let source = if index == self.stream_committed_block {
+                        text.text
+                            .strip_prefix(&self.stream_committed_source)
+                            .unwrap_or(&text.text)
+                    } else {
+                        &text.text
+                    };
+                    let suffix = bounded_suffix(source, remaining);
+                    remaining = remaining.saturating_sub(suffix.chars().count());
+                    content.push(AssistantContent::Text(TextContent {
+                        text: suffix.to_owned(),
+                        text_signature: text.text_signature.clone(),
+                        extra: text.extra.clone(),
+                    }));
+                }
+                AssistantContent::Thinking(thinking) => {
+                    let suffix = bounded_suffix(&thinking.thinking, remaining);
+                    remaining = remaining.saturating_sub(suffix.chars().count());
+                    content.push(AssistantContent::Thinking(ThinkingContent {
+                        thinking: suffix.to_owned(),
+                        thinking_signature: thinking.thinking_signature.clone(),
+                        redacted: thinking.redacted,
+                        extra: thinking.extra.clone(),
+                    }));
+                }
+                AssistantContent::ToolCall(_) => {}
+            }
+        }
+        content.reverse();
+        let continues = self.stream_emitted_lines > 0;
+        let mut lines =
+            self.render_stream_message(Self::content_fragment(message, content), width, !continues);
+        // The final render separates the committed paragraph from the next
+        // one; showing that gap now keeps the tail from jumping at the end.
+        if continues && !lines.is_empty() {
+            lines.insert(0, Line::from(""));
+        }
+        lines
     }
 
     /// Whether this component's thinking is still streaming — the heading
@@ -177,16 +456,38 @@ impl AssistantMessageComponent {
 
     /// Rebuild the rendered content; `is_streaming` defaults to the current value.
     pub fn update_content(&mut self, message: AssistantMessage, is_streaming: Option<bool>) {
-        self.last_message = Some(message.clone());
+        if self.regular_streaming && !matches!(is_streaming, Some(false)) {
+            let settled_changed = self.stream_committed_block > 0
+                && self.last_message.as_ref().is_some_and(|previous| {
+                    previous.content.get(..self.stream_committed_block)
+                        != message.content.get(..self.stream_committed_block)
+                });
+            let current_changed = !self.stream_committed_source.is_empty()
+                && !matches!(message.content.get(self.stream_committed_block), Some(AssistantContent::Text(text)) if text.text.starts_with(&self.stream_committed_source));
+            if settled_changed || current_changed {
+                self.reset_stream_history();
+                self.stream_needs_reflow = true;
+            }
+        }
         self.is_streaming = is_streaming.unwrap_or(self.is_streaming);
         self.derive_thinking_timer(&message);
+        self.stream_preview_cache = None;
+        if self.regular_streaming && self.is_streaming {
+            self.stream_scan_offset = self.stream_committed_source.len();
+            self.stream_structural_holdback = false;
+            self.stream_pending_scan = true;
+            self.last_message = Some(message);
+            self.content_container.clear();
+            return;
+        }
+        self.last_message = Some(message.clone());
 
         // Clear content container
         self.content_container.clear();
 
         let has_visible_content = message.content.iter().any(is_visible_content);
 
-        if has_visible_content {
+        if has_visible_content && self.leading_spacer {
             self.content_container
                 .add_child(component_ref(Spacer::new(1)));
         }
@@ -200,7 +501,7 @@ impl AssistantMessageComponent {
                     // Set paddingY=0 to avoid extra spacing before tool executions
                     self.content_container.add_child(component_ref(
                         super::message_marker::MessageMarker {
-                            marker: "\u{283f}",
+                            marker: self.marker,
                             padding: self.output_pad,
                             content: Markdown::new(
                                 content.text.trim(),
@@ -434,6 +735,40 @@ impl AssistantMessageComponent {
     }
 }
 
+fn bounded_suffix(source: &str, chars: usize) -> &str {
+    if chars == 0 {
+        return "";
+    }
+    source
+        .char_indices()
+        .rev()
+        .nth(chars)
+        .map_or(source, |(index, _)| {
+            &source[index + source[index..].chars().next().map_or(0, char::len_utf8)..]
+        })
+}
+
+fn plain_stream_block(source: &str) -> bool {
+    source
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .all(|line| {
+            let trimmed = line.trim_start();
+            let numbered_list = trimmed
+                .split_once(['.', ')'])
+                .is_some_and(|(prefix, rest)| {
+                    !prefix.is_empty()
+                        && prefix.bytes().all(|byte| byte.is_ascii_digit())
+                        && rest.starts_with(' ')
+                });
+            !numbered_list
+                && !trimmed.starts_with(['#', '-', '*', '+', '>', '|', '<', '`', '~', '='])
+                && !trimmed.starts_with("$$")
+                && !trimmed.starts_with("\\[")
+                && !trimmed.contains(['|', '`', '<', '>', '[', ']', '!'])
+        })
+}
+
 fn is_visible_content(content: &AssistantContent) -> bool {
     match content {
         AssistantContent::Text(text) => !text.text.trim().is_empty(),
@@ -444,8 +779,18 @@ fn is_visible_content(content: &AssistantContent) -> bool {
 
 impl Component for AssistantMessageComponent {
     fn render(&mut self, width: usize) -> Vec<Line> {
+        if self.regular_streaming && self.is_streaming {
+            if let Some((cached_width, lines)) = &self.stream_preview_cache
+                && *cached_width == width
+            {
+                return lines.clone();
+            }
+            let lines = self.stream_preview(width);
+            self.stream_preview_cache = Some((width, lines.clone()));
+            return lines;
+        }
         let mut lines = self.content_container.render(width);
-        if self.has_tool_calls || lines.is_empty() {
+        if self.has_tool_calls || lines.is_empty() || !self.zone_markers {
             return lines;
         }
 
@@ -459,9 +804,122 @@ impl Component for AssistantMessageComponent {
     }
 
     fn invalidate(&mut self) {
+        self.reset_stream_history();
         self.content_container.invalidate();
         if let Some(message) = self.last_message.clone() {
             self.update_content(message, None);
         }
+    }
+
+    fn prepare_reflow(&mut self, _width: usize) {
+        self.reset_stream_history();
+    }
+
+    fn take_stream_history(&mut self, width: usize) -> Vec<Line> {
+        if !self.regular_streaming || !self.is_streaming || !self.stream_pending_scan {
+            return Vec::new();
+        }
+        self.stream_pending_scan = false;
+        if self
+            .stream_width
+            .is_some_and(|committed| committed != width)
+        {
+            // Rows at another width are already in scrollback; only a replay
+            // can bring the transcript back in line.
+            self.reset_stream_history();
+            self.stream_needs_reflow = true;
+            return Vec::new();
+        }
+        let Some(message) = self.last_message.as_ref() else {
+            return Vec::new();
+        };
+        let previous = (
+            self.stream_committed_block,
+            self.stream_committed_source.len(),
+        );
+        while let Some(block) = message.content.get(self.stream_committed_block) {
+            let settled = self.stream_committed_block + 1 < message.content.len();
+            match block {
+                AssistantContent::Text(text) => {
+                    let source = &text.text;
+                    let start = self.stream_committed_source.len();
+                    let mut boundary = start;
+                    if settled {
+                        boundary = source.len();
+                    } else if !self.stream_structural_holdback {
+                        // One byte back finds a "\n\n" split across two deltas;
+                        // a delta can end inside a multi-byte character.
+                        let scan_from = source
+                            .floor_char_boundary(
+                                self.stream_scan_offset.saturating_sub(1).min(source.len()),
+                            )
+                            .max(start);
+                        for (offset, _) in source[scan_from..].match_indices("\n\n") {
+                            let end = scan_from + offset + 2;
+                            let chunk = &source[boundary..end];
+                            if chunk.trim().is_empty() || !plain_stream_block(chunk) {
+                                self.stream_structural_holdback = true;
+                                break;
+                            }
+                            boundary = end;
+                        }
+                        self.stream_scan_offset = source.len();
+                    }
+                    self.stream_committed_source
+                        .push_str(&source[start..boundary]);
+                }
+                // A thought is final once its runtime is frozen; before that
+                // its heading still reads as running.
+                AssistantContent::Thinking(_)
+                    if settled
+                        && (self.thinking_finished.is_some()
+                            || self.thinking_started.is_none()) => {}
+                AssistantContent::ToolCall(_) if settled => {}
+                _ => break,
+            }
+            if !settled {
+                break;
+            }
+            self.stream_committed_block += 1;
+            self.stream_committed_source.clear();
+            self.stream_scan_offset = 0;
+            self.stream_structural_holdback = false;
+        }
+        if (
+            self.stream_committed_block,
+            self.stream_committed_source.len(),
+        ) == previous
+        {
+            return Vec::new();
+        }
+        let same_block = self.stream_committed_block == previous.0;
+        let chunk_start = if same_block { previous.1 } else { 0 };
+        let committed = &self.stream_committed_source;
+        let appended = self
+            .stream_last_chunk
+            .filter(|(_, end)| same_block && *end == previous.1 && self.stream_emitted_lines > 0)
+            .and_then(|(start, end)| {
+                self.render_appended_rows(message, &committed[start..end], &committed[end..], width)
+            });
+        let lines = match appended {
+            Some(rows) => {
+                self.stream_emitted_lines += rows.len();
+                rows
+            }
+            None => {
+                let rendered = self.render_committed_stream(message, width);
+                let rows = rendered
+                    .get(self.stream_emitted_lines..)
+                    .map(<[Line]>::to_vec)
+                    .unwrap_or_default();
+                self.stream_emitted_lines = self.stream_emitted_lines.max(rendered.len());
+                rows
+            }
+        };
+        self.stream_last_chunk = (self.stream_committed_source.len() > chunk_start)
+            .then_some((chunk_start, self.stream_committed_source.len()));
+        self.stream_width = Some(width);
+        self.stream_preview_cache = None;
+        lines
     }
 }

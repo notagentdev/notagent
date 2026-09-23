@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::components::input::Input;
 use crate::tui::{Component, Focusable, Line};
 use crate::utils::{graphemes, strip_terminal_sequences, truncate_to_width_opts, visible_width};
@@ -96,6 +98,105 @@ fn normalize_query(query: &str) -> String {
         }
     }
     normalized.trim().to_string()
+}
+
+/// Incremental search keeps only the overlap needed for matches across rows.
+pub struct SearchScanner {
+    needle: Vec<char>,
+    window: VecDeque<(char, Option<SearchSourceSpan>)>,
+    pending_separator: bool,
+    has_text: bool,
+    matches: Vec<AltScreenSearchMatch>,
+}
+
+impl SearchScanner {
+    pub fn new(query: &str) -> Self {
+        Self {
+            needle: normalize_query(query).chars().collect(),
+            window: VecDeque::new(),
+            pending_separator: false,
+            has_text: false,
+            matches: Vec::new(),
+        }
+    }
+
+    fn append(&mut self, character: char, source: Option<SearchSourceSpan>) {
+        if self.needle.is_empty() {
+            return;
+        }
+        self.window.push_back((character, source));
+        if self.window.len() > self.needle.len() {
+            self.window.pop_front();
+        }
+        if self.window.len() != self.needle.len()
+            || !self
+                .window
+                .iter()
+                .zip(&self.needle)
+                .all(|((left, _), right)| left.to_lowercase().eq(right.to_lowercase()))
+        {
+            return;
+        }
+        let mut segments: Vec<AltScreenSearchSegment> = Vec::new();
+        for (_, source) in &self.window {
+            let Some(span) = source else {
+                continue;
+            };
+            match segments.last_mut() {
+                Some(previous)
+                    if previous.row == span.row && span.start_col <= previous.end_col =>
+                {
+                    previous.end_col = previous.end_col.max(span.end_col);
+                }
+                _ => segments.push(AltScreenSearchSegment {
+                    row: span.row,
+                    start_col: span.start_col,
+                    end_col: span.end_col,
+                }),
+            }
+        }
+        if !segments.is_empty() {
+            self.matches.push(AltScreenSearchMatch { segments });
+        }
+    }
+
+    pub fn push_line(&mut self, row: usize, line: &Line) {
+        let stripped = strip_terminal_sequences(line);
+        let mut column = 0;
+        for grapheme in graphemes(&stripped) {
+            let width = visible_width(grapheme);
+            if !grapheme.is_empty() && grapheme.chars().all(char::is_whitespace) {
+                if self.has_text {
+                    self.pending_separator = true;
+                }
+                column += width;
+                continue;
+            }
+            if self.pending_separator {
+                self.append(' ', None);
+                self.pending_separator = false;
+            }
+            for character in grapheme.chars() {
+                self.append(
+                    character,
+                    Some(SearchSourceSpan {
+                        row,
+                        start_col: column,
+                        end_col: column + width,
+                    }),
+                );
+            }
+            self.has_text = true;
+            column += width;
+        }
+        if self.has_text {
+            self.pending_separator = true;
+        }
+    }
+
+    pub fn finish(self) -> Vec<AltScreenSearchMatch> {
+        self.matches
+    }
 }
 
 /// Find all case-insensitive matches of `query` in the rendered `lines`.

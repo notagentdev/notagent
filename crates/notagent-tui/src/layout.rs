@@ -40,8 +40,51 @@ pub struct LayoutBox {
     pub scroll_view: Option<ScrollStateRef>,
     /// Rendered content lines of a scroll viewport.
     pub scroll_content_lines: Option<Vec<Line>>,
+    /// Logical row represented by the first retained scroll content line.
+    pub scroll_content_start: usize,
+    /// Full logical height when scroll content is rendered by range.
+    pub scroll_content_height: usize,
     /// Painting layer.
     pub layer: usize,
+}
+
+impl LayoutBox {
+    pub fn scroll_lines(&self, first_row: usize, rows: usize) -> Vec<Line> {
+        let Some(content) = self.scroll_content_lines.as_ref() else {
+            return Vec::new();
+        };
+        let end = first_row
+            .saturating_add(rows)
+            .min(self.scroll_content_height);
+        if first_row >= end {
+            return Vec::new();
+        }
+        let cached_end = self.scroll_content_start + content.len();
+        if first_row >= self.scroll_content_start && end <= cached_end {
+            return content[first_row - self.scroll_content_start..end - self.scroll_content_start]
+                .to_vec();
+        }
+        self.children
+            .first()
+            .and_then(|child| {
+                child.component.borrow_mut().windowed_content(
+                    child.rect.width.max(1) as usize,
+                    first_row,
+                    end - first_row,
+                )
+            })
+            .map_or_else(
+                || {
+                    content
+                        .iter()
+                        .skip(first_row)
+                        .take(end - first_row)
+                        .cloned()
+                        .collect()
+                },
+                |window| window.lines,
+            )
+    }
 }
 
 /// A laid out and painted frame.
@@ -182,6 +225,8 @@ fn layout_component(
             line_offset,
             scroll_view: None,
             scroll_content_lines: None,
+            scroll_content_start: 0,
+            scroll_content_height: 0,
             layer: 0,
         };
     };
@@ -193,6 +238,81 @@ fn layout_component(
         } => {
             let previous_scroll_top = state.borrow().scroll_top() as i64;
             let content_width = state.borrow().get_content_width(safe_width as usize) as i64;
+            let measured = child
+                .borrow_mut()
+                .windowed_content(content_width as usize, 0, 0);
+            if let Some(measured) = measured {
+                let content_height = measured.height;
+                let viewport_height = height.map_or(content_height as i64, |height| height.max(0));
+                let previous_anchor = {
+                    let scroll = state.borrow();
+                    (!scroll.following_end() && scroll.scroll_top() == previous_scroll_top as usize)
+                        .then(|| scroll.transcript_anchor())
+                        .flatten()
+                };
+                state
+                    .borrow_mut()
+                    .update_layout(content_height, viewport_height as usize);
+                if let Some((anchor, captured_top)) = previous_anchor
+                    && captured_top == previous_scroll_top as usize
+                    && let Some(row) = child
+                        .borrow_mut()
+                        .row_for_anchor(content_width as usize, anchor)
+                {
+                    state.borrow_mut().scroll_to_line(row as i64, true);
+                }
+                let scroll_top = state.borrow().scroll_top();
+                let anchor = child
+                    .borrow_mut()
+                    .anchor_at(content_width as usize, scroll_top)
+                    .map(|anchor| (anchor, scroll_top));
+                state.borrow_mut().set_transcript_anchor(anchor);
+                if state.borrow().primary() || context.primary_scroll_view.is_none() {
+                    context.primary_scroll_view = Some(Rc::clone(&state));
+                }
+                let window = child
+                    .borrow_mut()
+                    .windowed_content(content_width as usize, scroll_top, viewport_height as usize)
+                    .unwrap_or(measured);
+                let rect = LayoutRect {
+                    x,
+                    y,
+                    width: safe_width,
+                    height: viewport_height,
+                };
+                let child_rect = LayoutRect {
+                    x,
+                    y,
+                    width: content_width,
+                    height: viewport_height,
+                };
+                let child_box = LayoutBox {
+                    component: Rc::clone(&child),
+                    rect: child_rect,
+                    clip: intersect(clip, rect),
+                    children: Vec::new(),
+                    lines: Some(window.lines.clone()),
+                    line_offset: 0,
+                    scroll_view: None,
+                    scroll_content_lines: None,
+                    scroll_content_start: 0,
+                    scroll_content_height: 0,
+                    layer: 0,
+                };
+                return LayoutBox {
+                    component: component.clone(),
+                    rect,
+                    clip: intersect(clip, rect),
+                    children: vec![child_box],
+                    lines: None,
+                    line_offset: 0,
+                    scroll_view: Some(state),
+                    scroll_content_lines: Some(window.lines),
+                    scroll_content_start: scroll_top,
+                    scroll_content_height: content_height,
+                    layer: 0,
+                };
+            }
             let mut child_box = layout_component(
                 context,
                 &child,
@@ -231,6 +351,8 @@ fn layout_component(
                 line_offset: 0,
                 scroll_view: Some(state),
                 scroll_content_lines: Some(scroll_content_lines),
+                scroll_content_start: 0,
+                scroll_content_height: content_height.max(0) as usize,
                 layer: 0,
             }
         }
@@ -288,6 +410,8 @@ fn layout_component(
                     line_offset: 0,
                     scroll_view: None,
                     scroll_content_lines: None,
+                    scroll_content_start: 0,
+                    scroll_content_height: 0,
                     layer: 0,
                 };
             }
@@ -355,6 +479,8 @@ fn layout_component(
                         line_offset: 0,
                         scroll_view: None,
                         scroll_content_lines: None,
+                        scroll_content_start: 0,
+                        scroll_content_height: 0,
                         layer: 0,
                     });
                 } else {
@@ -379,6 +505,8 @@ fn layout_component(
                 line_offset: 0,
                 scroll_view: None,
                 scroll_content_lines: None,
+                scroll_content_start: 0,
+                scroll_content_height: 0,
                 layer: 0,
             }
         }
@@ -462,17 +590,7 @@ pub fn get_scrollbar_geometry(layout_box: &LayoutBox) -> Option<ScrollbarGeometr
         return None;
     }
 
-    let content_height = layout_box
-        .children
-        .first()
-        .map(|child| child.rect.height)
-        .or_else(|| {
-            layout_box
-                .scroll_content_lines
-                .as_ref()
-                .map(|lines| lines.len() as i64)
-        })
-        .unwrap_or(0);
+    let content_height = layout_box.scroll_content_height as i64;
     let track_height = layout_box.rect.height;
     let min_thumb_height = 2.min(track_height);
     let thumb_height = if content_height <= 0 {
@@ -602,7 +720,22 @@ fn paint_box(layout_box: &LayoutBox, screen: &mut Vec<Line>, total_width: i64) {
         let scroll_top = scroll_view.borrow().scroll_top();
         if scroll_top > 0 && layout_box.rect.height > 0 {
             for image_row in (0..scroll_top).rev() {
-                let image_line = content_lines.get(image_row).cloned().unwrap_or_default();
+                let image_line = if layout_box.scroll_content_start == 0 {
+                    content_lines.get(image_row).cloned().unwrap_or_default()
+                } else {
+                    layout_box
+                        .children
+                        .first()
+                        .and_then(|child| {
+                            child.component.borrow_mut().windowed_content(
+                                child.rect.width.max(1) as usize,
+                                image_row,
+                                1,
+                            )
+                        })
+                        .and_then(|window| window.lines.into_iter().next())
+                        .unwrap_or_default()
+                };
                 if let Some(metadata) = get_kitty_image_metadata(&image_line) {
                     let hidden_rows = scroll_top - image_row;
                     if hidden_rows < metadata.rows {

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::tui::ComponentRef;
+use crate::tui::{ComponentRef, TranscriptAnchor};
 
 /// Viewport passed to a stack entry's visibility callback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +92,11 @@ pub trait ScrollLayoutState {
     fn following_end(&self) -> bool;
     /// Mark the scrollbar as actively hovered or dragged.
     fn set_scrollbar_active_state(&mut self, active: bool);
+    /// Last top-row identity, paired with the scroll offset at capture time.
+    fn transcript_anchor(&self) -> Option<(TranscriptAnchor, usize)> {
+        None
+    }
+    fn set_transcript_anchor(&mut self, _anchor: Option<(TranscriptAnchor, usize)>) {}
 }
 
 pub type ScrollStateRef = Rc<RefCell<dyn ScrollLayoutState>>;

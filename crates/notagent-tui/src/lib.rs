@@ -20,6 +20,7 @@ pub mod terminal_colors;
 pub mod terminal_image;
 #[cfg(feature = "test-terminal")]
 pub mod test_terminal;
+pub mod transcript_container;
 pub mod tui;
 pub mod tui_alt_screen;
 pub mod tui_main_screen;

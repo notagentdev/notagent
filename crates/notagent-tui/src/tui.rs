@@ -152,6 +152,57 @@ pub trait Component {
     fn layout_node(&self) -> Option<crate::layout_node::LayoutNode> {
         None
     }
+
+    /// Render a logical range without materializing the preceding rows.
+    fn windowed_content(
+        &mut self,
+        _width: usize,
+        _first_row: usize,
+        _rows: usize,
+    ) -> Option<WindowedContent> {
+        None
+    }
+
+    fn content_revision(&self) -> u64 {
+        0
+    }
+
+    fn prepare_reflow(&mut self, _width: usize) {}
+
+    fn history_regions(&mut self, _width: usize, _active_rows: usize) -> Option<HistoryRegions> {
+        None
+    }
+
+    fn take_stream_history(&mut self, _width: usize) -> Vec<Line> {
+        Vec::new()
+    }
+
+    fn anchor_at(&mut self, _width: usize, _row: usize) -> Option<TranscriptAnchor> {
+        None
+    }
+
+    fn row_for_anchor(&mut self, _width: usize, _anchor: TranscriptAnchor) -> Option<usize> {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TranscriptAnchor {
+    pub entry_id: u64,
+    pub row: usize,
+}
+
+pub struct HistoryRegions {
+    pub history: Vec<Line>,
+    pub active: Vec<Line>,
+    pub rebuild: bool,
+}
+
+/// A rendered slice of a component's full logical content.
+pub struct WindowedContent {
+    pub height: usize,
+    pub first_row: usize,
+    pub lines: Vec<Line>,
 }
 
 /// Components that can take focus and show a hardware cursor.
@@ -201,6 +252,7 @@ pub struct ListenerId(u64);
 pub struct Container {
     /// Child components, rendered in order.
     pub children: Vec<ComponentRef>,
+    history_prefix_emitted: bool,
 }
 
 impl Container {
@@ -228,6 +280,7 @@ impl Container {
     /// Drop all children.
     pub fn clear(&mut self) {
         self.children.clear();
+        self.history_prefix_emitted = false;
     }
 }
 
@@ -241,6 +294,7 @@ impl Component for Container {
     }
 
     fn invalidate(&mut self) {
+        self.history_prefix_emitted = false;
         for child in &self.children {
             child.borrow_mut().invalidate();
         }
@@ -248,6 +302,145 @@ impl Component for Container {
 
     fn as_container(&self) -> Option<&Container> {
         Some(self)
+    }
+
+    fn windowed_content(
+        &mut self,
+        width: usize,
+        first_row: usize,
+        rows: usize,
+    ) -> Option<WindowedContent> {
+        let mut children = Vec::with_capacity(self.children.len());
+        let mut has_windowed_child = false;
+        let mut height = 0;
+        for child in &self.children {
+            let windowed = child.borrow_mut().windowed_content(width, 0, 0);
+            let child_height = if let Some(windowed) = &windowed {
+                has_windowed_child = true;
+                windowed.height
+            } else {
+                child.borrow_mut().render(width).len()
+            };
+            children.push((Rc::clone(child), child_height));
+            height += child_height;
+        }
+        if !has_windowed_child {
+            return None;
+        }
+        let mut lines = Vec::new();
+        let mut offset = 0;
+        let end = first_row.saturating_add(rows);
+        for (child, child_height) in children {
+            let child_end = offset + child_height;
+            if offset < end && child_end > first_row {
+                let local_first = first_row.saturating_sub(offset);
+                let local_end = end.min(child_end) - offset;
+                if let Some(windowed) =
+                    child
+                        .borrow_mut()
+                        .windowed_content(width, local_first, local_end - local_first)
+                {
+                    lines.extend(windowed.lines);
+                } else {
+                    lines.extend(
+                        child
+                            .borrow_mut()
+                            .render(width)
+                            .into_iter()
+                            .skip(local_first)
+                            .take(local_end - local_first),
+                    );
+                }
+            }
+            offset = child_end;
+        }
+        Some(WindowedContent {
+            height,
+            first_row,
+            lines,
+        })
+    }
+
+    fn content_revision(&self) -> u64 {
+        self.children
+            .iter()
+            .fold(self.children.len() as u64, |revision, child| {
+                revision
+                    .wrapping_mul(31)
+                    .wrapping_add(child.borrow().content_revision())
+            })
+    }
+
+    fn anchor_at(&mut self, width: usize, row: usize) -> Option<TranscriptAnchor> {
+        let mut offset = 0;
+        for child in &self.children {
+            let window = child.borrow_mut().windowed_content(width, 0, 0);
+            let height = window.map_or_else(
+                || child.borrow_mut().render(width).len(),
+                |window| window.height,
+            );
+            if row < offset + height {
+                return child.borrow_mut().anchor_at(width, row - offset);
+            }
+            offset += height;
+        }
+        None
+    }
+
+    fn row_for_anchor(&mut self, width: usize, anchor: TranscriptAnchor) -> Option<usize> {
+        let mut offset = 0;
+        for child in &self.children {
+            if let Some(row) = child.borrow_mut().row_for_anchor(width, anchor) {
+                return Some(offset + row);
+            }
+            let window = child.borrow_mut().windowed_content(width, 0, 0);
+            offset += window.map_or_else(
+                || child.borrow_mut().render(width).len(),
+                |window| window.height,
+            );
+        }
+        None
+    }
+
+    fn prepare_reflow(&mut self, width: usize) {
+        self.history_prefix_emitted = false;
+        for child in &self.children {
+            child.borrow_mut().prepare_reflow(width);
+        }
+    }
+
+    fn history_regions(&mut self, width: usize, active_rows: usize) -> Option<HistoryRegions> {
+        let mut history = Vec::new();
+        let mut active = Vec::new();
+        let mut found = false;
+        let mut rebuild = false;
+        let mut prefix_components: Vec<ComponentRef> = Vec::new();
+        for child in &self.children {
+            if !found {
+                let child_regions = child.borrow_mut().history_regions(width, active_rows);
+                if let Some(regions) = child_regions {
+                    if !self.history_prefix_emitted || regions.rebuild {
+                        for prefix in &prefix_components {
+                            history.extend(prefix.borrow_mut().render(width));
+                        }
+                        self.history_prefix_emitted = true;
+                    }
+                    history.extend(regions.history);
+                    active.extend(regions.active);
+                    rebuild = regions.rebuild;
+                    found = true;
+                } else {
+                    prefix_components.push(Rc::clone(child));
+                }
+            } else {
+                active.extend(child.borrow_mut().render(width));
+            }
+        }
+        found.then_some(HistoryRegions {
+            history,
+            active,
+            rebuild,
+        })
     }
 }
 
@@ -2165,6 +2358,27 @@ impl OverlayHandle {
 }
 
 impl TuiCore {
+    pub fn prepare_reflow(&self, width: usize) {
+        let children = self.0.borrow().children.clone();
+        for child in children {
+            child.borrow_mut().prepare_reflow(width);
+        }
+    }
+
+    pub fn render_history_frame(&self, width: usize, active_rows: usize) -> Option<HistoryRegions> {
+        let children = self.0.borrow().children.clone();
+        let (document, dock) = children.split_first()?;
+        let mut dock_lines = Vec::new();
+        for child in dock {
+            dock_lines.extend(child.borrow_mut().render(width));
+        }
+        let mut regions = document
+            .borrow_mut()
+            .history_regions(width, active_rows.saturating_sub(dock_lines.len()))?;
+        regions.active.extend(dock_lines);
+        Some(regions)
+    }
+
     /// Render all mounted root components (`Container.render`).
     pub fn render_children(&self, width: usize) -> Vec<Line> {
         let children = self.0.borrow().children.clone();

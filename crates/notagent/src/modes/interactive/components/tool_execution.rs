@@ -479,6 +479,14 @@ impl ToolExecutionComponent {
         self.update_display();
     }
 
+    pub fn tool_name(&self) -> &str {
+        &self.tool_name
+    }
+
+    pub fn args(&self) -> &Value {
+        &self.args
+    }
+
     pub fn mark_execution_started(&mut self) {
         self.execution_started = true;
         self.execution_started_at.get_or_insert_with(Instant::now);

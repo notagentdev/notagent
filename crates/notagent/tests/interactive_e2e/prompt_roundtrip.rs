@@ -52,6 +52,34 @@ async fn a_typed_prompt_reaches_the_session_and_the_answer_reaches_the_screen() 
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn a_streamed_answer_longer_than_the_screen_enters_scrollback_once() {
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        let answer = (0..40)
+            .map(|index| format!("Paragraph number {index} of the long answer."))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        e2e.faux().set_responses(vec![reply(&answer)]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("write a lot").await;
+        driver.wait_for("Paragraph number 39 of").await;
+        driver.submit("").await;
+        let buffer = driver.scrollback();
+        for index in 0..40 {
+            let paragraph = format!("Paragraph number {index} of");
+            assert_eq!(
+                buffer.matches(&paragraph).count(),
+                1,
+                "{paragraph:?} must be in the terminal exactly once:\n{buffer}"
+            );
+        }
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn the_editor_is_empty_again_and_takes_the_next_prompt() {
     run_local(async {
         let e2e = InteractiveE2e::new().await;

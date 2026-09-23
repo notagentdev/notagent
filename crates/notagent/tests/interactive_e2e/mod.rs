@@ -1,6 +1,7 @@
 pub mod harness;
 
 mod bash_filter;
+mod bash_row;
 mod edit_no_full_redraw;
 mod goal;
 mod harness_check;

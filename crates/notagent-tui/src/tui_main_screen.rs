@@ -2,10 +2,13 @@ use std::collections::BTreeSet;
 use std::io::Write;
 
 use crate::terminal_image::{delete_kitty_image, is_image_line};
-use crate::tui::{Line, TuiCore, TuiMode, TuiStopOptions};
+use crate::tui::{HistoryRegions, Line, TuiCore, TuiMode, TuiStopOptions};
 use crate::utils::visible_width;
 
 const KITTY_SEQUENCE_PREFIX: &str = "\x1b_G";
+/// Long enough to cover the size reports of one drag-resize gesture, short
+/// enough that a single resize still looks immediate.
+pub const RESIZE_REFLOW_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(75);
 
 struct KittyImageHeader {
     ids: Vec<u32>,
@@ -67,6 +70,12 @@ pub struct TuiMainScreenRenderState {
     pub max_lines_rendered: usize,
     /// Index of the topmost visible line.
     pub previous_viewport_top: usize,
+    /// Stable rows still resident on the main screen.
+    pub visible_history: Vec<Line>,
+    /// Whether native scrollback already holds rows this program wrote.
+    pub history_written: bool,
+    /// Screen row of the first rendered line.
+    pub screen_top: usize,
 }
 
 /// TUI implementation that renders into the terminal's main screen and scrollback.
@@ -82,6 +91,18 @@ pub struct TuiMainScreen {
     previous_viewport_top: usize,
     full_redraw_count: usize,
     previous_cursor_pos: Option<(usize, usize)>,
+    history_mode_initialized: bool,
+    /// Survives a forced reset: a rebuild after it has to clear the rows
+    /// already in scrollback, while the very first frame must not.
+    history_written: bool,
+    /// Screen row of the first rendered line. The first frame starts below
+    /// the shell output instead of erasing it; scrolling moves it up to 0.
+    screen_top: usize,
+    resize_reflow_debounce: std::time::Duration,
+    /// Size seen during a resize burst and when its rebuild is due.
+    pending_resize: Option<((usize, usize), std::time::Instant)>,
+    visible_history: Vec<Line>,
+    last_compared_rows: usize,
 }
 
 impl TuiMainScreen {
@@ -107,6 +128,13 @@ impl TuiMainScreen {
             previous_viewport_top: 0,
             full_redraw_count: 0,
             previous_cursor_pos: None,
+            history_mode_initialized: false,
+            history_written: false,
+            screen_top: 0,
+            resize_reflow_debounce: RESIZE_REFLOW_DEBOUNCE,
+            pending_resize: None,
+            visible_history: Vec::new(),
+            last_compared_rows: 0,
         }
     }
 
@@ -125,6 +153,15 @@ impl TuiMainScreen {
         self.full_redraw_count
     }
 
+    pub fn last_compared_rows(&self) -> usize {
+        self.last_compared_rows
+    }
+
+    /// How long the size must stay unchanged before a resize rebuilds history.
+    pub fn set_resize_reflow_debounce(&mut self, debounce: std::time::Duration) {
+        self.resize_reflow_debounce = debounce;
+    }
+
     /// Snapshot the render state.
     pub fn capture_render_state(&self) -> TuiMainScreenRenderState {
         TuiMainScreenRenderState {
@@ -135,6 +172,9 @@ impl TuiMainScreen {
             hardware_cursor_row: self.hardware_cursor_row,
             max_lines_rendered: self.max_lines_rendered,
             previous_viewport_top: self.previous_viewport_top,
+            visible_history: self.visible_history.clone(),
+            history_written: self.history_written,
+            screen_top: self.screen_top,
         }
     }
 
@@ -161,6 +201,9 @@ impl TuiMainScreen {
         self.hardware_cursor_row = state.hardware_cursor_row;
         self.max_lines_rendered = state.max_lines_rendered;
         self.previous_viewport_top = state.previous_viewport_top;
+        self.visible_history = state.visible_history;
+        self.history_written = state.history_written;
+        self.screen_top = state.screen_top;
     }
 
     fn reset_render_state(&mut self) {
@@ -173,6 +216,9 @@ impl TuiMainScreen {
         self.hardware_cursor_row = 0;
         self.max_lines_rendered = 0;
         self.previous_viewport_top = 0;
+        self.history_mode_initialized = false;
+        self.visible_history.clear();
+        self.last_compared_rows = 0;
     }
 
     /// Start the TUI (terminal, cursor, first frame).
@@ -290,7 +336,7 @@ impl TuiMainScreen {
             // scrolling when the final transcript line fills the terminal.
             buffer.push_str(&format!(
                 "\x1b[{};1H\x1b[2K{}",
-                index - self.previous_viewport_top + 1,
+                index - self.previous_viewport_top + self.screen_top + 1,
                 line
             ));
             *previous = line;
@@ -456,6 +502,186 @@ impl TuiMainScreen {
         self.previous_height = height as i64;
     }
 
+    fn render_history_frame(
+        &mut self,
+        mut regions: HistoryRegions,
+        width: usize,
+        height: usize,
+        size_changed: bool,
+    ) {
+        self.core.apply_line_resets(&mut regions.history);
+        let mut active = regions.active;
+        if active.len() > height {
+            active.drain(..active.len() - height);
+        }
+        let first_frame = !self.history_mode_initialized;
+        let rebuild = first_frame || size_changed || regions.rebuild;
+        let mut buffer = String::new();
+        // Kitty keeps an image placement independent of the text cells, so
+        // clearing or rewriting a row leaves its image behind unless it is
+        // deleted by id before the row is painted again.
+        let mut stale_images = BTreeSet::new();
+        if rebuild {
+            if self.history_written {
+                stale_images.extend(self.previous_kitty_image_ids.iter().copied());
+                // The shell's `clear && printf '\e[3J'`. A terminal that moves
+                // erased rows into scrollback loses them again with CSI 3J,
+                // and the replayed tail follows.
+                buffer.push_str("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J\x1b[H");
+                self.screen_top = 0;
+            } else {
+                let start_row = self
+                    .core
+                    .with_terminal(|terminal| terminal.start_cursor_row());
+                self.screen_top = match start_row {
+                    Some(row) => row.min(height.saturating_sub(1)),
+                    None => {
+                        // Without a reported cursor row, newlines scroll the
+                        // shell output above it into scrollback first.
+                        for _ in 1..height {
+                            buffer.push_str("\r\n");
+                        }
+                        0
+                    }
+                };
+                buffer.push_str(&format!("\x1b[{};1H\x1b[J", self.screen_top + 1));
+            }
+            self.full_redraw_count += 1;
+            self.visible_history.clear();
+            self.previous_lines.clear();
+        }
+
+        let old_rows = self.visible_history.len();
+        self.visible_history.extend(regions.history);
+        let mut lines = Vec::with_capacity(self.visible_history.len() + active.len());
+        lines.extend(self.visible_history.iter().cloned());
+        lines.append(&mut active);
+        if self.core.has_overlay_entries() {
+            lines = self.core.composite_overlays(lines, width, height);
+        }
+        // Rows beyond the screen leave through its top edge into scrollback;
+        // overlays pad and draw only within the last `height` rows.
+        let pushed = lines.len().saturating_sub(height);
+        self.core
+            .paint_activity(&mut lines, pushed, &self.previous_lines);
+        let cursor_pos = self
+            .core
+            .extract_cursor_position(&mut lines, height)
+            .map(|(row, col)| (row.saturating_sub(pushed), col));
+        self.core.apply_line_resets(&mut lines);
+
+        let mut last_painted = None;
+        let total_scroll = (self.screen_top + lines.len()).saturating_sub(height);
+        if total_scroll > 0 {
+            // Scrolling the whole screen at its bottom row is the one way every
+            // terminal moves rows into scrollback; erasing the display is not.
+            // A departing row still showing an overlay or blink frame is
+            // restored first, because scrollback keeps what the row shows.
+            for (index, line) in lines.iter().enumerate().take(pushed.min(old_rows)) {
+                if self.previous_lines.get(index).is_none_or(|old| old != line) {
+                    if let Some(old) = self.previous_lines.get(index) {
+                        stale_images.extend(extract_kitty_image_ids(old));
+                    }
+                    buffer.push_str(&format!(
+                        "\x1b[{};1H\x1b[2K{line}",
+                        self.screen_top + index + 1
+                    ));
+                }
+            }
+            let first_new = self.screen_top + old_rows;
+            for old in self.previous_lines.iter().skip(old_rows) {
+                stale_images.extend(extract_kitty_image_ids(old));
+            }
+            if first_new < height {
+                buffer.push_str(&format!("\x1b[{};1H\x1b[J", first_new + 1));
+            }
+            let mut row = first_new;
+            for (index, line) in lines.iter().enumerate().skip(old_rows) {
+                if !is_image_line(line) && visible_width(line) > width {
+                    self.crash_on_overwide_line(index, line, &lines, width);
+                }
+                if row < height {
+                    buffer.push_str(&format!("\x1b[{};1H{line}", row + 1));
+                    row += 1;
+                } else {
+                    buffer.push_str(&format!("\x1b[{height};1H\r\n{line}"));
+                }
+            }
+            self.screen_top = self.screen_top.saturating_sub(total_scroll);
+            let pushed_history = pushed.min(self.visible_history.len());
+            self.visible_history.drain(..pushed_history);
+            lines.drain(..pushed);
+            last_painted = lines.len().checked_sub(1);
+            // Rows that stayed on screen moved up with the scroll; repaint the
+            // ones whose painted state differs from this frame.
+            for (index, line) in lines
+                .iter()
+                .enumerate()
+                .take(old_rows.saturating_sub(pushed))
+            {
+                let old = self.previous_lines.get(index + pushed);
+                if old.is_none_or(|old| old != line) {
+                    if let Some(old) = old {
+                        stale_images.extend(extract_kitty_image_ids(old));
+                    }
+                    buffer.push_str(&format!(
+                        "\x1b[{};1H\x1b[2K{line}",
+                        self.screen_top + index + 1
+                    ));
+                    last_painted = Some(index);
+                }
+            }
+            self.last_compared_rows = lines.len();
+        } else {
+            let paint_rows = lines.len().max(self.previous_lines.len());
+            self.last_compared_rows = paint_rows;
+            for row in 0..paint_rows {
+                let current = lines.get(row);
+                let line = current.map_or("", Line::as_ref);
+                if self.previous_lines.get(row).is_some_and(|old| {
+                    current.is_some_and(|new| Line::ptr_eq(old, new) || old == new)
+                        || (current.is_none() && old.is_empty())
+                }) {
+                    continue;
+                }
+                if !is_image_line(line) && visible_width(line) > width {
+                    self.crash_on_overwide_line(row, line, &lines, width);
+                }
+                if let Some(old) = self.previous_lines.get(row) {
+                    stale_images.extend(extract_kitty_image_ids(old));
+                }
+                buffer.push_str(&format!(
+                    "\x1b[{};1H\x1b[2K{}",
+                    self.screen_top + row + 1,
+                    line
+                ));
+                last_painted = Some(row);
+            }
+        }
+        if !stale_images.is_empty() {
+            buffer.insert_str(0, &Self::delete_kitty_images(stale_images));
+        }
+        if !buffer.is_empty() {
+            buffer.insert_str(0, "\x1b[?2026h");
+            buffer.push_str("\x1b[?2026l");
+            self.core.with_terminal(|terminal| terminal.write(&buffer));
+        }
+        if let Some(row) = last_painted {
+            self.hardware_cursor_row = row;
+        }
+        self.previous_cursor_pos = cursor_pos;
+        self.cursor_row = lines.len().saturating_sub(1);
+        self.previous_viewport_top = 0;
+        self.max_lines_rendered = lines.len();
+        self.previous_kitty_image_ids = Self::collect_kitty_image_ids(&lines);
+        self.previous_lines = lines;
+        self.previous_width = width as i64;
+        self.previous_height = height as i64;
+        self.history_mode_initialized = true;
+        self.history_written = true;
+        self.position_hardware_cursor(cursor_pos, self.previous_lines.len());
+    }
+
     fn do_render(&mut self) {
         if self.core.is_stopped() {
             return;
@@ -477,7 +703,48 @@ impl TuiMainScreen {
         let mut viewport_top = prev_viewport_top;
         let mut hardware_cursor_row = self.hardware_cursor_row as i64;
 
-        // Render all components to get the new lines.
+        // A drag-resize reports a burst of intermediate sizes, and each history
+        // rebuild clears scrollback and replays the tail. Rebuild once the size
+        // has been stable for the debounce window; a forced reset (previous
+        // size -1) is not a resize and rebuilds at once.
+        let resized = self.previous_width > 0 && (width_changed || height_changed);
+        if resized && self.history_written && !self.resize_reflow_debounce.is_zero() {
+            let now = std::time::Instant::now();
+            let size = (width, height);
+            match self.pending_resize {
+                Some((pending, deadline)) if pending == size && now >= deadline => {
+                    self.pending_resize = None;
+                }
+                Some((pending, _)) if pending == size => {
+                    self.core.request_render();
+                    return;
+                }
+                _ => {
+                    self.pending_resize = Some((size, now + self.resize_reflow_debounce));
+                    self.core.request_render();
+                    return;
+                }
+            }
+        } else {
+            self.pending_resize = None;
+        }
+
+        // Every history rebuild clears native scrollback, so it has to replay
+        // the transcript: on a resize, including the Termux keyboard toggle,
+        // and on the first frame after a forced reset.
+        let history_reflow = width_changed
+            || height_changed
+            || (self.history_written && !self.history_mode_initialized);
+        if history_reflow {
+            self.core.prepare_reflow(width);
+        }
+
+        if let Some(regions) = self.core.render_history_frame(width, height) {
+            self.render_history_frame(regions, width, height, history_reflow);
+            return;
+        }
+
+        // Render the active tree to get the new lines.
         let mut new_lines = self.core.render_children(width);
 
         // Composite overlays before the differential compare.

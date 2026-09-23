@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use crate::alt_screen_search::{
-    AltScreenSearchComponent, AltScreenSearchMatch, find_alt_screen_search_matches,
+    AltScreenSearchComponent, AltScreenSearchMatch, AltScreenSearchSegment, SearchScanner,
     get_alt_screen_search_match_key,
 };
 use crate::components::alt_screen_flash::AltScreenFlashContainer;
@@ -149,8 +149,20 @@ struct ActiveSearch {
     matches: Vec<AltScreenSearchMatch>,
     selected_index: i64,
     selected_key: Option<String>,
+    selected_anchor: Option<(crate::tui::TranscriptAnchor, usize)>,
     anchor_row: usize,
     selection_mode: SearchSelectionMode,
+    matched_query: String,
+    matched_revision: Option<u64>,
+    segments_by_row: BTreeMap<usize, Vec<(usize, AltScreenSearchSegment)>>,
+    scan: Option<SearchScan>,
+}
+
+struct SearchScan {
+    scanner: SearchScanner,
+    next_row: usize,
+    revision: u64,
+    query: String,
 }
 
 /// How `refresh_search` picks the selected match.
@@ -184,6 +196,7 @@ struct SelectionPoint {
     col: usize,
     /// Scroll view the point belongs to, identified by pointer identity.
     scroll_view: Option<usize>,
+    anchor: Option<crate::tui::TranscriptAnchor>,
     /// Whether the point lies between cells rather than on one.
     boundary: bool,
 }
@@ -423,14 +436,16 @@ impl TuiAltScreen {
             return;
         };
         let scroll_view = self.primary_scroll_state();
-        let Some(lines) = get_scroll_view_box(layout, &scroll_view)
-            .and_then(|layout_box| layout_box.scroll_content_lines.clone())
-        else {
+        let Some(layout_box) = get_scroll_view_box(layout, &scroll_view) else {
             return;
         };
         let mut row = scroll_view.borrow().scroll_top() as i64 + direction;
-        while row >= 0 && row < lines.len() as i64 {
-            if is_osc133_prompt_start(&lines[row as usize]) {
+        while row >= 0 && row < layout_box.scroll_content_height as i64 {
+            if layout_box
+                .scroll_lines(row as usize, 1)
+                .first()
+                .is_some_and(|line| is_osc133_prompt_start(line))
+            {
                 scroll_view.borrow_mut().scroll_to_line(row, false);
                 self.core.request_render();
                 return;
@@ -464,8 +479,13 @@ impl TuiAltScreen {
             matches: Vec::new(),
             selected_index: -1,
             selected_key: None,
+            selected_anchor: None,
             anchor_row: self.primary_scroll_state().borrow().scroll_top(),
             selection_mode: SearchSelectionMode::Query,
+            matched_query: String::new(),
+            matched_revision: None,
+            segments_by_row: BTreeMap::new(),
+            scan: None,
         });
     }
 
@@ -523,26 +543,135 @@ impl TuiAltScreen {
             .clone()
             .unwrap_or_else(|| self.implicit_scroll_state.clone());
         let layout_box = get_scroll_view_box(layout, &scroll_view);
-        let lines = layout_box.and_then(|layout_box| layout_box.scroll_content_lines.clone());
-        let search = self.active_search.as_mut().expect("search present");
-
-        let Some(lines) = lines.filter(|_| !search.query.trim().is_empty()) else {
-            search.matches = Vec::new();
-            search.selected_index = -1;
-            search.selected_key = None;
-            search.selection_mode = SearchSelectionMode::Retain;
-            search.component.borrow_mut().set_result(-1, 0);
+        let Some(search) = self.active_search.as_mut() else {
             return false;
         };
 
+        if layout_box.is_none() || search.query.trim().is_empty() {
+            search.matches = Vec::new();
+            search.segments_by_row.clear();
+            search.selected_index = -1;
+            search.selected_key = None;
+            search.selected_anchor = None;
+            search.selection_mode = SearchSelectionMode::Retain;
+            search.matched_revision = None;
+            search.scan = None;
+            search.component.borrow_mut().set_result(-1, 0);
+            return false;
+        }
+        let Some(layout_box) = layout_box else {
+            return false;
+        };
+        let revision = layout_box
+            .children
+            .first()
+            .map_or(0, |child| child.component.borrow().content_revision());
+        let query_changed = search.matched_query != search.query;
+        // Content rendered in full carries no reliable revision (a plain
+        // component reports 0), but scanning it costs no more than painting
+        // it, so it is scanned completely on every refresh.
+        let materialized = layout_box.scroll_content_start == 0
+            && layout_box
+                .scroll_content_lines
+                .as_ref()
+                .is_some_and(|lines| lines.len() >= layout_box.scroll_content_height);
+        let changed = materialized || search.matched_revision != Some(revision) || query_changed;
+        // A content change lets a running scan finish and keeps the previous
+        // matches on screen until the next one completes: a streaming reply
+        // changes the revision every frame, and restarting on it meant a long
+        // transcript never produced a result.
+        let restart = materialized
+            || search
+                .scan
+                .as_ref()
+                .map_or(changed, |scan| scan.query != search.query);
+        if restart {
+            search.scan = Some(SearchScan {
+                scanner: SearchScanner::new(&search.query),
+                next_row: 0,
+                revision,
+                query: search.query.clone(),
+            });
+            if query_changed {
+                search.matches.clear();
+                search.segments_by_row.clear();
+            }
+        }
+        if let Some(scan) = search.scan.as_mut() {
+            let chunk = if materialized {
+                layout_box.scroll_content_height
+            } else {
+                256
+            };
+            let end = scan
+                .next_row
+                .saturating_add(chunk)
+                .min(layout_box.scroll_content_height);
+            let lines = layout_box.scroll_lines(scan.next_row, end - scan.next_row);
+            for (offset, line) in lines.iter().enumerate() {
+                scan.scanner.push_line(scan.next_row + offset, line);
+            }
+            scan.next_row = end;
+            if end < layout_box.scroll_content_height {
+                self.core.request_render();
+                return false;
+            }
+            // The completed scan describes the content as of its start; a
+            // later revision triggers the next scan from the comparison above.
+            let mut scanned_revision = revision;
+            if let Some(scan) = search.scan.take() {
+                scanned_revision = scan.revision;
+                search.matches = scan.scanner.finish();
+            }
+            search.segments_by_row.clear();
+            for (match_index, search_match) in search.matches.iter().enumerate() {
+                for segment in &search_match.segments {
+                    search
+                        .segments_by_row
+                        .entry(segment.row)
+                        .or_default()
+                        .push((match_index, *segment));
+                }
+            }
+            search.matched_query.clone_from(&search.query);
+            search.matched_revision = Some(scanned_revision);
+        }
+
         let should_reveal_selection = search.selection_mode != SearchSelectionMode::Retain;
-        let matches = find_alt_screen_search_matches(&lines, &search.query);
-        let exact_index = search.selected_key.as_ref().map_or(-1, |key| {
-            matches
-                .iter()
-                .position(|search_match| &get_alt_screen_search_match_key(search_match) == key)
-                .map_or(-1, |index| index as i64)
-        });
+        let matches = &search.matches;
+        let exact_index = if !changed {
+            search.selected_index
+        } else {
+            let anchored = search.selected_anchor.and_then(|(anchor, column)| {
+                let child = layout_box.children.first()?;
+                let width = child.rect.width.max(1) as usize;
+                let row = child.component.borrow_mut().row_for_anchor(width, anchor)?;
+                matches
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, search_match)| {
+                        let segment = search_match.segments.first()?;
+                        let candidate =
+                            child.component.borrow_mut().anchor_at(width, segment.row)?;
+                        (candidate.entry_id == anchor.entry_id).then_some((
+                            index,
+                            segment.row.abs_diff(row) + segment.start_col.abs_diff(column),
+                        ))
+                    })
+                    .min_by_key(|(_, distance)| *distance)
+                    .map(|(index, _)| index as i64)
+            });
+            anchored.unwrap_or_else(|| {
+                search.selected_key.as_ref().map_or(-1, |key| {
+                    matches
+                        .iter()
+                        .position(|search_match| {
+                            &get_alt_screen_search_match_key(search_match) == key
+                        })
+                        .map_or(-1, |index| index as i64)
+                })
+            })
+        };
         let mut selected_index = -1;
         if !matches.is_empty() {
             let count = matches.len() as i64;
@@ -591,12 +720,23 @@ impl TuiAltScreen {
             };
         }
 
-        search.matches = matches;
         search.selected_index = selected_index;
         search.selected_key = usize::try_from(selected_index)
             .ok()
             .and_then(|index| search.matches.get(index))
             .map(get_alt_screen_search_match_key);
+        search.selected_anchor = usize::try_from(selected_index)
+            .ok()
+            .and_then(|index| search.matches.get(index))
+            .and_then(|search_match| search_match.segments.first())
+            .and_then(|segment| {
+                let child = layout_box.children.first()?;
+                child
+                    .component
+                    .borrow_mut()
+                    .anchor_at(child.rect.width.max(1) as usize, segment.row)
+                    .map(|anchor| (anchor, segment.start_col))
+            });
         search.selection_mode = SearchSelectionMode::Retain;
         search
             .component
@@ -616,9 +756,7 @@ impl TuiAltScreen {
             .and_then(|selected| selected.segments.last())
             .copied();
         let viewport_height = scroll_view.borrow().viewport_height() as i64;
-        let (Some(_), Some(first_segment), Some(last_segment)) =
-            (layout_box, first_segment, last_segment)
-        else {
+        let (Some(first_segment), Some(last_segment)) = (first_segment, last_segment) else {
             return false;
         };
         if viewport_height <= 0 {
@@ -690,8 +828,13 @@ impl TuiAltScreen {
         let scroll_top = scroll_view.borrow().scroll_top() as i64;
 
         let mut ranges_by_row: HashMap<usize, Vec<SearchHighlightRange>> = HashMap::new();
-        for (match_index, search_match) in search.matches.iter().enumerate() {
-            for segment in &search_match.segments {
+        let first_logical = (min_row - layout_box.rect.y + scroll_top).max(0) as usize;
+        let last_logical = (max_row - layout_box.rect.y + scroll_top).max(0) as usize;
+        if first_logical >= last_logical {
+            return screen;
+        }
+        for (_, segments) in search.segments_by_row.range(first_logical..last_logical) {
+            for (match_index, segment) in segments {
                 let row = layout_box.rect.y + segment.row as i64 - scroll_top;
                 if row < min_row || row >= max_row {
                     continue;
@@ -707,7 +850,7 @@ impl TuiAltScreen {
                     .push(SearchHighlightRange {
                         start_col: start_col as usize,
                         end_col: end_col as usize,
-                        current: match_index as i64 == search.selected_index,
+                        current: *match_index as i64 == search.selected_index,
                     });
             }
         }
@@ -1005,6 +1148,48 @@ impl TuiAltScreen {
         visit(&layout.root, key)
     }
 
+    fn anchored_selection_row(&self, point: &SelectionPoint) -> Option<usize> {
+        let key = point.scroll_view?;
+        let anchor = point.anchor?;
+        let layout = self.current_layout.as_ref()?;
+        let scroll_view = self.scroll_view_by_key(key)?;
+        let layout_box = get_scroll_view_box(layout, &scroll_view)?;
+        let child = layout_box.children.first()?;
+        child
+            .component
+            .borrow_mut()
+            .row_for_anchor(child.rect.width.max(1) as usize, anchor)
+    }
+
+    fn refresh_selection_anchors(&mut self) {
+        let anchor_row = self
+            .selection_anchor
+            .as_ref()
+            .and_then(|point| self.anchored_selection_row(point));
+        let focus_row = self
+            .selection_focus
+            .as_ref()
+            .and_then(|point| self.anchored_selection_row(point));
+        if let (Some(point), Some(row)) = (&mut self.selection_anchor, anchor_row) {
+            point.row = row;
+        }
+        if let (Some(point), Some(row)) = (&mut self.selection_focus, focus_row) {
+            point.row = row;
+        }
+        if let Some(range) = self.selection_initial_range.as_ref() {
+            let start = self.anchored_selection_row(&range.start);
+            let end = self.anchored_selection_row(&range.end);
+            if let Some(range) = self.selection_initial_range.as_mut() {
+                if let Some(row) = start {
+                    range.start.row = row;
+                }
+                if let Some(row) = end {
+                    range.end.row = row;
+                }
+            }
+        }
+    }
+
     /// Point under the pointer, resolved inside `scroll_view` when given.
     fn get_selection_point(
         &self,
@@ -1020,6 +1205,7 @@ impl TuiAltScreen {
             row: event.y.clamp(0, self.core.rows() as i64 - 1).max(0) as usize,
             col: event.x.clamp(0, self.core.columns() as i64 - 1).max(0) as usize,
             scroll_view: None,
+            anchor: None,
             boundary: false,
         }
     }
@@ -1039,20 +1225,24 @@ impl TuiAltScreen {
             return None;
         }
         let pointer_row = y.clamp(visible_top, visible_bottom);
-        let max_content_row = layout_box
-            .scroll_content_lines
-            .as_ref()
-            .map_or(1, Vec::len)
-            .saturating_sub(1) as i64;
+        let max_content_row = layout_box.scroll_content_height.max(1).saturating_sub(1) as i64;
         let scroll_top = scroll_view.borrow().scroll_top() as i64;
+        let row = (scroll_top + pointer_row - layout_box.rect.y)
+            .clamp(0, max_content_row)
+            .max(0) as usize;
+        let anchor = layout_box.children.first().and_then(|child| {
+            child
+                .component
+                .borrow_mut()
+                .anchor_at(child.rect.width.max(1) as usize, row)
+        });
         Some(SelectionPoint {
-            row: (scroll_top + pointer_row - layout_box.rect.y)
-                .clamp(0, max_content_row)
-                .max(0) as usize,
+            row,
             col: (x - layout_box.rect.x)
                 .clamp(0, (layout_box.rect.width - 1).max(0))
                 .max(0) as usize,
             scroll_view: Some(key),
+            anchor,
             boundary: false,
         })
     }
@@ -1062,9 +1252,12 @@ impl TuiAltScreen {
             && let Some(layout) = &self.current_layout
             && let Some(scroll_view) = self.scroll_view_by_key(key)
             && let Some(layout_box) = get_scroll_view_box(layout, &scroll_view)
-            && let Some(lines) = &layout_box.scroll_content_lines
         {
-            return lines.get(point.row).cloned().unwrap_or_default();
+            return layout_box
+                .scroll_lines(point.row, 1)
+                .into_iter()
+                .next()
+                .unwrap_or_default();
         }
         self.previous_screen
             .get(point.row)
@@ -1271,6 +1464,7 @@ impl TuiAltScreen {
                 row: (layout_box.rect.y + point.row as i64 - scroll_top).max(0) as usize,
                 col: (layout_box.rect.x + point.col as i64).max(0) as usize,
                 scroll_view: point.scroll_view,
+                anchor: point.anchor,
                 boundary: point.boundary,
             };
             screen_selection = SelectionRange {
@@ -1325,18 +1519,24 @@ impl TuiAltScreen {
                 else {
                     return;
                 };
-                let Some(lines) = get_scroll_view_box(layout, &scroll_view)
-                    .and_then(|layout_box| layout_box.scroll_content_lines.clone())
-                else {
+                let Some(layout_box) = get_scroll_view_box(layout, &scroll_view) else {
                     return;
                 };
-                lines
+                layout_box.scroll_lines(
+                    selection.start.row,
+                    selection.end.row.saturating_sub(selection.start.row) + 1,
+                )
             }
         };
 
         let mut lines: Vec<String> = Vec::new();
         for row in selection.start.row..=selection.end.row {
-            let line = source_lines.get(row).cloned().unwrap_or_default();
+            let source_index = if selection.start.scroll_view.is_some() {
+                row - selection.start.row
+            } else {
+                row
+            };
+            let line = source_lines.get(source_index).cloned().unwrap_or_default();
             let max_column = visible_width(&line);
             let (start, end) = Self::get_selection_columns(&line, row, &selection, 0, max_column);
             let slice = slice_by_column(&line, start, end.saturating_sub(start), true);
@@ -2033,6 +2233,8 @@ impl TuiAltScreen {
         if screen.len() > height {
             screen = screen[screen.len() - height..].to_vec();
         }
+        self.current_layout = Some(next_layout);
+        self.refresh_selection_anchors();
         screen = self.apply_selection(screen);
         screen = self.composite_flashes(screen, width, height);
 
@@ -2126,7 +2328,6 @@ impl TuiAltScreen {
         self.previous_screen = screen;
         self.previous_screen_width = width;
         self.previous_screen_height = height;
-        self.current_layout = Some(next_layout);
     }
 }
 

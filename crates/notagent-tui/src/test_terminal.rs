@@ -25,6 +25,7 @@ struct VirtualTerminalState {
     /// the loop only needs to learn that it has to render again.
     pump_events: std::collections::VecDeque<PumpResult>,
     pump_notify: Rc<tokio::sync::Notify>,
+    start_cursor_row: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -47,6 +48,7 @@ impl VirtualTerminal {
             events: Vec::new(),
             pump_events: std::collections::VecDeque::new(),
             pump_notify: Rc::new(tokio::sync::Notify::new()),
+            start_cursor_row: None,
         })))
     }
 
@@ -220,6 +222,8 @@ impl Terminal for VirtualTerminal {
             state.events.push(TerminalEvent::Start);
             state.input_handler = Some(on_input);
             state.resize_handler = Some(on_resize);
+            let (row, _) = state.parser.screen().cursor_position();
+            state.start_cursor_row = Some(usize::from(row));
         }
         self.write("\x1b[?2004h");
     }
@@ -268,6 +272,10 @@ impl Terminal for VirtualTerminal {
 
     fn rows(&self) -> usize {
         self.0.borrow().rows
+    }
+
+    fn start_cursor_row(&self) -> Option<usize> {
+        self.0.borrow().start_cursor_row
     }
 
     fn kitty_protocol_active(&self) -> bool {
