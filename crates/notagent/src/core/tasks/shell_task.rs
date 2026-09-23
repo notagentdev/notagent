@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use notagent_agent::types::BoxFuture;
+use notagent_ai::utils::utf8_stream::Utf8StreamDecoder;
 
 use crate::core::tasks::types::{
     BackgroundTask, ShellTaskInfo, TaskInfo, TaskInfoBase, TaskKind, TaskSettlement,
@@ -69,6 +70,9 @@ impl BackgroundTask for ShellTask {
         Box::pin(async move {
             let data_sink = sink.clone();
             let on_output = self.spec.on_output.clone();
+            // Reads end wherever the pipe cut them, often inside a multi-byte
+            // character; the decoder carries that tail over to the next read.
+            let decoder = Arc::new(Mutex::new(Utf8StreamDecoder::new()));
             let result = self
                 .spec
                 .operations
@@ -77,7 +81,10 @@ impl BackgroundTask for ShellTask {
                     &self.spec.cwd,
                     BashExecOptions {
                         on_data: Some(Arc::new(move |data: &[u8]| {
-                            let text = String::from_utf8_lossy(data);
+                            let text = match decoder.lock() {
+                                Ok(mut decoder) => decoder.decode(data),
+                                Err(_) => String::from_utf8_lossy(data).into_owned(),
+                            };
                             if text.is_empty() {
                                 return;
                             }
