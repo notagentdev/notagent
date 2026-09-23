@@ -97,6 +97,56 @@ never blocks a file.
 - *Single static binary* — `cargo build --release` and you are done; no
   runtime, no node_modules.
 
+## Update notes
+
+### Unreleased (since 0.1.58)
+
+**New models**
+
+- *Claude Opus 5.5* (`claude-opus-5-5`) for the Anthropic API and the Claude
+  subscription login: 1M context, 128K output, adaptive thinking up to `max`,
+  $4 / $20 per million input / output tokens.
+- *GPT-6 Sol* (`gpt-6-sol`) and *GPT-6 Luna* (`gpt-6-luna`) for the OpenAI API
+  (1.05M context) and the Codex plan (872K context), with reasoning up to
+  `max`. Sol costs $2 / $10, Luna $0.10 / $0.50 per million input / output
+  tokens; prompts above 272K input tokens are billed at the long-context rate.
+- Claude Sonnet 5.5 and Haiku 5.5 are announced but not yet released; they
+  will be added once Anthropic publishes their model IDs.
+
+**Transcript in native scrollback.** On the main screen, finished transcript
+entries now go into the terminal's own scrollback once instead of being
+re-rendered every frame. Only the part still changing is redrawn, so long
+sessions stay fast. The first frame starts at the cursor instead of clearing
+the screen. A resize waits until the size settles and then replays a bounded
+number of rows. Answers commit whole paragraphs while they stream, so the
+final render continues the rows already written and does not repaint them.
+Kitty images are removed cleanly before their rows are cleared, and the
+fullscreen search scans in chunks instead of stalling on large transcripts.
+
+**Fixes**
+
+- Tool progress, such as the output of a running `bash` call, is shown while
+  the tool runs. Before, it arrived only together with the result.
+- Umlauts, CJK text, and emoji no longer turn into replacement characters when
+  a network chunk cuts a character in half. This affected every provider stream and could
+  corrupt file contents that a model wrote. A CRLF split between two
+  server-sent event chunks no longer cuts the event in two.
+- Large pastes and background task output keep characters that straddle a read
+  boundary.
+- `grep` and `find` no longer hang when a search hits many unreadable
+  directories. `grep` keeps its matches when some paths could not be read, and
+  error output is capped before it reaches the model.
+- `patch_minified` refuses files that are not valid UTF-8, as `edit` already
+  did, instead of rewriting every invalid byte in the file.
+- A `settings.json` that stops parsing while notagent runs, for example during
+  a hand edit, is no longer overwritten by the next setting change. The change
+  stays pending and is saved once the file is valid again. Settings are written
+  atomically, and save failures are reported.
+- A `bash` command that ignores SIGTERM is killed when it is aborted, even if
+  the agent stops waiting for it first.
+- The task view reads only the tail of a task's log for its preview instead of
+  loading the whole file.
+
 ## Crates
 
 | Crate | Description |
