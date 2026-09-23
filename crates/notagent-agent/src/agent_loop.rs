@@ -1138,7 +1138,13 @@ async fn prepare_tool_call(
     }
 }
 
-/// `executePreparedToolCall(...)` — update events are collected and awaited afterwards.
+/// `executePreparedToolCall(...)` — update events are delivered while the tool
+/// runs, and all of them before the call's end.
+/// The callback a tool gets is synchronous, so it cannot await the sink itself.
+/// Collecting the updates and emitting them after `execute` returned delivered
+/// every progress report together with the result, which left a running command
+/// looking silent until it finished. They go through a channel instead that is
+/// drained alongside the execution.
 async fn execute_prepared_tool_call(
     tool: &Arc<dyn AgentTool>,
     tool_call: &AgentToolCall,
@@ -1146,35 +1152,35 @@ async fn execute_prepared_tool_call(
     signal: Option<CancellationToken>,
     emit: AgentEventSink,
 ) -> (AgentToolResult, bool) {
-    let updates: Arc<std::sync::Mutex<Vec<AgentEvent>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (update_sender, mut update_receiver) = tokio::sync::mpsc::unbounded_channel();
     let accepting_updates = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
-    let update_sink = Arc::clone(&updates);
     let update_flag = Arc::clone(&accepting_updates);
     let update_call = tool_call.clone();
     let on_update: AgentToolUpdateCallback = Arc::new(move |partial_result| {
         if !update_flag.load(std::sync::atomic::Ordering::SeqCst) {
             return;
         }
-        update_sink
-            .lock()
-            .expect("update sink poisoned")
-            .push(AgentEvent::ToolExecutionUpdate {
-                tool_call_id: update_call.id.clone(),
-                tool_name: update_call.name.clone(),
-                args: Value::Object(update_call.arguments.clone()),
-                partial_result,
-            });
+        let _ = update_sender.send(AgentEvent::ToolExecutionUpdate {
+            tool_call_id: update_call.id.clone(),
+            tool_name: update_call.name.clone(),
+            args: Value::Object(update_call.arguments.clone()),
+            partial_result,
+        });
     });
 
-    let outcome = tool
-        .execute(&tool_call.id, args, signal, Some(on_update))
-        .await;
-    // `acceptingUpdates = false` before the collected updates are awaited.
+    let execution = tool.execute(&tool_call.id, args, signal, Some(on_update));
+    tokio::pin!(execution);
+    let outcome = loop {
+        tokio::select! {
+            biased;
+            Some(event) = update_receiver.recv() => emit(event).await,
+            outcome = &mut execution => break outcome,
+        }
+    };
+    // Late updates are refused, the ones already sent still go out in order.
     accepting_updates.store(false, std::sync::atomic::Ordering::SeqCst);
-    let collected = std::mem::take(&mut *updates.lock().expect("update sink poisoned"));
-    for event in collected {
+    while let Ok(event) = update_receiver.try_recv() {
         emit(event).await;
     }
 

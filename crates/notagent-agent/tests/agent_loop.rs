@@ -1449,3 +1449,44 @@ async fn request_preparation_sees_steering_and_can_stop_before_the_provider() {
     );
     assert_eq!(event_names(&events).last(), Some(&"agent_end"));
 }
+
+#[tokio::test]
+async fn a_tool_update_reaches_listeners_while_the_tool_is_still_running() {
+    let mut tool = TestTool::new("echo");
+    tool.delay = Duration::from_millis(500);
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![Arc::new(tool) as Arc<dyn AgentTool>]),
+    };
+    let (stream_fn, _) = scripted_stream_fn(vec![assistant_message(
+        vec![tool_call("call_1", "echo", json!({"value": "x"}))],
+        StopReason::ToolUse,
+    )]);
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        None,
+        Some(stream_fn),
+    );
+
+    let started = Instant::now();
+    let mut update_at = None;
+    let mut end_at = None;
+    while let Some(event) = stream.next().await {
+        match event {
+            AgentEvent::ToolExecutionUpdate { .. } => update_at = Some(started.elapsed()),
+            AgentEvent::ToolExecutionEnd { .. } => end_at = Some(started.elapsed()),
+            _ => {}
+        }
+    }
+    let (Some(update_at), Some(end_at)) = (update_at, end_at) else {
+        panic!("both an update and the end are emitted: update {update_at:?}, end {end_at:?}");
+    };
+    assert!(
+        update_at < Duration::from_millis(250),
+        "an update sent at the start of a 500ms tool is delivered then, not with the result: update at {update_at:?}, end at {end_at:?}"
+    );
+    assert!(update_at < end_at, "the update precedes the end");
+}
