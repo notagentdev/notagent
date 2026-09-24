@@ -1,0 +1,260 @@
+{
+  "cline-pass/deepseek-v4-pro": {
+    "id": "cline-pass/deepseek-v4-pro",
+    "name": "DeepSeek V4 Pro",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 384000,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "xhigh": "xhigh",
+      "max": null
+    }
+  },
+  "cline-pass/deepseek-v4.1-flash": {
+    "id": "cline-pass/deepseek-v4.1-flash",
+    "name": "DeepSeek V4.1 Flash",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 384000,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": "low",
+      "medium": null,
+      "high": "high",
+      "xhigh": null,
+      "max": "max"
+    }
+  },
+  "cline-pass/kimi-k3": {
+    "id": "cline-pass/kimi-k3",
+    "name": "Kimi K3",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 943718,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": "low",
+      "medium": null,
+      "high": "high",
+      "xhigh": null,
+      "max": "max"
+    }
+  },
+  "cline-pass/mimo-v2.5": {
+    "id": "cline-pass/mimo-v2.5",
+    "name": "MiMo-V2.5",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 131072,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    }
+  },
+  "cline-pass/mimo-v2.5-pro": {
+    "id": "cline-pass/mimo-v2.5-pro",
+    "name": "MiMo-V2.5-Pro",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 131072,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    }
+  },
+  "cline-pass/minimax-m3": {
+    "id": "cline-pass/minimax-m3",
+    "name": "MiniMax M3",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 512000,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    }
+  },
+  "cline-pass/qwen3.7-max": {
+    "id": "cline-pass/qwen3.7-max",
+    "name": "Qwen3.7 Max",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 131072,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    }
+  },
+  "cline-pass/qwen3.7-plus": {
+    "id": "cline-pass/qwen3.7-plus",
+    "name": "Qwen3.7 Plus",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 131072,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": null,
+      "high": "high",
+      "xhigh": null,
+      "max": null
+    }
+  },
+  "cline-pass/qwen3.8-max": {
+    "id": "cline-pass/qwen3.8-max",
+    "name": "Qwen3.8 Max",
+    "api": "openai-completions",
+    "provider": "cline-pass",
+    "baseUrl": "https://api.cline.bot/api/v1",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 131072,
+    "thinkingLevelMap": {
+      "off": null,
+      "minimal": "minimal",
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": "xhigh",
+      "max": null
+    }
+  }
+}

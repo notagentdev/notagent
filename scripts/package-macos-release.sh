@@ -43,7 +43,7 @@ fi
 # Packaging must not turn a local, unsigned build into a public release.
 codesign --verify --strict --check-notarization -R=notarized "$binary_path"
 
-mkdir -p "$dist_dir" target/release-site/api
+mkdir -p "$dist_dir"
 cp "$binary_path" "$staging_dir/notagent"
 chmod 755 "$staging_dir/notagent"
 touch -t 198001010000 "$staging_dir/notagent"
@@ -52,14 +52,14 @@ gzip -n -c "$staging_dir/notagent.tar" > "$archive_path"
 sha256=$(shasum -a 256 "$archive_path" | awk '{print $1}')
 
 printf '%s  %s\n' "$sha256" "$archive_name" > "$archive_path.sha256"
-printf '{"version":"%s"}\n' "$version" > target/release-site/api/latest-version.json
-if [ ! -f target/release-site/api/models/manifest.json ]; then
-	echo "Static model catalog is missing; run the model catalog importer first." >&2
+printf '{"version":"%s"}\n' "$version" > api/latest-version.json
+if [ ! -f api/models/manifest.json ]; then
+	echo "Static model catalog is missing; run scripts/import-model-catalog.mjs first." >&2
 	exit 1
 fi
 api_archive_name="notagent-api-v$version.tar.gz"
 api_archive_path="$dist_dir/$api_archive_name"
-cp -R target/release-site/api "$staging_dir/api"
+cp -R api "$staging_dir/api"
 find "$staging_dir/api" -exec touch -t 198001010000 {} +
 COPYFILE_DISABLE=1 tar --format=ustar -cf "$staging_dir/api.tar" -C "$staging_dir" api
 gzip -n -c "$staging_dir/api.tar" > "$api_archive_path"

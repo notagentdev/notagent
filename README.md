@@ -256,6 +256,20 @@ refresh without changing the user-owned `models.json`, run:
 notagent update --models
 ```
 
+The catalog those updates come from lives in this repository under
+`api/models/` and is uploaded unchanged to `https://notagent.dev/api/models/`.
+It is generated from the embedded catalog in `crates/notagent-ai/data/`. After
+changing that, regenerate both with:
+
+```sh
+node scripts/import-model-catalog.mjs              # from the embedded catalog
+node scripts/import-model-catalog.mjs <directory>  # import a flat provider directory
+```
+
+A test fails when `api/models/` no longer matches the embedded catalog.
+`scripts/package-macos-release.sh` writes `api/latest-version.json` and packs the
+whole `api/` folder into the release's `notagent-api-v<version>.tar.gz`.
+
 ## Built-in skills
 
 Four skills ship with the binary and are written once into

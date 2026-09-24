@@ -1059,3 +1059,75 @@ fn test_catalog_model(id: &str) -> Model {
         compat: None,
     }
 }
+
+#[test]
+fn the_published_catalog_matches_the_embedded_one() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let embedded_dir = root.join("crates/notagent-ai/data");
+    let published_dir = root.join("api/models");
+    let read = |path: &std::path::Path| -> Value {
+        let text = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+        serde_json::from_str(&text)
+            .unwrap_or_else(|error| panic!("{} is not JSON: {error}", path.display()))
+    };
+    let fix = "run `node scripts/import-model-catalog.mjs` after changing the embedded catalog";
+
+    let mut providers: Vec<String> = std::fs::read_dir(&embedded_dir)
+        .expect("embedded catalog directory")
+        .filter_map(|entry| {
+            let name = entry.ok()?.file_name().into_string().ok()?;
+            let provider = name.strip_suffix(".json")?;
+            (provider != "manifest" && provider != "image-models").then(|| provider.to_owned())
+        })
+        .collect();
+    providers.sort();
+
+    let mut merged = serde_json::Map::new();
+    for provider in &providers {
+        let groups = read(&embedded_dir.join(format!("{provider}.json")));
+        let mut flat = serde_json::Map::new();
+        for models in groups
+            .as_object()
+            .expect("provider file is an object")
+            .values()
+        {
+            for (id, model) in models.as_object().expect("API group is an object") {
+                flat.insert(id.clone(), model.clone());
+            }
+        }
+        let published = read(&published_dir.join(format!("providers/{provider}.json")));
+        assert!(
+            published == Value::Object(flat.clone()),
+            "api/models/providers/{provider}.json differs from the embedded catalog; {fix}"
+        );
+        merged.insert(provider.clone(), Value::Object(flat));
+    }
+
+    let mut published_providers: Vec<String> = std::fs::read_dir(published_dir.join("providers"))
+        .expect("published providers directory")
+        .filter_map(|entry| {
+            let name = entry.ok()?.file_name().into_string().ok()?;
+            name.strip_suffix(".json").map(str::to_owned)
+        })
+        .collect();
+    published_providers.sort();
+    assert_eq!(
+        published_providers, providers,
+        "api/models/providers must hold exactly the embedded providers; {fix}"
+    );
+    assert!(
+        read(&published_dir.join("models.json")) == Value::Object(merged),
+        "api/models/models.json differs from the embedded catalog; {fix}"
+    );
+    assert_eq!(
+        read(&published_dir.join("providers.json")),
+        json!(providers),
+        "api/models/providers.json lists other providers than the embedded catalog; {fix}"
+    );
+    assert_eq!(
+        read(&published_dir.join("manifest.json")),
+        read(&embedded_dir.join("manifest.json")),
+        "api/models/manifest.json differs from the embedded manifest; {fix}"
+    );
+}

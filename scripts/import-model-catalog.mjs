@@ -1,16 +1,32 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	renameSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PRESERVED_PROVIDERS = new Set(["cline-pass"]);
-const EMBEDDED_DIR = resolve("crates/notagent-ai/data");
-const PROVIDER_FIXTURE = resolve("crates/notagent-ai/tests/fixtures/providers.jsonl");
+const EMBEDDED_DIR = join(ROOT, "crates/notagent-ai/data");
+const PROVIDER_FIXTURE = join(ROOT, "crates/notagent-ai/tests/fixtures/providers.jsonl");
+// Uploaded as is to the site root, where installed binaries fetch
+// `/api/models/providers/<id>.json`. It lives in the repository so that the
+// published catalog can never lag behind the embedded one unnoticed; the
+// model_data tests compare the two.
+const PUBLISHED_DIR = join(ROOT, "api/models");
 
 function usage() {
 	throw new Error(
-		"Usage: node scripts/import-model-catalog.mjs <flat-provider-directory> <release-site-directory>",
+		"Usage: node scripts/import-model-catalog.mjs [<flat-provider-directory>]\n" +
+			"Without a directory the published catalog is regenerated from the embedded data.",
 	);
 }
 
@@ -113,25 +129,26 @@ function updateProviderFixture(groupedContents) {
 	writeAtomic(PROVIDER_FIXTURE, `${updated.join("\n")}\n`);
 }
 
+if (process.argv.length > 3) usage();
 const sourceArgument = process.argv[2];
-const releaseArgument = process.argv[3];
-if (!sourceArgument || !releaseArgument) usage();
-
-const sourceDir = resolve(sourceArgument);
-const releaseDir = resolve(releaseArgument);
-if (!existsSync(sourceDir)) throw new Error(`Source directory does not exist: ${sourceDir}`);
-if (!existsSync(releaseDir)) throw new Error(`Release directory does not exist: ${releaseDir}`);
+const sourceDir = sourceArgument === undefined ? undefined : resolve(sourceArgument);
+if (sourceDir !== undefined && !existsSync(sourceDir)) {
+	throw new Error(`Source directory does not exist: ${sourceDir}`);
+}
 
 const existingFiles = providerFiles(EMBEDDED_DIR);
-const preservedFiles = existingFiles.filter((file) => PRESERVED_PROVIDERS.has(basename(file, ".json")));
+const preservedFiles = existingFiles.filter(
+	(file) => sourceDir === undefined || PRESERVED_PROVIDERS.has(basename(file, ".json")),
+);
 const generatedFiles = existingFiles.filter((file) => !PRESERVED_PROVIDERS.has(basename(file, ".json")));
 const multilineFiles = new Set(
 	generatedFiles.filter((file) => readFileSync(join(EMBEDDED_DIR, file), "utf8").trimEnd().includes("\n")),
 );
-const sourceFiles = providerFiles(sourceDir).filter(
-	(file) => !PRESERVED_PROVIDERS.has(basename(file, ".json")),
-);
-assertSameFiles(generatedFiles, sourceFiles);
+const sourceFiles =
+	sourceDir === undefined
+		? []
+		: providerFiles(sourceDir).filter((file) => !PRESERVED_PROVIDERS.has(basename(file, ".json")));
+if (sourceDir !== undefined) assertSameFiles(generatedFiles, sourceFiles);
 
 const flatCatalog = new Map();
 const groupedContents = new Map();
@@ -157,24 +174,42 @@ for (const [provider, models] of Array.from(flatCatalog).sort(([left], [right]) 
 }
 const fileContents = sortedObject(groupedContents);
 updateProviderFixture(groupedContents);
+const structureHash = sha256(JSON.stringify(structure));
+const fileHashes = sortedObject(Object.entries(fileContents).map(([file, content]) => [file, sha256(content)]));
+// A binary only takes a remote model that was published after its own catalog
+// was generated, so the timestamp moves only when the catalog does. Rerunning
+// without a change must not make an older binary look current.
+const previousManifestPath = join(EMBEDDED_DIR, "manifest.json");
+const previousManifest = existsSync(previousManifestPath)
+	? readJsonObject(previousManifestPath, "manifest.json")
+	: undefined;
+const unchanged =
+	previousManifest?.structureHash === structureHash &&
+	JSON.stringify(previousManifest?.files) === JSON.stringify(fileHashes);
 const manifest = {
 	schemaVersion: 3,
-	generatedAt: new Date().toISOString(),
-	structureHash: sha256(JSON.stringify(structure)),
-	files: sortedObject(Object.entries(fileContents).map(([file, content]) => [file, sha256(content)])),
+	generatedAt: unchanged ? previousManifest.generatedAt : new Date().toISOString(),
+	structureHash,
+	files: fileHashes,
 };
 
 for (const [file, content] of Object.entries(fileContents)) writeAtomic(join(EMBEDDED_DIR, file), content);
-writeAtomic(join(EMBEDDED_DIR, "manifest.json"), `${JSON.stringify(manifest)}\n`);
+writeAtomic(previousManifestPath, `${JSON.stringify(manifest)}\n`);
 
-const releaseProvidersDir = join(releaseDir, "providers");
+const publishedProvidersDir = join(PUBLISHED_DIR, "providers");
+mkdirSync(publishedProvidersDir, { recursive: true });
+const publishedFiles = new Set();
 for (const [provider, models] of Array.from(flatCatalog).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))) {
-	writeAtomic(join(releaseProvidersDir, `${provider}.json`), `${JSON.stringify(models, null, 2)}\n`);
+	publishedFiles.add(`${provider}.json`);
+	writeAtomic(join(publishedProvidersDir, `${provider}.json`), `${JSON.stringify(models, null, 2)}\n`);
+}
+for (const file of readdirSync(publishedProvidersDir)) {
+	if (!publishedFiles.has(file)) unlinkSync(join(publishedProvidersDir, file));
 }
 const mergedCatalog = sortedObject(flatCatalog);
-writeAtomic(join(releaseDir, "models.json"), `${JSON.stringify(mergedCatalog, null, 2)}\n`);
-writeAtomic(join(releaseDir, "providers.json"), `${JSON.stringify(Object.keys(mergedCatalog), null, 2)}\n`);
-writeAtomic(join(releaseDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+writeAtomic(join(PUBLISHED_DIR, "models.json"), `${JSON.stringify(mergedCatalog, null, 2)}\n`);
+writeAtomic(join(PUBLISHED_DIR, "providers.json"), `${JSON.stringify(Object.keys(mergedCatalog), null, 2)}\n`);
+writeAtomic(join(PUBLISHED_DIR, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
 const modelCount = Object.values(mergedCatalog).reduce((count, models) => count + Object.keys(models).length, 0);
 console.log(`Imported ${modelCount} models across ${Object.keys(mergedCatalog).length} providers.`);
