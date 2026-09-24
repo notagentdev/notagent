@@ -89,7 +89,19 @@ async fn a_handshake_that_never_answers_expires_instead_of_hanging() {
 
 #[tokio::test]
 async fn a_call_that_never_answers_expires_and_leaves_the_connection_usable() {
-    let connection = connect("hang-call", 1).await.expect("connects");
+    // Only the call gets the short deadline. Without its own startup timeout the
+    // handshake inherits the 1s too, and spawning the server under a loaded
+    // full-suite run can take longer than that.
+    let config = match server("hang-call", 1) {
+        McpServerConfig::Stdio(stdio) => McpServerConfig::Stdio(McpStdioServer {
+            startup_timeout: Some(10),
+            ..stdio
+        }),
+        other => other,
+    };
+    let connection = McpConnection::connect(&config, &BTreeMap::new())
+        .await
+        .expect("connects");
     let started = Instant::now();
 
     let error = connection
