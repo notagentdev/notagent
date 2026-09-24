@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::config::VERSION;
 use crate::utils::abort::race_with_abort_signal;
-use crate::utils::management_http::{FetchRetryOptions, fetch_with_retry};
+use crate::utils::management_http::{FetchRetryOptions, fetch_with_retry, site_client_builder};
 use crate::utils::notagent_user_agent::get_pi_user_agent;
 
 const DEFAULT_CATALOG_BASE_URL: &str = "https://notagent.dev";
@@ -138,7 +138,9 @@ impl RemoteCatalogProvider {
             self.catalog_base_url.trim_end_matches('/'),
             urlencode(self.inner.id())
         );
-        let client = reqwest::Client::new();
+        let client = site_client_builder()
+            .build()
+            .map_err(|error| error.to_string())?;
         let request = || {
             let mut request = client
                 .get(&url)

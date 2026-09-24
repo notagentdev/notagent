@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use crate::core::remote_catalog_provider::urlencode;
 use crate::core::settings_manager::SettingsManager;
+use crate::utils::management_http::site_client_builder;
 use crate::utils::notagent_user_agent::get_pi_user_agent;
 
 const REPORT_INSTALL_URL: &str = "https://notagent.dev/api/report-install";
@@ -49,10 +50,7 @@ pub fn report_install_telemetry(settings_manager: &SettingsManager, version: &st
     let url = format!("{REPORT_INSTALL_URL}?version={}", urlencode(version));
     let user_agent = get_pi_user_agent(version);
     tokio::spawn(async move {
-        let Ok(client) = reqwest::Client::builder()
-            .timeout(INSTALL_PING_TIMEOUT)
-            .build()
-        else {
+        let Ok(client) = site_client_builder().timeout(INSTALL_PING_TIMEOUT).build() else {
             return;
         };
         let _ = client
