@@ -315,6 +315,7 @@ fn expanded_message_boxes_keep_content_under_the_dot_title() {
             tokens_before: 100,
             tokens_after: Some(10),
             timestamp: 0,
+            recovery: None,
         },
         None,
     );

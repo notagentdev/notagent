@@ -3,7 +3,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use notagent_agent::harness::messages::{
-    create_branch_summary_message, create_compaction_summary_message, create_custom_message,
+    CompactionRecovery, create_branch_summary_message, create_compaction_summary_message,
+    create_custom_message,
 };
 use notagent_agent::types::AgentMessage;
 use notagent_ai::types::{Usage, UserContent};
@@ -865,6 +866,16 @@ fn build_context_entries_indexed<'a>(
 
 /// Build the session context from entries using tree traversal.
 pub fn build_session_context(entries: &[SessionEntry], leaf: LeafSelector<'_>) -> SessionContext {
+    build_session_context_with_log(entries, leaf, None)
+}
+
+/// Builds the context, pointing a compaction summary at `session_file` so the
+/// model can look up what the summary replaced.
+fn build_session_context_with_log(
+    entries: &[SessionEntry],
+    leaf: LeafSelector<'_>,
+    session_file: Option<&str>,
+) -> SessionContext {
     let index = build_entry_index(entries);
     let path = build_session_path(entries, leaf, &index);
     let (thinking_level, model) = get_session_context_settings(&path);
@@ -881,7 +892,17 @@ pub fn build_session_context(entries: &[SessionEntry], leaf: LeafSelector<'_>) -
 
     let mut messages: Vec<AgentMessage> = Vec::new();
     for entry in context_entries {
-        let entry_messages = session_entry_to_context_messages(entry);
+        let mut entry_messages = session_entry_to_context_messages(entry);
+        if let Some(session_file) = session_file {
+            for message in &mut entry_messages {
+                if let AgentMessage::CompactionSummary(summary) = message {
+                    summary.recovery = Some(CompactionRecovery {
+                        session_file: session_file.to_owned(),
+                        compaction_id: entry.id().to_owned(),
+                    });
+                }
+            }
+        }
         match retained.and_then(|retained| retained.find(entry.id())) {
             Some(record) => messages.extend(entry_messages.iter().map(|message| {
                 crate::core::compaction::retention::apply_retention(message, record)
@@ -1912,7 +1933,13 @@ impl SessionManager {
             Some(id) => LeafSelector::Id(id),
             None => LeafSelector::Null,
         };
-        build_session_context(&entries, leaf)
+        // Only a file that exists can be pointed at: an in-memory session has
+        // none, and a persisted one is written lazily.
+        let session_file = self
+            .session_file
+            .as_deref()
+            .filter(|file| self.persist && Path::new(file).is_file());
+        build_session_context_with_log(&entries, leaf, session_file)
     }
 
     pub fn get_header(&self) -> Option<&SessionHeader> {

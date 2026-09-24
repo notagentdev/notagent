@@ -2444,3 +2444,105 @@ fn opens_continues_and_forks_a_session_fixture() {
     let context = forked.build_session_context();
     assert!(!context.messages.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// compaction recovery pointer
+// ---------------------------------------------------------------------------
+
+fn compact(session: &mut SessionManager, first_kept: &str) -> String {
+    session
+        .append_compaction(
+            "summary",
+            first_kept,
+            None,
+            1000,
+            None,
+            None,
+            Some(false),
+            None,
+        )
+        .expect("compaction")
+}
+
+fn llm_text(messages: &[AgentMessage]) -> String {
+    notagent_agent::convert_to_llm(messages)
+        .iter()
+        .filter_map(|message| match message {
+            notagent_ai::types::Message::User(user) => match &user.content {
+                notagent_ai::types::UserContent::Text(text) => Some(text.clone()),
+                notagent_ai::types::UserContent::Blocks(blocks) => Some(
+                    blocks
+                        .iter()
+                        .filter_map(|block| match block {
+                            notagent_ai::types::TextOrImageContent::Text(text) => {
+                                Some(text.text.clone())
+                            }
+                            notagent_ai::types::TextOrImageContent::Image(_) => None,
+                        })
+                        .collect(),
+                ),
+            },
+            _ => None,
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
+#[test]
+fn a_summary_in_a_session_file_tells_the_model_where_the_replaced_history_is() {
+    let directory = tempfile::tempdir().expect("directory");
+    let cwd = directory.path().to_string_lossy();
+    let mut session = SessionManager::create(&cwd, Some(&cwd), None).expect("manager");
+    let first = session.append_message(&user_msg("first")).expect("user");
+    session
+        .append_message(&assistant_msg("second"))
+        .expect("assistant");
+    let compaction_id = compact(&mut session, &first);
+    let path = session.get_session_file().expect("file").to_owned();
+
+    let messages = session.build_session_context().messages;
+    let recovery = messages.iter().find_map(|message| match message {
+        AgentMessage::CompactionSummary(summary) => summary.recovery.clone(),
+        _ => None,
+    });
+    assert_eq!(
+        recovery,
+        Some(notagent_agent::CompactionRecovery {
+            session_file: path.clone(),
+            compaction_id: compaction_id.clone(),
+        }),
+        "the summary names this session's file and its own entry"
+    );
+    let text = llm_text(&messages);
+    assert!(
+        text.contains(&path) && text.contains(&format!("\"{compaction_id}\"")),
+        "the model reads the file and the entry id: {text}"
+    );
+    assert!(
+        std::fs::read_to_string(&path)
+            .expect("session file")
+            .contains(&format!("\"id\":\"{compaction_id}\"")),
+        "the entry the pointer names is in the file it names"
+    );
+}
+
+#[test]
+fn a_session_without_a_file_gets_no_pointer() {
+    let mut session = in_memory();
+    let first = session.append_message(&user_msg("first")).expect("user");
+    session
+        .append_message(&assistant_msg("second"))
+        .expect("assistant");
+    compact(&mut session, &first);
+
+    let messages = session.build_session_context().messages;
+    assert!(
+        messages.iter().all(|message| !matches!(message,
+            AgentMessage::CompactionSummary(summary) if summary.recovery.is_some())),
+        "an in-memory session has nothing to point at"
+    );
+    assert!(
+        !llm_text(&messages).contains("Context recovery"),
+        "and the model is told nothing about a log"
+    );
+}

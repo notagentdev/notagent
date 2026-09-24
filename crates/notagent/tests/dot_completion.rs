@@ -203,6 +203,7 @@ fn every_dot_block_finishes_visibly_after_a_hidden_frame_in_both_renderers() {
                 tokens_before: 10,
                 tokens_after: Some(1),
                 timestamp: 0,
+                recovery: None,
             },
             None,
         )));

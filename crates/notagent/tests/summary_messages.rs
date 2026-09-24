@@ -29,6 +29,7 @@ fn collapses_and_expands_the_compaction_summary() {
             summary: "The summary body.".to_string(),
             tokens_before: 123_456,
             timestamp: 0,
+            recovery: None,
         },
         None,
     );
@@ -107,6 +108,7 @@ fn badge_style_compaction_shares_the_badge_row_with_the_detail() {
             summary: "The summary body.".to_string(),
             tokens_before: 123_456,
             timestamp: 0,
+            recovery: None,
         },
         None,
     );

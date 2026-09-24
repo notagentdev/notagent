@@ -60,6 +60,36 @@ pub struct CompactionSummaryMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tokens_after: Option<u64>,
     pub timestamp: i64,
+    /// Where the history this summary replaced can still be read. Set when the
+    /// context is built from a session that lives in a file; never stored,
+    /// because the path belongs to wherever the file is now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<CompactionRecovery>,
+}
+
+/// The session log a summary's replaced history can be looked up in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionRecovery {
+    pub session_file: String,
+    /// Id of the compaction entry; the replaced history is the chain of
+    /// `parentId` links leading back from it.
+    pub compaction_id: String,
+}
+
+/// Tells the model where the history behind a summary is. Without it a
+/// summary has to carry every output the next step might need verbatim, and
+/// what it drops can only be re-run or guessed.
+///
+/// Reading instructions point at bash for single lines because one entry can
+/// hold a whole tool result — hundreds of kilobytes on one line, beyond what a
+/// line-oriented file reader shows.
+pub fn compaction_recovery_text(recovery: &CompactionRecovery) -> String {
+    format!(
+        "\n\n## Context recovery\nEverything before this summary is still on disk, in this session's log (JSON Lines, append-only):\n  {file}\nThis summary is the entry with id \"{id}\". If you need exact command output, file contents, error text, or the wording of an earlier message, look it up there instead of guessing or re-running.\n- One JSON object per line; `type` says what it is. The conversation is in lines with `type: \"message\"`, whose `message.role` is `user`, `assistant` or `toolResult`. A tool result's `message.toolCallId` matches the `id` of a `toolCall` block in an earlier assistant message. Other types are bookkeeping.\n- Entries form a tree through `id` and `parentId`, and the file can hold branches this conversation later left. The history this summary replaced is the chain of `parentId` links leading back from entry \"{id}\"; an earlier `type: \"compaction\"` entry on that chain starts an older window.\n- Lines can be very long. Grep the file for a keyword to find line numbers, then extract single lines with bash, for example `sed -n '<N>p' <file> | jq -r '.message.content[] | select(.type == \"text\") | .text'`, rather than reading large ranges.",
+        file = recovery.session_file,
+        id = recovery.compaction_id,
+    )
 }
 
 /// `bashExecutionToText(msg)`
@@ -110,6 +140,7 @@ pub fn create_compaction_summary_message(
         tokens_before,
         tokens_after,
         timestamp,
+        recovery: None,
     }
 }
 
@@ -169,8 +200,13 @@ pub fn convert_to_llm(messages: &[AgentMessage]) -> Vec<Message> {
             AgentMessage::CompactionSummary(message) => Some(Message::User(UserMessage {
                 content: UserContent::Blocks(vec![TextOrImageContent::Text(TextContent::new(
                     format!(
-                        "{COMPACTION_SUMMARY_PREFIX}{}{COMPACTION_SUMMARY_SUFFIX}",
-                        message.summary
+                        "{COMPACTION_SUMMARY_PREFIX}{}{COMPACTION_SUMMARY_SUFFIX}{}",
+                        message.summary,
+                        message
+                            .recovery
+                            .as_ref()
+                            .map(compaction_recovery_text)
+                            .unwrap_or_default()
                     ),
                 ))]),
                 timestamp: message.timestamp,

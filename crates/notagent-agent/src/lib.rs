@@ -7,9 +7,10 @@ pub mod types;
 
 pub use harness::messages::{
     BRANCH_SUMMARY_PREFIX, BRANCH_SUMMARY_SUFFIX, BashExecutionMessage, BranchSummaryMessage,
-    COMPACTION_SUMMARY_PREFIX, COMPACTION_SUMMARY_SUFFIX, CompactionSummaryMessage, CustomMessage,
-    bash_execution_to_text, convert_to_llm, create_branch_summary_message,
-    create_compaction_summary_message, create_custom_message,
+    COMPACTION_SUMMARY_PREFIX, COMPACTION_SUMMARY_SUFFIX, CompactionRecovery,
+    CompactionSummaryMessage, CustomMessage, bash_execution_to_text, compaction_recovery_text,
+    convert_to_llm, create_branch_summary_message, create_compaction_summary_message,
+    create_custom_message,
 };
 // the telemetry types; the latter are re-exported from `notagent_telemetry` here rather
 pub use agent::*;
