@@ -1031,3 +1031,57 @@ fn replay_rows_follow_the_detected_terminal_scrollback() {
     );
     assert_eq!(rows(&[]), REGULAR_REPLAY_ROWS);
 }
+
+#[test]
+fn a_blink_frame_in_the_transcript_stays_below_the_shell_output() {
+    use notagent_tui::activity::RUNNING_DOT;
+    use notagent_tui::components::text::Text;
+    use notagent_tui::tui::CURSOR_MARKER;
+
+    let mut terminal = VirtualTerminal::new(30, 10);
+    terminal.write("shell one\r\nshell two\r\nshell three\r\n");
+    let mut screen = TuiMainScreen::new(Box::new(terminal.clone()));
+    let transcript = Rc::new(RefCell::new(TranscriptContainer::new()));
+    transcript.borrow_mut().set_regular(true);
+    transcript
+        .borrow_mut()
+        .add_child(component_ref(Row("message")));
+    let working = component_ref(Text::new(format!("{RUNNING_DOT} working"), 0, 0));
+    transcript
+        .borrow_mut()
+        .add_child(Rc::clone(&working) as ComponentRef);
+    transcript.borrow_mut().mark_mutable(&working);
+    screen.core().add_child(transcript as ComponentRef);
+    screen.core().add_child(component_ref(Text::new(
+        format!("prompt{CURSOR_MARKER}"),
+        0,
+        0,
+    )));
+    screen.core().set_activity_animation(true);
+    screen.core().set_show_hardware_cursor(true);
+
+    screen.start();
+    screen.render_now(false);
+    let cursor = terminal.get_cursor_position();
+    for _ in 0..3 {
+        let core = screen.core().clone();
+        core.tick_activity(
+            core.activity_deadline()
+                .expect("a visible marker drives the clock"),
+        );
+        screen.render_pending_frame();
+        let viewport = terminal.get_viewport();
+        assert_eq!(
+            viewport[..3],
+            ["shell one", "shell two", "shell three"],
+            "a blink frame overwrote the shell output: {viewport:?}"
+        );
+        assert_eq!(viewport[3], "message", "{viewport:?}");
+        assert!(viewport[4].trim_end().ends_with("working"), "{viewport:?}");
+        assert_eq!(
+            terminal.get_cursor_position(),
+            cursor,
+            "blinking must return the cursor to the input: {viewport:?}"
+        );
+    }
+}

@@ -332,13 +332,19 @@ impl TuiMainScreen {
             if buffer.is_empty() {
                 buffer.push_str("\x1b[?2026h");
             }
-            // Absolute viewport coordinates avoid touching intervening rows or
-            // scrolling when the final transcript line fills the terminal.
-            buffer.push_str(&format!(
-                "\x1b[{};1H\x1b[2K{}",
-                index - self.previous_viewport_top + self.screen_top + 1,
-                line
-            ));
+            // Relative to the row the cursor is on, like every other partial
+            // repaint here. The rendered rows need not start at the top of the
+            // screen: a session started below shell output begins wherever the
+            // prompt was, and an absolute row would land in that output and
+            // leave the cursor, and every later diff, shifted up by as much.
+            // Cursor up and down stop at the screen edge and never scroll.
+            let row_delta = index as i64 - self.hardware_cursor_row as i64;
+            match row_delta.cmp(&0) {
+                std::cmp::Ordering::Greater => buffer.push_str(&format!("\x1b[{row_delta}B")),
+                std::cmp::Ordering::Less => buffer.push_str(&format!("\x1b[{}A", -row_delta)),
+                std::cmp::Ordering::Equal => {}
+            }
+            buffer.push_str(&format!("\r\x1b[2K{line}"));
             *previous = line;
             self.hardware_cursor_row = index;
         }

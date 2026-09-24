@@ -1,6 +1,7 @@
 use notagent_tui::activity::RUNNING_DOT;
 use notagent_tui::components::text::Text;
 use notagent_tui::stdin_buffer::{StdinBuffer, StdinBufferOptions, StdinEvent};
+use notagent_tui::terminal::Terminal;
 use notagent_tui::test_terminal::VirtualTerminal;
 use notagent_tui::tui::{CURSOR_MARKER, Component, Line, RenderLoop};
 use notagent_tui::tui::{TuiCore, TuiStopOptions, component_ref};
@@ -358,4 +359,61 @@ fn fragmented_focus_reports_are_consumed_but_paste_content_is_preserved() {
         !core.terminal_focused(),
         "pasted escape text must not become a focus event"
     );
+}
+
+#[test]
+fn a_blink_frame_leaves_the_shell_output_above_the_program_untouched() {
+    let mut terminal = VirtualTerminal::new(40, 12);
+    for index in 0..5 {
+        terminal.write(&format!("shell {index}\r\n"));
+    }
+    let mut screen = TuiMainScreen::new(Box::new(terminal.clone()));
+    let core = screen.core().clone();
+    core.set_activity_animation(true);
+    core.set_show_hardware_cursor(true);
+    core.add_child(component_ref(Text::new(
+        format!("{RUNNING_DOT} work\nbody\nprompt{CURSOR_MARKER}"),
+        0,
+        0,
+    )));
+    screen.render_pending_frame();
+    let cursor = terminal.get_cursor_position();
+    for hidden in [true, false, true] {
+        core.tick_activity(
+            core.activity_deadline()
+                .expect("a visible marker drives the clock"),
+        );
+        screen.render_pending_frame();
+        let viewport = terminal.get_viewport();
+        for (index, row) in viewport.iter().take(5).enumerate() {
+            assert_eq!(
+                row.trim_end(),
+                format!("shell {index}"),
+                "a blink frame overwrote the shell output above the program: {viewport:#?}"
+            );
+        }
+        assert_eq!(
+            viewport[5].contains('●'),
+            !hidden,
+            "the marker row must blink where it was painted: {viewport:#?}"
+        );
+        assert!(
+            viewport[5].contains("work") && viewport[6].trim_end() == "body",
+            "the program's rows must stay where they were painted: {viewport:#?}"
+        );
+        assert_eq!(
+            terminal.get_cursor_position(),
+            cursor,
+            "blinking must return the cursor to the input: {viewport:#?}"
+        );
+    }
+    core.set_activity_animation(false);
+    core.request_render();
+    screen.render_pending_frame();
+    let viewport = terminal.get_viewport();
+    assert!(
+        viewport[7].starts_with("prompt"),
+        "a content frame after blinking must paint in place, not above: {viewport:#?}"
+    );
+    assert_eq!(viewport[4].trim_end(), "shell 4", "{viewport:#?}");
 }
