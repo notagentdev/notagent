@@ -99,7 +99,14 @@ never blocks a file.
 
 ## Update notes
 
-### Unreleased (since 0.1.58)
+### 0.1.60
+
+- Catalog updates reach installed binaries again. The CDN in front of
+  `notagent.dev` answered every catalog refresh with 403, so new models only
+  arrived with a new release. Requests to the site now use HTTP/1.1, which it
+  lets through.
+
+### 0.1.59
 
 **New models**
 
@@ -152,6 +159,9 @@ fullscreen search scans in chunks instead of stalling on large transcripts.
   the agent stops waiting for it first.
 - The task view reads only the tail of a task's log for its preview instead of
   loading the whole file.
+- A session started below earlier shell output no longer paints over it. The
+  blinking status marker was placed at an absolute screen row, which moved the
+  live area and the input up into the older output.
 
 ## Crates
 
