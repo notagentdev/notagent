@@ -1490,3 +1490,232 @@ async fn a_tool_update_reaches_listeners_while_the_tool_is_still_running() {
     );
     assert!(update_at < end_at, "the update precedes the end");
 }
+
+/// One response per entry, each calling `echo` once with the given value.
+fn echo_calls(values: &[&str]) -> Vec<AssistantMessage> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            assistant_message(
+                vec![tool_call(
+                    &format!("call_{index}"),
+                    "echo",
+                    json!({"value": value}),
+                )],
+                StopReason::ToolUse,
+            )
+        })
+        .collect()
+}
+
+fn tool_result_texts(messages: &[AgentMessage]) -> Vec<String> {
+    messages
+        .iter()
+        .filter_map(|message| match message {
+            AgentMessage::ToolResult(result) => Some(
+                result
+                    .content
+                    .iter()
+                    .filter_map(|block| match block {
+                        TextOrImageContent::Text(text) => Some(text.text.as_str()),
+                        TextOrImageContent::Image(_) => None,
+                    })
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn the_third_identical_call_in_a_row_carries_a_reminder_and_still_runs() {
+    let tool = Arc::new(TestTool::new("echo"));
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
+    };
+    let (stream_fn, _) = scripted_stream_fn(echo_calls(&["x", "x", "x"]));
+
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        None,
+        Some(stream_fn),
+    );
+    let (events, messages) = collect(stream).await;
+
+    assert_eq!(
+        tool.started.load(Ordering::SeqCst),
+        3,
+        "a reminder never stops the call it is attached to"
+    );
+    let texts = tool_result_texts(&messages);
+    assert_eq!(texts[0], "ok", "a first call is left alone: {texts:?}");
+    assert_eq!(texts[1], "ok", "one retry is not a loop: {texts:?}");
+    assert!(
+        texts[2].starts_with("ok\n\n<system_reminder>") && texts[2].contains("repeated"),
+        "the third identical call gets the reminder after its own output: {texts:?}"
+    );
+    let ended_with_reminder = events.iter().any(|event| {
+        matches!(event, AgentEvent::ToolExecutionEnd { tool_call_id, result, .. }
+            if tool_call_id == "call_2"
+                && result.content.iter().any(|block| matches!(block,
+                    TextOrImageContent::Text(text) if text.text.contains("<system_reminder>"))))
+    });
+    assert!(
+        ended_with_reminder,
+        "listeners see the same result the model does"
+    );
+}
+
+#[tokio::test]
+async fn a_different_call_in_between_restarts_the_count() {
+    let tool = Arc::new(TestTool::new("echo"));
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
+    };
+    let (stream_fn, _) = scripted_stream_fn(echo_calls(&["x", "x", "y", "x", "x"]));
+
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        None,
+        Some(stream_fn),
+    );
+    let (_, messages) = collect(stream).await;
+
+    let texts = tool_result_texts(&messages);
+    assert!(
+        texts.iter().all(|text| text == "ok"),
+        "no run of three identical calls happened, so nothing is nudged: {texts:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_steering_message_restarts_the_count() {
+    let tool = Arc::new(TestTool::new("echo"));
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
+    };
+    let (stream_fn, _) = scripted_stream_fn(echo_calls(&["x", "x", "x"]));
+    let polls = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&polls);
+    let mut config = base_config(model());
+    config.get_steering_messages = Some(Arc::new(move || {
+        let counter = Arc::clone(&counter);
+        Box::pin(async move {
+            // Steer once, after the second call.
+            if counter.fetch_add(1, Ordering::SeqCst) == 1 {
+                vec![user_message("try once more")]
+            } else {
+                Vec::new()
+            }
+        })
+    }));
+
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        config,
+        None,
+        Some(stream_fn),
+    );
+    let (_, messages) = collect(stream).await;
+
+    let texts = tool_result_texts(&messages);
+    assert_eq!(texts.len(), 3);
+    assert!(
+        texts.iter().all(|text| text == "ok"),
+        "a call repeated after user input is not the same loop: {texts:?}"
+    );
+}
+
+#[tokio::test]
+async fn twelve_identical_calls_end_the_run_with_a_text_only_response() {
+    let tool = Arc::new(TestTool::new("echo"));
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
+    };
+    // Thirteen responses: the thirteenth is the handoff and still calls the tool,
+    // and a fourteenth would be requested only if the refusal did not end the run.
+    let (stream_fn, calls) = scripted_stream_fn(echo_calls(&["x"; 14]));
+
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        None,
+        Some(stream_fn),
+    );
+    let (_, messages) = collect(stream).await;
+
+    assert_eq!(
+        tool.started.load(Ordering::SeqCst),
+        12,
+        "the call in the handoff response is refused, not run"
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        13,
+        "one text-only response follows the twelfth call, and then the run ends"
+    );
+    let texts = tool_result_texts(&messages);
+    assert!(
+        texts[11].contains("Write your final response now"),
+        "the twelfth result asks for the final answer: {:?}",
+        texts[11]
+    );
+    let refused = messages.iter().rev().find_map(|message| match message {
+        AgentMessage::ToolResult(result) => Some(result),
+        _ => None,
+    });
+    assert!(
+        refused.is_some_and(|result| result.is_error
+            && tool_result_texts(&[AgentMessage::ToolResult(result.clone())])[0]
+                .contains("was not executed")),
+        "the handoff's tool call is closed as an error: {refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_text_answer_after_the_stop_ends_the_run_normally() {
+    let tool = Arc::new(TestTool::new("echo"));
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: Some(vec![tool.clone() as Arc<dyn AgentTool>]),
+    };
+    let mut script = echo_calls(&["x"; 12]);
+    script.push(assistant_message(
+        vec![AssistantContent::Text(TextContent::new("blocked on y"))],
+        StopReason::Stop,
+    ));
+    let (stream_fn, calls) = scripted_stream_fn(script);
+
+    let stream = agent_loop(
+        vec![user_message("run")],
+        context,
+        base_config(model()),
+        None,
+        Some(stream_fn),
+    );
+    let (_, messages) = collect(stream).await;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 13);
+    assert_eq!(tool_result_texts(&messages).len(), 12, "nothing is refused");
+    assert!(
+        matches!(messages.last(), Some(AgentMessage::Assistant(message))
+            if message.stop_reason == StopReason::Stop),
+        "the run ends on the model's answer"
+    );
+}

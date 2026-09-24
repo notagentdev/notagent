@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod agent_loop;
 pub mod harness;
+mod repeat_breaker;
 pub mod stream_fn;
 pub mod types;
 

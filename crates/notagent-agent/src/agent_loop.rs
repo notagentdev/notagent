@@ -10,6 +10,7 @@ use serde_json::Value;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
+use crate::repeat_breaker::{RepeatBreaker, RepeatNudge, handoff_refusal_text};
 use crate::stream_fn::get_default_stream_fn;
 use crate::types::{
     AfterToolCallContext, AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool,
@@ -201,6 +202,7 @@ async fn run_loop(
 ) {
     let mut config = initial_config;
     let mut first_turn = true;
+    let mut repeat_breaker = RepeatBreaker::default();
     let mut pending_messages: Vec<AgentMessage> = match &config.get_steering_messages {
         Some(get_steering_messages) if drain_steering_first => get_steering_messages().await,
         _ => Vec::new(),
@@ -224,6 +226,7 @@ async fn run_loop(
             }
 
             if !pending_messages.is_empty() {
+                repeat_breaker.reset();
                 for message in std::mem::take(&mut pending_messages) {
                     emit(AgentEvent::MessageStart {
                         message: message.clone(),
@@ -274,16 +277,32 @@ async fn run_loop(
 
             let mut tool_results: Vec<ToolResultMessage> = Vec::new();
             has_more_tool_calls = false;
+            // Taken for every response, so a text answer settles the handoff too.
+            let handoff = repeat_breaker.take_handoff();
             if !tool_calls.is_empty() {
-                // A "length" stop means the arguments may be truncated, so no call in
-                // this message is safe to execute.
-                let batch = if message.stop_reason == StopReason::Length {
-                    fail_tool_calls_from_truncated_message(&tool_calls, emit.clone()).await
+                let batch = if handoff {
+                    reject_tool_calls(&tool_calls, |_| handoff_refusal_text(), true, emit.clone())
+                        .await
+                } else if message.stop_reason == StopReason::Length {
+                    // A "length" stop means the arguments may be truncated, so no
+                    // call in this message is safe to execute.
+                    reject_tool_calls(
+                        &tool_calls,
+                        |tool_call| format!(
+                            "Tool call \"{}\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.",
+                            tool_call.name
+                        ),
+                        false,
+                        emit.clone(),
+                    )
+                    .await
                 } else {
+                    let nudges = repeat_breaker.observe(&tool_calls);
                     execute_tool_calls(
                         current_context,
                         &message,
                         &tool_calls,
+                        &nudges,
                         &config,
                         signal.clone(),
                         emit.clone(),
@@ -774,9 +793,11 @@ async fn emit_tool_result_message(message: &ToolResultMessage, emit: &AgentEvent
     .await;
 }
 
-/// `failToolCallsFromTruncatedMessage(toolCalls, emit)`
-async fn fail_tool_calls_from_truncated_message(
+/// Closes every call of a message as an error without running any of them.
+async fn reject_tool_calls(
     tool_calls: &[AgentToolCall],
+    reason: impl Fn(&AgentToolCall) -> String,
+    terminate: bool,
     emit: AgentEventSink,
 ) -> ExecutedToolCallBatch {
     let mut messages = Vec::new();
@@ -789,10 +810,7 @@ async fn fail_tool_calls_from_truncated_message(
         .await;
         let finalized = FinalizedToolCall {
             tool_call: tool_call.clone(),
-            result: create_error_tool_result(format!(
-                "Tool call \"{}\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.",
-                tool_call.name
-            )),
+            result: create_error_tool_result(reason(tool_call)),
             is_error: true,
         };
         emit_tool_execution_end(&finalized, &emit).await;
@@ -802,8 +820,21 @@ async fn fail_tool_calls_from_truncated_message(
     }
     ExecutedToolCallBatch {
         messages,
-        terminate: false,
+        terminate,
     }
+}
+
+/// Appends the repeat reminder a call earned, if any. Applied before the call's
+/// end is emitted, so listeners and the session record see the result the model
+/// does.
+fn apply_nudge(finalized: &mut FinalizedToolCall, nudge: Option<RepeatNudge>) {
+    if let Some(nudge) = nudge {
+        nudge.apply(&mut finalized.result);
+    }
+}
+
+fn nudge_at(nudges: &[Option<RepeatNudge>], index: usize) -> Option<RepeatNudge> {
+    nudges.get(index).copied().flatten()
 }
 
 /// `executeToolCalls(...)` — picks the execution mode.
@@ -811,6 +842,7 @@ async fn execute_tool_calls(
     current_context: &AgentContext,
     assistant_message: &AssistantMessage,
     tool_calls: &[AgentToolCall],
+    nudges: &[Option<RepeatNudge>],
     config: &AgentLoopConfig,
     signal: Option<CancellationToken>,
     emit: AgentEventSink,
@@ -828,6 +860,7 @@ async fn execute_tool_calls(
             current_context,
             assistant_message,
             tool_calls,
+            nudges,
             config,
             signal,
             emit,
@@ -838,6 +871,7 @@ async fn execute_tool_calls(
             current_context,
             assistant_message,
             tool_calls,
+            nudges,
             config,
             signal,
             emit,
@@ -850,6 +884,7 @@ async fn execute_tool_calls_sequential(
     current_context: &AgentContext,
     assistant_message: &AssistantMessage,
     tool_calls: &[AgentToolCall],
+    nudges: &[Option<RepeatNudge>],
     config: &AgentLoopConfig,
     signal: Option<CancellationToken>,
     emit: AgentEventSink,
@@ -857,7 +892,7 @@ async fn execute_tool_calls_sequential(
     let mut finalized_calls = Vec::new();
     let mut messages = Vec::new();
 
-    for tool_call in tool_calls {
+    for (index, tool_call) in tool_calls.iter().enumerate() {
         emit(AgentEvent::ToolExecutionStart {
             tool_call_id: tool_call.id.clone(),
             tool_name: tool_call.name.clone(),
@@ -873,7 +908,7 @@ async fn execute_tool_calls_sequential(
             signal.clone(),
         )
         .await;
-        let finalized = match preparation {
+        let mut finalized = match preparation {
             PreparedToolCall::Immediate { result, is_error } => FinalizedToolCall {
                 tool_call: tool_call.clone(),
                 result,
@@ -900,6 +935,7 @@ async fn execute_tool_calls_sequential(
                 .await
             }
         };
+        apply_nudge(&mut finalized, nudge_at(nudges, index));
 
         emit_tool_execution_end(&finalized, &emit).await;
         let message = create_tool_result_message(&finalized, now_ms());
@@ -918,6 +954,7 @@ async fn execute_tool_calls_parallel(
     current_context: &AgentContext,
     assistant_message: &AssistantMessage,
     tool_calls: &[AgentToolCall],
+    nudges: &[Option<RepeatNudge>],
     config: &AgentLoopConfig,
     signal: Option<CancellationToken>,
     emit: AgentEventSink,
@@ -944,11 +981,12 @@ async fn execute_tool_calls_parallel(
         .await;
         match preparation {
             PreparedToolCall::Immediate { result, is_error } => {
-                let finalized = FinalizedToolCall {
+                let mut finalized = FinalizedToolCall {
                     tool_call: tool_call.clone(),
                     result,
                     is_error,
                 };
+                apply_nudge(&mut finalized, nudge_at(nudges, index));
                 emit_tool_execution_end(&finalized, &emit).await;
                 immediate.push((index, finalized));
                 continue;
@@ -961,6 +999,7 @@ async fn execute_tool_calls_parallel(
                 let config = config.clone();
                 let signal = signal.clone();
                 let emit = emit.clone();
+                let nudge = nudge_at(nudges, index);
                 tasks.spawn(async move {
                     let executed = execute_prepared_tool_call_with_grace(
                         &tool,
@@ -970,7 +1009,7 @@ async fn execute_tool_calls_parallel(
                         emit.clone(),
                     )
                     .await;
-                    let finalized = finalize_executed_tool_call(
+                    let mut finalized = finalize_executed_tool_call(
                         &context,
                         &assistant_message,
                         &tool_call,
@@ -980,6 +1019,7 @@ async fn execute_tool_calls_parallel(
                         signal,
                     )
                     .await;
+                    apply_nudge(&mut finalized, nudge);
                     emit_tool_execution_end(&finalized, &emit).await;
                     (index, finalized)
                 });
@@ -1004,11 +1044,12 @@ async fn execute_tool_calls_parallel(
                 tool_call.name
             ))
         };
-        let finalized = FinalizedToolCall {
+        let mut finalized = FinalizedToolCall {
             tool_call: tool_call.clone(),
             result,
             is_error: true,
         };
+        apply_nudge(&mut finalized, nudge_at(nudges, index));
         emit_tool_execution_end(&finalized, &emit).await;
         ordered.push((index, finalized));
     }
