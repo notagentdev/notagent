@@ -1287,3 +1287,71 @@ fn an_answer_after_a_thought_settles_without_rebuilding_scrollback() {
         "rows that left the screen while streaming must match the finished answer: {history}"
     );
 }
+
+#[test]
+fn a_running_thought_taller_than_the_screen_stays_out_of_scrollback_until_it_ends() {
+    use notagent_tui::test_terminal::VirtualTerminal;
+    use notagent_tui::transcript_container::TranscriptContainer;
+    use notagent_tui::tui::{ComponentRef, component_ref};
+    use notagent_tui::tui_main_screen::TuiMainScreen;
+
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    set_block_style(BlockStyle::Badge);
+    let terminal = VirtualTerminal::new(60, 8);
+    let mut screen = TuiMainScreen::new(Box::new(terminal.clone()));
+    let transcript = Rc::new(RefCell::new(TranscriptContainer::new()));
+    transcript.borrow_mut().set_regular(true);
+    let answer = Rc::new(RefCell::new(AssistantMessageComponent::new(
+        None,
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    )));
+    answer.borrow_mut().set_regular_streaming(true);
+    answer.borrow_mut().set_expanded(true);
+    let entry = Rc::clone(&answer) as ComponentRef;
+    transcript.borrow_mut().add_child(Rc::clone(&entry));
+    transcript.borrow_mut().mark_mutable(&entry);
+    screen
+        .core()
+        .add_child(Rc::clone(&transcript) as ComponentRef);
+    screen
+        .core()
+        .add_child(component_ref(notagent_tui::components::text::Text::new(
+            "prompt", 0, 0,
+        )));
+
+    let mut thought = String::new();
+    for line in 0..20 {
+        thought.push_str(&format!("step {line} of the reasoning\n\n"));
+        answer.borrow_mut().update_content(
+            create_assistant_message(vec![thinking(&thought)], StopReason::Stop),
+            Some(true),
+        );
+        transcript.borrow_mut().mark_changed(&entry);
+        screen.render_now(false);
+    }
+    let redraws = screen.full_redraws();
+    answer.borrow_mut().update_content(
+        create_assistant_message(vec![thinking(&thought), text("Answer.")], StopReason::Stop),
+        Some(false),
+    );
+    transcript.borrow_mut().mark_changed(&entry);
+    transcript.borrow_mut().mark_stable(&entry);
+    screen.render_now(false);
+    set_block_style(BlockStyle::Standard);
+    let history = strip_ansi(&terminal.get_scroll_buffer().join("\n"));
+    assert_eq!(
+        history.matches("step 0 of").count(),
+        1,
+        "the thought must reach scrollback once: {history}"
+    );
+    assert_eq!(
+        screen.full_redraws(),
+        redraws,
+        "a heading written while its timer ran would differ from the finished one: {history}"
+    );
+}

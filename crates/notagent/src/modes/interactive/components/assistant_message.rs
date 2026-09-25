@@ -805,7 +805,9 @@ impl Component for AssistantMessageComponent {
     }
 
     fn streams_into_history(&self) -> bool {
-        self.regular_streaming && self.is_streaming
+        // A running thought's heading counts seconds; written to scrollback it
+        // would keep a stale time the finished message no longer matches.
+        self.regular_streaming && self.is_streaming && !self.has_running_thinking()
     }
 
     fn take_stream_history(&mut self, width: usize) -> Vec<Line> {

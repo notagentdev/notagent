@@ -962,14 +962,19 @@ impl Component for TranscriptContainer {
                 self.active_candidates.remove(&index);
             }
             let mut lines = lines;
-            if streams && index == stream_index {
+            if index == stream_index {
                 // Rows cut from the top of a stream would be missing from
                 // scrollback until it settles; they enter history as they
-                // leave, and only the rest stays mutable.
+                // leave, and only the rest stays mutable. Rows already written
+                // are skipped even once the entry stops qualifying.
                 stream_rendered = true;
                 let id = self.entries[index].id;
                 let frozen = self.stream_overflow(id).min(lines.len());
-                let leaving = (lines.len() - frozen).saturating_sub(remaining);
+                let leaving = if streams {
+                    (lines.len() - frozen).saturating_sub(remaining)
+                } else {
+                    0
+                };
                 self.emit_stream_rows(id, &lines[frozen..frozen + leaving], leaving, &mut history);
                 lines.drain(..frozen + leaving);
             }
