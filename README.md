@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.61 supports Apple Silicon Macs:
+Version 0.1.62 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,18 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.62
+
+- A long answer no longer loses its beginning while it streams. Once it
+  contained code spans, lists or brackets, every new word removed one from the
+  top of the visible answer.
+- Rows of a streaming answer that scroll off the screen are in the terminal's
+  scrollback right away instead of appearing only when the answer finishes.
+- The running-status blink no longer overwrites the prompt or the row below
+  the status after the transcript scrolled.
+- Transcript search highlights the right text again after the terminal was
+  resized.
 
 ### 0.1.61
 
