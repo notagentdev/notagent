@@ -99,6 +99,15 @@ never blocks a file.
 
 ## Update notes
 
+### 0.1.61
+
+- A stopped LM Studio or Ollama no longer shows a refresh error in the model
+  picker, and the picker stops offering the models it listed last. A model
+  change in the runtime now arrives with the next refresh.
+- LM Studio offers only the models it has loaded, like a llama.cpp router.
+  Ollama offers the model it holds in memory, and every pulled model while
+  none is loaded, since it loads one on request.
+
 ### 0.1.60
 
 - Catalog updates reach installed binaries again. The CDN in front of
@@ -123,8 +132,6 @@ never blocks a file.
 - New defaults: `claude-opus-5-5` for the Anthropic API and the Claude
   subscription, `gpt-6-astra` for the OpenAI API and the Codex plan. A model
   chosen explicitly or saved in the settings is kept.
-- Claude Sonnet 5.5 and Haiku 5.5 are announced but not yet released; they
-  will be added once Anthropic publishes their model IDs.
 
 **Transcript in native scrollback.** On the main screen, finished transcript
 entries now go into the terminal's own scrollback once instead of being
