@@ -617,6 +617,7 @@ impl TuiMainScreen {
             let pushed_history = pushed.min(self.visible_history.len());
             self.visible_history.drain(..pushed_history);
             lines.drain(..pushed);
+            self.core.shift_activity_rows_up(pushed);
             last_painted = lines.len().checked_sub(1);
             // Rows that stayed on screen moved up with the scroll; repaint the
             // ones whose painted state differs from this frame.

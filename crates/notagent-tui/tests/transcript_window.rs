@@ -1085,3 +1085,61 @@ fn a_blink_frame_in_the_transcript_stays_below_the_shell_output() {
         );
     }
 }
+
+#[test]
+fn a_blink_frame_after_the_transcript_scrolled_repaints_the_status_row_not_the_prompt() {
+    use notagent_tui::activity::RUNNING_DOT;
+    use notagent_tui::components::text::Text;
+    use notagent_tui::tui::CURSOR_MARKER;
+
+    let terminal = VirtualTerminal::new(30, 5);
+    let mut screen = TuiMainScreen::new(Box::new(terminal.clone()));
+    let transcript = Rc::new(RefCell::new(TranscriptContainer::new()));
+    transcript.borrow_mut().set_regular(true);
+    for row in ["one", "two", "three"] {
+        transcript.borrow_mut().add_child(component_ref(Row(row)));
+    }
+    let working = component_ref(Text::new(format!("{RUNNING_DOT} working"), 0, 0));
+    transcript
+        .borrow_mut()
+        .add_child(Rc::clone(&working) as ComponentRef);
+    transcript.borrow_mut().mark_mutable(&working);
+    screen
+        .core()
+        .add_child(Rc::clone(&transcript) as ComponentRef);
+    screen.core().add_child(component_ref(Text::new(
+        format!("prompt{CURSOR_MARKER}"),
+        0,
+        0,
+    )));
+    screen.core().set_activity_animation(true);
+    screen.core().set_show_hardware_cursor(true);
+    screen.start();
+    screen.render_now(false);
+
+    transcript
+        .borrow_mut()
+        .add_child(component_ref(Row("four")));
+    screen.render_now(false);
+    let settled = terminal.get_viewport();
+    assert!(settled[4].starts_with("prompt"), "{settled:?}");
+
+    for _ in 0..2 {
+        let core = screen.core().clone();
+        core.tick_activity(
+            core.activity_deadline()
+                .expect("a visible marker drives the clock"),
+        );
+        screen.render_pending_frame();
+        let viewport = terminal.get_viewport();
+        assert!(
+            viewport[4].starts_with("prompt"),
+            "a blink frame after a scroll overwrote the prompt: {viewport:?}"
+        );
+        assert_eq!(
+            viewport[3], "four",
+            "a blink frame after a scroll overwrote the row below the status: {viewport:?}"
+        );
+        assert!(viewport[2].trim_end().ends_with("working"), "{viewport:?}");
+    }
+}

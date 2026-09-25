@@ -111,6 +111,19 @@ impl ActivityClock {
             .collect()
     }
 
+    /// Rows were painted before `rows` of them left through the top of the
+    /// screen; a blink frame addresses what is on screen now.
+    pub fn shift_rows_up(&mut self, rows: usize) {
+        self.visible_rows
+            .retain_mut(|row| match row.index.checked_sub(rows) {
+                Some(index) => {
+                    row.index = index;
+                    true
+                }
+                None => false,
+            });
+    }
+
     pub fn clear_frame(&mut self) {
         self.visible_rows.clear();
         self.deadline = None;

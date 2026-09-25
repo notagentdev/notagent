@@ -842,6 +842,10 @@ impl TuiCore {
         self.0.borrow_mut().activity.repaint(now, blocked)
     }
 
+    pub(crate) fn shift_activity_rows_up(&self, rows: usize) {
+        self.0.borrow_mut().activity.shift_rows_up(rows);
+    }
+
     pub(crate) fn clear_activity_frame(&self) {
         let mut state = self.0.borrow_mut();
         state.activity.clear_frame();
