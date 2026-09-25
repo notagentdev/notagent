@@ -448,9 +448,8 @@ enum Fetched {
 
 /// Asks the server which models it holds.
 /// This runs only for a provider somebody activated — the refresh reaches a
-/// dynamic provider's fetch only once a credential resolves. So an address
-/// nobody is listening at is worth reporting rather than swallowing: the
-/// alternative is a picker that stays empty while the refresh claims success.
+/// dynamic provider's fetch only once a credential resolves. What an address
+/// nobody is listening at means is decided in [`absent_server`].
 async fn fetch_served_models(
     config: &OpenAICompatibleConfig,
     base_url: &str,
@@ -556,17 +555,28 @@ async fn fetch_openai_models(
     let loopback = is_loopback(base_url);
     match fetch_json(config, client, &url, api_key, loopback, signal).await? {
         // The last listing anyone can try: there is no fallback left, so this
-        // is where an unreachable address becomes something the user is told.
-        Fetched::NoServer => Err(unreachable_message(config, base_url)),
+        // is where an address that answers nothing is judged.
+        Fetched::NoServer => absent_server(config, base_url),
         Fetched::NoRoute => Ok(Vec::new()),
         Fetched::Body(body) => models_from_openai_listing(&body)
             .map_err(|error| format!("{} model list at {url}: {error}", config.name)),
     }
 }
 
-/// What the picker says when the address answers nothing.
-fn unreachable_message(config: &OpenAICompatibleConfig, base_url: &str) -> String {
-    format!("{} is not reachable at {base_url}", config.name)
+/// What an address that refuses the connection offers.
+/// On loopback that is a runtime nobody started, which is an ordinary state
+/// rather than a fault: it offers no models, so the picker neither reports an
+/// error on every open nor keeps offering a cached list nothing can answer.
+/// Elsewhere it is an address that is wrong or down, which the user is told.
+fn absent_server(
+    config: &OpenAICompatibleConfig,
+    base_url: &str,
+) -> Result<Vec<ListedModel>, String> {
+    if is_loopback(base_url) {
+        Ok(Vec::new())
+    } else {
+        Err(format!("{} is not reachable at {base_url}", config.name))
+    }
 }
 
 /// `GET {host}/api/v0/models` — LM Studio's own listing.
@@ -612,6 +622,21 @@ async fn fetch_ollama_models(
     };
     let names = names_from_ollama_tags(&body)
         .map_err(|error| format!("{} model list at {url}: {error}", config.name))?;
+    let names = only_loaded_ollama_models(
+        names,
+        fetch_json(
+            config,
+            client,
+            &format!("{root}/api/ps"),
+            api_key,
+            loopback,
+            signal,
+        )
+        .await
+        // The pulled models are already known; a failed look at what is in
+        // memory narrows nothing rather than losing them.
+        .unwrap_or(Fetched::NoRoute),
+    );
 
     let mut listed = Vec::new();
     for name in names {
@@ -635,6 +660,27 @@ async fn fetch_ollama_models(
         }
     }
     Ok(Some(listed))
+}
+
+/// Narrows the pulled models to the ones `/api/ps` reports in memory.
+/// What Ollama has loaded is the model in use, so that is what is offered, as
+/// with LM Studio. Unlike LM Studio, Ollama unloads an idle model after a few
+/// minutes and loads any pulled one on request, so with nothing in memory every
+/// pulled model stays on offer; otherwise the list would empty itself whenever
+/// the user paused. A build without `/api/ps` keeps them all as well.
+fn only_loaded_ollama_models(pulled: Vec<String>, running: Fetched) -> Vec<String> {
+    let loaded = match running {
+        Fetched::Body(body) => names_from_ollama_tags(&body).unwrap_or_default(),
+        Fetched::NoServer | Fetched::NoRoute => Vec::new(),
+    };
+    if pulled.iter().any(|name| loaded.contains(name)) {
+        pulled
+            .into_iter()
+            .filter(|name| loaded.contains(name))
+            .collect()
+    } else {
+        pulled
+    }
 }
 
 /// What `/api/show` says about one model.
@@ -752,6 +798,18 @@ pub fn models_from_lmstudio_listing(body: &Value) -> Result<Vec<ListedModel>, St
             // `llm` and `vlm` both chat; `embeddings` does not. An unknown kind
             // is kept, since a future kind that chats should not vanish.
             if entry.get("type").and_then(Value::as_str) == Some("embeddings") {
+                return None;
+            }
+            // Only what LM Studio has loaded is offered, as with a llama.cpp
+            // router: a model that is merely downloaded is not the one the
+            // user picked there, and asking for it either loads it behind
+            // their back or fails, depending on the server's JIT setting. A
+            // build that reports no state keeps all of its models.
+            if entry
+                .get("state")
+                .and_then(Value::as_str)
+                .is_some_and(|state| state != "loaded")
+            {
                 return None;
             }
             // A loaded model was given a window at load time, which is what it
@@ -942,7 +1000,7 @@ mod tests {
     }
 
     #[test]
-    fn the_lmstudio_listing_reports_kind_and_window() {
+    fn the_lmstudio_listing_offers_the_loaded_chat_models() {
         // The shape LM Studio's own `/api/v0/models` returns.
         let body = json!({
             "object": "list",
@@ -962,7 +1020,7 @@ mod tests {
                     "id": "text-embedding-nomic-embed-text-v1.5",
                     "object": "model",
                     "type": "embeddings",
-                    "state": "not-loaded",
+                    "state": "loaded",
                     "max_context_length": 2048
                 },
                 {
@@ -973,29 +1031,58 @@ mod tests {
                     "max_context_length": 131072,
                     "loaded_context_length": 8192
                 },
+                {
+                    "id": "older-build-model",
+                    "object": "model",
+                    "type": "llm",
+                    "max_context_length": 65536
+                },
             ]
         });
         let listed = models_from_lmstudio_listing(&body).expect("models");
         assert_eq!(
             listed,
             [
-                ListedModel {
-                    id: "qwen3-coder-30b".to_string(),
-                    context_window: Some(262_144),
-                    // The listing has no field for it.
-                    reasoning: None
-                },
-                // A vision model still chats; only the embedder is dropped.
+                // A vision model still chats; the embedder does not, loaded or
+                // not, and the merely downloaded model is not offered.
                 ListedModel {
                     id: "qwen2-vl-7b".to_string(),
                     // What it was actually loaded with wins over what it could
                     // have been given.
                     context_window: Some(8_192),
+                    // The listing has no field for it.
+                    reasoning: None
+                },
+                // Without a reported state nothing can be told apart, so the
+                // model stays, with the window it could be given.
+                ListedModel {
+                    id: "older-build-model".to_string(),
+                    context_window: Some(65_536),
                     reasoning: None
                 },
             ]
         );
         assert!(models_from_lmstudio_listing(&json!({})).is_err());
+    }
+
+    #[test]
+    fn only_a_remote_address_that_answers_nothing_is_an_error() {
+        let config = config();
+        assert_eq!(
+            absent_server(&config, "http://127.0.0.1:1234/v1"),
+            Ok(Vec::new()),
+            "a local runtime that is not running is not a fault"
+        );
+        assert_eq!(
+            absent_server(&config, "http://localhost:11434/v1"),
+            Ok(Vec::new())
+        );
+        let error = absent_server(&config, "https://llm.example.com/v1")
+            .expect_err("a remote address that answers nothing is reported");
+        assert!(
+            error.contains("not reachable") && error.contains("llm.example.com"),
+            "{error}"
+        );
     }
 
     #[test]

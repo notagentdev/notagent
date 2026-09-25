@@ -89,6 +89,7 @@ impl notagent_ai::auth::types::AuthInteraction for ScriptedInteraction {
 struct RouteServer {
     base_url: String,
     asked: Arc<Mutex<Vec<String>>>,
+    routes: Arc<Mutex<BTreeMap<&'static str, String>>>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -102,12 +103,14 @@ impl RouteServer {
             .unwrap_or_else(|error| panic!("reading the bound port failed: {error}"));
         let asked: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let recorder = Arc::clone(&asked);
+        let routes = Arc::new(Mutex::new(routes));
+        let table = Arc::clone(&routes);
         let task = tokio::spawn(async move {
             loop {
                 let Ok((mut socket, _)) = listener.accept().await else {
                     return;
                 };
-                let routes = routes.clone();
+                let routes = table.lock().expect("routes").clone();
                 let recorder = Arc::clone(&recorder);
                 tokio::spawn(async move {
                     let mut buffer = vec![0_u8; 4096];
@@ -139,12 +142,18 @@ impl RouteServer {
         RouteServer {
             base_url: format!("http://{address}/v1"),
             asked,
+            routes,
             task,
         }
     }
 
     fn asked(&self) -> Vec<String> {
         self.asked.lock().expect("asked").clone()
+    }
+
+    /// Changes what a path answers from the next request on.
+    fn answer(&self, path: &'static str, body: String) {
+        self.routes.lock().expect("routes").insert(path, body);
     }
 }
 
@@ -316,23 +325,63 @@ async fn an_unactivated_runtime_offers_nothing() {
 }
 
 #[tokio::test]
-async fn a_server_that_is_not_running_says_so() {
+async fn a_local_runtime_that_is_not_running_offers_nothing_and_reports_nothing() {
     // Port 1 on loopback refuses immediately, which is what a stopped runtime
-    // looks like. The fetch runs only for a provider somebody activated, so
-    // staying silent would leave the picker empty while the refresh claims
-    // success — which is exactly the report that helps nobody.
+    // looks like. Closing LM Studio is an ordinary state, not a fault, and the
+    // models it listed last cannot answer, so the cached list is replaced by
+    // an empty one instead of being offered again.
     for catalog in [
         CatalogSource::OpenAI,
         CatalogSource::LmStudio,
         CatalogSource::Ollama,
     ] {
         let provider = instance_at("http://127.0.0.1:1/v1", catalog);
-        let error = try_refresh(&provider, None)
+        let persisted = Arc::new(std::sync::Mutex::new(None));
+        let context = notagent_ai::models::RefreshModelsContext {
+            credential: None,
+            stored: Some(notagent_ai::models_store::ModelsStoreEntry {
+                models: vec![
+                    notagent_ai::model_catalog::get_builtin_model("openai", "gpt-4o").map_or_else(
+                        || panic!("a model to stand in for the cached one"),
+                        |mut model| {
+                            model.provider = "test-server".to_string();
+                            model.id = "unloaded-yesterday".to_string();
+                            model
+                        },
+                    ),
+                ],
+                ..Default::default()
+            }),
+            publish: Box::new({
+                let persisted = Arc::clone(&persisted);
+                move |publication: notagent_ai::models::ModelsPublication<'_>| {
+                    if let Some(Some(entry)) = publication.persist {
+                        *persisted.lock().expect("persisted") = Some(entry.models.len());
+                    }
+                    if let Some(update) = publication.update {
+                        update();
+                    }
+                    Box::pin(async move { true }) as BoxFuture<'_, bool>
+                }
+            }),
+            allow_network: true,
+            force: Some(true),
+            signal: tokio_util::sync::CancellationToken::new(),
+        };
+        let refresh = Provider::refresh_models(provider.as_ref(), context)
+            .unwrap_or_else(|| panic!("the provider offers no refresh"));
+        refresh
             .await
-            .expect_err("an unreachable address is reported");
+            .unwrap_or_else(|error| panic!("a stopped local runtime is no error: {error}"));
         assert!(
-            error.contains("not reachable") && error.contains("127.0.0.1:1"),
-            "{error}"
+            provider.get_models().is_empty(),
+            "a stopped runtime must not keep offering its cached models ({catalog:?}): {:?}",
+            provider.get_models()
+        );
+        assert_eq!(
+            *persisted.lock().expect("persisted"),
+            Some(0),
+            "the empty list replaces the cached one ({catalog:?})"
         );
     }
 }
@@ -355,22 +404,58 @@ async fn lmstudio_reads_its_own_listing_beside_the_openai_one() {
     let provider = instance_at(&server.base_url, CatalogSource::LmStudio);
 
     let ids = refresh(&provider, None).await;
-    assert_eq!(ids, ["qwen3-coder-30b", "qwen2-vl-7b"]);
+    // Only the loaded model is offered: the downloaded one is not what the
+    // user picked in LM Studio, and the embedder does not chat.
+    assert_eq!(ids, ["qwen2-vl-7b"]);
     assert!(
         server
             .asked()
             .iter()
             .any(|line| line.contains("/api/v0/models")),
-        "the native listing is what carries the context window: {:?}",
+        "the native listing is what carries the state and context window: {:?}",
         server.asked()
     );
 
     let models = provider.get_models();
-    assert_eq!(models[0].context_window, 262_144);
     // A loaded model reports what it was actually given, which is the number
     // that decides when compaction has to run.
-    assert_eq!(models[1].context_window, 8_192);
+    assert_eq!(models[0].context_window, 8_192);
     assert_eq!(models[0].base_url, server.base_url);
+}
+
+#[tokio::test]
+async fn lmstudio_follows_the_model_loaded_there() {
+    let listing = |loaded: &str| {
+        let state = |id: &str| if id == loaded { "loaded" } else { "not-loaded" };
+        format!(
+            r#"{{"object":"list","data":[
+                {{"id":"qwen3-coder-30b","type":"llm","state":"{}","max_context_length":262144}},
+                {{"id":"gemma-4-12b","type":"llm","state":"{}","max_context_length":131072}}
+            ]}}"#,
+            state("qwen3-coder-30b"),
+            state("gemma-4-12b"),
+        )
+    };
+    let server = RouteServer::start(routes(&[(
+        "/api/v0/models",
+        listing("qwen3-coder-30b").as_str(),
+    )]))
+    .await;
+    let provider = instance_at(&server.base_url, CatalogSource::LmStudio);
+    assert_eq!(refresh(&provider, None).await, ["qwen3-coder-30b"]);
+
+    server.answer("/api/v0/models", listing("gemma-4-12b"));
+    assert_eq!(
+        refresh(&provider, None).await,
+        ["gemma-4-12b"],
+        "after a switch in LM Studio the newly loaded model replaces the old one"
+    );
+
+    server.answer("/api/v0/models", listing(""));
+    assert!(
+        refresh(&provider, None).await.is_empty(),
+        "a running LM Studio with nothing loaded offers nothing"
+    );
 }
 
 #[tokio::test]
@@ -436,6 +521,53 @@ async fn ollama_asks_tags_for_the_names_and_show_for_the_rest() {
         "{asked:?}"
     );
     assert_eq!(provider.get_models()[0].context_window, 262_144);
+}
+
+#[tokio::test]
+async fn ollama_offers_the_model_in_memory_and_every_pulled_one_when_idle() {
+    let running = |name: &str| {
+        if name.is_empty() {
+            r#"{"models":[]}"#.to_string()
+        } else {
+            format!(r#"{{"models":[{{"name":"{name}","model":"{name}","size":1}}]}}"#)
+        }
+    };
+    let server = RouteServer::start(routes(&[
+        (
+            "/api/tags",
+            r#"{"models":[
+                {"name":"qwen3-coder:30b","model":"qwen3-coder:30b"},
+                {"name":"gemma4:12b","model":"gemma4:12b"}
+            ]}"#,
+        ),
+        ("/api/ps", running("qwen3-coder:30b").as_str()),
+        (
+            "/api/show",
+            r#"{"capabilities":["completion"],"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}"#,
+        ),
+    ]))
+    .await;
+    let provider = instance_at(&server.base_url, CatalogSource::Ollama);
+    assert_eq!(
+        refresh(&provider, None).await,
+        ["qwen3-coder:30b"],
+        "the model Ollama has in memory is the one offered"
+    );
+
+    server.answer("/api/ps", running("gemma4:12b"));
+    assert_eq!(
+        refresh(&provider, None).await,
+        ["gemma4:12b"],
+        "after a switch in Ollama the newly loaded model replaces the old one"
+    );
+
+    // Ollama unloads an idle model after a few minutes and loads any pulled
+    // one on request, so an empty memory must not empty the picker.
+    server.answer("/api/ps", running(""));
+    assert_eq!(
+        refresh(&provider, None).await,
+        ["qwen3-coder:30b", "gemma4:12b"]
+    );
 }
 
 #[tokio::test]
