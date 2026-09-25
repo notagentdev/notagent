@@ -172,6 +172,8 @@ pub struct ExploreBlockComponent {
     /// Total runtime, frozen when the block closes. Replayed blocks carry no
     /// meaningful runtime and stay `None`.
     finished: Option<std::time::Duration>,
+    /// Second of the runtime last shown, so a tick redraws only when it moves.
+    shown_second: Option<u64>,
 }
 
 impl ExploreBlockComponent {
@@ -186,7 +188,23 @@ impl ExploreBlockComponent {
             replayed: false,
             started: std::time::Instant::now(),
             finished: None,
+            shown_second: None,
         }
+    }
+
+    /// Whether the running badge shows a new second. A transcript keeps a
+    /// block's render until it reports a change, so without this the runtime
+    /// stood still between two search results.
+    pub fn tick_runtime(&mut self) -> bool {
+        if !self.is_running() {
+            return false;
+        }
+        let second = self.started.elapsed().as_secs();
+        if self.shown_second == Some(second) {
+            return false;
+        }
+        self.shown_second = Some(second);
+        true
     }
 
     /// Whether calls are still running, i.e. the badge runtime still counts.
@@ -1011,6 +1029,31 @@ mod tests {
         block.close();
 
         assert_eq!(block.background(), ThemeBg::ToolSuccessBg);
+    }
+
+    #[test]
+    fn a_running_block_asks_for_a_redraw_once_per_second_and_a_settled_one_never() {
+        let mut block = ExploreBlockComponent::new();
+        block.push_call(
+            "grep",
+            "call-1".to_string(),
+            &serde_json::json!({ "pattern": "needle" }),
+        );
+        assert!(block.tick_runtime(), "the first second must be shown");
+        assert!(
+            !block.tick_runtime(),
+            "the same second must not redraw the block again"
+        );
+        block.started -= std::time::Duration::from_secs(1);
+        assert!(block.tick_runtime(), "a new second must redraw the block");
+
+        block.complete_call("call-1", false);
+        block.close();
+        block.started -= std::time::Duration::from_secs(1);
+        assert!(
+            !block.tick_runtime(),
+            "a settled block may be in scrollback and must not change"
+        );
     }
 
     #[test]

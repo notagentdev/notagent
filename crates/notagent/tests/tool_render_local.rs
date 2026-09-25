@@ -154,3 +154,24 @@ fn the_bash_result_counts_up_while_the_command_runs() {
     );
     reset_capabilities_cache();
 }
+
+#[test]
+fn a_bash_command_without_output_still_asks_for_its_elapsed_tick() {
+    let _guard = global_lock();
+    prepare();
+
+    let definition = create_tool_definition(ToolName::Bash, "/test-cwd", None);
+    let args = json!({ "command": "sleep 5" });
+    let mut context = ToolRenderContext::new("call-1", args.clone(), "/test-cwd");
+    context.execution_started = true;
+
+    let theme = theme();
+    definition
+        .render_call(&args, &theme, &context)
+        .expect("the call renders");
+    let deadline = definition
+        .render_deadline(&context)
+        .expect("a running command ticks before its first output");
+    assert!(deadline > Instant::now());
+    reset_capabilities_cache();
+}

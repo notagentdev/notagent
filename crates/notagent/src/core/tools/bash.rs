@@ -1445,6 +1445,11 @@ impl ToolDefinition for BashToolDefinition {
             .started_at
             .filter(|_| state.ended_at.is_none())
             .map(|started_at| started_at.elapsed());
+        // The call line counts up before any output arrives, so the tick
+        // cannot wait for the first partial result.
+        if running_for.is_some() && state.tick_deadline.is_none() {
+            state.tick_deadline = Some(Instant::now() + BASH_ELAPSED_TICK);
+        }
         let text = format_bash_call(args, theme, running_for);
         let component = state
             .call

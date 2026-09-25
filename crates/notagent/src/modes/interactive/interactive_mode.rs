@@ -2103,6 +2103,7 @@ impl InteractiveMode {
                 } => {
                     self.tick();
                     self.pump_editor_autocomplete().await;
+                    self.pump_tool_rows().await;
                     None
                 }
                 // The signal handlers of `registerSignalHandlers()`: the binary
@@ -2177,7 +2178,33 @@ impl InteractiveMode {
         if let Some(activity) = self.ui.activity_deadline() {
             deadline = Some(deadline.map_or(activity, |current| current.min(activity)));
         }
+        for (_, row) in &self.pending_tools {
+            if let Some(candidate) = row.borrow().render_deadline() {
+                deadline = Some(deadline.map_or(candidate, |current| current.min(candidate)));
+            }
+        }
         deadline
+    }
+
+    /// The same seam for tool rows: a renderer such as the bash elapsed time
+    /// reports when it is due, and only this pump redraws it. The transcript
+    /// keeps a row's render until the row reports a change, so a command
+    /// without new output would otherwise show the time of its last output.
+    async fn pump_tool_rows(&mut self) {
+        let now = Instant::now();
+        let due: Vec<_> = self
+            .pending_tools
+            .iter()
+            .filter(|(_, row)| {
+                row.borrow()
+                    .render_deadline()
+                    .is_some_and(|deadline| deadline <= now)
+            })
+            .map(|(_, row)| row.borrow().render_work())
+            .collect();
+        for work in due {
+            work.run().await;
+        }
     }
 
     /// The missing half of the `autocomplete_deadline` seam: the deadline in
@@ -2258,6 +2285,17 @@ impl InteractiveMode {
                 needs_render |= indicator.tick_countdown();
             }
             needs_render |= indicator.tick_elapsed();
+        }
+        // The Exploring badge counts its runtime; this pass is its clock.
+        for block in &self.chat_explore_blocks {
+            if block.borrow_mut().tick_runtime() {
+                let entry = Rc::clone(block) as ComponentRef;
+                let mut chat = self.chat_container.borrow_mut();
+                if !chat.is_stable(&entry) {
+                    chat.mark_changed(&entry);
+                    needs_render = true;
+                }
+            }
         }
         // The Thinking heading's live timer advances at most once per second.
         if let Some(component) = self.streaming_component.clone() {

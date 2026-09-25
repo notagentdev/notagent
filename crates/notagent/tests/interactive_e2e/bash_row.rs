@@ -37,3 +37,25 @@ async fn a_shell_command_row_shows_its_output_while_the_command_runs() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_quiet_bash_call_keeps_counting_its_running_time() {
+    use crate::app_runtime::{reply, tool_call_reply};
+    use serde_json::json;
+
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        e2e.faux().set_responses(vec![
+            tool_call_reply("bash", "call-1", json!({ "command": "sleep 4" })),
+            reply("Done waiting."),
+        ]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+
+        driver.submit("wait a moment").await;
+        // Nothing is printed, so only the elapsed tick can move the time on.
+        driver.wait_for("2s /").await;
+        driver.wait_for("Done waiting.").await;
+    })
+    .await;
+}
