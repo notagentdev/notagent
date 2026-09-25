@@ -370,13 +370,17 @@ impl ExploreBlockComponent {
     /// as failed; here the block knows its incomplete entries directly. Calls
     /// that already completed keep their result, so a block whose calls all
     /// succeeded settles green even on an aborted turn.
-    pub fn fail_running_calls(&mut self) {
+    /// Returns whether any call changed.
+    pub fn fail_running_calls(&mut self) -> bool {
+        let mut changed = false;
         for entry in &mut self.entries {
             if !entry.complete {
                 entry.complete = true;
                 entry.failed = true;
+                changed = true;
             }
         }
+        changed
     }
 
     /// A closed block holding only `call_id`, completed. A result that arrives
@@ -1054,6 +1058,24 @@ mod tests {
             !block.tick_runtime(),
             "a settled block may be in scrollback and must not change"
         );
+    }
+
+    #[test]
+    fn an_abort_reports_only_the_calls_it_cut_off() {
+        let mut block = ExploreBlockComponent::new();
+        block.push_call(
+            "read",
+            "call-1".to_string(),
+            &serde_json::json!({ "file_path": "a.rs" }),
+        );
+        block.complete_call("call-1", false);
+        assert!(!block.fail_running_calls(), "nothing was running");
+        block.push_call(
+            "read",
+            "call-2".to_string(),
+            &serde_json::json!({ "file_path": "b.rs" }),
+        );
+        assert!(block.fail_running_calls(), "the running call was failed");
     }
 
     #[test]

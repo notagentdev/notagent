@@ -438,3 +438,33 @@ async fn a_thought_closes_the_running_exploration() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_failed_turn_leaves_earlier_search_blocks_in_scrollback_untouched() {
+    use crate::app_runtime::error_reply;
+
+    run_local(async {
+        let e2e = InteractiveE2e::new().await;
+        e2e.faux().set_responses(vec![
+            tool_call_reply("ls", "call-1", json!({ "path": e2e.path(".") })),
+            reply("Listed the project."),
+            error_reply("the provider gave up"),
+        ]);
+        let mut driver = e2e.start().await;
+        driver.wait_for(APP_NAME).await;
+        driver.submit("list the project").await;
+        driver.wait_for("Listed the project.").await;
+        driver.settle().await;
+
+        driver.terminal().clear_writes();
+        driver.submit("try again").await;
+        driver.wait_for("the provider gave up").await;
+        driver.settle().await;
+        let writes = driver.writes();
+        assert!(
+            !writes.contains("\x1b[3J"),
+            "a failed turn must not rebuild the scrollback of earlier, settled searches"
+        );
+    })
+    .await;
+}

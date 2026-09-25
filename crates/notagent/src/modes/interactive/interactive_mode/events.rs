@@ -645,14 +645,17 @@ impl InteractiveMode {
     /// calls all succeeded settles green even on an aborted turn.
     pub(super) fn abort_explore_block(&mut self) {
         for block in &self.chat_explore_blocks {
-            block.borrow_mut().fail_running_calls();
-            self.chat_container
-                .borrow_mut()
-                .mark_changed(&(Rc::clone(block) as ComponentRef));
+            // Every block of the session is listed here, and most of them are
+            // long settled and in native scrollback. Reporting one of those
+            // as changed rebuilt the whole scrollback on every aborted turn.
+            if !block.borrow_mut().fail_running_calls() {
+                continue;
+            }
+            let entry = Rc::clone(block) as ComponentRef;
+            let mut chat = self.chat_container.borrow_mut();
+            chat.mark_changed(&entry);
             if !block.borrow().is_open() {
-                self.chat_container
-                    .borrow_mut()
-                    .mark_stable(&(Rc::clone(block) as ComponentRef));
+                chat.mark_stable(&entry);
             }
         }
         self.close_explore_block();
