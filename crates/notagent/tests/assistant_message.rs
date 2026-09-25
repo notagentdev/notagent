@@ -723,21 +723,29 @@ fn a_stream_delta_ending_inside_a_multibyte_character_does_not_break_the_next_sc
 }
 
 #[test]
-fn unfinished_prose_has_a_bounded_regular_preview_and_tables_stay_mutable() {
+fn an_answer_held_back_by_markdown_keeps_its_first_words_while_it_streams_and_tables_stay_mutable()
+{
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
     let mut component =
         AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
     component.set_regular_streaming(true);
-    let long = "word ".repeat(20_000);
-    component.update_content(
-        create_assistant_message(vec![text(&long)], StopReason::Stop),
-        Some(true),
-    );
-    assert!(component.take_stream_history(60).is_empty());
+    let mut source = String::from("Opening with `code` holds commits back.\n\n");
+    for word in 0..2_000 {
+        source.push_str(&format!("word{word} "));
+        component.update_content(
+            create_assistant_message(vec![text(&source)], StopReason::Stop),
+            Some(true),
+        );
+        assert!(component.take_stream_history(60).is_empty());
+    }
+    let preview = strip_ansi(&component.render(60).join("\n"));
     assert!(
-        component.render(60).len() < 100,
-        "preview must not grow with source length"
+        preview.contains("Opening with")
+            && preview.contains("word0 ")
+            && preview.contains("word1999"),
+        "a streaming answer must not lose its beginning as it grows: {}",
+        &preview[..preview.len().min(300)]
     );
 
     component.update_content(
@@ -1016,23 +1024,29 @@ fn streamed_text_before_a_tool_has_no_transient_blank_row() {
 }
 
 #[test]
-fn long_running_thinking_keeps_the_regular_preview_bounded() {
+fn a_long_running_thought_streams_with_the_rows_it_will_finish_with() {
     let _guard = theme_lock();
     init_theme(Some("dark"), false);
+    let long = format!("First thought. {}", "reasoning ".repeat(2_000));
     let mut component =
         AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
     component.set_regular_streaming(true);
     component.update_content(
-        create_assistant_message(
-            vec![thinking(&"reasoning ".repeat(20_000))],
-            StopReason::Stop,
-        ),
+        create_assistant_message(vec![thinking(&long)], StopReason::Stop),
         Some(true),
     );
     assert!(component.take_stream_history(60).is_empty());
-    assert!(
-        component.render(60).len() < 100,
-        "a long mutable thought must stay within the preview limit"
+    let streaming = strip_ansi(&component.render(60).join("\n"));
+    let mut finished = AssistantMessageComponent::new(None, false, None, None, Some(1), Vec::new());
+    finished.update_content(
+        create_assistant_message(vec![thinking(&long)], StopReason::Stop),
+        Some(false),
+    );
+    let finished = strip_ansi(&finished.render(60).join("\n"));
+    assert_eq!(
+        streaming.contains("First thought."),
+        finished.contains("First thought."),
+        "a streaming thought must show the same beginning it finishes with"
     );
 }
 

@@ -1,8 +1,6 @@
 use std::rc::Rc;
 
-use notagent_ai::types::{
-    AssistantContent, AssistantMessage, StopReason, TextContent, ThinkingContent,
-};
+use notagent_ai::types::{AssistantContent, AssistantMessage, StopReason, TextContent};
 use notagent_tui::components::markdown::{
     DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme,
 };
@@ -335,12 +333,18 @@ impl AssistantMessageComponent {
         let Some(message) = self.last_message.as_ref() else {
             return Vec::new();
         };
-        let mut remaining = 2_048;
+        // The whole uncommitted part, never a suffix of it: structural Markdown
+        // holds commits back for the rest of the block, and a character bound
+        // then dropped a word from the top of the visible answer for every word
+        // streamed in, or began inside a code fence and inverted its rendering.
+        // Rows beyond the screen are cut by the transcript, not here.
         let mut content = Vec::new();
-        for (index, block) in message.content.iter().enumerate().rev() {
-            if index < self.stream_committed_block || remaining == 0 {
-                break;
-            }
+        for (index, block) in message
+            .content
+            .iter()
+            .enumerate()
+            .skip(self.stream_committed_block)
+        {
             match block {
                 AssistantContent::Text(text) => {
                     let source = if index == self.stream_committed_block {
@@ -350,28 +354,18 @@ impl AssistantMessageComponent {
                     } else {
                         &text.text
                     };
-                    let suffix = bounded_suffix(source, remaining);
-                    remaining = remaining.saturating_sub(suffix.chars().count());
                     content.push(AssistantContent::Text(TextContent {
-                        text: suffix.to_owned(),
+                        text: source.to_owned(),
                         text_signature: text.text_signature.clone(),
                         extra: text.extra.clone(),
                     }));
                 }
                 AssistantContent::Thinking(thinking) => {
-                    let suffix = bounded_suffix(&thinking.thinking, remaining);
-                    remaining = remaining.saturating_sub(suffix.chars().count());
-                    content.push(AssistantContent::Thinking(ThinkingContent {
-                        thinking: suffix.to_owned(),
-                        thinking_signature: thinking.thinking_signature.clone(),
-                        redacted: thinking.redacted,
-                        extra: thinking.extra.clone(),
-                    }));
+                    content.push(AssistantContent::Thinking(thinking.clone()));
                 }
                 AssistantContent::ToolCall(_) => {}
             }
         }
-        content.reverse();
         let continues = self.stream_emitted_lines > 0;
         let mut lines =
             self.render_stream_message(Self::content_fragment(message, content), width, !continues);
@@ -733,19 +727,6 @@ impl AssistantMessageComponent {
             }
         }
     }
-}
-
-fn bounded_suffix(source: &str, chars: usize) -> &str {
-    if chars == 0 {
-        return "";
-    }
-    source
-        .char_indices()
-        .rev()
-        .nth(chars)
-        .map_or(source, |(index, _)| {
-            &source[index + source[index..].chars().next().map_or(0, char::len_utf8)..]
-        })
 }
 
 fn plain_stream_block(source: &str) -> bool {
