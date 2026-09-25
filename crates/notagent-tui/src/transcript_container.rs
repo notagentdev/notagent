@@ -195,8 +195,17 @@ pub struct TranscriptContainer {
     /// Rows a still-mutable entry already streamed into native history,
     /// keyed by its id. Once the entry settles, only the rows after them are
     /// emitted, provided its final render still starts with them.
-    stream_emitted: Option<(u64, Vec<Line>)>,
+    stream_emitted: Option<StreamEmitted>,
     counters: TranscriptRenderCounters,
+}
+
+struct StreamEmitted {
+    id: u64,
+    rows: Vec<Line>,
+    /// How many rows at the top of the entry's current render already left
+    /// the screen into history. The entry's own commits cover the same rows
+    /// again, so they are skipped there instead of written twice.
+    overflow: usize,
 }
 
 impl Default for TranscriptContainer {
@@ -360,7 +369,7 @@ impl TranscriptContainer {
             if self
                 .stream_emitted
                 .as_ref()
-                .is_some_and(|(id, _)| *id == removed.id)
+                .is_some_and(|emitted| emitted.id == removed.id)
             {
                 // Its streamed rows are in scrollback without their entry.
                 self.stream_emitted = None;
@@ -556,12 +565,47 @@ impl TranscriptContainer {
             })
     }
 
+    fn stream_overflow(&self, id: u64) -> usize {
+        self.stream_emitted
+            .as_ref()
+            .filter(|emitted| emitted.id == id)
+            .map_or(0, |emitted| emitted.overflow)
+    }
+
+    /// Record `rows` of entry `id` as written to history; `overflow` of them
+    /// were taken from its current render rather than committed by it.
+    fn emit_stream_rows(
+        &mut self,
+        id: u64,
+        rows: &[Line],
+        overflow: usize,
+        history: &mut Vec<Line>,
+    ) {
+        if rows.is_empty() {
+            return;
+        }
+        match &mut self.stream_emitted {
+            Some(emitted) if emitted.id == id => {
+                emitted.rows.extend_from_slice(rows);
+                emitted.overflow += overflow;
+            }
+            _ => {
+                self.stream_emitted = Some(StreamEmitted {
+                    id,
+                    rows: rows.to_vec(),
+                    overflow,
+                });
+            }
+        }
+        history.extend_from_slice(rows);
+    }
+
     /// Whether rows already streamed for the next history entry no longer
     /// match how that entry now renders. Scrollback cannot be edited, so a
     /// mismatch can only be repaired by a replay.
     fn streamed_rows_diverged(&mut self, width: usize) -> bool {
         let index = self.history_emitted_entry;
-        let Some((id, rows)) = &self.stream_emitted else {
+        let Some(StreamEmitted { id, rows, .. }) = &self.stream_emitted else {
             return false;
         };
         let Some(entry) = self.entries.get(index) else {
@@ -849,7 +893,7 @@ impl Component for TranscriptContainer {
             };
             self.counters.stable_entries += 1;
             let streamed = match self.stream_emitted.take() {
-                Some((id, rows)) if id == entry.id => rows.len(),
+                Some(emitted) if emitted.id == entry.id => emitted.rows.len(),
                 other => {
                     self.stream_emitted = other;
                     0
@@ -867,18 +911,33 @@ impl Component for TranscriptContainer {
         if let Some(component) = self.inner.children.get(self.history_emitted_entry) {
             let streamed = component.borrow_mut().take_stream_history(width);
             if !streamed.is_empty() {
+                // The committed rows leave the entry's render; a cached render
+                // from before the commit would show them, and overflow them,
+                // a second time.
+                self.entries[self.history_emitted_entry].cached = None;
                 let id = self.entries[self.history_emitted_entry].id;
-                match &mut self.stream_emitted {
-                    Some((entry, rows)) if *entry == id => rows.extend(streamed.iter().cloned()),
-                    _ => self.stream_emitted = Some((id, streamed.clone())),
-                }
-                history.extend(streamed);
+                let covered = match &mut self.stream_emitted {
+                    Some(emitted) if emitted.id == id => {
+                        let covered = emitted.overflow.min(streamed.len());
+                        emitted.overflow -= covered;
+                        covered
+                    }
+                    _ => 0,
+                };
+                self.emit_stream_rows(id, &streamed[covered..], 0, &mut history);
             }
         }
         let mut remaining = active_rows;
         let mut chunks = Vec::new();
         let mut visible = Vec::new();
         let mut upper = self.entries.len();
+        let stream_index = self.history_emitted_entry;
+        let streams = self
+            .inner
+            .children
+            .get(stream_index)
+            .is_some_and(|component| component.borrow().streams_into_history());
+        let mut stream_rendered = false;
         while remaining > 0 {
             let Some(index) = self
                 .active_candidates
@@ -902,10 +961,33 @@ impl Component for TranscriptContainer {
             if lines.is_empty() {
                 self.active_candidates.remove(&index);
             }
+            let mut lines = lines;
+            if streams && index == stream_index {
+                // Rows cut from the top of a stream would be missing from
+                // scrollback until it settles; they enter history as they
+                // leave, and only the rest stays mutable.
+                stream_rendered = true;
+                let id = self.entries[index].id;
+                let frozen = self.stream_overflow(id).min(lines.len());
+                let leaving = (lines.len() - frozen).saturating_sub(remaining);
+                self.emit_stream_rows(id, &lines[frozen..frozen + leaving], leaving, &mut history);
+                lines.drain(..frozen + leaving);
+            }
             let first = lines.len().saturating_sub(remaining);
             remaining = remaining.saturating_sub(lines.len());
             chunks.push(lines.into_iter().skip(first).collect::<Vec<_>>());
             visible.push(index);
+        }
+        if streams
+            && !stream_rendered
+            && remaining == 0
+            && self.active_candidates.contains(&stream_index)
+        {
+            // Entries below the stream fill the screen, so all of it is above.
+            let id = self.entries[stream_index].id;
+            let lines = self.inner.children[stream_index].borrow_mut().render(width);
+            let frozen = self.stream_overflow(id).min(lines.len());
+            self.emit_stream_rows(id, &lines[frozen..], lines.len() - frozen, &mut history);
         }
         for old in std::mem::take(&mut self.window_cached) {
             if !visible.contains(&old)

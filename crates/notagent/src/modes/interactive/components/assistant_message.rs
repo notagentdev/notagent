@@ -58,7 +58,10 @@ pub struct AssistantMessageComponent {
     stream_pending_scan: bool,
     stream_needs_reflow: bool,
     stream_preview_cache: Option<(usize, Vec<Line>)>,
-    marker: &'static str,
+    /// The first text block goes on with a paragraph already in history and
+    /// so carries no marker; every other text block starts with one, as in
+    /// the finished message.
+    continues_text: bool,
     leading_spacer: bool,
     zone_markers: bool,
 }
@@ -101,7 +104,7 @@ impl AssistantMessageComponent {
             stream_pending_scan: true,
             stream_needs_reflow: false,
             stream_preview_cache: None,
-            marker: "\u{283f}",
+            continues_text: false,
             leading_spacer: true,
             zone_markers: true,
         };
@@ -204,7 +207,7 @@ impl AssistantMessageComponent {
             Some(self.output_pad),
             self.markdown_transformers.clone(),
         );
-        fragment.marker = if first { "\u{283f}" } else { " " };
+        fragment.continues_text = !self.stream_committed_source.is_empty();
         fragment.leading_spacer = first;
         fragment.zone_markers = first;
         fragment.thinking_expanded = self.thinking_expanded;
@@ -487,6 +490,7 @@ impl AssistantMessageComponent {
         }
 
         // Render content in order
+        let mut continues_text = self.continues_text;
         let mut index = 0;
         while index < message.content.len() {
             match &message.content[index] {
@@ -495,7 +499,11 @@ impl AssistantMessageComponent {
                     // Set paddingY=0 to avoid extra spacing before tool executions
                     self.content_container.add_child(component_ref(
                         super::message_marker::MessageMarker {
-                            marker: self.marker,
+                            marker: if std::mem::take(&mut continues_text) {
+                                " "
+                            } else {
+                                "\u{283f}"
+                            },
                             padding: self.output_pad,
                             content: Markdown::new(
                                 content.text.trim(),
@@ -794,6 +802,10 @@ impl Component for AssistantMessageComponent {
 
     fn prepare_reflow(&mut self, _width: usize) {
         self.reset_stream_history();
+    }
+
+    fn streams_into_history(&self) -> bool {
+        self.regular_streaming && self.is_streaming
     }
 
     fn take_stream_history(&mut self, width: usize) -> Vec<Line> {

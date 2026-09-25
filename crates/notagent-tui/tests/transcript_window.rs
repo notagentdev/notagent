@@ -58,6 +58,10 @@ impl Component for StreamingRows {
     fn prepare_reflow(&mut self, _width: usize) {
         self.emitted = 0;
     }
+
+    fn streams_into_history(&self) -> bool {
+        !self.finished.get()
+    }
 }
 
 struct StreamFixture {
@@ -841,6 +845,63 @@ fn a_settled_stream_that_renders_differently_is_replayed_once() {
     for row in ["para ONE", "para two", "tail", "before 0"] {
         assert_eq!(history.matches(row).count(), 1, "{row}: {history:?}");
     }
+}
+
+#[test]
+fn a_stream_taller_than_the_screen_keeps_every_row_in_scrollback_while_it_grows() {
+    let stream = stream_fixture(&["row 0"]);
+    let (terminal, mut screen, transcript) = stream_screen(&stream);
+    for row in 1..10 {
+        stream.lines.borrow_mut().push(format!("row {row}"));
+        transcript.borrow_mut().mark_changed(&stream.entry);
+        screen.render_now(false);
+        let history = terminal.get_scroll_buffer().join("\n");
+        for shown in 0..=row {
+            assert_eq!(
+                history.matches(&format!("row {shown}")).count(),
+                1,
+                "row {shown} must stay in the terminal exactly once while row {row} streams: {history:?}"
+            );
+        }
+    }
+    let redraws = screen.full_redraws();
+    settle(&stream, &transcript);
+    screen.render_now(false);
+    let history = terminal.get_scroll_buffer().join("\n");
+    for row in 0..10 {
+        assert_eq!(
+            history.matches(&format!("row {row}")).count(),
+            1,
+            "row {row} after the stream settled: {history:?}"
+        );
+    }
+    assert_eq!(
+        screen.full_redraws(),
+        redraws,
+        "rows that left the screen as they finally render must not rebuild scrollback"
+    );
+}
+
+#[test]
+fn a_commit_covering_rows_that_already_left_the_screen_does_not_repeat_them() {
+    let rows: Vec<String> = (0..8).map(|row| format!("row {row}")).collect();
+    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    let stream = stream_fixture(&rows);
+    let (terminal, mut screen, transcript) = stream_screen(&stream);
+    stream.committed.set(2);
+    transcript.borrow_mut().mark_changed(&stream.entry);
+    screen.render_now(false);
+    stream.committed.set(6);
+    transcript.borrow_mut().mark_changed(&stream.entry);
+    screen.render_now(false);
+    let redraws = screen.full_redraws();
+    settle(&stream, &transcript);
+    screen.render_now(false);
+    let history = terminal.get_scroll_buffer().join("\n");
+    for row in rows {
+        assert_eq!(history.matches(row).count(), 1, "{row}: {history:?}");
+    }
+    assert_eq!(screen.full_redraws(), redraws, "no rebuild expected");
 }
 
 #[test]

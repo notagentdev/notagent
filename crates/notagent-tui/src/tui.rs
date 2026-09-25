@@ -177,6 +177,14 @@ pub trait Component {
         Vec::new()
     }
 
+    /// Whether rows of this still-mutable entry that leave the top of the
+    /// screen may enter native history as they are rendered now. Only a
+    /// stream whose rows above its tail keep their final form qualifies; a
+    /// row that changes afterwards costs a history rebuild.
+    fn streams_into_history(&self) -> bool {
+        false
+    }
+
     fn anchor_at(&mut self, _width: usize, _row: usize) -> Option<TranscriptAnchor> {
         None
     }

@@ -1113,3 +1113,177 @@ fn a_structural_block_holds_later_deltas_until_it_settles() {
         "later prose cannot pass a mutable table"
     );
 }
+
+#[test]
+fn a_structured_answer_taller_than_the_screen_settles_without_rebuilding_scrollback() {
+    use notagent_tui::test_terminal::VirtualTerminal;
+    use notagent_tui::transcript_container::TranscriptContainer;
+    use notagent_tui::tui::{ComponentRef, component_ref};
+    use notagent_tui::tui_main_screen::TuiMainScreen;
+
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut source = String::from("## Findings\n\nThe `render` path drops rows.\n\n");
+    for item in 0..12 {
+        source.push_str(&format!(
+            "- item {item} explains one [finding] in a sentence\n"
+        ));
+    }
+    source.push_str("\n```rust\nfn main() {}\n```\n\nClosing words after the list.");
+    let words: Vec<&str> = source.split_inclusive(' ').collect();
+
+    let terminal = VirtualTerminal::new(60, 8);
+    let mut screen = TuiMainScreen::new(Box::new(terminal.clone()));
+    let transcript = Rc::new(RefCell::new(TranscriptContainer::new()));
+    transcript.borrow_mut().set_regular(true);
+    let answer = Rc::new(RefCell::new(AssistantMessageComponent::new(
+        None,
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    )));
+    answer.borrow_mut().set_regular_streaming(true);
+    let entry = Rc::clone(&answer) as ComponentRef;
+    transcript.borrow_mut().add_child(Rc::clone(&entry));
+    transcript.borrow_mut().mark_mutable(&entry);
+    screen
+        .core()
+        .add_child(Rc::clone(&transcript) as ComponentRef);
+    screen
+        .core()
+        .add_child(component_ref(notagent_tui::components::text::Text::new(
+            "prompt", 0, 0,
+        )));
+
+    let mut streamed = String::new();
+    for word in &words {
+        streamed.push_str(word);
+        answer.borrow_mut().update_content(
+            create_assistant_message(vec![text(&streamed)], StopReason::Stop),
+            Some(true),
+        );
+        transcript.borrow_mut().mark_changed(&entry);
+        screen.render_now(false);
+    }
+    let history = strip_ansi(&terminal.get_scroll_buffer().join("\n"));
+    assert!(
+        history.contains("Findings") && history.contains("item 0 "),
+        "rows above the screen must be in scrollback while the answer streams: {history}"
+    );
+
+    let redraws = screen.full_redraws();
+    answer.borrow_mut().update_content(
+        create_assistant_message(vec![text(&source)], StopReason::Stop),
+        Some(false),
+    );
+    transcript.borrow_mut().mark_changed(&entry);
+    transcript.borrow_mut().mark_stable(&entry);
+    screen.render_now(false);
+    let history = strip_ansi(&terminal.get_scroll_buffer().join("\n"));
+    for row in [
+        "Findings",
+        "item 0 ",
+        "item 11 ",
+        "fn main",
+        "Closing words",
+    ] {
+        assert_eq!(history.matches(row).count(), 1, "{row}: {history}");
+    }
+    assert_eq!(
+        screen.full_redraws(),
+        redraws,
+        "rows that left the screen while streaming must match the finished answer: {history}"
+    );
+}
+
+#[test]
+fn an_answer_after_a_thought_settles_without_rebuilding_scrollback() {
+    use notagent_tui::test_terminal::VirtualTerminal;
+    use notagent_tui::transcript_container::TranscriptContainer;
+    use notagent_tui::tui::{ComponentRef, component_ref};
+    use notagent_tui::tui_main_screen::TuiMainScreen;
+
+    let _guard = theme_lock();
+    init_theme(Some("dark"), false);
+    let mut source = String::from("## Findings\n\nThe `render` path drops rows.\n\n");
+    for item in 0..12 {
+        source.push_str(&format!(
+            "- item {item} explains one [finding] in a sentence\n"
+        ));
+    }
+    source.push_str("\n```rust\nfn main() {}\n```\n\nClosing words after the list.");
+    let words: Vec<&str> = source.split_inclusive(' ').collect();
+
+    let terminal = VirtualTerminal::new(60, 8);
+    let mut screen = TuiMainScreen::new(Box::new(terminal.clone()));
+    let transcript = Rc::new(RefCell::new(TranscriptContainer::new()));
+    transcript.borrow_mut().set_regular(true);
+    let answer = Rc::new(RefCell::new(AssistantMessageComponent::new(
+        None,
+        false,
+        None,
+        None,
+        Some(1),
+        Vec::new(),
+    )));
+    answer.borrow_mut().set_regular_streaming(true);
+    let entry = Rc::clone(&answer) as ComponentRef;
+    transcript.borrow_mut().add_child(Rc::clone(&entry));
+    transcript.borrow_mut().mark_mutable(&entry);
+    screen
+        .core()
+        .add_child(Rc::clone(&transcript) as ComponentRef);
+    screen
+        .core()
+        .add_child(component_ref(notagent_tui::components::text::Text::new(
+            "prompt", 0, 0,
+        )));
+
+    let mut streamed = String::new();
+    for word in &words {
+        streamed.push_str(word);
+        answer.borrow_mut().update_content(
+            create_assistant_message(
+                vec![thinking("Reasoning about rows"), text(&streamed)],
+                StopReason::Stop,
+            ),
+            Some(true),
+        );
+        transcript.borrow_mut().mark_changed(&entry);
+        screen.render_now(false);
+    }
+    let history = strip_ansi(&terminal.get_scroll_buffer().join("\n"));
+    assert!(
+        history.contains("Findings") && history.contains("item 0 "),
+        "rows above the screen must be in scrollback while the answer streams: {history}"
+    );
+
+    let redraws = screen.full_redraws();
+    answer.borrow_mut().update_content(
+        create_assistant_message(
+            vec![thinking("Reasoning about rows"), text(&source)],
+            StopReason::Stop,
+        ),
+        Some(false),
+    );
+    transcript.borrow_mut().mark_changed(&entry);
+    transcript.borrow_mut().mark_stable(&entry);
+    screen.render_now(false);
+    let history = strip_ansi(&terminal.get_scroll_buffer().join("\n"));
+    for row in [
+        "Findings",
+        "item 0 ",
+        "item 11 ",
+        "fn main",
+        "Closing words",
+    ] {
+        assert_eq!(history.matches(row).count(), 1, "{row}: {history}");
+    }
+    assert_eq!(
+        screen.full_redraws(),
+        redraws,
+        "rows that left the screen while streaming must match the finished answer: {history}"
+    );
+}
