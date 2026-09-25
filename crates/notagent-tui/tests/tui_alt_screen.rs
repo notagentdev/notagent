@@ -1492,3 +1492,70 @@ async fn restores_keyboard_state_before_leaving_alt_mode_and_prints_the_full_doc
     }
     assert!(restore.find("first") < restore.find("sixth"));
 }
+
+#[test]
+fn search_highlights_follow_the_text_when_the_terminal_narrows() {
+    use notagent_tui::transcript_container::TranscriptContainer;
+
+    let terminal = VirtualTerminal::new(60, 8);
+    let mut tui = TuiAltScreen::new(
+        Box::new(terminal.clone()),
+        TuiAltScreenOptions {
+            search_current_match_style: Rc::new(|text| format!("\x1b[42m{text}\x1b[49m")),
+            ..TuiAltScreenOptions::default()
+        },
+    );
+    let mut transcript = TranscriptContainer::new();
+    for row in 0..995 {
+        transcript.add_child(component_ref(Text::new(format!("row {row}"), 0, 0)));
+    }
+    // One row at 60 columns, two at 30: the match below it moves down a row.
+    transcript.add_child(component_ref(Text::new(
+        format!("{}wraps", "word ".repeat(9)),
+        0,
+        0,
+    )));
+    for row in ["needle", "row 997", "row 998"] {
+        transcript.add_child(component_ref(Text::new(row, 0, 0)));
+    }
+    let root = component_ref(ScrollView::new(
+        component_ref(transcript),
+        ScrollViewOptions {
+            follow_end: true,
+            primary: true,
+            ..ScrollViewOptions::default()
+        },
+    ));
+    tui.set_layout_root(Some(root));
+    tui.start();
+    tui.render_now(false);
+    tui.handle_terminal_input("\x1b[102;6u");
+    tui.handle_terminal_input("needle");
+    for _ in 0..6 {
+        tui.render_now(false);
+    }
+    assert!(
+        terminal.get_writes().contains("\x1b[42mneedle\x1b[49m"),
+        "the completed search must highlight its match"
+    );
+
+    terminal.resize(30, 8);
+    terminal.clear_writes();
+    for _ in 0..6 {
+        tui.render_now(false);
+    }
+    let writes = terminal.get_writes();
+    let highlighted: Vec<&str> = writes
+        .split("\x1b[42m")
+        .skip(1)
+        .map(|rest| rest.split("\x1b[49m").next().unwrap_or(rest))
+        .collect();
+    assert!(
+        !highlighted.is_empty() && highlighted.iter().all(|text| *text == "needle"),
+        "after a reflow the highlight must cover the match and nothing else: {highlighted:?} {:#?}",
+        terminal.get_viewport()
+    );
+    tui.stop(TuiStopOptions {
+        preserve_screen: true,
+    });
+}

@@ -154,6 +154,9 @@ struct ActiveSearch {
     selection_mode: SearchSelectionMode,
     matched_query: String,
     matched_revision: Option<u64>,
+    /// Width the matches were found at; row and column coordinates of a
+    /// wrapped transcript mean nothing at another width.
+    matched_width: Option<i64>,
     segments_by_row: BTreeMap<usize, Vec<(usize, AltScreenSearchSegment)>>,
     scan: Option<SearchScan>,
 }
@@ -162,6 +165,7 @@ struct SearchScan {
     scanner: SearchScanner,
     next_row: usize,
     revision: u64,
+    width: i64,
     query: String,
 }
 
@@ -484,6 +488,7 @@ impl TuiAltScreen {
             selection_mode: SearchSelectionMode::Query,
             matched_query: String::new(),
             matched_revision: None,
+            matched_width: None,
             segments_by_row: BTreeMap::new(),
             scan: None,
         });
@@ -555,6 +560,7 @@ impl TuiAltScreen {
             search.selected_anchor = None;
             search.selection_mode = SearchSelectionMode::Retain;
             search.matched_revision = None;
+            search.matched_width = None;
             search.scan = None;
             search.component.borrow_mut().set_result(-1, 0);
             return false;
@@ -567,6 +573,15 @@ impl TuiAltScreen {
             .first()
             .map_or(0, |child| child.component.borrow().content_revision());
         let query_changed = search.matched_query != search.query;
+        let width = layout_box.rect.width;
+        // A reflow keeps the content revision but moves every wrapped match,
+        // so the old coordinates would highlight whatever text lands there.
+        let reflowed = search.matched_width.is_some_and(|matched| matched != width);
+        if reflowed {
+            search.matches.clear();
+            search.segments_by_row.clear();
+            search.matched_width = None;
+        }
         // Content rendered in full carries no reliable revision (a plain
         // component reports 0), but scanning it costs no more than painting
         // it, so it is scanned completely on every refresh.
@@ -575,21 +590,24 @@ impl TuiAltScreen {
                 .scroll_content_lines
                 .as_ref()
                 .is_some_and(|lines| lines.len() >= layout_box.scroll_content_height);
-        let changed = materialized || search.matched_revision != Some(revision) || query_changed;
+        let changed = materialized
+            || search.matched_revision != Some(revision)
+            || search.matched_width != Some(width)
+            || query_changed;
         // A content change lets a running scan finish and keeps the previous
         // matches on screen until the next one completes: a streaming reply
         // changes the revision every frame, and restarting on it meant a long
         // transcript never produced a result.
         let restart = materialized
-            || search
-                .scan
-                .as_ref()
-                .map_or(changed, |scan| scan.query != search.query);
+            || search.scan.as_ref().map_or(changed, |scan| {
+                scan.query != search.query || scan.width != width
+            });
         if restart {
             search.scan = Some(SearchScan {
                 scanner: SearchScanner::new(&search.query),
                 next_row: 0,
                 revision,
+                width,
                 query: search.query.clone(),
             });
             if query_changed {
@@ -635,6 +653,7 @@ impl TuiAltScreen {
             }
             search.matched_query.clone_from(&search.query);
             search.matched_revision = Some(scanned_revision);
+            search.matched_width = Some(width);
         }
 
         let should_reveal_selection = search.selection_mode != SearchSelectionMode::Retain;
