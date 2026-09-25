@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.62 supports Apple Silicon Macs:
+Version 0.1.63 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,16 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.63
+
+- The running time of a bash command and of a search block keeps counting
+  while no new output arrives. A quiet command showed the time of its last
+  output before.
+- A failed or aborted turn no longer rebuilds the terminal's scrollback.
+- A long thought shown expanded no longer triggers a scrollback rebuild when
+  the answer finishes.
+- In NotMux a scrollback rebuild restores up to 10,000 lines instead of 1,000.
 
 ### 0.1.62
 
