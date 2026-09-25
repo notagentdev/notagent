@@ -1086,6 +1086,11 @@ fn replay_rows_follow_the_detected_terminal_scrollback() {
     );
     assert_eq!(rows(&[("WT_SESSION", "id")]), 9_001);
     assert_eq!(
+        rows(&[("NOTMUX_TERMINAL_ID", "6336ceeb")]),
+        10_000,
+        "NotMux names itself only through its own variables"
+    );
+    assert_eq!(
         rows(&[("TERM_PROGRAM", "iTerm.app"), ("WT_SESSION", "id")]),
         REGULAR_REPLAY_ROWS,
         "an explicit TERM_PROGRAM masks later probes"

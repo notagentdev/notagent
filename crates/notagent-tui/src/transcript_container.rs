@@ -29,6 +29,8 @@ pub fn regular_replay_rows_from(env: &dyn Fn(&str) -> Option<String>) -> usize {
     const WINDOWS_TERMINAL: usize = 9_001;
     const WEZTERM: usize = 3_500;
     const ALACRITTY: usize = 10_000;
+    // NotMux sets no TERM_PROGRAM; its settings default to 10,000 lines.
+    const NOTMUX: usize = 10_000;
 
     let non_empty = |name: &str| env(name).filter(|value| !value.is_empty());
     if let Some(program) = non_empty("TERM_PROGRAM")
@@ -47,6 +49,9 @@ pub fn regular_replay_rows_from(env: &dyn Fn(&str) -> Option<String>) -> usize {
             "windowsterminal" => WINDOWS_TERMINAL,
             _ => REGULAR_REPLAY_ROWS,
         };
+    }
+    if non_empty("NOTMUX_TERMINAL_ID").is_some() {
+        return NOTMUX;
     }
     if non_empty("GHOSTTY_RESOURCES_DIR").is_some() {
         return REGULAR_REPLAY_ROWS;
