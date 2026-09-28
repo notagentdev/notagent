@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.64 supports Apple Silicon Macs:
+Version 0.1.65 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,13 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.65
+
+- The shimmer in the working and compaction status fades the text into the
+  terminal window's own background. It used pure black or white, which on a
+  light terminal with a cream or grey page showed as a white patch.
+- 0.1.64 was tagged but not released; its changes ship with this version.
 
 ### 0.1.64
 
