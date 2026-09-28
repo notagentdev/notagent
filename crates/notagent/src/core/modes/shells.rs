@@ -114,6 +114,10 @@ const READ_ONLY_TOOLS: &[ToolName] = &[
     // that was already there — and a plan mode that cannot record its plan is
     // the contradiction the shell exists to avoid.
     ToolName::PlanCreate,
+    // A question touches nothing but the conversation. Auto and yolo keep it
+    // in the schema and refuse it in the permission chain instead, so the
+    // tool list does not change when those modes are switched in.
+    ToolName::AskUserQuestion,
 ];
 
 /// Tools a worker shell adds on top of the read-only set.

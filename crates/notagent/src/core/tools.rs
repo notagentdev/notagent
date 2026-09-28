@@ -1,3 +1,4 @@
+pub mod ask_user_question;
 pub mod bash;
 pub mod edit;
 pub mod edit_diff;
@@ -53,6 +54,8 @@ pub enum ToolName {
     Write,
     /// get it too — see `core/tools/plan_create.rs` for why that is not a hole.
     PlanCreate,
+    /// Asks the user a structured question; see `core/tools/ask_user_question.rs`.
+    AskUserQuestion,
     /// Takes back the last change to one file, from the snapshot every mutating
     /// tool leaves behind. See `core/tools/undo.rs`.
     Undo,
@@ -66,7 +69,7 @@ pub enum ToolName {
 }
 
 /// Every tool name, in the order `allToolNames` inserts them.
-pub const ALL_TOOL_NAMES: [ToolName; 20] = [
+pub const ALL_TOOL_NAMES: [ToolName; 21] = [
     ToolName::Read,
     ToolName::Bash,
     ToolName::Edit,
@@ -82,6 +85,7 @@ pub const ALL_TOOL_NAMES: [ToolName; 20] = [
     ToolName::UpdateGoal,
     ToolName::Write,
     ToolName::PlanCreate,
+    ToolName::AskUserQuestion,
     ToolName::Undo,
     ToolName::Grep,
     ToolName::FindFilesystem,
@@ -111,6 +115,7 @@ impl ToolName {
             ToolName::UpdateGoal => "update_goal",
             ToolName::Write => "write",
             ToolName::PlanCreate => "plan_create",
+            ToolName::AskUserQuestion => "ask_user_question",
             ToolName::Undo => "undo",
             ToolName::Grep => "grep",
             ToolName::FindFilesystem => "find_filesystem",
@@ -142,6 +147,10 @@ use std::sync::Arc;
 
 use notagent_agent::types::AgentTool;
 
+use crate::core::tools::ask_user_question::{
+    AskUserQuestionToolSources, create_ask_user_question_tool,
+    create_ask_user_question_tool_definition,
+};
 use crate::core::tools::bash::{BashToolOptions, create_bash_tool, create_bash_tool_definition};
 use crate::core::tools::edit::{EditToolOptions, create_edit_tool, create_edit_tool_definition};
 use crate::core::tools::find::{FindToolOptions, create_find_tool, create_find_tool_definition};
@@ -203,6 +212,7 @@ pub struct ToolsOptions {
     pub bash: Option<BashToolOptions>,
     pub write: Option<WriteToolOptions>,
     pub plan_create: Option<PlanCreateToolOptions>,
+    pub ask_user_question: Option<AskUserQuestionToolSources>,
     pub undo: Option<UndoToolOptions>,
     pub edit: Option<EditToolOptions>,
     pub grep: Option<GrepToolOptions>,
@@ -269,6 +279,9 @@ pub fn create_tool_definition(
             cwd,
             options.and_then(|options| options.plan_create.clone()),
         )),
+        ToolName::AskUserQuestion => Arc::new(create_ask_user_question_tool_definition(
+            options.and_then(|options| options.ask_user_question.clone()),
+        )),
         ToolName::Undo => Arc::new(create_undo_tool_definition(
             cwd,
             options.and_then(|options| options.undo.clone()),
@@ -331,6 +344,9 @@ pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions
         ToolName::PlanCreate => {
             create_plan_create_tool(cwd, options.and_then(|options| options.plan_create.clone()))
         }
+        ToolName::AskUserQuestion => create_ask_user_question_tool(
+            options.and_then(|options| options.ask_user_question.clone()),
+        ),
         ToolName::Undo => create_undo_tool(cwd, options.and_then(|options| options.undo.clone())),
         ToolName::Grep => create_grep_tool(cwd, options.and_then(|options| options.grep.clone())),
         ToolName::FindFilesystem => {

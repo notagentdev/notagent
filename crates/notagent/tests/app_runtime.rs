@@ -208,6 +208,7 @@ impl HeadlessApp {
                             no_tools: None,
                             hooks,
                             permissions: None,
+                            questions: None,
                             session_start_reason: input.reason.as_str().to_owned(),
                         },
                     )

@@ -259,13 +259,30 @@ fn refuses_a_question_in_auto_mode_and_says_what_to_do_instead() {
 }
 
 #[test]
-fn leaves_questions_alone_outside_auto_mode() {
-    for approval in [ApprovalLevel::Manual, ApprovalLevel::Yolo] {
-        assert_eq!(
-            auto_mode_ask_user_deny().evaluate(&ctx("ask_question", approval, json!({}), "/tmp")),
-            None
-        );
-    }
+fn refuses_a_question_in_yolo_mode_as_well() {
+    let decision = auto_mode_ask_user_deny().evaluate(&ctx(
+        "ask_user_question",
+        ApprovalLevel::Yolo,
+        json!({}),
+        "/tmp",
+    ));
+    assert!(
+        matches!(decision, Some(PermissionDecision::Deny { .. })),
+        "yolo runs unattended, so a question must be refused there; saw {decision:?}"
+    );
+}
+
+#[test]
+fn leaves_questions_alone_in_manual_mode() {
+    assert_eq!(
+        auto_mode_ask_user_deny().evaluate(&ctx(
+            "ask_user_question",
+            ApprovalLevel::Manual,
+            json!({}),
+            "/tmp"
+        )),
+        None
+    );
 }
 
 #[test]
@@ -1687,4 +1704,75 @@ fn approves_nothing_else_through_that_slot() {
         let evaluation = evaluate_policies(&build_policy_chain(&[]), &context).expect("decided");
         assert_ne!(evaluation.policy_name, "undo-approve", "{tool}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Questions share the approval queue
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_question_waits_until_the_approval_on_screen_is_answered() {
+    let (release, released) = oneshot::channel::<ApprovalAnswer>();
+    let released = Arc::new(Mutex::new(Some(released)));
+    let present: ApprovalPresenter = Arc::new(move |_request| {
+        let released = released.lock().unwrap().take();
+        Box::pin(async move {
+            match released {
+                Some(released) => released.await.unwrap_or(ApprovalAnswer::Deny),
+                None => ApprovalAnswer::Deny,
+            }
+        }) as BoxFuture<'static, ApprovalAnswer>
+    });
+    let coordinator = Arc::new(ApprovalCoordinator::new(present));
+
+    let approving = Arc::clone(&coordinator);
+    let approval = tokio::spawn(async move {
+        approving
+            .request(request("a.txt"), "write:a.txt", None)
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+
+    let started = Arc::new(AtomicUsize::new(0));
+    let asking = Arc::clone(&coordinator);
+    let seen = Arc::clone(&started);
+    let question = tokio::spawn(async move {
+        asking
+            .exclusive(
+                async move {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    "answered"
+                },
+                None,
+            )
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert_eq!(
+        started.load(Ordering::SeqCst),
+        0,
+        "a question must not reach the screen while an approval is still on it"
+    );
+
+    let _ = release.send(ApprovalAnswer::ApproveOnce);
+    assert_eq!(approval.await.unwrap(), ApprovalAnswer::ApproveOnce);
+    assert_eq!(question.await.unwrap(), Some("answered"));
+}
+
+#[tokio::test]
+async fn an_abort_settles_a_waiting_question_as_unanswered() {
+    let coordinator = Arc::new(ApprovalCoordinator::new(answering(ApprovalAnswer::Deny)));
+    let asking = Arc::clone(&coordinator);
+    let question =
+        tokio::spawn(async move { asking.exclusive(std::future::pending::<&str>(), None).await });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    coordinator.abort();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), question)
+            .await
+            .expect("an abort must settle the question")
+            .unwrap(),
+        None,
+        "an aborted question is unanswered, never a result"
+    );
 }

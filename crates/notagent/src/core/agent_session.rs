@@ -48,8 +48,8 @@ use crate::core::messages::{BashExecutionMessage, CustomMessage};
 use crate::core::modes::cycle::{initial_mode_id, next_mode_id};
 use crate::core::modes::indicator::estimate_injected_tokens;
 use crate::core::modes::{
-    MODES_DIR_NAME, Mode, ModeDiagnostic, get_builtin_modes_dir, load_modes, render_mode_block,
-    render_mode_injection,
+    MODES_DIR_NAME, Mode, ModeDiagnostic, get_builtin_modes_dir, load_modes, mode_transition_note,
+    render_mode_block, render_mode_injection,
 };
 use crate::core::prompt_templates::{PromptTemplate, expand_prompt_template};
 use crate::core::resource_loader::ResourceLoader;
@@ -304,6 +304,9 @@ pub struct AgentSessionConfig {
     /// and also kept here, because a tool call can arrive from outside the agent
     /// loop — a tool borrowed over `/mcp lend` — and must meet the same gate.
     pub permissions: Option<Arc<crate::core::permissions::gate::PermissionGate>>,
+    /// Who answers `ask_user_question`. Absent wherever nobody can, and then
+    /// the tool fails with an instruction to decide instead.
+    pub questions: Option<crate::core::user_questions::QuestionPresenterSource>,
     /// Why this session was started, for the `SessionStart` hook.
     pub session_start_reason: String,
 }
@@ -472,6 +475,7 @@ pub struct AgentSession {
     /// The same chain the agent loop awaits, kept so a call arriving from
     /// outside that loop can be put through it too.
     permissions: Option<Arc<crate::core::permissions::gate::PermissionGate>>,
+    questions: Option<crate::core::user_questions::QuestionPresenterSource>,
     session_start_reason: String,
     cwd: String,
 
@@ -554,6 +558,7 @@ impl AgentSession {
             resource_loader: config.resource_loader,
             hooks: config.hooks,
             permissions: config.permissions,
+            questions: config.questions,
             session_start_reason: config.session_start_reason,
             cwd: config.cwd,
             scoped_models: Mutex::new(config.scoped_models),
@@ -1115,17 +1120,12 @@ impl AgentSession {
         Some(mode)
     }
 
-    /// Builds the block delivered on the next user message.
-    /// Leaving auto is announced explicitly rather than left to be inferred from
-    /// the new block: the model needs to know that approvals are back, not
-    /// merely that some other mode is now in force.
+    /// Builds the block delivered on the next user message, with what has to
+    /// be said about the transition (`mode_transition_note`).
     fn render_mode_block(&self, mode: &Mode, previous_approval: Option<&str>) -> Option<String> {
-        let leaving_auto = previous_approval == Some("auto") && mode.approval.as_str() != "auto";
         render_mode_block(
             mode,
-            leaving_auto.then_some(
-                "Auto approval is no longer active. Tool use is confirmed again, so expect approval prompts and refusals.",
-            ),
+            mode_transition_note(mode, previous_approval).as_deref(),
         )
     }
 
@@ -1892,6 +1892,9 @@ impl AgentSession {
             undo: Some(crate::core::tools::undo::UndoToolOptions {
                 leases: Some(self.lease_gate()),
                 snapshots: Some(snapshot_store()),
+            }),
+            ask_user_question: self.questions.clone().map(|presenter| {
+                crate::core::tools::ask_user_question::AskUserQuestionToolSources { presenter }
             }),
             ..ToolsOptions::default()
         }

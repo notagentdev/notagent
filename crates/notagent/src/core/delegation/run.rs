@@ -24,7 +24,7 @@ use crate::core::tools::{ToolName, ToolsOptions, create_tool};
 /// its agent after every turn, and a child running that loop inside its
 /// parent's multiplies turns with nobody watching. All three exclusions are
 /// structural because an instruction is something a model can decide to ignore.
-const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 7] = [
+const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 8] = [
     ToolName::Task,
     ToolName::TaskList,
     ToolName::TaskOutput,
@@ -35,6 +35,10 @@ const TOOLS_WITHHELD_FROM_CHILDREN: [ToolName; 7] = [
     ToolName::TodoWrite,
     ToolName::CreateGoal,
     ToolName::UpdateGoal,
+    // A child's question would reach the user without the context the parent
+    // has, in the middle of work they did not start. The child reports what
+    // it needs and the parent asks.
+    ToolName::AskUserQuestion,
 ];
 
 /// Longest a child may run before it is stopped.

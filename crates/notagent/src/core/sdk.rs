@@ -46,6 +46,8 @@ pub struct CreateAgentSessionOptions {
     /// extension the app registers ahead of every other one; here the app hands
     /// the gate in and it becomes the agent's `before_tool_call`.
     pub permissions: Option<Arc<PermissionGate>>,
+    /// Who answers `ask_user_question`; see `AgentSessionConfig::questions`.
+    pub questions: Option<crate::core::user_questions::QuestionPresenterSource>,
     pub session_start_reason: String,
 }
 
@@ -278,6 +280,7 @@ pub async fn create_agent_session(options: CreateAgentSessionOptions) -> CreateA
         base_tools_override: None,
         hooks: options.hooks,
         permissions: options.permissions,
+        questions: options.questions,
         session_start_reason: options.session_start_reason,
     });
 

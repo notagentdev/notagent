@@ -8,14 +8,16 @@ use serde_json::{Map, Value, json};
 
 use super::events::HookEvent;
 use super::payload::{
-    NOTIFICATION_IDLE_PROMPT, NOTIFICATION_PERMISSION_PROMPT, summarize_output,
-    summarize_tool_response,
+    NOTIFICATION_IDLE_PROMPT, NOTIFICATION_PERMISSION_PROMPT, NOTIFICATION_QUESTION_PROMPT,
+    summarize_output, summarize_tool_response,
 };
 use super::runner::{HookVerdict, hook_context};
 use super::runtime::{HookContextOutput, HookRuntime};
 use crate::core::permissions::coordinator::ApprovalObserver;
 use crate::core::permissions::request::{ApprovalAnswer, ApprovalRequest, format_request_summary};
 use crate::core::tasks::types::{TaskInfo, TaskStatus};
+use crate::core::tools::ask_user_question::ASK_USER_QUESTION_TOOL_NAME;
+use crate::core::user_questions::UserQuestion;
 
 /// How a completed run ended, which decides which of the three names fires.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -373,6 +375,34 @@ pub fn create_approval_observer(runtime: Arc<HookRuntime>) -> Arc<dyn ApprovalOb
 
 fn optional(value: &Option<String>) -> Value {
     value.as_ref().map_or(Value::Null, |value| json!(value))
+}
+
+/// Tells a supervisor the agent is waiting on the user, exactly as a
+/// permission prompt does. Raised only once a question is actually on screen,
+/// never for one refused or queued, for the same reason approvals report only
+/// real prompts.
+pub fn question_prompt_notification(
+    runtime: Arc<HookRuntime>,
+    questions: &[UserQuestion],
+) -> BoxFuture<'static, ()> {
+    let message = match questions {
+        [only] => format!("Question: {}", only.question),
+        [first, rest @ ..] => format!("Question: {} (+{} more)", first.question, rest.len()),
+        [] => "Question".to_owned(),
+    };
+    Box::pin(async move {
+        runtime
+            .emit(
+                HookEvent::Notification,
+                fields([
+                    ("notification_type", json!(NOTIFICATION_QUESTION_PROMPT)),
+                    ("message", json!(message)),
+                    ("tool_name", json!(ASK_USER_QUESTION_TOOL_NAME)),
+                ]),
+                None,
+            )
+            .await;
+    })
 }
 
 impl ApprovalObserver for HookApprovalObserver {

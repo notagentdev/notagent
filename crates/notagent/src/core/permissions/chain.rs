@@ -29,14 +29,17 @@ pub const POLICY_ORDER: [&str; 14] = [
 /// Tools that ask the user something rather than acting on the workspace.
 const QUESTION_TOOLS: [&str; 3] = ["ask_question", "ask_user_question", "followup"];
 
-/// Auto mode removes approval prompts. Without this, a model would replace
+/// Auto and yolo remove approval prompts. Without this, a model would replace
 /// them with questions and the autonomy gain would vanish, so asking is
-/// refused with an instruction to decide instead.
+/// refused with an instruction to decide instead. The tool stays in the schema
+/// in every worker mode: modes switch by an injected block, and a tool list
+/// that changed with the mode would invalidate the prompt cache on every
+/// switch. This refusal is therefore the only enforcement.
 pub fn auto_mode_ask_user_deny() -> Arc<dyn PermissionPolicy> {
     Arc::new(FnPolicy::new(
         "auto-mode-ask-user-deny",
         |context: &PermissionContext| {
-            if context.approval != ApprovalLevel::Auto {
+            if !matches!(context.approval, ApprovalLevel::Auto | ApprovalLevel::Yolo) {
                 return None;
             }
             if !QUESTION_TOOLS.contains(&context.tool_name.as_str()) {
@@ -44,7 +47,7 @@ pub fn auto_mode_ask_user_deny() -> Arc<dyn PermissionPolicy> {
             }
             Some(PermissionDecision::Deny {
             reason:
-                "Asking the user is disabled while auto mode is active. Make a reasonable decision and continue without asking."
+                "Asking the user is disabled while the session runs unattended (auto or yolo mode). Make a reasonable decision and continue without asking."
                     .to_string(),
         })
         },

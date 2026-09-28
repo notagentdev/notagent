@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
@@ -139,6 +140,31 @@ impl ApprovalCoordinator {
         answer
     }
 
+    /// Runs any other interaction with the user — a question the model asked —
+    /// in the queue approval prompts use. Both occupy the one dialog slot, and
+    /// without a shared queue whichever arrived second would replace the first
+    /// on screen, settling it as though the user had dismissed it. Resolves to
+    /// `None` once the session aborts or `signal` fires, as an approval
+    /// resolves to a denial.
+    pub async fn exclusive<T>(
+        &self,
+        interaction: impl Future<Output = T>,
+        signal: Option<&CancellationToken>,
+    ) -> Option<T> {
+        let aborted = self.aborted_token();
+        if aborted.is_cancelled() || signal.is_some_and(CancellationToken::is_cancelled) {
+            return None;
+        }
+        let _turn = self.queue.lock().await;
+        if aborted.is_cancelled() || signal.is_some_and(CancellationToken::is_cancelled) {
+            return None;
+        }
+        tokio::select! {
+            value = interaction => Some(value),
+            () = interrupted(&aborted, signal) => None,
+        }
+    }
+
     /// Settles the presented request as soon as either the user answers or the
     /// session aborts, whichever comes first.
     async fn race(
@@ -151,20 +177,9 @@ impl ApprovalCoordinator {
         self.notify(move |observer| observer.requested(announced));
 
         let presented = (self.present)(request.clone());
-        let interrupted = async {
-            match signal {
-                Some(signal) => {
-                    tokio::select! {
-                        () = aborted.cancelled() => {}
-                        () = signal.cancelled() => {}
-                    }
-                }
-                None => aborted.cancelled().await,
-            }
-        };
         let answer = tokio::select! {
             answer = presented => answer,
-            () = interrupted => ApprovalAnswer::Deny,
+            () = interrupted(aborted, signal) => ApprovalAnswer::Deny,
         };
 
         let resolved = request;
@@ -184,5 +199,18 @@ impl ApprovalCoordinator {
         let mut state = self.state.lock().expect("approval state");
         state.aborted = CancellationToken::new();
         state.remembered.clear();
+    }
+}
+
+/// Resolves once the session aborts or the call's own signal fires.
+async fn interrupted(aborted: &CancellationToken, signal: Option<&CancellationToken>) {
+    match signal {
+        Some(signal) => {
+            tokio::select! {
+                () = aborted.cancelled() => {}
+                () = signal.cancelled() => {}
+            }
+        }
+        None => aborted.cancelled().await,
     }
 }

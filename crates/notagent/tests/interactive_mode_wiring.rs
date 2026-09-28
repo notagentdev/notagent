@@ -51,6 +51,7 @@ struct Driver {
     terminal: VirtualTerminal,
     run: Option<std::pin::Pin<Box<dyn std::future::Future<Output = i32>>>>,
     exit_code: Option<i32>,
+    question_display: notagent::core::user_questions::QuestionDisplay,
 }
 
 impl Driver {
@@ -89,6 +90,7 @@ impl Driver {
             renderer,
             pump,
             run,
+            question_display,
             ..
         } = create_interactive_mode(
             app.runtime(),
@@ -106,6 +108,7 @@ impl Driver {
             terminal,
             run: Some(run),
             exit_code: None,
+            question_display,
         }
     }
 
@@ -1587,6 +1590,115 @@ async fn new_discards_messages_queued_during_compaction_and_its_late_completion(
         ]);
         driver.submit("fresh after compact").await;
         driver.wait_for("CLEAN_AFTER_COMPACT").await;
+    })
+    .await;
+}
+
+fn database_question() -> Vec<notagent::core::user_questions::UserQuestion> {
+    use notagent::core::user_questions::{QuestionOption, UserQuestion};
+    vec![UserQuestion {
+        id: "db".to_owned(),
+        header: String::new(),
+        question: "Which database?".to_owned(),
+        options: ["Postgres", "SQLite"]
+            .iter()
+            .map(|label| QuestionOption {
+                label: (*label).to_owned(),
+                description: String::new(),
+            })
+            .collect(),
+        multi_select: false,
+    }]
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_question_reports_itself_once_on_screen_and_returns_the_choice() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        let shown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = Arc::clone(&shown);
+        let asking = tokio::spawn((driver.question_display)(
+            database_question(),
+            Box::new(move || flag.store(true, std::sync::atomic::Ordering::SeqCst)),
+        ));
+        driver.wait_for("Which database?").await;
+        assert!(
+            shown.load(std::sync::atomic::Ordering::SeqCst),
+            "the dialog is up, so the display must have reported it"
+        );
+
+        driver.send_keys(KEY_ENTER).await;
+        let answers = asking.await.expect("display task").expect("answered");
+        assert_eq!(answers[0].selected, vec!["Postgres"]);
+        driver.wait_until_absent("Type my own answer").await;
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_question_nobody_waits_for_any_more_leaves_the_screen() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        let asking = tokio::spawn((driver.question_display)(
+            database_question(),
+            Box::new(|| {}),
+        ));
+        driver.wait_for("Type my own answer").await;
+
+        // The turn was cancelled: the tool dropped its wait.
+        asking.abort();
+        driver.wait_until_absent("Type my own answer").await;
+
+        // The editor is back and takes input.
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_rejected_question_shows_its_error_in_the_transcript() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux().set_responses(vec![
+            tool_call_reply(
+                "ask_user_question",
+                "ask",
+                serde_json::json!({ "questions": [{
+                    "id": "db",
+                    "question": "Which database?",
+                    "options": [
+                        { "label": "Same", "description": "a" },
+                        { "label": "Same", "description": "b" },
+                    ],
+                }]}),
+            ),
+            reply("decided without asking"),
+        ]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+        driver.submit("pick a database").await;
+        driver.wait_for("decided without asking").await;
+        assert!(
+            driver.screen().contains("Duplicate option label"),
+            "the tool's error must be visible, not swallowed by its renderer: {}",
+            driver.screen()
+        );
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
     })
     .await;
 }

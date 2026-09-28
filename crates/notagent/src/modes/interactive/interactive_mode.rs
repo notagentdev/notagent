@@ -84,6 +84,7 @@ use crate::core::todos::Todo;
 use crate::core::tools::truncate::TruncationResult;
 use crate::core::trust_manager::ProjectTrustStore;
 use crate::core::trust_manager::has_trust_requiring_project_resources;
+use crate::core::user_questions::{QuestionAnswer, QuestionDisplay, QuestionShown, UserQuestion};
 use crate::modes::interactive::components::approval_selector::ApprovalSelectorComponent;
 use crate::modes::interactive::components::armin::ArminComponent;
 use crate::modes::interactive::components::assistant_message::AssistantMessageComponent;
@@ -109,6 +110,7 @@ use crate::modes::interactive::components::model_selector::{
 use crate::modes::interactive::components::oauth_selector::{
     AuthSelectorMethod, AuthSelectorMode, AuthSelectorProvider, OAuthSelectorComponent,
 };
+use crate::modes::interactive::components::question_dialog::QuestionDialogComponent;
 use crate::modes::interactive::components::scoped_models_selector::{
     ModelsCallbacks, ModelsConfig, RefreshStatusKind, ScopedModelsSelectorComponent,
 };
@@ -364,6 +366,8 @@ struct ActiveCompactionChatIndicator {
 pub struct InteractiveModeHandle {
     /// `permissionPresent` — shows the approval dialog and answers the gate.
     pub approval_presenter: ApprovalPresenter,
+    /// Shows the question dialog; `main_app` queues it behind approvals.
+    pub question_display: QuestionDisplay,
     /// `hookReport` — a hook diagnostic as an error or warning in the transcript.
     pub report: HookReporter,
     /// The renderer, to be driven with `notagent_tui::tui::run_until`. It stays
@@ -394,9 +398,11 @@ pub fn create_interactive_mode(
     let mode = InteractiveMode::new(runtime, options, terminal);
     let renderer = mode.renderer();
     let approval_presenter = mode.approval_presenter();
+    let question_display = mode.question_display();
     let report = mode.reporter();
     InteractiveModeHandle {
         approval_presenter,
+        question_display,
         report,
         renderer: Box::new(renderer),
         pump,
@@ -770,6 +776,15 @@ enum AppAction {
 
 /// What the component callbacks post into [`InteractiveMode::run`].
 enum UiMessage {
+    /// The model asked the user something; `answer` settles the tool call,
+    /// `shown` reports the dialog once it is up, and `gone` fires when the
+    /// asking side stopped waiting.
+    Question {
+        questions: Vec<UserQuestion>,
+        answer: tokio::sync::oneshot::Sender<Option<Vec<QuestionAnswer>>>,
+        shown: QuestionShown,
+        gone: tokio_util::sync::CancellationToken,
+    },
     NewSessionFinished {
         result: Result<(), String>,
     },
@@ -1446,6 +1461,35 @@ impl InteractiveMode {
                 }
                 answer_rx.await.unwrap_or(ApprovalAnswer::Deny)
             }) as futures::future::BoxFuture<'static, ApprovalAnswer>
+        })
+    }
+
+    /// Shows the question dialog and answers the `ask_user_question` tool.
+    /// Posted through the UI channel for the same reason as the approval
+    /// presenter: the tool runs off the TUI thread and the dialog is `!Send`.
+    /// A closed channel settles as a dismissal, never as an answer. The drop
+    /// guard fires `gone` however this future ends — answered, cancelled with
+    /// the turn, or aborted with the session — and the loop closes the dialog
+    /// on it, so a question nobody waits for does not stay on screen.
+    pub fn question_display(&self) -> QuestionDisplay {
+        let tx = self.ui_tx.clone();
+        Arc::new(move |questions: Vec<UserQuestion>, shown: QuestionShown| {
+            let tx = tx.clone();
+            Box::pin(async move {
+                let gone = tokio_util::sync::CancellationToken::new();
+                let _gone_on_drop = gone.clone().drop_guard();
+                let (answer, answered) = tokio::sync::oneshot::channel();
+                let message = UiMessage::Question {
+                    questions,
+                    answer,
+                    shown,
+                    gone,
+                };
+                if tx.send(message).is_err() {
+                    return None;
+                }
+                answered.await.ok().flatten()
+            }) as futures::future::BoxFuture<'static, Option<Vec<QuestionAnswer>>>
         })
     }
 
@@ -2546,6 +2590,19 @@ impl InteractiveMode {
             UiMessage::TrustDecision { id, selection } => {
                 self.close_selector(id);
                 self.apply_trust_decision(selection);
+            }
+            UiMessage::Question {
+                questions,
+                answer,
+                shown,
+                gone,
+            } => {
+                // Dropping `answer` settles the call as dismissed, which is what
+                // a question arriving while the session is being replaced is.
+                if !self.replacing_session && !answer.is_closed() && !gone.is_cancelled() {
+                    self.show_question_dialog(questions, answer, gone);
+                    shown();
+                }
             }
             UiMessage::SelectorCancelled { id } => {
                 self.close_selector(id);
@@ -5036,6 +5093,31 @@ impl InteractiveMode {
         )));
         let focus = Rc::clone(selector.borrow().get_select_list()) as ComponentRef;
         self.show_selector(Rc::clone(&selector) as ComponentRef, focus, None);
+    }
+
+    fn show_question_dialog(
+        &mut self,
+        questions: Vec<UserQuestion>,
+        answer: tokio::sync::oneshot::Sender<Option<Vec<QuestionAnswer>>>,
+        gone: tokio_util::sync::CancellationToken,
+    ) {
+        let id = self.selector_id + 1;
+        let tx = self.ui_tx.clone();
+        let dialog = Rc::new(RefCell::new(QuestionDialogComponent::new(
+            questions,
+            Box::new(move |answers| {
+                let _ = answer.send(answers);
+                let _ = tx.send(UiMessage::SelectorCancelled { id });
+            }),
+        )));
+        let component = Rc::clone(&dialog) as ComponentRef;
+        let shown_id = self.show_selector(Rc::clone(&component), component, None);
+        // Closing an id that is no longer active is a no-op, so this is safe
+        // after the user answered and after another selector took over.
+        self.side_futures.push(Box::pin(async move {
+            gone.cancelled().await;
+            UiMessage::SelectorCancelled { id: shown_id }
+        }));
     }
 
     /// The extension commands are gone with the extension system (class 2);

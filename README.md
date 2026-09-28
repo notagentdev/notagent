@@ -403,7 +403,7 @@ session has a file on disk. Event-specific fields are:
 | `SubagentStop` | `task_id` (null without a task manager), `child_session_id`, `agent`, `alias`, `status`, `duration_ms`, `stop_reason`, `result`, `detached` |
 | `PreCompact`, `PostCompact` | `trigger`, `reason`; `PreCompact` also has `custom_instructions` |
 | `Stop`, `StopFailure`, `Interrupt` | `stop_hook_active` |
-| `Notification` | `notification_type`, `message`, and, for permission prompts, `tool_name` |
+| `Notification` | `notification_type` (`permission_prompt`, `question_prompt` or `idle_prompt`), `message`, and, for permission and question prompts, `tool_name` |
 
 Hook commands run sequentially in declaration order. Observational hook chains
 run every matching declaration even when one fails. Blocking chains stop at the

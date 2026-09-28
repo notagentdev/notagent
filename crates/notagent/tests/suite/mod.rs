@@ -321,6 +321,7 @@ pub fn create_harness(options: HarnessOptions) -> Harness {
         base_tools_override: options.tools.clone(),
         hooks: options.hooks.clone(),
         permissions: options.permissions.clone(),
+        questions: None,
         session_start_reason: "startup".to_string(),
     });
 

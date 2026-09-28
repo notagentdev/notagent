@@ -148,6 +148,7 @@ pub struct CreateAgentSessionFromServicesOptions {
     pub no_tools: Option<NoTools>,
     pub hooks: Option<Arc<crate::core::hooks::dispatch::HookDispatcher>>,
     pub permissions: Option<Arc<crate::core::permissions::gate::PermissionGate>>,
+    pub questions: Option<crate::core::user_questions::QuestionPresenterSource>,
     pub session_start_reason: String,
 }
 
@@ -173,6 +174,7 @@ pub async fn create_agent_session_from_services(
         no_tools: options.no_tools,
         hooks: options.hooks,
         permissions: options.permissions,
+        questions: options.questions,
         session_start_reason: options.session_start_reason,
     })
     .await

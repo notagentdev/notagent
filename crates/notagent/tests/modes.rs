@@ -9,7 +9,8 @@ use notagent::core::modes::shells::{
     ApprovalLevel, MUTATING_TOOLS, ShellId, apply_tool_delta, tools_for_shell,
 };
 use notagent::core::modes::{
-    LoadModesResult, Mode, get_builtin_modes_dir, load_modes, render_mode_injection,
+    LoadModesResult, Mode, get_builtin_modes_dir, load_modes, mode_transition_note,
+    render_mode_block, render_mode_injection,
 };
 use notagent::core::tools::{ALL_TOOL_NAMES, ToolName};
 
@@ -514,23 +515,10 @@ fn prepends_ahead_of_the_users_own_text_separated_from_it() {
     assert!(combined.contains("</mode>\n\nfix the parser"));
 }
 
-/// Mirrors the session's block construction, including the exit note.
+/// The session's block construction, including the transition note.
 fn wrap_with_exit(mode: &Mode, previous_approval: Option<ApprovalLevel>) -> Option<String> {
-    let body = render_mode_injection(mode);
-    let leaving_auto =
-        previous_approval == Some(ApprovalLevel::Auto) && mode.approval != ApprovalLevel::Auto;
-    let exit = if leaving_auto {
-        "Auto approval is no longer active. Tool use is confirmed again, so expect approval prompts and refusals.\n\n"
-    } else {
-        ""
-    };
-    if body.trim().is_empty() && exit.is_empty() {
-        return None;
-    }
-    Some(format!(
-        "<mode name=\"{}\" shell=\"{}\">\n{exit}{body}\n</mode>",
-        mode.id, mode.shell
-    ))
+    let previous = previous_approval.map(ApprovalLevel::as_str);
+    render_mode_block(mode, mode_transition_note(mode, previous).as_deref())
 }
 
 #[test]
@@ -572,4 +560,56 @@ fn announces_the_exit_when_moving_from_auto_to_yolo_which_also_drops_prompts() {
             .unwrap_or_default()
             .contains("no longer active")
     );
+}
+
+#[test]
+fn switching_between_worker_modes_leaves_the_tool_list_unchanged() {
+    let manual = builtin("manual").tools;
+    for id in ["auto", "yolo"] {
+        assert_eq!(
+            builtin(id).tools,
+            manual,
+            "{id} must advertise the same tools as manual, or every switch invalidates the prompt cache"
+        );
+    }
+}
+
+#[test]
+fn unattended_modes_tell_the_model_that_asking_is_refused() {
+    for id in ["auto", "yolo"] {
+        assert!(
+            render_mode_injection(&builtin(id)).contains("ask_user_question tool is refused"),
+            "{id} refuses ask_user_question in the permission chain and has to say so in its text"
+        );
+    }
+}
+
+#[test]
+fn says_asking_is_back_when_an_unattended_mode_is_left() {
+    for previous in [ApprovalLevel::Auto, ApprovalLevel::Yolo] {
+        for next in ["manual", "plan"] {
+            assert!(
+                wrap_with_exit(&builtin(next), Some(previous))
+                    .unwrap_or_default()
+                    .contains("ask_user_question tool is available again"),
+                "leaving {previous} for {next} must say asking is allowed again"
+            );
+        }
+    }
+}
+
+#[test]
+fn does_not_say_asking_is_back_while_still_unattended() {
+    for (previous, next) in [
+        (ApprovalLevel::Auto, "yolo"),
+        (ApprovalLevel::Yolo, "auto"),
+        (ApprovalLevel::Manual, "plan"),
+    ] {
+        assert!(
+            !wrap_with_exit(&builtin(next), Some(previous))
+                .unwrap_or_default()
+                .contains("available again"),
+            "{previous} to {next} does not bring asking back"
+        );
+    }
 }

@@ -25,6 +25,7 @@ pub mod mermaid;
 mod message_marker;
 pub mod model_selector;
 pub mod oauth_selector;
+pub mod question_dialog;
 pub mod scoped_models_selector;
 pub mod session_selector;
 pub mod session_selector_search;

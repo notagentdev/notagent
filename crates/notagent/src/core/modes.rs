@@ -411,6 +411,26 @@ pub fn render_mode_injection(mode: &Mode) -> String {
         .join("\n\n")
 }
 
+const LEAVING_AUTO_NOTE: &str = "Auto approval is no longer active. Tool use is confirmed again, so expect approval prompts and refusals.";
+const QUESTIONS_RETURN_NOTE: &str = "The ask_user_question tool is available again.";
+
+/// What a mode block says about the transition into `mode`, beyond the mode
+/// itself. Each flip is announced rather than left to inference from the new
+/// body: after auto the model must know approvals are back, and after auto or
+/// yolo that it may ask the user again — the unattended mode told it asking was
+/// refused, and nothing in a supervised mode's text takes that back.
+pub fn mode_transition_note(mode: &Mode, previous_approval: Option<&str>) -> Option<String> {
+    let unattended = |level: &str| matches!(level, "auto" | "yolo");
+    let mut notes: Vec<&str> = Vec::new();
+    if previous_approval == Some("auto") && mode.approval != ApprovalLevel::Auto {
+        notes.push(LEAVING_AUTO_NOTE);
+    }
+    if previous_approval.is_some_and(unattended) && !unattended(mode.approval.as_str()) {
+        notes.push(QUESTIONS_RETURN_NOTE);
+    }
+    (!notes.is_empty()).then(|| notes.join(" "))
+}
+
 /// The delimited block that activates a mode.
 /// One function for both callers: the main agent prepends it to the next user
 /// message on a switch, and a delegated child receives it ahead of its task.

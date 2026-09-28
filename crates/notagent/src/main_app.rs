@@ -38,7 +38,9 @@ use crate::core::agent_session_services::{
 use crate::core::auth_guidance::format_no_models_available_message;
 use crate::core::auth_storage::{AuthStorage, ReadOnlyAuthStorage};
 use crate::core::export_html::{ExportOptions, export_from_file};
-use crate::core::hooks::dispatch::{HookDispatcher, create_approval_observer};
+use crate::core::hooks::dispatch::{
+    HookDispatcher, create_approval_observer, question_prompt_notification,
+};
 use crate::core::hooks::load_hooks;
 use crate::core::hooks::payload::HookSessionContext;
 use crate::core::hooks::runtime::{HookReportLevel, HookReporter, HookRuntime, HookRuntimeOptions};
@@ -47,7 +49,7 @@ use crate::core::model_runtime::{CreateModelRuntimeOptions, ModelRuntime};
 use crate::core::output_guard::{
     console_log, restore_stdout, stdin_is_tty, stdout_is_tty, stdout_write, take_over_stdout,
 };
-use crate::core::permissions::coordinator::ApprovalPresenter;
+use crate::core::permissions::coordinator::{ApprovalCoordinator, ApprovalPresenter};
 use crate::core::permissions::gate::{PermissionGate, PermissionGateOptions};
 use crate::core::permissions::hook::PermissionSessionState;
 use crate::core::project_trust::{
@@ -62,6 +64,9 @@ use crate::core::session_manager::{NewSessionOptions, SessionManager, assert_val
 use crate::core::settings_manager::{SettingsManager, SettingsManagerCreateOptions};
 use crate::core::timings::{print_timings, reset_timings, time};
 use crate::core::trust_manager::{ProjectTrustStore, has_trust_requiring_project_resources};
+use crate::core::user_questions::{
+    QuestionAnswer, QuestionDisplay, QuestionPresenter, QuestionPresenterSource, UserQuestion,
+};
 use crate::migrations::run_migrations;
 use crate::utils::shell::kill_tracked_detached_children;
 use notagent_tui::tui::run_until;
@@ -725,6 +730,7 @@ pub async fn main(args: Vec<String>) -> i32 {
     // built now so it sits ahead of everything else that could approve a call.
     let permission_session: Arc<Mutex<Option<Arc<AgentSession>>>> = Arc::new(Mutex::new(None));
     let permission_present: Arc<Mutex<Option<ApprovalPresenter>>> = Arc::new(Mutex::new(None));
+    let question_present: Arc<Mutex<Option<QuestionDisplay>>> = Arc::new(Mutex::new(None));
     let hook_report: Arc<Mutex<Option<HookReporter>>> = Arc::new(Mutex::new(None));
 
     let hook_declarations = load_hooks(&[
@@ -828,6 +834,11 @@ pub async fn main(args: Vec<String>) -> i32 {
             })
         })),
     }));
+    let questions = queued_question_source(
+        Arc::clone(&question_present),
+        permissions.coordinator(),
+        Arc::clone(&hook_runtime),
+    );
     let hooks = Arc::new(HookDispatcher::new(Arc::clone(&hook_runtime)));
 
     let offline_mode = args.iter().any(|arg| arg == "--offline") || env_flag("NOTAGENT_OFFLINE");
@@ -1049,6 +1060,7 @@ pub async fn main(args: Vec<String>) -> i32 {
     let factory_parsed = parsed.clone();
     let factory_hooks = Arc::clone(&hooks);
     let factory_permissions = Arc::clone(&permissions);
+    let factory_questions = Arc::clone(&questions);
     let factory_trust_store = Arc::clone(&trust_store);
     let factory_startup_settings = Arc::clone(&startup_settings_manager);
     let factory_trust_by_cwd = Arc::clone(&project_trust_by_cwd);
@@ -1056,6 +1068,7 @@ pub async fn main(args: Vec<String>) -> i32 {
         let parsed = factory_parsed.clone();
         let hooks = Arc::clone(&factory_hooks);
         let permissions = Arc::clone(&factory_permissions);
+        let questions = Arc::clone(&factory_questions);
         let trust_store = Arc::clone(&factory_trust_store);
         let startup_settings_manager = Arc::clone(&factory_startup_settings);
         let project_trust_by_cwd = Arc::clone(&factory_trust_by_cwd);
@@ -1068,6 +1081,7 @@ pub async fn main(args: Vec<String>) -> i32 {
                 parsed,
                 hooks,
                 permissions,
+                questions,
                 trust_store,
                 startup_settings_manager,
                 project_trust_by_cwd,
@@ -1237,6 +1251,7 @@ pub async fn main(args: Vec<String>) -> i32 {
             };
             let InteractiveModeHandle {
                 approval_presenter,
+                question_display,
                 report,
                 mut renderer,
                 mut pump,
@@ -1259,6 +1274,9 @@ pub async fn main(args: Vec<String>) -> i32 {
             // `permissionPresent` and `hookReport` are bound to the mode, as in
             *permission_present.lock().expect("poisoned") = Some(approval_presenter);
             *hook_report.lock().expect("poisoned") = Some(report);
+            *question_present
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(question_display);
             // `run_until` renders and pumps stdin while the mode runs.
             let exit_code = run_until(renderer.as_mut(), pump.as_mut(), run).await;
             #[cfg(unix)]
@@ -1338,6 +1356,49 @@ async fn read_piped_stdin() -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
+/// Where sessions find someone to answer `ask_user_question`.
+/// Bound late like the approval presenter, and queued behind the same
+/// coordinator: a question and an approval share the one dialog slot, and the
+/// coordinator is what keeps them from replacing each other on screen. The
+/// coordinator's abort settles a waiting question as unanswered, just as it
+/// denies a waiting approval. `question_prompt` is raised from the display's
+/// `shown` callback, so a supervisor hears only about a dialog that is up.
+fn queued_question_source(
+    present: Arc<Mutex<Option<QuestionDisplay>>>,
+    coordinator: Arc<ApprovalCoordinator>,
+    runtime: Arc<HookRuntime>,
+) -> QuestionPresenterSource {
+    Arc::new(move || {
+        let presenter = present
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()?;
+        let coordinator = Arc::clone(&coordinator);
+        let runtime = Arc::clone(&runtime);
+        let queued: QuestionPresenter = Arc::new(move |questions: Vec<UserQuestion>| {
+            let presenter = Arc::clone(&presenter);
+            let coordinator = Arc::clone(&coordinator);
+            let runtime = Arc::clone(&runtime);
+            Box::pin(async move {
+                let notify = question_prompt_notification(runtime, &questions);
+                coordinator
+                    .exclusive(
+                        presenter(
+                            questions,
+                            Box::new(move || {
+                                tokio::spawn(notify);
+                            }),
+                        ),
+                        None,
+                    )
+                    .await
+                    .flatten()
+            }) as BoxFuture<'static, Option<Vec<QuestionAnswer>>>
+        });
+        Some(queued)
+    })
+}
+
 /// Builds one runtime: services for the target directory, the model scope, the
 /// session options resolved against them, and finally the session.
 #[allow(clippy::too_many_arguments)]
@@ -1346,6 +1407,7 @@ async fn build_runtime(
     parsed: Args,
     hooks: Arc<HookDispatcher>,
     permissions: Arc<PermissionGate>,
+    questions: QuestionPresenterSource,
     trust_store: Arc<ProjectTrustStore>,
     startup_settings_manager: Arc<SettingsManager>,
     project_trust_by_cwd: Arc<Mutex<HashMap<String, bool>>>,
@@ -1516,6 +1578,7 @@ async fn build_runtime(
             no_tools: session_options.no_tools,
             hooks: Some(hooks),
             permissions: Some(permissions),
+            questions: Some(questions),
             session_start_reason: input.reason.as_str().to_owned(),
         },
     )

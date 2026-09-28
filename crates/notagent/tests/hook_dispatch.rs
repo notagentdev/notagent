@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use notagent::core::hooks::dispatch::{
     HookDispatcher, RunOutcome, SubagentHookInfo, create_approval_observer, outcome_of,
-    render_hook_context,
+    question_prompt_notification, render_hook_context,
 };
 use notagent::core::hooks::events::HookEvent;
 use notagent::core::hooks::payload::HookSessionContext;
@@ -658,6 +658,43 @@ async fn reports_the_request_under_both_names() {
             .get("tool_call_id")
             .and_then(Value::as_str),
         Some("call-approval")
+    );
+}
+
+#[tokio::test]
+async fn a_question_on_screen_is_reported_as_a_question_prompt() {
+    use notagent::core::user_questions::{QuestionOption, UserQuestion};
+    let wire = Wire::new();
+    let question = UserQuestion {
+        id: "db".to_owned(),
+        header: String::new(),
+        question: "Which database?".to_owned(),
+        options: ["Postgres", "SQLite"]
+            .iter()
+            .map(|label| QuestionOption {
+                label: (*label).to_owned(),
+                description: String::new(),
+            })
+            .collect(),
+        multi_select: false,
+    };
+    question_prompt_notification(Arc::clone(&wire.runtime), &[question]).await;
+    assert_eq!(wire.names(), vec!["Notification"]);
+    let notification = wire.fields_of("Notification");
+    assert_eq!(
+        notification
+            .get("notification_type")
+            .and_then(Value::as_str),
+        Some("question_prompt"),
+        "a supervisor tells a waiting question apart from an approval by this value"
+    );
+    assert_eq!(
+        notification.get("message").and_then(Value::as_str),
+        Some("Question: Which database?")
+    );
+    assert_eq!(
+        notification.get("tool_name").and_then(Value::as_str),
+        Some("ask_user_question")
     );
 }
 

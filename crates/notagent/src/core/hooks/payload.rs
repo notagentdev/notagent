@@ -14,6 +14,8 @@ pub struct HookSessionContext {
 /// Why a notification was raised. NotMux branches on exactly these values.
 pub const NOTIFICATION_PERMISSION_PROMPT: &str = "permission_prompt";
 pub const NOTIFICATION_IDLE_PROMPT: &str = "idle_prompt";
+/// The model asked the user something and waits for the answer.
+pub const NOTIFICATION_QUESTION_PROMPT: &str = "question_prompt";
 
 pub fn build_payload(
     event: HookEvent,
