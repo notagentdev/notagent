@@ -41,8 +41,9 @@ pub struct ShimmerPalette {
     pub fade: (u8, u8, u8),
 }
 
-/// The colour the band should pull `base` toward: the background behind it.
-/// Derived from the text rather than asked for, because the two themes differ
+/// The colour the band should pull `base` toward when the terminal did not
+/// report its background. The reported background is the better target; this
+/// approximates it. Derived from the text rather than asked for, because the two themes differ
 /// in exactly this and nothing else: light text sits on a dark ground and dark
 /// text on a light one. Taking the direction from the text's own brightness
 /// therefore reverses with the theme without anything having to be configured,

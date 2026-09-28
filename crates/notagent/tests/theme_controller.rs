@@ -17,6 +17,7 @@ fn theme_lock() -> MutexGuard<'static, ()> {
 struct Harness {
     _directory: tempfile::TempDir,
     settings: Arc<SettingsManager>,
+    terminal: VirtualTerminal,
     _tui: TuiMainScreen,
     controller: InteractiveThemeController,
     errors: Arc<Mutex<Vec<String>>>,
@@ -45,7 +46,8 @@ fn harness(theme_setting: Option<&str>) -> Harness {
         Some(&agent_dir),
         SettingsManagerCreateOptions::default(),
     ));
-    let tui = TuiMainScreen::new(Box::new(VirtualTerminal::new(80, 24)));
+    let terminal = VirtualTerminal::new(80, 24);
+    let tui = TuiMainScreen::new(Box::new(terminal.clone()));
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let changes = Arc::new(Mutex::new(0usize));
@@ -61,6 +63,7 @@ fn harness(theme_setting: Option<&str>) -> Harness {
     Harness {
         _directory: directory,
         settings,
+        terminal,
         _tui: tui,
         controller,
         errors,
@@ -167,4 +170,35 @@ async fn an_automatic_setting_picks_the_half_that_matches_the_terminal() {
     harness.controller.apply_from_settings().await;
 
     assert_eq!(theme().name.as_deref(), Some("dark"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[allow(clippy::await_holding_lock)]
+async fn the_terminal_background_is_asked_for_even_with_a_fixed_theme() {
+    use notagent::modes::interactive::theme::theme::{
+        set_terminal_background, terminal_background,
+    };
+    let _guard = theme_lock();
+    set_terminal_background(None);
+    let mut harness = harness(Some("light"));
+    // A started screen routes terminal input, which is where the reply lands.
+    harness._tui.start();
+
+    let answer = async {
+        // The reply arrives while the query waits for it, as it would from a
+        // real terminal a few milliseconds later.
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        harness
+            .terminal
+            .send_input("\x1b]11;rgb:fafa/f4f4/e4e4\x07");
+    };
+    tokio::join!(harness.controller.apply_from_settings(), answer);
+
+    assert_eq!(
+        terminal_background(),
+        Some((250, 244, 228)),
+        "a fixed theme names notagent's colours, not the window's ground, so the ground is still asked for"
+    );
+    assert_eq!(theme().name.as_deref(), Some("light"));
+    set_terminal_background(None);
 }

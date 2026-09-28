@@ -14,7 +14,7 @@ use notagent_tui::components::shimmer::{ShimmerPalette, fade_toward_background};
 use notagent_tui::tui::{Component, Line};
 
 use crate::modes::interactive::theme::theme::{
-    ThemeColor, format_elapsed_live, format_elapsed_precise, theme,
+    ThemeColor, format_elapsed_live, format_elapsed_precise, terminal_background, theme,
 };
 
 use super::countdown_timer::CountdownTimer;
@@ -84,17 +84,17 @@ fn message_in(color: ThemeColor) -> Rc<dyn Fn(&str) -> String> {
     Rc::new(move |text: &str| theme().fg(color, text))
 }
 
-/// The fade the travelling band pulls the message toward.
-/// The background rather than the theme's dim colour: dim is a text colour and
-/// stops well short of the ground, which left the band shallow — most visibly
-/// in the light theme, where dim is a mid grey a long way from the page. The
-/// direction comes from the message colour itself, so it reverses with the
-/// theme rather than having to be told which one is in use.
-fn shimmer_palette(base: ThemeColor) -> Option<ShimmerPalette> {
+/// The fade the travelling band pulls the message toward: the terminal
+/// window's own background, so the band dissolves the text into exactly the
+/// ground it sits on. Pure black or white only approximates that ground, and on
+/// a light terminal whose page is cream or grey the band read as a patch of
+/// white rather than as the text fading. Only when the terminal never reported
+/// its background does the direction come from the message colour itself.
+fn shimmer_palette(base: ThemeColor, background: Option<(u8, u8, u8)>) -> Option<ShimmerPalette> {
     let base = theme().get_fg_rgb(base)?;
     Some(ShimmerPalette {
         base,
-        fade: fade_toward_background(base),
+        fade: background.unwrap_or_else(|| fade_toward_background(base)),
     })
 }
 
@@ -136,7 +136,9 @@ impl StatusIndicator {
             indicator.clone(),
         );
         if indicator.is_none() {
-            status.loader.set_shimmer(shimmer_palette(base));
+            status
+                .loader
+                .set_shimmer(shimmer_palette(base, terminal_background()));
         }
         if matches!(
             kind,
@@ -367,5 +369,29 @@ impl Component for IdleStatus {
     fn render(&mut self, width: usize) -> Vec<Line> {
         let empty_line = Line::from(" ".repeat(width));
         vec![empty_line.clone(), empty_line]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_band_fades_into_the_terminal_background_it_was_given() {
+        crate::modes::interactive::theme::theme::init_theme(Some("light"), false);
+        let cream = (250, 244, 228);
+        let palette =
+            shimmer_palette(ThemeColor::Text, Some(cream)).expect("the theme has a text colour");
+        assert_eq!(
+            palette.fade, cream,
+            "the band must dissolve the text into the window's own ground"
+        );
+    }
+
+    #[test]
+    fn without_a_reported_background_the_band_still_lowers_contrast() {
+        crate::modes::interactive::theme::theme::init_theme(Some("light"), false);
+        let palette = shimmer_palette(ThemeColor::Text, None).expect("the theme has a text colour");
+        assert_eq!(palette.fade, fade_toward_background(palette.base));
     }
 }

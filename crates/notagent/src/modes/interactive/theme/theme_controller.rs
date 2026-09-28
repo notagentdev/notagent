@@ -12,7 +12,7 @@ use super::theme::{
     TerminalAutoThemeDetector, TerminalBackgroundThemeDetector, TerminalQueryFuture, TerminalTheme,
     Theme, ThemeResult, detect_terminal_background_from_env, detect_terminal_background_theme,
     detect_terminal_theme_for_auto, init_theme, parse_auto_theme_setting, resolve_theme_setting,
-    set_theme, set_theme_instance,
+    set_terminal_background, set_theme, set_theme_instance,
 };
 
 // typing). Rust needs the adapter to be spelled out; the two helpers below keep
@@ -47,6 +47,38 @@ impl TerminalAutoThemeDetector for TuiCore {
                 .map(TerminalTheme::from))
         })
     }
+}
+
+/// The terminal, with its background already asked for once.
+/// `apply_from_settings` needs the background for two things — the theme
+/// detection and the shimmer's fade — and asking twice would put two OSC 11
+/// queries on the wire for one answer's worth of information.
+struct KnownBackground<'a> {
+    ui: &'a TuiCore,
+    background: Option<RgbColor>,
+}
+
+impl TerminalBackgroundThemeDetector for KnownBackground<'_> {
+    fn query_terminal_background_color(
+        &self,
+        _timeout_ms: u64,
+    ) -> TerminalQueryFuture<'_, Option<RgbColor>> {
+        let background = self.background;
+        Box::pin(async move { Ok(background) })
+    }
+}
+
+impl TerminalAutoThemeDetector for KnownBackground<'_> {
+    fn query_terminal_color_scheme(
+        &self,
+        timeout_ms: u64,
+    ) -> TerminalQueryFuture<'_, Option<TerminalTheme>> {
+        TerminalAutoThemeDetector::query_terminal_color_scheme(self.ui, timeout_ms)
+    }
+}
+
+fn channel(value: u32) -> u8 {
+    u8::try_from(value).unwrap_or(u8::MAX)
 }
 
 struct ControllerState {
@@ -113,14 +145,25 @@ impl InteractiveThemeController {
 
     /// Apply the theme configured in the settings, detecting the terminal
     /// background when the setting is absent.
+    /// The background is asked for whatever the setting says: the working
+    /// and compaction shimmer fades its text into the terminal's own ground,
+    /// and a fixed theme names the colours notagent draws, not that ground.
     pub async fn apply_from_settings(&self) {
         let (ui, theme_setting) = {
             let state = self.0.borrow();
             (state.ui.clone(), state.settings_manager.get_theme_setting())
         };
+        let background = query_background_color(&ui, Duration::from_millis(100)).await;
+        set_terminal_background(
+            background.map(|color| (channel(color.r), channel(color.g), channel(color.b))),
+        );
+        let known = KnownBackground {
+            ui: &ui,
+            background,
+        };
         let auto_theme = parse_auto_theme_setting(theme_setting.as_deref());
         if let Some((light_theme, dark_theme)) = auto_theme {
-            let terminal_theme = detect_terminal_theme_for_auto(&ui, 100, None).await;
+            let terminal_theme = detect_terminal_theme_for_auto(&known, 100, None).await;
             self.0.borrow_mut().terminal_theme = terminal_theme;
             self.set_auto_sync(true);
             self.apply_theme_name(
@@ -140,7 +183,7 @@ impl InteractiveThemeController {
             return;
         }
 
-        let detection = detect_terminal_background_theme(&ui, 100, None).await;
+        let detection = detect_terminal_background_theme(&known, 100, None).await;
         self.0.borrow_mut().terminal_theme = detection.theme;
         if !self
             .apply_theme_name(detection.theme.as_str(), false)
@@ -260,6 +303,10 @@ impl InteractiveThemeController {
             if !state.auto_sync_enabled {
                 return;
             }
+            // The terminal switched its colours, so the background it reported
+            // earlier is stale. Until it is asked again the shimmer falls back
+            // to fading by the text's brightness, which follows the new scheme.
+            set_terminal_background(None);
             state.terminal_theme = terminal_theme;
             state.settings_manager.get_theme_setting()
         };

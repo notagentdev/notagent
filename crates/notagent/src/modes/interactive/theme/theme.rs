@@ -1971,6 +1971,30 @@ fn global_theme() -> &'static RwLock<Option<Arc<Theme>>> {
     THEME.get_or_init(|| RwLock::new(None))
 }
 
+/// The terminal window's own background, as its OSC 11 reply gave it.
+/// Kept apart from the theme: a theme describes the colours notagent draws,
+/// while this is the ground everything is drawn on, which the terminal owns and
+/// a theme cannot know. `None` until the terminal answered, and whenever it
+/// does not.
+fn terminal_background_slot() -> &'static RwLock<Option<(u8, u8, u8)>> {
+    static BACKGROUND: OnceLock<RwLock<Option<(u8, u8, u8)>>> = OnceLock::new();
+    BACKGROUND.get_or_init(|| RwLock::new(None))
+}
+
+/// Records the terminal background the theme controller detected.
+pub fn set_terminal_background(background: Option<(u8, u8, u8)>) {
+    *terminal_background_slot()
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = background;
+}
+
+/// The terminal window's background, when the terminal reported it.
+pub fn terminal_background() -> Option<(u8, u8, u8)> {
+    *terminal_background_slot()
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 fn current_theme_name() -> &'static RwLock<Option<String>> {
     static CURRENT_THEME_NAME: OnceLock<RwLock<Option<String>>> = OnceLock::new();
     CURRENT_THEME_NAME.get_or_init(|| RwLock::new(None))
