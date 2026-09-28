@@ -1,11 +1,11 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-09-23T16:01:11.580Z",
-  "structureHash": "92534d83b3c8eae910fa2c4a377174289d866451e550f99e51ea2e8ee41a2295",
+  "generatedAt": "2026-09-28T22:44:46.825Z",
+  "structureHash": "20f4921ffcb543c614194563f15f769f420bdc54f115253fb666ae3a4f09fe62",
   "files": {
     "amazon-bedrock.json": "681b69fb339cc8dce9f90d4ecfff4f9d5ee766d5aade5c9159f6de6df727eaab",
     "ant-ling.json": "4979fe79d99ed97382d7ce40170c6132e932e77906de1eb54464c042e7d63633",
-    "anthropic.json": "67e61ce658b9aa8b7689624d95f2633b9fd03a3d4944fb7cd440d198aed293d7",
+    "anthropic.json": "c3d835d32df86e849c943707a8c2a2152978760da966ea421d5e67e0d2d86eaf",
     "azure-openai-responses.json": "37d12c5cbfc29bfd9a802a0516f5d3209320bd4aa8ef9cd7c219af208244afa3",
     "baseten.json": "e4d1ec84e8180a53e21c1511b8d78e497784515c33ba8397382ac3450c8b126e",
     "cerebras.json": "38272a7525d6680c71bb4bb3c4085e871768b400832e2013b0e7fd92f8fd4f05",

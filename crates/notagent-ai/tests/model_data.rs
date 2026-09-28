@@ -941,9 +941,10 @@ fn gpt_6_sol_and_luna_are_offered_through_the_api_and_the_codex_plan() {
 }
 
 #[test]
-fn claude_opus_5_5_and_fable_5_1_are_in_the_anthropic_catalog() {
+fn claude_opus_5_5_sonnet_5_5_and_fable_5_1_are_in_the_anthropic_catalog() {
     for (model_id, input, output, cache_read, cache_write) in [
         ("claude-opus-5-5", 4.0, 20.0, 0.2, 5.0),
+        ("claude-sonnet-5-5", 2.0, 10.0, 0.2, 2.5),
         ("claude-fable-5-1", 10.0, 50.0, 0.25, 12.5),
     ] {
         let model = get_builtin_model("anthropic", model_id).expect(model_id);
@@ -960,7 +961,8 @@ fn claude_opus_5_5_and_fable_5_1_are_in_the_anthropic_catalog() {
             (cache_read, cache_write),
             "{model_id}"
         );
-        // Both think adaptively and cannot have thinking switched off.
+        // All three think adaptively and cannot have thinking switched off:
+        // Sonnet 5.5 answers `thinking: disabled` with a 400, like Opus 5.5.
         assert_eq!(
             get_supported_thinking_levels(&model),
             vec![
