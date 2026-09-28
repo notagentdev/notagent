@@ -99,6 +99,16 @@ never blocks a file.
 
 ## Update notes
 
+### 0.1.66
+
+**New model**
+
+- *Claude Sonnet 5.5* (`claude-sonnet-5-5`) for the Anthropic API and the
+  Claude subscription login: 1M context, 128K output, adaptive thinking up to
+  `max` that cannot be switched off (the API rejects `disabled` on this model),
+  $2 / $10 per million input / output tokens, cache reads $0.20. The default
+  stays `claude-opus-5-5`.
+
 ### 0.1.65
 
 - The shimmer in the working and compaction status fades the text into the
