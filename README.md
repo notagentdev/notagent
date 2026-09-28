@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.63 supports Apple Silicon Macs:
+Version 0.1.64 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,17 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.64
+
+- The model can ask you up to four multiple-choice questions in a dialog
+  and waits for your choice. Every question also takes a typed answer, and
+  Escape dismisses the dialog without answering.
+- In auto and yolo mode the model is not allowed to ask; it decides and says
+  which reading it chose. Switching modes does not change the tool list, so
+  it keeps the prompt cache.
+- Hooks receive a `Notification` with `question_prompt` while a question is
+  on screen.
 
 ### 0.1.63
 
