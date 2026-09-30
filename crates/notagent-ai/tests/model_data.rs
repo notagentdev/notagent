@@ -914,6 +914,34 @@ fn gpt_6_astra_uses_the_context_limit_of_each_openai_endpoint() {
 }
 
 #[test]
+fn gpt_6_1_sol_is_offered_through_the_api_and_the_codex_plan() {
+    let api = get_builtin_model("openai", "gpt-6.1-sol").expect("OpenAI model");
+    let codex = get_builtin_model("openai-codex", "gpt-6.1-sol").expect("Codex model");
+
+    assert_eq!(api.context_window, 1_050_000);
+    assert_eq!(codex.context_window, 872_000);
+    for model in [&api, &codex] {
+        assert_eq!(model.max_tokens, 128_000);
+        assert_eq!((model.cost.input, model.cost.output), (2.0, 10.0));
+        // Cheaper cache reads than GPT-6 Sol ($0.20): the one price that moved.
+        assert_eq!(model.cost.cache_read, 0.1);
+        // The model page rejects `none` and `minimal`, like GPT-6 Astra.
+        assert_eq!(
+            get_supported_thinking_levels(model),
+            vec![
+                ModelThinkingLevel::Low,
+                ModelThinkingLevel::Medium,
+                ModelThinkingLevel::High,
+                ModelThinkingLevel::Xhigh,
+                ModelThinkingLevel::Max,
+            ],
+            "{}",
+            model.provider
+        );
+    }
+}
+
+#[test]
 fn gpt_6_sol_and_luna_are_offered_through_the_api_and_the_codex_plan() {
     for (model_id, input, output) in [("gpt-6-sol", 2.0, 10.0), ("gpt-6-luna", 0.1, 0.5)] {
         let api = get_builtin_model("openai", model_id).expect(model_id);
