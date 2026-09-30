@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.66 supports Apple Silicon Macs:
+Version 0.1.67 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,13 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.67
+
+- New model: GPT-6.1 Sol for the OpenAI API and the Codex plan. It offers
+  the reasoning levels low to max; like GPT-6 Astra it has no off level.
+- Up on an empty input brings back the last prompt again. The arrow keys
+  were taken for scrolling the `/btw` panel even when none was open.
 
 ### 0.1.66
 
