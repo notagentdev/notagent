@@ -134,7 +134,12 @@ impl InteractiveMode {
                                 // arrive. Wait for ToolExecutionStart, where the
                                 // complete arguments let us omit background bash
                                 // without ever painting a transient tool row.
-                                if call.name == "bash" {
+                                // `write` and `patch_minified` carry whole files
+                                // in their arguments: repainting them per token
+                                // re-highlights a growing half-parsed file. They
+                                // also appear at ToolExecutionStart, complete.
+                                if matches!(call.name.as_str(), "bash" | "write" | "patch_minified")
+                                {
                                     self.remove_tool_component(&call.id);
                                     continue;
                                 }
@@ -231,6 +236,11 @@ impl InteractiveMode {
                 }
                 if self.tool_component(&tool_call_id).is_none() {
                     self.add_tool_component(&tool_name, &tool_call_id, args);
+                    // MessageEnd marked only the rows that existed then; a row
+                    // born here has complete arguments by definition.
+                    if let Some(component) = self.tool_component(&tool_call_id) {
+                        component.borrow_mut().set_args_complete();
+                    }
                 }
                 if let Some(component) = self.tool_component(&tool_call_id) {
                     component.borrow_mut().mark_execution_started();
