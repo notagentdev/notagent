@@ -1,7 +1,7 @@
 mod events;
 mod replay;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
@@ -1078,6 +1078,11 @@ pub struct InteractiveMode {
     /// it is mounted in, because the loop has to reach it on every event the
     /// child produces.
     side_question_panel: Option<Rc<RefCell<SideQuestionPanel>>>,
+    /// Whether `side_question_panel` is set, shared with the editor's arrow
+    /// hooks. They run inside the editor and cannot see the mode, and without
+    /// it they claimed every arrow on an empty buffer, so the prompt history
+    /// was unreachable whenever no panel was open.
+    side_question_open: Rc<Cell<bool>>,
     editor_container: Rc<RefCell<Container>>,
     widget_container_below: Rc<RefCell<Container>>,
     footer_container: Rc<RefCell<Container>>,
@@ -1371,6 +1376,7 @@ impl InteractiveMode {
             subagent_panel_signature: String::new(),
             widget_container_above: Rc::new(RefCell::new(Container::new())),
             side_question_panel: None,
+            side_question_open: Rc::new(Cell::new(false)),
             editor_container,
             widget_container_below: Rc::new(RefCell::new(Container::new())),
             footer_container,
@@ -1721,19 +1727,27 @@ impl InteractiveMode {
         editor.on_paste_image = Some(Box::new(move || {
             let _ = tx.send(UiMessage::Action(AppAction::PasteImage));
         }));
+        // The arrows belong to the panel only while one is open; otherwise
+        // they fall through to the editor, which browses the prompt history.
         let tx = self.ui_tx.clone();
+        let open = Rc::clone(&self.side_question_open);
         editor.on_up_arrow_empty = Some(Box::new(move || {
-            tx.send(UiMessage::Action(AppAction::ScrollSideQuestion {
-                up: true,
-            }))
-            .is_ok()
+            open.get()
+                && tx
+                    .send(UiMessage::Action(AppAction::ScrollSideQuestion {
+                        up: true,
+                    }))
+                    .is_ok()
         }));
         let tx = self.ui_tx.clone();
+        let open = Rc::clone(&self.side_question_open);
         editor.on_down_arrow_empty = Some(Box::new(move || {
-            tx.send(UiMessage::Action(AppAction::ScrollSideQuestion {
-                up: false,
-            }))
-            .is_ok()
+            open.get()
+                && tx
+                    .send(UiMessage::Action(AppAction::ScrollSideQuestion {
+                        up: false,
+                    }))
+                    .is_ok()
         }));
         for (action, message) in [
             ("app.clear", AppAction::Clear),
@@ -7731,6 +7745,7 @@ impl InteractiveMode {
             container.add_child(Rc::clone(&panel) as ComponentRef);
         }
         self.side_question_panel = Some(panel);
+        self.side_question_open.set(true);
         self.ui.request_render();
         if let Some(question) = question {
             self.ask_side_question(question);
@@ -7854,6 +7869,7 @@ impl InteractiveMode {
         if self.side_question_panel.take().is_none() {
             return false;
         }
+        self.side_question_open.set(false);
         self.session().cancel_side_question();
         self.widget_container_above.borrow_mut().clear();
         self.ui.request_render();

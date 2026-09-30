@@ -1702,3 +1702,48 @@ async fn a_rejected_question_shows_its_error_in_the_transcript() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn up_on_an_empty_editor_brings_back_the_last_prompt() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("first answer"), reply("second answer")]);
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("notagent").await;
+
+        driver.submit("remember this prompt").await;
+        driver.wait_for("first answer").await;
+
+        // No side-question panel is open, so the arrow belongs to the history.
+        driver.send_keys("\x1b[A").await;
+        driver.send_keys(KEY_ENTER).await;
+        driver.wait_for("second answer").await;
+
+        let prompts = app
+            .session()
+            .state()
+            .messages
+            .iter()
+            .filter(|message| match message {
+                AgentMessage::User(user) => match &user.content {
+                    UserContent::Text(text) => text.contains("remember this prompt"),
+                    UserContent::Blocks(parts) => parts.iter().any(|part| {
+                        matches!(part, notagent_ai::types::TextOrImageContent::Text(text)
+                            if text.text.contains("remember this prompt"))
+                    }),
+                },
+                _ => false,
+            })
+            .count();
+        assert_eq!(
+            prompts, 2,
+            "Up on an empty editor must recall the last prompt, so Enter sends it again"
+        );
+
+        driver.submit("/quit").await;
+        assert_eq!(driver.wait_for_exit().await, 0);
+    })
+    .await;
+}
