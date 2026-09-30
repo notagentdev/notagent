@@ -294,9 +294,14 @@ fn puts_the_intro_text_before_the_xml() {
     let intro = &result[..xml_start];
 
     assert!(intro.contains("The following skills provide specialized instructions"));
-    assert!(intro.contains("Use the skill tool with the skill's name"));
-    assert!(intro.contains(notagent::core::skills::SKILL_CRITICAL_LOADING_POLICY));
-    assert!(intro.contains("substitute read, bash, or another tool for loading it"));
+    assert!(
+        intro.contains(notagent::core::skills::SKILL_USAGE_RULES),
+        "the usage rules must precede the skill list: {intro}"
+    );
+    assert!(
+        intro.contains("clearly matches"),
+        "a skill loads on a name or a clear match, not on mere relatedness: {intro}"
+    );
     assert!(!intro.contains("Use the read tool to load"));
 }
 

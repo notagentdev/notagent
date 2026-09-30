@@ -56,7 +56,7 @@ fn skills_are_listed_only_when_the_skill_tool_is_available_in_either_prompt_path
                 "skill availability must control the catalog: custom={custom_prompt:?}, tools={selected_tools:?}"
             );
             assert_eq!(
-                prompt.contains("Use the skill tool with the skill's name"),
+                prompt.contains("load it with the skill tool"),
                 listed,
                 "listed skills must be loaded through the skill tool: {prompt}"
             );
@@ -378,33 +378,17 @@ fn bash_critical_policy_heads_both_prompt_paths_and_the_tool_description() {
 }
 
 #[test]
-fn skill_loading_is_critical_in_both_prompt_paths_and_the_tool_description() {
-    use notagent::core::skills::SKILL_CRITICAL_LOADING_POLICY;
-    use notagent::core::tools::skill::create_skill_tool_definition;
-    use notagent::core::tools::tool_definition::ToolDefinition;
+fn skill_rules_are_not_pushed_to_the_front_of_the_prompt() {
+    use notagent::core::skills::SKILL_USAGE_RULES;
     for custom_prompt in [None, Some("Custom instructions".to_owned())] {
-        for attached in [false, true] {
-            let prompt = build_system_prompt(&BuildSystemPromptOptions {
-                custom_prompt: custom_prompt.clone(),
-                selected_tools: tools(if attached {
-                    &["skill", "read"]
-                } else {
-                    &["read"]
-                }),
-                ..options()
-            });
-            assert_eq!(
-                prompt.starts_with(SKILL_CRITICAL_LOADING_POLICY),
-                attached,
-                "mandatory skill loading must lead whenever skill is attached: {prompt}"
-            );
-        }
+        let prompt = build_system_prompt(&BuildSystemPromptOptions {
+            custom_prompt: custom_prompt.clone(),
+            selected_tools: tools(&["skill", "read"]),
+            ..options()
+        });
+        assert!(
+            !prompt.starts_with(SKILL_USAGE_RULES),
+            "skill rules belong beside the skill list, not ahead of everything: {prompt}"
+        );
     }
-    let tool = create_skill_tool_definition(None);
-    assert!(
-        tool.description()
-            .starts_with(SKILL_CRITICAL_LOADING_POLICY),
-        "the critical rule must precede skill usage instructions: {}",
-        tool.description()
-    );
 }

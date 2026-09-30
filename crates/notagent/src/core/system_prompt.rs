@@ -1,5 +1,5 @@
 use crate::config::DOCUMENTATION_URL;
-use crate::core::skills::{SKILL_CRITICAL_LOADING_POLICY, Skill, format_skills_for_prompt};
+use crate::core::skills::{Skill, format_skills_for_prompt};
 use crate::core::tools::bash::BASH_CRITICAL_TOOL_POLICY;
 
 /// One preloaded context file: `AGENTS.md`, `CLAUDE.md` and the like.
@@ -75,15 +75,11 @@ pub fn build_system_prompt(options: &BuildSystemPromptOptions) -> String {
         None => DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
     };
     let has_skill = tools.iter().any(|name| name == "skill");
-    let mut critical_tool_policy = if tools.iter().any(|name| name == "bash") {
+    let critical_tool_policy = if tools.iter().any(|name| name == "bash") {
         format!("{BASH_CRITICAL_TOOL_POLICY}\n\n")
     } else {
         String::new()
     };
-    if has_skill {
-        critical_tool_policy.push_str(SKILL_CRITICAL_LOADING_POLICY);
-        critical_tool_policy.push_str("\n\n");
-    }
 
     if let Some(custom_prompt) = options.custom_prompt.as_deref() {
         let mut prompt = format!("{critical_tool_policy}{custom_prompt}");
