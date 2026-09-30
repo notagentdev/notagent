@@ -22,7 +22,7 @@ pub const TODO_WRITE_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
     SystemPromptContribution {
         snippet: "Track multi-step work in a task list",
         guidelines: &[
-            "Keep a task list with todo_write for work of three or more steps: mark one task in_progress before starting it and completed as soon as it is genuinely done.",
+            "Keep a task list with todo_write for non-trivial work of roughly three or more steps, not for simple or single-step requests. Keep exactly one task in_progress, mark it completed as soon as it is genuinely done, and update the list when the scope changes.",
         ],
     };
 
@@ -75,9 +75,11 @@ const DESCRIPTION: &str = concat!(
     "\n",
     "## Usage\n",
     "\n",
-    "Use it for multi-step work (roughly three or more distinct steps), when the user lists several tasks, or when they ask for it. Skip it for single straightforward tasks, trivial changes, and purely conversational or informational requests — just do the work.\n",
+    "Use it for non-trivial work that needs several actions with steps in a meaningful order (roughly three or more), when the user lists several tasks, when you find further steps while working, or when they ask for it. Skip it for single straightforward tasks, trivial changes, and purely conversational or informational requests — just do the work. Do not pad the list with filler steps or steps you cannot carry out, such as testing something you are unable to run.\n",
     "\n",
-    "Mark a task `in_progress` before starting it (one at a time), and `completed` as soon as it is genuinely done — implemented and, where relevant, verified. Don't batch completions, and don't narrate every status change in chat. If you hit a blocker, keep the task `in_progress` and add a new task describing what must be resolved. Never mark a task completed while tests fail, the implementation is partial, or errors remain unresolved."
+    "Mark a task `in_progress` before starting it (one at a time; never go from `pending` straight to `completed`), and `completed` as soon as it is genuinely done — implemented and, where relevant, verified. Don't batch completions after the fact. If you hit a blocker, keep the task `in_progress` and add a new task describing what must be resolved. Never mark a task completed while tests fail, the implementation is partial, or errors remain unresolved.\n",
+    "\n",
+    "If your understanding changes mid-task (steps split, merge, or reorder), update the list before continuing; do not let it go stale. Update it only after real progress or a change of plan, not to rewrite the same list. The interface already shows the list, so do not repeat its contents in chat and do not narrate each status change; summarize what changed and the next step. Before ending the turn, every task is completed or removed."
 );
 
 /// The session's store. Absent where no list is kept, such as a subagent.
