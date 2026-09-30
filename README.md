@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.67 supports Apple Silicon Macs:
+Version 0.1.68 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,17 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.68
+
+- The skill rules are stated once, next to the skill list. The model now
+  loads a skill when you name it or the task clearly matches, not whenever
+  one is merely related.
+- The task list tool tells the model to revise the list when a plan changes,
+  not to jump from pending straight to completed, and not to repeat the list
+  in chat.
+- `write` and `patch_minified` rows appear once their arguments are complete
+  instead of repainting on every streamed token.
 
 ### 0.1.67
 
