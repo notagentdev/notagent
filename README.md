@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.68 supports Apple Silicon Macs:
+Version 0.1.69 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,12 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.69
+
+- `multi_patch_minified` rows now also wait until their arguments are
+  complete, like `write` and `patch_minified`, instead of counting the diff
+  up while the model is still writing.
 
 ### 0.1.68
 
