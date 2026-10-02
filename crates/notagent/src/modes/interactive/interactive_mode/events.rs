@@ -134,12 +134,17 @@ impl InteractiveMode {
                                 // arrive. Wait for ToolExecutionStart, where the
                                 // complete arguments let us omit background bash
                                 // without ever painting a transient tool row.
-                                // `write` and `patch_minified` carry whole files
-                                // in their arguments: repainting them per token
-                                // re-highlights a growing half-parsed file. They
-                                // also appear at ToolExecutionStart, complete.
-                                if matches!(call.name.as_str(), "bash" | "write" | "patch_minified")
-                                {
+                                // `write` and the minified patch tools carry whole
+                                // files or whole edit lists in their arguments:
+                                // repainting them per token re-highlights a
+                                // growing half-parsed file and counts the diff up
+                                // while the model is still writing. They appear at
+                                // ToolExecutionStart, complete. Both patch tools
+                                // show as "Patch", so both belong here.
+                                if matches!(
+                                    call.name.as_str(),
+                                    "bash" | "write" | "patch_minified" | "multi_patch_minified"
+                                ) {
                                     self.remove_tool_component(&call.id);
                                     continue;
                                 }

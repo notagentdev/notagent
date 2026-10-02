@@ -685,6 +685,7 @@ impl FauxCore {
                     });
                     let arguments = serde_json::to_string(&tool_call.arguments)
                         .unwrap_or_else(|_| "{}".to_string());
+                    let mut streamed_arguments = String::new();
                     for chunk in
                         split_by_token_size(&arguments, self.min_token_size, self.max_token_size)
                     {
@@ -697,6 +698,20 @@ impl FauxCore {
                             });
                             stream.end(Some(message));
                             return;
+                        }
+                        // Real providers hand the parsed prefix of the argument
+                        // JSON along with every delta; a row built from the
+                        // partial message sees the arguments grow.
+                        streamed_arguments.push_str(&chunk);
+                        if let Some(AssistantContent::ToolCall(block)) =
+                            partial.content.get_mut(index)
+                        {
+                            block.arguments = crate::utils::json_parse::parse_streaming_json(Some(
+                                &streamed_arguments,
+                            ))
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_default();
                         }
                         stream.push(AssistantMessageEvent::ToolcallDelta {
                             content_index: index,
