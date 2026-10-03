@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.69 supports Apple Silicon Macs:
+Version 0.1.70 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,11 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.70
+
+- Building the code index no longer crashes notagent on deeply nested
+  generated files (for example gperf headers) with a stack overflow.
 
 ### 0.1.69
 
