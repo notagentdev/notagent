@@ -167,63 +167,47 @@ impl SymbolIndex {
     /// Extract symbols from a parsed tree
     fn extract_symbols(&self, tree: &Tree, source: &str, file_path: &Path) -> Vec<Arc<Symbol>> {
         let mut symbols = Vec::new();
-        let root = tree.root_node();
+        // An explicit stack rather than recursion: generated sources nest
+        // tens of thousands of levels deep, and this runs on rayon workers
+        // whose stacks overflow long before that.
+        let mut pending: Vec<(tree_sitter::Node, Option<Arc<str>>)> =
+            vec![(tree.root_node(), None)];
+        let mut cursor = tree.walk();
 
-        self.visit_node(root, source, file_path, None, &mut symbols);
+        while let Some((node, parent)) = pending.pop() {
+            let mut child_parent = parent.clone();
+            if let Some(kind) = SymbolKind::from_node_kind(node.kind())
+                && let Some(name) = self.get_symbol_name(node, source)
+            {
+                let mut symbol = Symbol::new(
+                    name,
+                    kind,
+                    file_path.to_path_buf(),
+                    node.start_position().row..node.end_position().row,
+                    node.byte_range(),
+                );
+                if let Some(p) = &parent {
+                    symbol = symbol.with_parent(p.to_string());
+                }
+                if let Some(vis) = self.get_visibility(node, source) {
+                    symbol = symbol.with_visibility(vis);
+                }
+                // Impl and mod blocks name the parent of what they contain.
+                if kind == SymbolKind::Impl || kind == SymbolKind::Mod {
+                    child_parent = Some(Arc::from(symbol.full_path.as_str()));
+                }
+                symbols.push(Arc::new(symbol));
+            }
+
+            // Pushed in reverse so they pop in source order.
+            let first_child = pending.len();
+            for child in node.children(&mut cursor) {
+                pending.push((child, child_parent.clone()));
+            }
+            pending[first_child..].reverse();
+        }
 
         symbols
-    }
-
-    /// Recursively visit AST nodes and extract symbols
-    fn visit_node(
-        &self,
-        node: tree_sitter::Node,
-        source: &str,
-        file_path: &Path,
-        parent: Option<&str>,
-        symbols: &mut Vec<Arc<Symbol>>,
-    ) {
-        // Check if this node is a symbol we care about
-        if let Some(kind) = SymbolKind::from_node_kind(node.kind())
-            && let Some(name) = self.get_symbol_name(node, source)
-        {
-            let mut symbol = Symbol::new(
-                name.clone(),
-                kind,
-                file_path.to_path_buf(),
-                node.start_position().row..node.end_position().row,
-                node.byte_range(),
-            );
-
-            if let Some(p) = parent {
-                symbol = symbol.with_parent(p.to_string());
-            }
-
-            // Extract visibility
-            if let Some(vis) = self.get_visibility(node, source) {
-                symbol = symbol.with_visibility(vis);
-            }
-
-            let current_name = symbol.full_path.clone();
-            symbols.push(Arc::new(symbol));
-
-            // Visit children with this as parent (for impl blocks, etc.)
-            let new_parent = if kind == SymbolKind::Impl || kind == SymbolKind::Mod {
-                Some(current_name.as_str())
-            } else {
-                parent
-            };
-
-            for child in node.children(&mut node.walk()) {
-                self.visit_node(child, source, file_path, new_parent, symbols);
-            }
-            return;
-        }
-
-        // Continue visiting children
-        for child in node.children(&mut node.walk()) {
-            self.visit_node(child, source, file_path, parent, symbols);
-        }
     }
 
     /// Get the name of a symbol from a node
@@ -373,5 +357,35 @@ impl Person {
 
         index.remove_file(path);
         assert_eq!(index.file_count(), 0);
+    }
+
+    #[test]
+    fn a_deeply_nested_file_is_indexed_on_a_small_stack() {
+        // Indexing runs on rayon workers; generated sources nest expressions
+        // tens of thousands of levels deep, which a recursive walk cannot
+        // survive on a worker's stack.
+        let source = format!(
+            "const DEEP: i32 = {};\nimpl Thing {{ fn after() {{}} }}\n",
+            vec!["1"; 20_000].join(" + ")
+        );
+        let symbols = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                SymbolIndex::new()
+                    .index_file(Path::new("deep.rs"), &source)
+                    .unwrap()
+            })
+            .unwrap()
+            .join()
+            .expect("indexing a deep tree must not exhaust the stack");
+        let names: Vec<_> = symbols
+            .iter()
+            .map(|symbol| (symbol.name.as_str(), symbol.parent.as_deref()))
+            .collect();
+        assert_eq!(
+            names,
+            [("DEEP", None), ("Thing", None), ("after", Some("Thing"))],
+            "symbols keep source order and their impl parent"
+        );
     }
 }

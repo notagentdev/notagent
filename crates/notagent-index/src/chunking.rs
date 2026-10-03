@@ -36,9 +36,8 @@ pub fn chunk_file(path: &Path, source: &str, tree: Option<&Tree>) -> Result<Vec<
 
     let mut chunks = Vec::new();
     if let Some(tree) = tree {
-        let root = tree.root_node();
         let options = ChunkerOptions::default();
-        visit_nodes(lang, root, source, false, &mut chunks, &options, path);
+        visit_nodes(lang, tree, source, &mut chunks, &options, path);
     } else {
         return Ok(fallback_chunks(path, source, &format_language(lang)));
     }
@@ -48,17 +47,26 @@ pub fn chunk_file(path: &Path, source: &str, tree: Option<&Tree>) -> Result<Vec<
 
 fn visit_nodes(
     lang: SupportedLanguage,
-    node: Node,
+    tree: &Tree,
     source: &str,
-    parent_is_chunk: bool,
     out: &mut Vec<ChunkDocument>,
     options: &ChunkerOptions,
     path: &Path,
 ) {
-    let kind = node.kind();
-    let is_chunk = is_chunk_node(lang, kind) && !parent_is_chunk;
-
-    if is_chunk {
+    // An explicit stack rather than recursion: generated sources nest tens
+    // of thousands of levels deep, and this runs on rayon workers whose
+    // stacks overflow long before that.
+    let mut pending = vec![tree.root_node()];
+    let mut cursor = tree.walk();
+    while let Some(node) = pending.pop() {
+        let kind = node.kind();
+        if !is_chunk_node(lang, kind) {
+            // Pushed in reverse so they pop in source order.
+            let first_child = pending.len();
+            pending.extend(node.children(&mut cursor));
+            pending[first_child..].reverse();
+            continue;
+        }
         let name = symbol_name(node, source).unwrap_or_else(|| "<anonymous>".to_string());
         let range = node.range();
         let content = slice_source(source, range.start_byte, range.end_byte);
@@ -80,21 +88,8 @@ fn visit_nodes(
             tags: Vec::new(),
         };
 
+        // A chunk's children are not chunked on their own.
         split_and_push(base_doc, out, options);
-        return; // do not descend into children for v1
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        visit_nodes(
-            lang,
-            child,
-            source,
-            is_chunk || parent_is_chunk,
-            out,
-            options,
-            path,
-        );
     }
 }
 
@@ -391,5 +386,32 @@ mod tests {
             let chunks = chunk_file(path, source, Some(&tree)).unwrap();
             assert!(!chunks.is_empty(), "no chunks for {filename}");
         }
+    }
+
+    #[test]
+    fn a_deeply_nested_file_is_chunked_on_a_small_stack() {
+        // Indexing runs on rayon workers; generated sources nest expressions
+        // tens of thousands of levels deep, which a recursive walk cannot
+        // survive on a worker's stack.
+        let source = format!(
+            "const DEEP: i32 = {};\nfn after() {{}}\n",
+            vec!["1"; 20_000].join(" + ")
+        );
+        let chunks = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                let mut parser = MultiParser::new();
+                let tree = parser.parse(&source, SupportedLanguage::Rust).unwrap();
+                chunk_file(Path::new("deep.rs"), &source, Some(&tree)).unwrap()
+            })
+            .unwrap()
+            .join()
+            .expect("chunking a deep tree must not exhaust the stack");
+        let symbols: Vec<_> = chunks.iter().map(|chunk| chunk.symbol.as_str()).collect();
+        assert_eq!(
+            symbols,
+            ["after"],
+            "the function after the deep expression is still found"
+        );
     }
 }
