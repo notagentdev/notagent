@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.70 supports Apple Silicon Macs:
+Version 0.1.71 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,11 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.71
+
+- Switching between regular and fullscreen mode paints the new screen right
+  away instead of leaving it blank until the next keypress or resize.
 
 ### 0.1.70
 
