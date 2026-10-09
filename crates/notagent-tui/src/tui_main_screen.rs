@@ -1237,8 +1237,8 @@ impl TuiMainScreen {
 }
 
 impl crate::tui::RenderLoop for TuiMainScreen {
-    fn core(&self) -> &TuiCore {
-        &self.core
+    fn core(&self) -> TuiCore {
+        self.core.clone()
     }
 
     fn render_pending_frame(&mut self) {

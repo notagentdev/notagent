@@ -28,10 +28,34 @@ pub fn component_ref<C: Component + 'static>(component: C) -> ComponentRef {
 /// hands the frame to `setTimeout` and the Node event loop calls back into the
 /// the loop is written once against this trait.
 pub trait RenderLoop {
-    /// Shared state of this renderer.
-    fn core(&self) -> &TuiCore;
+    /// Shared state of the currently active renderer.
+    fn core(&self) -> TuiCore;
     /// Render the pending frame, if one is pending.
     fn render_pending_frame(&mut self);
+}
+async fn wait_until_render_due(get_core: impl Fn() -> TuiCore) {
+    loop {
+        // A renderer replacement stops the previous core and wakes its waiter.
+        // Resolve the current core after every wake, not just when waiting starts.
+        let core = get_core();
+        let notify = Rc::clone(&core.0.borrow().render_notify);
+        let notified = notify.notified();
+        tokio::pin!(notified);
+        // Register before checking the deadline so render requests cannot be lost.
+        notified.as_mut().enable();
+        let Some(deadline) = core.render_deadline() else {
+            notified.await;
+            continue;
+        };
+        let now = Instant::now();
+        if deadline <= now {
+            return;
+        }
+        tokio::select! {
+            () = tokio::time::sleep(deadline - now) => continue,
+            () = notified => continue,
+        }
+    }
 }
 
 /// Drive rendering and terminal input until `until` resolves, then return its
@@ -52,7 +76,6 @@ where
     tokio::pin!(until);
     let mut stdin_open = true;
     loop {
-        let core = ui.core().clone();
         // Input outranks painting. The arms are polled in order, and a frame is
         // due again the instant one was requested — during a streaming response
         // that is every pass, so a render arm ahead of the pump would keep
@@ -73,7 +96,7 @@ where
                     stdin_open = false;
                 }
             }
-            () = core.wait_until_render_due() => ui.render_pending_frame(),
+            () = wait_until_render_due(|| ui.core()) => ui.render_pending_frame(),
         }
     }
 }
@@ -1554,27 +1577,7 @@ impl TuiCore {
     /// in, which is what `scheduleRender()`'s `setTimeout` does on the Node
     /// future keeps the request, the next call recomputes the deadline.
     pub async fn wait_until_render_due(&self) {
-        loop {
-            let notify = Rc::clone(&self.0.borrow().render_notify);
-            let notified = notify.notified();
-            tokio::pin!(notified);
-            // Register before reading the deadline, otherwise a request between
-            // the two is lost and the loop sleeps through its frame.
-            notified.as_mut().enable();
-
-            let Some(deadline) = self.render_deadline() else {
-                notified.await;
-                continue;
-            };
-            let now = Instant::now();
-            if deadline <= now {
-                return;
-            }
-            tokio::select! {
-                () = tokio::time::sleep(deadline - now) => return,
-                () = notified => continue,
-            }
-        }
+        wait_until_render_due(|| self.clone()).await;
     }
 
     /// When the next frame is due, or `None` if none is pending.

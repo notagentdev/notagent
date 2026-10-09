@@ -430,8 +430,6 @@ enum ActiveRenderer {
 
 struct RendererState {
     renderer: ActiveRenderer,
-    /// Bumped whenever the renderer is replaced, so a handle notices.
-    generation: u64,
     terminal: SharedTerminal,
 }
 
@@ -532,15 +530,7 @@ struct RendererCell(Rc<RefCell<RendererState>>);
 
 impl RendererCell {
     fn new(renderer: ActiveRenderer, terminal: SharedTerminal) -> Self {
-        Self(Rc::new(RefCell::new(RendererState {
-            renderer,
-            generation: 0,
-            terminal,
-        })))
-    }
-
-    fn generation(&self) -> u64 {
-        self.0.borrow().generation
+        Self(Rc::new(RefCell::new(RendererState { renderer, terminal })))
     }
 
     fn core(&self) -> TuiCore {
@@ -685,7 +675,6 @@ impl RendererCell {
                 ActiveRenderer::Main(Box::new(screen))
             }
         };
-        state.generation += 1;
 
         let next_core = match &state.renderer {
             ActiveRenderer::Main(screen) => screen.core().clone(),
@@ -708,26 +697,16 @@ impl RendererCell {
 }
 
 /// The renderer handed to the caller's render loop.
-/// `RenderLoop::core` returns a reference, so the handle keeps its own clone of
-/// the current core and re-reads it whenever the renderer behind the cell was
-/// replaced — which can only happen between two frames.
+/// Resolve the core through the cell so both painting and waiting follow
+/// the active renderer when the TUI mode changes.
 pub struct InteractiveRenderer {
     cell: RendererCell,
-    core: TuiCore,
-    generation: u64,
 }
-
 impl RenderLoop for InteractiveRenderer {
-    fn core(&self) -> &TuiCore {
-        &self.core
+    fn core(&self) -> TuiCore {
+        self.cell.core()
     }
-
     fn render_pending_frame(&mut self) {
-        let generation = self.cell.generation();
-        if generation != self.generation {
-            self.core = self.cell.core();
-            self.generation = generation;
-        }
         self.cell.render_pending_frame();
     }
 }
@@ -1514,8 +1493,6 @@ impl InteractiveMode {
     fn renderer(&self) -> InteractiveRenderer {
         InteractiveRenderer {
             cell: self.cell.clone(),
-            core: self.cell.core(),
-            generation: self.cell.generation(),
         }
     }
 
@@ -9021,4 +8998,73 @@ pub fn parse_image_markers(text: &str) -> Vec<u32> {
         .filter_map(|capture| capture.get(1)?.as_str().parse::<u32>().ok())
         .filter(|id| *id > 0)
         .collect()
+}
+
+#[cfg(test)]
+mod renderer_tests {
+    use super::*;
+    use notagent_tui::components::text::Text;
+    use notagent_tui::test_terminal::VirtualTerminal;
+    use notagent_tui::tui::run_until;
+    use std::time::Duration;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_renderer_switch_paints_without_another_terminal_event() {
+        let terminal = VirtualTerminal::new(80, 24);
+        let shared = SharedTerminal(Rc::new(RefCell::new(Box::new(terminal.clone()))));
+        let screen = TuiMainScreen::new(Box::new(shared.clone()));
+        let cell = RendererCell::new(ActiveRenderer::Main(Box::new(screen)), shared);
+        let content = component_ref(Text::new("transcript\neditor", 0, 0));
+        cell.core().add_child(content.clone());
+        cell.core().set_focus(Some(content.clone()));
+        let mut renderer = InteractiveRenderer { cell: cell.clone() };
+        let mut pump = terminal.pump_handle();
+        cell.start();
+        renderer.render_pending_frame();
+        for (mode, switch_delay_ms) in [
+            (TuiMode::Fullscreen, 0),
+            (TuiMode::Regular, 0),
+            (TuiMode::Fullscreen, 20),
+            (TuiMode::Regular, 20),
+        ] {
+            let writes_before = terminal.get_writes().len();
+            run_until(&mut renderer, &mut pump, async {
+                if switch_delay_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(switch_delay_ms)).await;
+                }
+                assert!(cell.switch(mode, std::env::temp_dir()));
+                cell.set_layout_root(Some(content.clone()));
+                cell.start();
+                tokio::time::sleep(Duration::from_millis(80)).await;
+            })
+            .await;
+            let writes = terminal.get_writes();
+            assert!(
+                writes[writes_before..].contains("transcript"),
+                "switching to {mode:?} must draw a new frame, got {:?}",
+                &writes[writes_before..]
+            );
+            assert!(
+                cell.core()
+                    .children()
+                    .iter()
+                    .any(|child| Rc::ptr_eq(child, &content)),
+                "switching to {mode:?} must preserve the component tree"
+            );
+            let viewport = terminal.get_viewport().join("\n");
+            assert!(
+                viewport.contains("transcript") && viewport.contains("editor"),
+                "switching to {mode:?} must paint without input or resize, got {viewport:?}"
+            );
+            assert!(
+                cell.core()
+                    .get_focused_component()
+                    .is_some_and(|focused| Rc::ptr_eq(&focused, &content)),
+                "switching to {mode:?} must preserve focus"
+            );
+        }
+        cell.stop(TuiStopOptions {
+            preserve_screen: true,
+        });
+    }
 }

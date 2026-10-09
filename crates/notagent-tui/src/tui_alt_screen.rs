@@ -2376,8 +2376,8 @@ fn base64_encode(bytes: &[u8]) -> String {
 }
 
 impl crate::tui::RenderLoop for TuiAltScreen {
-    fn core(&self) -> &TuiCore {
-        &self.core
+    fn core(&self) -> TuiCore {
+        self.core.clone()
     }
 
     fn render_pending_frame(&mut self) {
