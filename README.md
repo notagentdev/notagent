@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.71 supports Apple Silicon Macs:
+Version 0.1.72 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,12 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.72
+
+- Homebrew installs started through the `/opt/homebrew/bin` symlink are
+  recognised again, so the update banner says `brew upgrade notagent`
+  instead of pointing at a self-update that cannot update a binary install.
 
 ### 0.1.71
 
