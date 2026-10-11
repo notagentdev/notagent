@@ -134,10 +134,25 @@ pub fn get_package_dir() -> PathBuf {
     {
         return expand_tilde_path(&dir);
     }
-    std::env::current_exe()
-        .ok()
+    current_exe_resolved()
         .and_then(|path| path.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// The running executable with symlinks resolved.
+///
+/// On macOS `current_exe` returns the path as invoked, so a Homebrew install
+/// reached through `/opt/homebrew/bin/notagent` never shows its Caskroom
+/// location and the install method is misdetected as a plain binary. Resolving
+/// the link makes the real install directory visible; an unresolvable path is
+/// kept as-is rather than dropped.
+fn current_exe_resolved() -> Option<PathBuf> {
+    let exec_path = std::env::current_exe().ok()?;
+    Some(resolve_exec_path(&exec_path))
+}
+
+fn resolve_exec_path(exec_path: &Path) -> PathBuf {
+    std::fs::canonicalize(exec_path).unwrap_or_else(|_| exec_path.to_path_buf())
 }
 
 pub fn get_themes_dir() -> PathBuf {
@@ -212,7 +227,7 @@ pub struct InstallEnv {
 
 impl InstallEnv {
     pub fn current() -> Self {
-        let exec_path = std::env::current_exe().unwrap_or_default();
+        let exec_path = current_exe_resolved().unwrap_or_default();
         Self {
             package_dir: get_package_dir(),
             exec_path: exec_path.clone(),
@@ -803,5 +818,48 @@ pub fn get_update_instruction(env: &InstallEnv, package_name: &str) -> Result<St
     match get_self_update_command_for_method(env, method, package_name, &target, None) {
         Some(command) => Ok(format!("Run: {}", command.display)),
         None => get_self_update_unavailable_instruction(env, package_name, None, &target),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_homebrew_install_reached_through_the_bin_symlink_is_detected_as_homebrew() {
+        let root = tempfile::tempdir().unwrap();
+        let cask_dir = root.path().join("Caskroom/notagent/0.1.71");
+        std::fs::create_dir_all(&cask_dir).unwrap();
+        let real = cask_dir.join("notagent");
+        std::fs::write(&real, b"").unwrap();
+        let bin_dir = root.path().join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let link = bin_dir.join("notagent");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let exec_path = resolve_exec_path(&link);
+        let env = InstallEnv {
+            package_dir: exec_path.parent().unwrap().to_path_buf(),
+            exec_path,
+            entrypoint: None,
+            standalone_binary: true,
+        };
+
+        assert_eq!(
+            detect_install_method(&env),
+            InstallMethod::Homebrew,
+            "a symlinked Homebrew binary must resolve to its Caskroom location, got {env:?}"
+        );
+    }
+
+    #[test]
+    fn an_unresolvable_exec_path_is_kept_rather_than_dropped() {
+        let missing = Path::new("/definitely/not/here/notagent");
+        assert_eq!(
+            resolve_exec_path(missing),
+            missing,
+            "resolution must fall back to the given path"
+        );
     }
 }
