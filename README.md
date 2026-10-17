@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.72 supports Apple Silicon Macs:
+Version 0.1.73 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,15 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.73
+
+- Gemini 4 Argon is available through the Gemini API and Vertex. It is
+  sent only the LOW, MEDIUM and HIGH thinking levels it accepts, and LOW
+  when thinking is off, since Argon cannot turn thinking off.
+- GPT-6.1 Sol can be picked through OpenRouter, Vercel AI Gateway, GitHub
+  Copilot, Azure, Amazon Bedrock (global and US profiles), OpenCode Zen and
+  the Cloudflare AI Gateway, with each provider's own prices.
 
 ### 0.1.72
 
