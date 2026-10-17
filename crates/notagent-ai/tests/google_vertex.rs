@@ -271,6 +271,19 @@ fn vertex_has_no_gemma_branch_and_no_flash_lite_budget() {
             .clone()
     };
     assert_eq!(disabled("gemini-3-pro"), json!({ "thinkingLevel": "LOW" }));
+    // Argon cannot turn thinking off and rejects a budget with HTTP 400.
+    assert_eq!(
+        disabled("gemini-4-argon"),
+        json!({ "thinkingLevel": "LOW" })
+    );
+    assert_eq!(
+        gemini3_thinking_level(ThinkingLevel::Medium, "gemini-4-argon"),
+        "MEDIUM"
+    );
+    assert_eq!(
+        gemini3_thinking_level(ThinkingLevel::Minimal, "gemini-4-argon"),
+        "LOW"
+    );
     assert_eq!(
         disabled("gemini-3-flash"),
         json!({ "thinkingLevel": "MINIMAL" })

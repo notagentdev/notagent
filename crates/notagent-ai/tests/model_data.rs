@@ -942,6 +942,88 @@ fn gpt_6_1_sol_is_offered_through_the_api_and_the_codex_plan() {
 }
 
 #[test]
+fn gpt_6_1_sol_is_offered_through_every_gateway_that_lists_it() {
+    // (provider, model id, input, output, cache read) at 272K input tokens or fewer.
+    for (provider, model_id, input, output, cache_read) in [
+        ("openrouter", "openai/gpt-6.1-sol", 2.0, 10.0, 0.1),
+        ("openrouter", "openai/gpt-6.1-sol-pro", 2.0, 10.0, 0.1),
+        ("openrouter", "openai/gpt-6.1-sol:batch", 1.0, 5.0, 0.05),
+        ("openrouter", "openai/gpt-6.1-sol-pro:batch", 1.0, 5.0, 0.05),
+        ("vercel-ai-gateway", "openai/gpt-6.1-sol", 2.0, 10.0, 0.1),
+        (
+            "vercel-ai-gateway",
+            "openai/gpt-6.1-sol-fast",
+            4.0,
+            20.0,
+            0.2,
+        ),
+        ("github-copilot", "gpt-6.1-sol", 2.0, 10.0, 0.1),
+        ("azure-openai-responses", "gpt-6.1-sol", 2.0, 10.0, 0.1),
+        (
+            "amazon-bedrock",
+            "global.openai.gpt-6.1-sol",
+            2.0,
+            10.0,
+            0.1,
+        ),
+        // US cross-Region inference carries a 10% premium over the global profile.
+        ("amazon-bedrock", "us.openai.gpt-6.1-sol", 2.2, 11.0, 0.11),
+        ("cloudflare-ai-gateway", "gpt-6.1-sol", 2.0, 10.0, 0.1),
+        // OpenCode Zen bills cache reads at twice the OpenAI rate.
+        ("opencode", "gpt-6.1-sol", 2.0, 10.0, 0.2),
+    ] {
+        let model = get_builtin_model(provider, model_id)
+            .unwrap_or_else(|| panic!("{provider} lists {model_id}"));
+        assert_eq!(model.context_window, 1_050_000, "{provider} {model_id}");
+        assert_eq!(model.max_tokens, 128_000, "{provider} {model_id}");
+        assert_eq!(
+            (model.cost.input, model.cost.output, model.cost.cache_read),
+            (input, output, cache_read),
+            "{provider} {model_id}"
+        );
+        let tier = model
+            .cost
+            .tiers
+            .as_ref()
+            .and_then(|tiers| tiers.first())
+            .unwrap_or_else(|| panic!("{provider} {model_id} has a long-context tier"));
+        assert_eq!(tier.input_tokens_above, 272_000, "{provider} {model_id}");
+        assert_eq!(tier.input, input * 2.0, "{provider} {model_id}");
+        let levels = get_supported_thinking_levels(&model);
+        assert!(
+            !levels.contains(&ModelThinkingLevel::Off)
+                && !levels.contains(&ModelThinkingLevel::Minimal),
+            "GPT-6.1 Sol rejects the none and minimal efforts, but {provider} {model_id} offers {levels:?}"
+        );
+    }
+}
+
+#[test]
+fn gemini_4_argon_is_offered_through_the_gemini_api_and_vertex() {
+    for provider in ["google", "google-vertex"] {
+        let model = get_builtin_model(provider, "gemini-4-argon").expect("Argon model");
+        // Input and output share the 1,048,576 tokens; a synchronous request gets 65,536 out.
+        assert_eq!(model.context_window, 1_048_576, "{provider}");
+        assert_eq!(model.max_tokens, 65_536, "{provider}");
+        // The launch price through 2026-11-30; it doubles from 2026-12-01.
+        assert_eq!(
+            (model.cost.input, model.cost.output, model.cost.cache_read),
+            (2.0, 10.0, 0.1),
+            "{provider}"
+        );
+        assert_eq!(
+            get_supported_thinking_levels(&model),
+            vec![
+                ModelThinkingLevel::Low,
+                ModelThinkingLevel::Medium,
+                ModelThinkingLevel::High,
+            ],
+            "Argon offers exactly LOW, MEDIUM and HIGH on {provider}"
+        );
+    }
+}
+
+#[test]
 fn gpt_6_sol_and_luna_are_offered_through_the_api_and_the_codex_plan() {
     for (model_id, input, output) in [("gpt-6-sol", 2.0, 10.0), ("gpt-6-luna", 0.1, 0.5)] {
         let api = get_builtin_model("openai", model_id).expect(model_id);

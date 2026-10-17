@@ -122,12 +122,18 @@ pub fn is_gemini3_flash_model(model_id: &str) -> bool {
         || id == "gemini-flash-lite-latest"
 }
 
+/// Gemini 4 Argon takes only `LOW`, `MEDIUM` and `HIGH`: a `thinkingBudget` or `MINIMAL`
+/// is rejected with HTTP 400, so it must never reach the budget path.
+pub fn is_gemini4_argon_model(model_id: &str) -> bool {
+    matches(model_id, r"gemini-4(?:\.\d+)?-argon")
+}
+
 /// `getDisabledThinkingConfig(model)`
-/// Google documents that Gemini 3.1 Pro cannot turn thinking off and that Gemini 3 Flash
-/// and Flash-Lite do not support a full off either, so those get the lowest level without
-/// `includeThoughts`, which keeps the hidden thinking invisible.
+/// Google documents that Gemini 3.1 Pro and Gemini 4 Argon cannot turn thinking off and
+/// that Gemini 3 Flash and Flash-Lite do not support a full off either, so those get the
+/// lowest level without `includeThoughts`, which keeps the hidden thinking invisible.
 fn disabled_thinking_config(model_id: &str) -> Value {
-    if is_gemini3_pro_model(model_id) {
+    if is_gemini3_pro_model(model_id) || is_gemini4_argon_model(model_id) {
         return json!({ "thinkingLevel": "LOW" });
     }
     if is_gemini3_flash_model(model_id) || is_gemma4_model(model_id) {
@@ -142,6 +148,13 @@ pub fn thinking_level(effort: ThinkingLevel, model_id: &str) -> &'static str {
     if is_gemini3_pro_model(model_id) {
         return match effort {
             ThinkingLevel::Minimal | ThinkingLevel::Low => "LOW",
+            _ => "HIGH",
+        };
+    }
+    if is_gemini4_argon_model(model_id) {
+        return match effort {
+            ThinkingLevel::Minimal | ThinkingLevel::Low => "LOW",
+            ThinkingLevel::Medium => "MEDIUM",
             _ => "HIGH",
         };
     }
@@ -895,6 +908,7 @@ pub fn stream_simple(
 
     let thinking = if is_gemini3_pro_model(&model.id)
         || is_gemini3_flash_model(&model.id)
+        || is_gemini4_argon_model(&model.id)
         || is_gemma4_model(&model.id)
     {
         GoogleThinkingOptions {

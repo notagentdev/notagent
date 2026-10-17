@@ -6,6 +6,7 @@ use url::Url;
 
 use crate::api::google_generative_ai::{
     GoogleError, GoogleStreamState, is_gemini3_flash_model, is_gemini3_pro_model,
+    is_gemini4_argon_model,
 };
 use crate::api::google_shared::{
     convert_messages, convert_tools, resolve_google_function_calling_mode,
@@ -214,7 +215,7 @@ pub fn build_client_headers(
 
 /// `getDisabledThinkingConfig(model)` — like Gemini's, but without the Gemma branch.
 fn disabled_thinking_config(model_id: &str) -> Value {
-    if is_gemini3_pro_model(model_id) {
+    if is_gemini3_pro_model(model_id) || is_gemini4_argon_model(model_id) {
         return json!({ "thinkingLevel": "LOW" });
     }
     if is_gemini3_flash_model(model_id) {
@@ -228,6 +229,13 @@ pub fn gemini3_thinking_level(effort: ThinkingLevel, model_id: &str) -> &'static
     if is_gemini3_pro_model(model_id) {
         return match effort {
             ThinkingLevel::Minimal | ThinkingLevel::Low => "LOW",
+            _ => "HIGH",
+        };
+    }
+    if is_gemini4_argon_model(model_id) {
+        return match effort {
+            ThinkingLevel::Minimal | ThinkingLevel::Low => "LOW",
+            ThinkingLevel::Medium => "MEDIUM",
             _ => "HIGH",
         };
     }
@@ -689,7 +697,10 @@ pub fn stream_simple(
         _ => ThinkingLevel::High,
     };
 
-    let thinking = if is_gemini3_pro_model(&model.id) || is_gemini3_flash_model(&model.id) {
+    let thinking = if is_gemini3_pro_model(&model.id)
+        || is_gemini3_flash_model(&model.id)
+        || is_gemini4_argon_model(&model.id)
+    {
         crate::api::google_generative_ai::GoogleThinkingOptions {
             enabled: true,
             budget_tokens: None,

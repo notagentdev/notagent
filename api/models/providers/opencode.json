@@ -1214,6 +1214,48 @@
       "max": "max"
     }
   },
+  "gpt-6.1-sol": {
+    "id": "gpt-6.1-sol",
+    "name": "GPT-6.1 Sol",
+    "api": "openai-responses",
+    "provider": "opencode",
+    "baseUrl": "https://opencode.ai/zen/v1",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.2,
+      "cacheWrite": 2.5,
+      "tiers": [
+        {
+          "inputTokensAbove": 272000,
+          "input": 4,
+          "output": 15,
+          "cacheRead": 0.4,
+          "cacheWrite": 5
+        }
+      ]
+    },
+    "compat": {
+      "sessionAffinityFormat": "openai-nosession",
+      "supportsOpenAIGrammarTools": true
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "thinkingLevelMap": {
+      "off": null,
+      "minimal": null,
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
   "grok-4.5": {
     "id": "grok-4.5",
     "name": "Grok 4.5",

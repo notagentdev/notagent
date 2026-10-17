@@ -2,16 +2,18 @@ use std::sync::{Arc, Mutex};
 
 use notagent_ai::api::google_generative_ai::{
     GoogleOptions, GoogleThinkingOptions, build_request_body, build_request_url, google_budget,
-    is_gemini3_flash_model, is_gemini3_pro_model, is_gemma4_model, stream, thinking_level,
+    is_gemini3_flash_model, is_gemini3_pro_model, is_gemini4_argon_model, is_gemma4_model, stream,
+    stream_simple, thinking_level,
 };
 use notagent_ai::api::google_shared::{
     FunctionCallingConfigMode, convert_tools, map_stop_reason, requires_tool_call_id,
     resolve_google_function_calling_mode, retain_thought_signature,
     supports_google_strict_tool_sampling,
 };
+use notagent_ai::model_catalog::get_builtin_model;
 use notagent_ai::types::{
-    AssistantMessageEvent, Context, Model, ProviderHeaders, ProviderRequestOptions, StopReason,
-    ThinkingBudgets, ThinkingLevel, Tool,
+    AssistantMessageEvent, Context, Model, ProviderHeaders, ProviderRequestOptions,
+    SimpleStreamOptions, StopReason, StreamOptions, ThinkingBudgets, ThinkingLevel, Tool,
 };
 use notagent_ai::utils::fetch::{FetchBody, FetchError, FetchFn, FetchRequest, FetchResponse};
 use serde_json::Value;
@@ -468,6 +470,51 @@ fn the_thinking_config_follows_the_model_family() {
     );
 }
 
+/// The thinking config `stream_simple` sends for the catalog's Gemini 4 Argon.
+async fn argon_thinking_config(reasoning: Option<ThinkingLevel>) -> Value {
+    let model = get_builtin_model("google", "gemini-4-argon").expect("catalog model");
+    let seen = Arc::new(Mutex::new(None));
+    let options = SimpleStreamOptions {
+        base: StreamOptions {
+            base: ProviderRequestOptions {
+                api_key: Some("k".to_string()),
+                max_retries: Some(0),
+                fetch: Some(Arc::new(CannedFetch {
+                    body: case_named("minimal").body,
+                    seen: seen.clone(),
+                })),
+                ..ProviderRequestOptions::default()
+            },
+            ..StreamOptions::default()
+        },
+        reasoning,
+        ..SimpleStreamOptions::default()
+    };
+    let events =
+        stream_simple(model, case_named("minimal").context, Some(options)).expect("stream");
+    while events.next().await.is_some() {}
+    let request = seen.lock().expect("poisoned").clone().expect("request");
+    let body: Value = serde_json::from_slice(&request.body.expect("body")).expect("json body");
+    body["generationConfig"]["thinkingConfig"].clone()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn gemini_4_argon_is_only_ever_sent_a_thinking_level() {
+    // A thinkingBudget or MINIMAL is an HTTP 400 for Argon, and it cannot turn thinking off.
+    assert_eq!(
+        argon_thinking_config(Some(ThinkingLevel::Medium)).await,
+        serde_json::json!({ "includeThoughts": true, "thinkingLevel": "MEDIUM" })
+    );
+    assert_eq!(
+        argon_thinking_config(Some(ThinkingLevel::Minimal)).await,
+        serde_json::json!({ "includeThoughts": true, "thinkingLevel": "LOW" })
+    );
+    assert_eq!(
+        argon_thinking_config(None).await,
+        serde_json::json!({ "thinkingLevel": "LOW" })
+    );
+}
+
 #[test]
 fn the_model_family_predicates_match_the_documented_ids() {
     assert!(is_gemini3_pro_model("gemini-3-pro"));
@@ -479,6 +526,9 @@ fn the_model_family_predicates_match_the_documented_ids() {
     assert!(!is_gemini3_flash_model("gemini-2.5-flash"));
     assert!(is_gemma4_model("gemma-4-27b"));
     assert!(is_gemma4_model("gemma4"));
+    assert!(is_gemini4_argon_model("gemini-4-argon"));
+    assert!(!is_gemini3_pro_model("gemini-4-argon"));
+    assert!(supports_google_strict_tool_sampling("gemini-4-argon"));
     assert!(supports_google_strict_tool_sampling("gemini-3-pro"));
     assert!(!supports_google_strict_tool_sampling("gemini-2.5-pro"));
 }
@@ -491,6 +541,15 @@ fn the_thinking_level_and_budget_tables_match() {
         "HIGH"
     );
     assert_eq!(thinking_level(ThinkingLevel::Low, "gemma-4-27b"), "MINIMAL");
+    // Argon rejects MINIMAL, but unlike Gemini 3 Pro it has a real MEDIUM.
+    assert_eq!(
+        thinking_level(ThinkingLevel::Minimal, "gemini-4-argon"),
+        "LOW"
+    );
+    assert_eq!(
+        thinking_level(ThinkingLevel::Medium, "gemini-4-argon"),
+        "MEDIUM"
+    );
     assert_eq!(
         thinking_level(ThinkingLevel::Medium, "gemini-2.5-flash"),
         "MEDIUM"
