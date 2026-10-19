@@ -777,6 +777,33 @@ async fn new_starts_a_fresh_session() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn clear_is_another_name_for_new() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        app.faux()
+            .set_responses(vec![reply("First session answer")]);
+        let mut driver = Driver::start(&app, VirtualTerminal::new(COLUMNS, ROWS)).await;
+        driver.wait_for("notagent").await;
+        driver.submit("A question").await;
+        driver.wait_for("First session answer").await;
+        let first_session_id = app.session().session_id();
+
+        driver.submit("/clear").await;
+        driver.wait_for("New session started").await;
+        assert_ne!(
+            app.runtime().session().session_id(),
+            first_session_id,
+            "/clear must start a new session like /new"
+        );
+        assert!(
+            app.runtime().session().messages().is_empty(),
+            "/clear must leave no conversation history"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn new_removes_the_old_conversation_from_the_next_provider_request() {
     local(async {
         let app = HeadlessApp::create().await;

@@ -7074,7 +7074,7 @@ impl InteractiveMode {
                 self.clear_editor_text();
                 self.handle_llama_command().await;
             }
-            "/new" => {
+            "/new" | "/clear" => {
                 self.clear_editor_text();
                 self.handle_clear_command().await;
             }
