@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.73 supports Apple Silicon Macs:
+Version 0.1.74 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,15 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.74
+
+- Yolo mode confirms nothing any more, irreversible commands such as
+  `rm -rf` or a force push included. Only a deny hook you configured
+  yourself still stops a call.
+- `/clear` starts a new session, as another name for `/new`.
+- The "Compacting context" indicator shimmers and counts its running time
+  again, so a long compaction no longer looks stuck.
 
 ### 0.1.73
 
