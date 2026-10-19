@@ -92,8 +92,8 @@ fn to_posix(path: &str) -> String {
     path.replace(main_separator(), "/")
 }
 
-/// Touching secrets asks even in a permissive mode. Placed ahead of yolo
-/// approval so the most permissive stop stays bounded by it.
+/// Touching secrets asks even in auto mode. Yolo approves before this guard is
+/// reached.
 pub fn sensitive_file_access_ask() -> Arc<dyn PermissionPolicy> {
     Arc::new(FnPolicy::new(
         "sensitive-file-access-ask",
@@ -237,8 +237,9 @@ fn evaluate_destructive(context: &PermissionContext) -> Option<PermissionDecisio
     })
 }
 
-/// Irreversible commands ask in every mode, including yolo.
-/// This sits ahead of every approving policy on purpose. Without it the guards
+/// Irreversible commands ask in every mode except yolo, whose whole promise is
+/// that nothing is confirmed.
+/// This sits ahead of every other approving policy on purpose. Without it the guards
 /// are blind exactly where the damage is: they all read a path argument, and a
 /// shell command has none — so `rm -rf` reached auto-approval untouched while
 /// a write to the same directory would have been stopped. The mode gradient is

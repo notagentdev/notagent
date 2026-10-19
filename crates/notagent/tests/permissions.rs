@@ -388,8 +388,8 @@ fn omits_slots_that_have_no_policy_rather_than_shifting_the_rest() {
         vec![
             "auto-mode-ask-user-deny",
             "user-configured-deny",
-            "destructive-command-ask",
             "yolo-mode-approve",
+            "destructive-command-ask",
             "user-configured-ask",
             "user-configured-allow",
             "sensitive-file-access-ask",
@@ -629,11 +629,16 @@ fn stops_auto_which_used_to_approve_it_silently() {
 }
 
 #[test]
-fn stops_yolo_because_the_mode_removes_supervision_and_not_reversibility() {
-    assert_eq!(
-        decide_command("rm -rf /", ApprovalLevel::Yolo).policy_name,
-        "destructive-command-ask"
-    );
+fn lets_yolo_run_an_irreversible_command_without_asking() {
+    for command in IRREVERSIBLE {
+        let result = decide_command(command, ApprovalLevel::Yolo);
+        assert_eq!(
+            result.policy_name, "yolo-mode-approve",
+            "yolo confirms nothing, but {command} was decided by {}",
+            result.policy_name
+        );
+        assert_eq!(result.decision, PermissionDecision::Approve, "{command}");
+    }
 }
 
 #[test]
@@ -659,8 +664,8 @@ fn leaves_an_ordinary_command_to_the_mode_it_is_in() {
 }
 
 #[test]
-fn the_destructive_guard_sits_ahead_of_every_approving_policy() {
-    assert!(at("destructive-command-ask") < at("yolo-mode-approve"));
+fn the_destructive_guard_sits_ahead_of_every_approving_policy_but_yolo() {
+    assert!(at("yolo-mode-approve") < at("destructive-command-ask"));
     assert!(at("destructive-command-ask") < at("auto-mode-approve"));
     assert!(at("destructive-command-ask") < at("session-approval-history"));
     assert!(at("destructive-command-ask") < at("user-configured-allow"));

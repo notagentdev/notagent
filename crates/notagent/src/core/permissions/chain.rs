@@ -9,8 +9,10 @@ use crate::core::modes::shells::ApprovalLevel;
 pub const POLICY_ORDER: [&str; 14] = [
     "auto-mode-ask-user-deny",
     "user-configured-deny",
-    "destructive-command-ask",
+    // Ahead of the destructive guard: yolo is the mode the user chose to have
+    // nothing confirmed at all, irreversible commands included.
     "yolo-mode-approve",
+    "destructive-command-ask",
     "session-approval-history",
     "user-configured-ask",
     "user-configured-allow",
@@ -66,8 +68,9 @@ pub fn auto_mode_approve() -> Arc<dyn PermissionPolicy> {
     ))
 }
 
-/// Yolo approves what is left once the protective checks ahead of it have
-/// abstained. It is narrower than its name suggests, which is deliberate.
+/// Yolo approves everything except what the user's own hooks deny. It sits
+/// ahead of every guard, the destructive-command one included, so nothing in
+/// this mode waits for a confirmation.
 pub fn yolo_mode_approve() -> Arc<dyn PermissionPolicy> {
     Arc::new(FnPolicy::new(
         "yolo-mode-approve",
