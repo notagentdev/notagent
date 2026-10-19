@@ -560,6 +560,27 @@ async fn live_compaction_replaces_its_indicator_without_rewriting_the_transcript
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn the_compaction_indicator_keeps_animating_while_the_summary_streams() {
+    local(async {
+        let app = HeadlessApp::create_slow(10.0).await;
+        append_compactable_history(&app);
+        app.faux()
+            .set_responses(vec![reply(&"summary ".repeat(200))]);
+        let mut driver = Driver::start(&app, VirtualTerminal::new(100, 40)).await;
+        driver.wait_for("Old answer must survive compaction").await;
+
+        driver.submit("/compact").await;
+        driver.wait_for("Compacting context").await;
+        // The running time only appears when the indicator is redrawn on its
+        // own schedule, the same schedule that moves the shimmer.
+        driver.wait_for("to cancel) (1s)").await;
+        app.session().request_abort();
+        driver.settle_for(100).await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn two_prompts_run_one_after_the_other() {
     local(async {
         let app = HeadlessApp::create().await;

@@ -2304,22 +2304,34 @@ impl InteractiveMode {
             needs_render = true;
         }
         if let Some(indicator) = self.active_status_indicator.clone() {
-            let mut indicator = indicator.borrow_mut();
-            if indicator
-                .loader_mut()
-                .next_frame_deadline()
-                .is_some_and(|deadline| deadline <= Instant::now())
+            let mut indicator_changed = false;
             {
-                indicator.loader_mut().tick();
-                needs_render |= indicator.loader_mut().take_render_request();
+                let mut indicator = indicator.borrow_mut();
+                if indicator
+                    .loader_mut()
+                    .next_frame_deadline()
+                    .is_some_and(|deadline| deadline <= Instant::now())
+                {
+                    indicator.loader_mut().tick();
+                    indicator_changed |= indicator.loader_mut().take_render_request();
+                }
+                if indicator
+                    .countdown_deadline()
+                    .is_some_and(|deadline| deadline <= Instant::now())
+                {
+                    indicator_changed |= indicator.tick_countdown();
+                }
+                indicator_changed |= indicator.tick_elapsed();
             }
-            if indicator
-                .countdown_deadline()
-                .is_some_and(|deadline| deadline <= Instant::now())
-            {
-                needs_render |= indicator.tick_countdown();
+            // The compaction indicator lives in the transcript, which redraws
+            // an entry only once it is told the entry changed; without this the
+            // shimmer and the running time froze on their first frame.
+            if indicator_changed && let Some(active) = self.compaction_chat_indicator.as_ref() {
+                self.chat_container
+                    .borrow_mut()
+                    .mark_changed(&active.indicator);
             }
-            needs_render |= indicator.tick_elapsed();
+            needs_render |= indicator_changed;
         }
         // The Exploring badge counts its runtime; this pass is its clock.
         for block in &self.chat_explore_blocks {
