@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.74 supports Apple Silicon Macs:
+Version 0.1.75 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,16 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.75
+
+- Kimi K3.1 Pro and Kimi K3.1 Pro Highspeed are available through
+  Moonshot, Kimi Code, OpenRouter and the Vercel AI Gateway, with a 1M
+  token context window.
+- `/settings` has a "Minified tools" switch. Off, `read` returns files
+  exactly as they are on disk and the minified patch tools are left out,
+  for subagents too. While it is on, the chat opens with a reminder to run
+  a formatter such as `ruff format`, `prettier` or `cargo fmt`.
 
 ### 0.1.74
 
