@@ -368,6 +368,35 @@ fn uses_official_kimi_k3_pricing_for_moonshot_providers() {
 }
 
 #[test]
+fn offers_kimi_k3_1_pro_and_its_highspeed_variant_wherever_moonshot_lists_them() {
+    let models = builtin_models(None);
+    let expected = [
+        ("moonshotai", "kimi-k3.1-pro", 10.0),
+        ("moonshotai", "kimi-k3.1-pro-highspeed", 20.0),
+        ("moonshotai-cn", "kimi-k3.1-pro", 10.0),
+        ("moonshotai-cn", "kimi-k3.1-pro-highspeed", 20.0),
+        ("kimi-coding", "k3.1-pro", 10.0),
+        ("kimi-coding", "k3.1-pro-highspeed", 20.0),
+        ("openrouter", "moonshotai/kimi-k3.1-pro", 10.0),
+        ("vercel-ai-gateway", "moonshotai/kimi-k3.1-pro", 10.0),
+        (
+            "vercel-ai-gateway",
+            "moonshotai/kimi-k3.1-pro-highspeed",
+            20.0,
+        ),
+    ];
+    for (provider, model_id, output) in expected {
+        let model = models
+            .get_model(provider, model_id)
+            .unwrap_or_else(|| panic!("{provider} must offer {model_id}"));
+        assert_eq!(model.context_window, 1_048_576, "{provider}/{model_id}");
+        assert_eq!(model.cost.output, output, "{provider}/{model_id}");
+        assert_eq!(model.cost.cache_read, 0.2, "{provider}/{model_id}");
+        assert!(model.reasoning, "{provider}/{model_id} always thinks");
+    }
+}
+
+#[test]
 fn uses_api_equivalent_implied_pricing_for_kimi_coding_subscription_models() {
     let models = builtin_models(None);
     let expected = [

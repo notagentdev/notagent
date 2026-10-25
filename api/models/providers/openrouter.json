@@ -3633,6 +3633,30 @@
       "thinkingFormat": "openrouter"
     }
   },
+  "moonshotai/kimi-k3.1-pro": {
+    "id": "moonshotai/kimi-k3.1-pro",
+    "name": "MoonshotAI: Kimi K3.1 Pro",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.2,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 131072,
+    "compat": {
+      "supportsDeveloperRole": false,
+      "thinkingFormat": "openrouter"
+    }
+  },
   "moonshotai/kimi-k3:batch": {
     "id": "moonshotai/kimi-k3:batch",
     "name": "MoonshotAI: Kimi K3 (batch)",

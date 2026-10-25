@@ -2516,6 +2516,46 @@
     "contextWindow": 1000000,
     "maxTokens": 131072
   },
+  "moonshotai/kimi-k3.1-pro": {
+    "id": "moonshotai/kimi-k3.1-pro",
+    "name": "Kimi K3.1 Pro",
+    "api": "anthropic-messages",
+    "baseUrl": "https://ai-gateway.vercel.sh",
+    "provider": "vercel-ai-gateway",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.2,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 131072
+  },
+  "moonshotai/kimi-k3.1-pro-highspeed": {
+    "id": "moonshotai/kimi-k3.1-pro-highspeed",
+    "name": "Kimi K3.1 Pro Highspeed",
+    "api": "anthropic-messages",
+    "baseUrl": "https://ai-gateway.vercel.sh",
+    "provider": "vercel-ai-gateway",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 4,
+      "output": 20,
+      "cacheRead": 0.2,
+      "cacheWrite": 0
+    },
+    "contextWindow": 1048576,
+    "maxTokens": 131072
+  },
   "nvidia/nemotron-3-nano-30b-a3b": {
     "id": "nvidia/nemotron-3-nano-30b-a3b",
     "name": "Nemotron 3 Nano 30B A3B",
