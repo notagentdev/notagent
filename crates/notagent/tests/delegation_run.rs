@@ -428,6 +428,29 @@ async fn gets_no_tool_that_mutates_when_its_mode_is_read_only() {
     }
 }
 
+#[tokio::test]
+async fn gets_no_minified_editing_tool_when_the_parent_switched_them_off() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mut delegation = options(
+        parent_agent(assistant("done"), Arc::clone(&seen)),
+        child("work", ShellId::Worker, "Work."),
+        "change it",
+    );
+    delegation.tool_options = Some(notagent::core::tools::ToolsOptions {
+        plain_source: true,
+        ..Default::default()
+    });
+    run_delegation(delegation).await;
+    let names = seen.lock().expect("seen")[0].tool_names.clone();
+    assert!(names.contains(&"patch".to_owned()), "{names:?}");
+    for minified in ["patch_minified", "multi_patch_minified"] {
+        assert!(
+            !names.contains(&minified.to_owned()),
+            "a child must follow the parent's minified-tools setting, saw {names:?}"
+        );
+    }
+}
+
 // ── how a child is activated ──────────────────────────────────────────
 
 #[test]

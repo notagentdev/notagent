@@ -41,6 +41,28 @@ pub const READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
         ],
     };
 
+/// The contribution when compact reads are switched off: the file comes back
+/// as it is, so there is nothing to opt out of.
+pub const PLAIN_READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
+    SystemPromptContribution {
+        snippet: "Read file contents",
+        guidelines: &[
+            "When read is attached, use it for file reads instead of cat or sed. Request only the needed offset/limit range.",
+        ],
+    };
+
+fn plain_read_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "path": { "type": "string", "description": "Path to the file to read (relative or absolute)" },
+            "offset": { "type": "number", "description": "Line number to start reading from (1-indexed)" },
+            "limit": { "type": "number", "description": "Maximum number of lines to read" },
+        },
+        "required": ["path"],
+    })
+}
+
 fn read_schema() -> Value {
     json!({
         "type": "object",
@@ -122,6 +144,9 @@ pub struct ReadToolOptions {
     /// Auto-resize images to 2000×2000. Default: true.
     pub auto_resize_images: bool,
     pub operations: Option<Arc<dyn ReadOperations>>,
+    /// Return source files as they are instead of compacting them. Default:
+    /// false.
+    pub plain: bool,
 }
 
 impl Default for ReadToolOptions {
@@ -129,6 +154,7 @@ impl Default for ReadToolOptions {
         Self {
             auto_resize_images: true,
             operations: None,
+            plain: false,
         }
     }
 }
@@ -137,6 +163,7 @@ pub struct ReadToolDefinition {
     cwd: String,
     auto_resize_images: bool,
     operations: Arc<dyn ReadOperations>,
+    plain: bool,
     description: String,
     parameters: Value,
     constrained_sampling: Option<ConstrainedSampling>,
@@ -153,8 +180,17 @@ pub fn create_read_tool_definition(
         operations: options
             .operations
             .unwrap_or_else(|| Arc::new(LocalReadOperations)),
-        description: description(),
-        parameters: read_schema(),
+        plain: options.plain,
+        description: if options.plain {
+            plain_description()
+        } else {
+            description()
+        },
+        parameters: if options.plain {
+            plain_read_schema()
+        } else {
+            read_schema()
+        },
         constrained_sampling: get_experimental_tool_sampling(),
     }
 }
@@ -168,6 +204,14 @@ fn description() -> String {
         "Compact output is not byte-identical to the file and its line positions do not map to original lines. Edit it with patch_minified or multi_patch_minified. Never copy compact output into plain patch's old_string; for a necessary fallback, first read the exact region with view=original and a reason.".to_owned(),
         format!("Text output is truncated to {DEFAULT_MAX_LINES} lines or {}KB. offset (1-indexed) and limit select original source lines before compaction. Continuation offsets always refer to the original file. Use keep_comments=true to include comments in compact output.", DEFAULT_MAX_BYTES / 1024),
         "Use this tool for file reads; do not use shell commands to bypass the compact default, unless no available tool can read the requested oversized line.".to_owned(),
+    ].join("\n\n")
+}
+
+fn plain_description() -> String {
+    [
+        "Read file contents. Text files are returned exactly as they are on disk. Images (jpg, png, gif, webp, bmp) are detected automatically and sent as attachments. PDFs are not supported.".to_owned(),
+        format!("Text output is truncated to {DEFAULT_MAX_LINES} lines or {}KB. offset (1-indexed) and limit select the lines to read. Use offset to continue reading a truncated file.", DEFAULT_MAX_BYTES / 1024),
+        "Use this tool for file reads rather than shell commands, unless no available tool can read the requested oversized line.".to_owned(),
     ].join("\n\n")
 }
 
@@ -471,6 +515,16 @@ fn format_read_result(
     text
 }
 
+impl ReadToolDefinition {
+    fn contribution(&self) -> &'static SystemPromptContribution {
+        if self.plain {
+            &PLAIN_READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+        } else {
+            &READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+        }
+    }
+}
+
 impl ToolDefinition for ReadToolDefinition {
     fn name(&self) -> &str {
         "read"
@@ -485,11 +539,11 @@ impl ToolDefinition for ReadToolDefinition {
     }
 
     fn prompt_snippet(&self) -> Option<&str> {
-        Some(READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION.snippet)
+        Some(self.contribution().snippet)
     }
 
     fn prompt_guidelines(&self) -> Vec<String> {
-        READ_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+        self.contribution()
             .guidelines
             .iter()
             .map(|line| (*line).to_owned())
@@ -561,7 +615,11 @@ impl ToolDefinition for ReadToolDefinition {
                 return Err(ToolExecutionError::new("Operation aborted"));
             }
 
+            // A plain read has no view to choose, so a stray `view` or
+            // `reason` from a model that remembers the compact schema is
+            // ignored rather than refused.
             let original = match params.get("view").and_then(Value::as_str) {
+                _ if self.plain => true,
                 None | Some("compact") => false,
                 Some("original") => true,
                 Some(value) => {
@@ -571,6 +629,7 @@ impl ToolDefinition for ReadToolDefinition {
                 }
             };
             if original
+                && !self.plain
                 && params
                     .get("reason")
                     .and_then(Value::as_str)

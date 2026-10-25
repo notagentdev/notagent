@@ -278,6 +278,14 @@ fn create_child(options: &DelegationOptions, session_id: &str) -> Arc<Agent> {
     let parent_options = options.parent.options();
     let tools: Vec<Arc<dyn AgentTool>> = child_tool_names(options.agent)
         .into_iter()
+        // Without this a child would build the minified editing tools the
+        // parent left out, since the parent registry has nothing to lend it.
+        .filter(|name| {
+            options
+                .tool_options
+                .as_ref()
+                .is_none_or(|tool_options| tool_options.offers(*name))
+        })
         .map(|name| {
             options
                 .resolve_tool

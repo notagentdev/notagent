@@ -223,6 +223,9 @@ settings_struct!(
     /// output of supported shell commands; absent = off (user decision
     /// 2026-08-17).
     bash_filter: bool,
+    /// Whether `read` compacts source and the minified editing tools are
+    /// attached; absent = on.
+    minified_tools: bool,
     /// The footer line with the working directory and git branch;
     /// absent = hidden (user decision 2026-08-25).
     show_workspace_in_footer: bool,
@@ -1095,6 +1098,15 @@ impl SettingsManager {
 
     pub fn set_atomic_leases_enabled(&self, enabled: bool) {
         self.set_global_field("atomicLeases", Value::from(enabled));
+    }
+
+    /// Off means files are read and patched as they are on disk.
+    pub fn get_minified_tools_enabled(&self) -> bool {
+        self.settings_snapshot().minified_tools.unwrap_or(true)
+    }
+
+    pub fn set_minified_tools_enabled(&self, enabled: bool) {
+        self.set_global_field("minifiedTools", Value::from(enabled));
     }
 
     /// the filter replaces what the model reads with a compacted form, which

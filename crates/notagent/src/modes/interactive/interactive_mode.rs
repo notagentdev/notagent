@@ -244,6 +244,7 @@ enum SettingsEffect {
     ClearOnShrink(bool),
     TuiMode(TuiMode),
     WorkspaceInFooter(bool),
+    MinifiedTools,
 }
 
 /// A permission request on its way to the dialog.
@@ -1040,6 +1041,10 @@ pub struct InteractiveMode {
     // yet are mounted all the same, because their position in the dock is what
     // the layout depends on.
     header_container: Rc<RefCell<Container>>,
+    /// The formatter advice shown under the header while the minified tools
+    /// are on. Kept apart from the header so the setting can show or hide it
+    /// without rebuilding the header.
+    minified_tools_notice: Rc<RefCell<Container>>,
     /// Filled by `showLoadedResources`, which arrives with the resources slice.
     #[allow(dead_code)]
     loaded_resources_container: Rc<RefCell<Container>>,
@@ -1238,6 +1243,7 @@ impl InteractiveMode {
         ui.set_clear_on_shrink(settings_manager.get_clear_on_shrink());
 
         let header_container = Rc::new(RefCell::new(Container::new()));
+        let minified_tools_notice = Rc::new(RefCell::new(Container::new()));
         let loaded_resources_container = Rc::new(RefCell::new(Container::new()));
         let mut transcript = TranscriptContainer::new();
         transcript.set_regular(tui_mode == TuiMode::Regular);
@@ -1247,6 +1253,7 @@ impl InteractiveMode {
         {
             let mut document = document_container.borrow_mut();
             document.add_child(Rc::clone(&header_container) as ComponentRef);
+            document.add_child(Rc::clone(&minified_tools_notice) as ComponentRef);
             document.add_child(Rc::clone(&loaded_resources_container) as ComponentRef);
             document.add_child(Rc::clone(&chat_container) as ComponentRef);
         }
@@ -1343,6 +1350,7 @@ impl InteractiveMode {
             cell,
             ui,
             header_container,
+            minified_tools_notice,
             loaded_resources_container,
             chat_container,
             document_container,
@@ -1546,6 +1554,7 @@ impl InteractiveMode {
 
         self.theme_controller.apply_from_settings().await;
         self.build_header();
+        self.refresh_minified_tools_notice();
         self.ui.request_render();
 
         self.render_initial_messages();
@@ -1666,6 +1675,31 @@ impl InteractiveMode {
                 .borrow_mut()
                 .add_child(component_ref(Text::new("", 0, 0)));
         }
+    }
+
+    /// A minified edit expands its replacement back to the file's indentation,
+    /// but line breaks and spacing inside it follow the compact view, so the
+    /// written code can drift from the project's formatting. Shown even with
+    /// a quiet startup: it is advice about what lands on disk, not a listing.
+    fn refresh_minified_tools_notice(&mut self) {
+        let mut container = self.minified_tools_notice.borrow_mut();
+        container.clear();
+        if !self.settings().get_minified_tools_enabled() {
+            return;
+        }
+        let heading = theme().fg(ThemeColor::MdHeading, "[Minified tools]");
+        let body = [
+            "  Files are read and edited through a compact view, so edited code may not",
+            "  match your formatting. Run a formatter after changes, for example:",
+            "    Python      ruff format .",
+            "    TypeScript  npx prettier --write .",
+            "    Rust        cargo fmt",
+            "  Turn this off under /settings, Minified tools.",
+        ]
+        .map(|line| theme().fg(ThemeColor::Dim, line))
+        .join("\n");
+        container.add_child(component_ref(Text::new(format!("{heading}\n{body}"), 0, 0)));
+        container.add_child(component_ref(Spacer::new(1)));
     }
 
     fn update_terminal_title(&self) {
@@ -4608,6 +4642,7 @@ impl InteractiveMode {
             warnings: settings.get_warnings(),
             atomic_leases: settings.get_atomic_leases_enabled(),
             bash_filter: settings.get_bash_filter_enabled(),
+            minified_tools: settings.get_minified_tools_enabled(),
         };
 
         let callbacks = SettingsCallbacks {
@@ -4629,6 +4664,18 @@ impl InteractiveMode {
             on_bash_filter_change: {
                 let settings = Arc::clone(&settings);
                 Box::new(move |enabled| settings.set_bash_filter_enabled(enabled))
+            },
+            // The tool descriptions and the system prompt change with this, so
+            // the tools are rebuilt; the next turn already reads plain text.
+            on_minified_tools_change: {
+                let settings = Arc::clone(&settings);
+                let session = Arc::clone(&session);
+                let tx = self.ui_tx.clone();
+                Box::new(move |enabled| {
+                    settings.set_minified_tools_enabled(enabled);
+                    session.apply_minified_tools_setting();
+                    effect(&tx, id, SettingsEffect::MinifiedTools);
+                })
             },
             on_show_images_change: {
                 let settings = Arc::clone(&settings);
@@ -4867,6 +4914,10 @@ impl InteractiveMode {
             }
             SettingsEffect::WorkspaceInFooter(show) => {
                 self.footer.borrow_mut().set_show_workspace(show);
+                self.ui.request_render();
+            }
+            SettingsEffect::MinifiedTools => {
+                self.refresh_minified_tools_notice();
                 self.ui.request_render();
             }
             SettingsEffect::ThemeApplied => {

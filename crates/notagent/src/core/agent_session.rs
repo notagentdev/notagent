@@ -1658,6 +1658,7 @@ impl AgentSession {
                 snapshots: Some(snapshot_store()),
                 ..PatchMinifiedToolOptions::default()
             }),
+            plain_source: !self.settings_manager.get_minified_tools_enabled(),
             ..ToolsOptions::default()
         }
     }
@@ -1896,6 +1897,7 @@ impl AgentSession {
             ask_user_question: self.questions.clone().map(|presenter| {
                 crate::core::tools::ask_user_question::AskUserQuestionToolSources { presenter }
             }),
+            plain_source: !self.settings_manager.get_minified_tools_enabled(),
             ..ToolsOptions::default()
         }
     }
@@ -5245,6 +5247,23 @@ impl AgentSession {
         )
         .await;
         Ok(())
+    }
+
+    /// Rebuilds the tools after the minified-tools setting changed, keeping the
+    /// active set. The minified editing tools the mode permits are added back
+    /// explicitly: switching them off dropped them from the active set, and
+    /// switching on again would otherwise leave them registered but inactive.
+    pub fn apply_minified_tools_setting(self: &Arc<Self>) {
+        let mut active = self.get_active_tool_names();
+        for name in self.active_mode_tool_names() {
+            let minified = ToolName::parse(&name).is_some_and(ToolName::is_minified_editing_tool);
+            if minified && !active.contains(&name) {
+                active.push(name);
+            }
+        }
+        self.build_runtime(BuildRuntimeOptions {
+            active_tool_names: Some(active),
+        });
     }
 
     /// Reloads settings, resources, modes and tools.

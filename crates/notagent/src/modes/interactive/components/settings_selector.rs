@@ -141,6 +141,8 @@ pub struct SettingsConfig {
     pub atomic_leases: bool,
     /// `/bash-filter on|off`.
     pub bash_filter: bool,
+    /// Compact reads and the minified editing tools.
+    pub minified_tools: bool,
 }
 
 impl Default for SettingsConfig {
@@ -149,6 +151,7 @@ impl Default for SettingsConfig {
             auto_compact: false,
             atomic_leases: false,
             bash_filter: false,
+            minified_tools: true,
             show_images: false,
             image_width_cells: 0,
             auto_resize_images: false,
@@ -193,6 +196,7 @@ pub struct SettingsCallbacks {
     pub on_atomic_leases_change: Box<dyn FnMut(bool)>,
     /// Bash filter toggle (v0.1.20).
     pub on_bash_filter_change: Box<dyn FnMut(bool)>,
+    pub on_minified_tools_change: Box<dyn FnMut(bool)>,
     pub on_show_images_change: Box<dyn FnMut(bool)>,
     pub on_image_width_cells_change: Box<dyn FnMut(u64)>,
     pub on_auto_resize_images_change: Box<dyn FnMut(bool)>,
@@ -234,6 +238,7 @@ impl Default for SettingsCallbacks {
             on_auto_compact_change: Box::new(|_| {}),
             on_atomic_leases_change: Box::new(|_| {}),
             on_bash_filter_change: Box::new(|_| {}),
+            on_minified_tools_change: Box::new(|_| {}),
             on_show_images_change: Box::new(|_| {}),
             on_image_width_cells_change: Box::new(|_| {}),
             on_auto_resize_images_change: Box::new(|_| {}),
@@ -1001,6 +1006,17 @@ impl SettingsSelectorComponent {
                 submenu: None,
             },
             SettingItem {
+                id: "minified-tools".to_string(),
+                label: "Minified tools".to_string(),
+                description: Some(
+                    "Read source in a compact form and edit it with patch_minified, which saves context. Off reads and patches files exactly as they are on disk."
+                        .to_string(),
+                ),
+                current_value: bool_value(config.minified_tools),
+                values: Some(vec!["true".to_string(), "false".to_string()]),
+                submenu: None,
+            },
+            SettingItem {
                 id: "bash-filter".to_string(),
                 label: "Bash filter".to_string(),
                 description: Some(
@@ -1395,6 +1411,7 @@ impl SettingsSelectorComponent {
                     "autocompact" => (callbacks.on_auto_compact_change)(new_value == "true"),
                     "atomic-leases" => (callbacks.on_atomic_leases_change)(new_value == "true"),
                     "bash-filter" => (callbacks.on_bash_filter_change)(new_value == "true"),
+                    "minified-tools" => (callbacks.on_minified_tools_change)(new_value == "true"),
                     "show-images" => (callbacks.on_show_images_change)(new_value == "true"),
                     "image-width-cells" => {
                         (callbacks.on_image_width_cells_change)(parse_int(new_value))

@@ -1129,6 +1129,40 @@ async fn the_settings_selector_opens_and_escape_closes_it() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn the_formatter_advice_shows_while_the_minified_tools_are_on() {
+    local(async {
+        let app = HeadlessApp::create().await;
+        let terminal = VirtualTerminal::new(COLUMNS, ROWS);
+        let mut driver = Driver::start(&app, terminal).await;
+        driver.wait_for("[Minified tools]").await;
+        for example in ["ruff format .", "npx prettier --write .", "cargo fmt"] {
+            assert!(
+                driver.screen().contains(example),
+                "the advice must name a formatter for Python, TypeScript and Rust, missing {example:?}"
+            );
+        }
+
+        driver.submit("/settings").await;
+        driver.wait_for("Auto-compact").await;
+        driver.send_keys("Minified tools").await;
+        driver.send_keys(KEY_ENTER).await;
+        driver.send_keys(KEY_ESCAPE).await;
+        driver.wait_until_absent("cargo fmt").await;
+        assert!(
+            !app.session().settings_manager().get_minified_tools_enabled(),
+            "the settings toggle must switch the minified tools off"
+        );
+        assert!(
+            !app.session()
+                .get_active_tool_names()
+                .contains(&"patch_minified".to_string()),
+            "switching off must take patch_minified away from the running session"
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn fork_opens_the_message_selector_and_forks_to_a_new_session() {
     local(async {
         let app = HeadlessApp::create().await;

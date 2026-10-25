@@ -124,6 +124,11 @@ impl ToolName {
         }
     }
 
+    /// The tools that edit through the compact view `read` produces.
+    pub fn is_minified_editing_tool(self) -> bool {
+        matches!(self, ToolName::PatchMinified | ToolName::MultiPatchMinified)
+    }
+
     pub fn parse(value: &str) -> Option<Self> {
         ALL_TOOL_NAMES
             .into_iter()
@@ -219,6 +224,32 @@ pub struct ToolsOptions {
     pub find: Option<FindToolOptions>,
     pub find_codebase: Option<FindCodebaseToolOptions>,
     pub ls: Option<LsToolOptions>,
+    /// Read and patch the real text: `read` returns files unchanged and the two
+    /// minified editing tools are left out. One switch rather than two,
+    /// because a minified edit matches against the compact view a read
+    /// produced, and without compact reads there is nothing to match.
+    pub plain_source: bool,
+}
+
+impl ToolsOptions {
+    /// Whether this tool exists under these options.
+    pub fn offers(&self, tool_name: ToolName) -> bool {
+        !(self.plain_source && tool_name.is_minified_editing_tool())
+    }
+
+    fn read_options(&self) -> Option<ReadToolOptions> {
+        (self.read.is_some() || self.plain_source).then(|| ReadToolOptions {
+            plain: self.plain_source,
+            ..self.read.clone().unwrap_or_default()
+        })
+    }
+
+    fn edit_options(&self) -> Option<EditToolOptions> {
+        (self.edit.is_some() || self.plain_source).then(|| EditToolOptions {
+            plain: self.plain_source,
+            ..self.edit.clone().unwrap_or_default()
+        })
+    }
 }
 
 pub fn create_tool_definition(
@@ -229,7 +260,7 @@ pub fn create_tool_definition(
     match tool_name {
         ToolName::Read | ToolName::ReadMinified => Arc::new(create_read_tool_definition(
             cwd,
-            options.and_then(|options| options.read.clone()),
+            options.and_then(ToolsOptions::read_options),
         )),
         ToolName::Bash => Arc::new(create_bash_tool_definition(
             cwd,
@@ -237,7 +268,7 @@ pub fn create_tool_definition(
         )),
         ToolName::Edit => Arc::new(create_edit_tool_definition(
             cwd,
-            options.and_then(|options| options.edit.clone()),
+            options.and_then(ToolsOptions::edit_options),
         )),
         ToolName::PatchMinified => Arc::new(create_patch_minified_tool_definition(
             cwd,
@@ -308,10 +339,10 @@ pub fn create_tool_definition(
 pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions>) -> Tool {
     match tool_name {
         ToolName::Read | ToolName::ReadMinified => {
-            create_read_tool(cwd, options.and_then(|options| options.read.clone()))
+            create_read_tool(cwd, options.and_then(ToolsOptions::read_options))
         }
         ToolName::Bash => create_bash_tool(cwd, options.and_then(|options| options.bash.clone())),
-        ToolName::Edit => create_edit_tool(cwd, options.and_then(|options| options.edit.clone())),
+        ToolName::Edit => create_edit_tool(cwd, options.and_then(ToolsOptions::edit_options)),
         ToolName::PatchMinified => create_patch_minified_tool(
             cwd,
             options.and_then(|options| options.patch_minified.clone()),
@@ -387,6 +418,7 @@ pub fn read_only_tool_names() -> &'static [ToolName] {
 pub fn create_coding_tool_definitions(cwd: &str, options: Option<&ToolsOptions>) -> Vec<ToolDef> {
     CODING_TOOL_NAMES
         .into_iter()
+        .filter(|name| options.is_none_or(|options| options.offers(*name)))
         .map(|name| create_tool_definition(name, cwd, options))
         .collect()
 }
@@ -410,6 +442,7 @@ pub fn create_all_tool_definitions(
 ) -> BTreeMap<ToolName, ToolDef> {
     ALL_TOOL_NAMES
         .into_iter()
+        .filter(|name| options.is_none_or(|options| options.offers(*name)))
         .map(|name| (name, create_tool_definition(name, cwd, options)))
         .collect()
 }
@@ -417,6 +450,7 @@ pub fn create_all_tool_definitions(
 pub fn create_coding_tools(cwd: &str, options: Option<&ToolsOptions>) -> Vec<Tool> {
     CODING_TOOL_NAMES
         .into_iter()
+        .filter(|name| options.is_none_or(|options| options.offers(*name)))
         .map(|name| create_tool(name, cwd, options))
         .collect()
 }
@@ -431,6 +465,7 @@ pub fn create_read_only_tools(cwd: &str, options: Option<&ToolsOptions>) -> Vec<
 pub fn create_all_tools(cwd: &str, options: Option<&ToolsOptions>) -> BTreeMap<ToolName, Tool> {
     ALL_TOOL_NAMES
         .into_iter()
+        .filter(|name| options.is_none_or(|options| options.offers(*name)))
         .map(|name| (name, create_tool(name, cwd, options)))
         .collect()
 }

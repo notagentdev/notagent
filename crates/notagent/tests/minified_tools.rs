@@ -521,3 +521,85 @@ async fn comment_only_source_requires_the_comment_switch_to_be_visible() {
         .unwrap();
     assert!(text_output(&commented).contains("important instruction"));
 }
+
+// ---------------------------------------------------------------------------
+// minified tools switched off
+// ---------------------------------------------------------------------------
+
+fn plain_options() -> notagent::core::tools::ToolsOptions {
+    notagent::core::tools::ToolsOptions {
+        plain_source: true,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn switching_the_minified_tools_off_leaves_only_plain_editors_in_every_preset() {
+    use notagent::core::tools::{create_all_tool_definitions, create_coding_tool_definitions};
+    let options = plain_options();
+    let presets = [
+        create_all_tool_definitions("/tmp", Some(&options))
+            .into_values()
+            .collect::<Vec<_>>(),
+        create_coding_tool_definitions("/tmp", Some(&options)),
+    ];
+    for tools in presets {
+        let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
+        assert!(
+            !names.contains(&"patch_minified") && !names.contains(&"multi_patch_minified"),
+            "no minified editing tool may be attached when they are off, saw {names:?}"
+        );
+        let read = tools
+            .iter()
+            .find(|tool| tool.name() == "read")
+            .expect("read");
+        assert!(
+            read.parameters()["properties"].get("view").is_none()
+                && read.parameters()["properties"]
+                    .get("keep_comments")
+                    .is_none(),
+            "a plain read must not offer compact-view switches: {}",
+            read.parameters()
+        );
+        let patch = tools
+            .iter()
+            .find(|tool| tool.name() == "patch")
+            .expect("patch");
+        let advice = format!(
+            "{} {}",
+            patch.description(),
+            patch.prompt_guidelines().join(" ")
+        );
+        assert!(
+            !advice.contains("minified") && !advice.contains("fallback"),
+            "patch must be described as the editor, not a fallback: {advice}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_plain_read_returns_the_file_exactly_as_it_is_on_disk() {
+    let workspace = Workspace::new();
+    let path = workspace.write("main.rs", RUST_FIXTURE);
+    let tool = create_read_tool_definition(
+        &workspace.dir(),
+        Some(notagent::core::tools::read::ReadToolOptions {
+            plain: true,
+            ..Default::default()
+        }),
+    );
+
+    let result = run(&tool, json!({"path": path})).await.expect("reads");
+    assert_eq!(
+        text_output(&result),
+        RUST_FIXTURE,
+        "a plain read must keep comments and indentation"
+    );
+
+    // A model that remembers the compact schema may still send the old
+    // switches; they are ignored rather than refused.
+    let result = run(&tool, json!({"path": path, "view": "original"}))
+        .await
+        .expect("a stray view without a reason is not an error");
+    assert_eq!(text_output(&result), RUST_FIXTURE);
+}

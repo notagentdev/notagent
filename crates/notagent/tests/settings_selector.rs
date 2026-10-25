@@ -41,6 +41,7 @@ fn config() -> SettingsConfig {
         auto_compact: true,
         atomic_leases: false,
         bash_filter: false,
+        minified_tools: true,
         show_images: false,
         image_width_cells: 80,
         auto_resize_images: true,

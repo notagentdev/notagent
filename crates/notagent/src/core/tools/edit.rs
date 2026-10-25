@@ -43,6 +43,20 @@ pub const EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
         ],
     };
 
+/// The contribution when the minified editing tools are switched off: patch is
+/// then the editor, not the fallback.
+pub const PLAIN_EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION: SystemPromptContribution =
+    SystemPromptContribution {
+        snippet: "Edit a file with one exact text replacement",
+        guidelines: &[
+            "Use patch for changes to existing files. Supply path, old_string and new_string, with old_string copied from a read of the current file.",
+            "Each patch call replaces one unique occurrence. Base subsequent changes on the file after the preceding patch.",
+            "Keep old_string as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+        ],
+    };
+
+const PLAIN_DESCRIPTION: &str = "Edit a single file using exact text replacement. Read the current file first and copy old_string from it. Supply path, old_string and new_string directly. old_string must identify a unique region in the current file. new_string may be empty to delete that region. Do not include large unchanged regions just to connect distant changes.";
+
 const DESCRIPTION: &str = "Fallback for editing a single file using exact text replacement. When minified editing tools are attached, you must use them instead; use patch only when a concrete limitation or failure prevents them from safely making the requested edit, and state that reason first. If no minified editing tool is attached, patch is available for exact edits. Read the exact current source before falling back; never match against a minified view. Supply path, old_string and new_string directly. old_string must identify a unique region in the current file. new_string may be empty to delete that region. Do not include large unchanged regions just to connect distant changes.";
 
 fn edit_schema() -> Value {
@@ -127,10 +141,14 @@ pub struct EditToolOptions {
     /// Where a copy of the file goes before it is patched, so `undo` can put it
     /// back. Absent means no snapshot is taken.
     pub snapshots: Option<SnapshotStore>,
+    /// No minified editing tool is attached, so patch is described as the
+    /// editor rather than as the fallback. Default: false.
+    pub plain: bool,
 }
 
 pub struct EditToolDefinition {
     cwd: String,
+    plain: bool,
     snapshots: Option<SnapshotStore>,
     operations: Arc<dyn EditOperations>,
     leases: LeaseCoordinator,
@@ -148,6 +166,7 @@ pub fn create_edit_tool_definition(
     let options = options.unwrap_or_default();
     EditToolDefinition {
         cwd: cwd.to_owned(),
+        plain: options.plain,
         operations: options
             .operations
             .unwrap_or_else(|| Arc::new(LocalEditOperations)),
@@ -450,6 +469,16 @@ fn format_edit_result(
     ))
 }
 
+impl EditToolDefinition {
+    fn contribution(&self) -> &'static SystemPromptContribution {
+        if self.plain {
+            &PLAIN_EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+        } else {
+            &EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+        }
+    }
+}
+
 impl ToolDefinition for EditToolDefinition {
     fn name(&self) -> &str {
         "patch"
@@ -460,15 +489,19 @@ impl ToolDefinition for EditToolDefinition {
     }
 
     fn description(&self) -> &str {
-        DESCRIPTION
+        if self.plain {
+            PLAIN_DESCRIPTION
+        } else {
+            DESCRIPTION
+        }
     }
 
     fn prompt_snippet(&self) -> Option<&str> {
-        Some(EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION.snippet)
+        Some(self.contribution().snippet)
     }
 
     fn prompt_guidelines(&self) -> Vec<String> {
-        EDIT_TOOL_SYSTEM_PROMPT_CONTRIBUTION
+        self.contribution()
             .guidelines
             .iter()
             .map(|line| (*line).to_owned())
