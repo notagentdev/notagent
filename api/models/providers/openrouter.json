@@ -5709,6 +5709,154 @@
       "max": "max"
     }
   },
+  "openai/gpt-6.1-terra": {
+    "id": "openai/gpt-6.1-terra",
+    "name": "OpenAI: GPT-6.1 Terra",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 1,
+      "output": 5,
+      "cacheRead": 0.05,
+      "cacheWrite": 1.25,
+      "tiers": [
+        {
+          "inputTokensAbove": 272000,
+          "input": 2,
+          "output": 7.5,
+          "cacheRead": 0.1,
+          "cacheWrite": 2.5
+        }
+      ]
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "compat": {
+      "thinkingFormat": "openrouter"
+    },
+    "thinkingLevelMap": {
+      "minimal": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
+  "openai/gpt-6.1-terra-pro": {
+    "id": "openai/gpt-6.1-terra-pro",
+    "name": "OpenAI: GPT-6.1 Terra Pro",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 1,
+      "output": 5,
+      "cacheRead": 0.05,
+      "cacheWrite": 1.25,
+      "tiers": [
+        {
+          "inputTokensAbove": 272000,
+          "input": 2,
+          "output": 7.5,
+          "cacheRead": 0.1,
+          "cacheWrite": 2.5
+        }
+      ]
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "compat": {
+      "thinkingFormat": "openrouter"
+    },
+    "thinkingLevelMap": {
+      "minimal": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
+  "openai/gpt-6.1-terra-pro:batch": {
+    "id": "openai/gpt-6.1-terra-pro:batch",
+    "name": "OpenAI: GPT-6.1 Terra Pro (batch)",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0.5,
+      "output": 2.5,
+      "cacheRead": 0.025,
+      "cacheWrite": 0.625,
+      "tiers": [
+        {
+          "inputTokensAbove": 272000,
+          "input": 1,
+          "output": 3.75,
+          "cacheRead": 0.05,
+          "cacheWrite": 1.25
+        }
+      ]
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "compat": {
+      "thinkingFormat": "openrouter"
+    },
+    "thinkingLevelMap": {
+      "minimal": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
+  "openai/gpt-6.1-terra:batch": {
+    "id": "openai/gpt-6.1-terra:batch",
+    "name": "OpenAI: GPT-6.1 Terra (batch)",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 0.5,
+      "output": 2.5,
+      "cacheRead": 0.025,
+      "cacheWrite": 0.625,
+      "tiers": [
+        {
+          "inputTokensAbove": 272000,
+          "input": 1,
+          "output": 3.75,
+          "cacheRead": 0.05,
+          "cacheWrite": 1.25
+        }
+      ]
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "compat": {
+      "thinkingFormat": "openrouter"
+    },
+    "thinkingLevelMap": {
+      "minimal": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
   "openai/gpt-audio": {
     "id": "openai/gpt-audio",
     "name": "OpenAI: GPT Audio",

@@ -999,6 +999,107 @@ fn gpt_6_1_sol_is_offered_through_every_gateway_that_lists_it() {
 }
 
 #[test]
+fn gpt_6_1_terra_is_offered_through_the_api_and_the_codex_plan() {
+    let api = get_builtin_model("openai", "gpt-6.1-terra").expect("OpenAI model");
+    let codex = get_builtin_model("openai-codex", "gpt-6.1-terra").expect("Codex model");
+
+    assert_eq!(api.context_window, 1_050_000);
+    // Codex ships the model with a 500K default window that grows to 872K.
+    assert_eq!(codex.context_window, 872_000);
+    for model in [&api, &codex] {
+        assert_eq!(model.max_tokens, 128_000);
+        assert_eq!(
+            (model.cost.input, model.cost.output, model.cost.cache_read),
+            (1.0, 5.0, 0.05),
+            "{}",
+            model.provider
+        );
+    }
+    // The API accepts `none` but not `minimal`; Codex offers only low to max.
+    assert_eq!(
+        get_supported_thinking_levels(&api),
+        vec![
+            ModelThinkingLevel::Off,
+            ModelThinkingLevel::Low,
+            ModelThinkingLevel::Medium,
+            ModelThinkingLevel::High,
+            ModelThinkingLevel::Xhigh,
+            ModelThinkingLevel::Max,
+        ]
+    );
+    assert_eq!(
+        get_supported_thinking_levels(&codex),
+        vec![
+            ModelThinkingLevel::Low,
+            ModelThinkingLevel::Medium,
+            ModelThinkingLevel::High,
+            ModelThinkingLevel::Xhigh,
+            ModelThinkingLevel::Max,
+        ]
+    );
+}
+
+#[test]
+fn gpt_6_1_terra_is_offered_through_every_gateway_that_lists_it() {
+    // (provider, model id, input, output, cache read) at 272K input tokens or fewer.
+    for (provider, model_id, input, output, cache_read) in [
+        ("openrouter", "openai/gpt-6.1-terra", 1.0, 5.0, 0.05),
+        ("openrouter", "openai/gpt-6.1-terra-pro", 1.0, 5.0, 0.05),
+        ("openrouter", "openai/gpt-6.1-terra:batch", 0.5, 2.5, 0.025),
+        (
+            "openrouter",
+            "openai/gpt-6.1-terra-pro:batch",
+            0.5,
+            2.5,
+            0.025,
+        ),
+        ("vercel-ai-gateway", "openai/gpt-6.1-terra", 1.0, 5.0, 0.05),
+        (
+            "vercel-ai-gateway",
+            "openai/gpt-6.1-terra-fast",
+            2.0,
+            10.0,
+            0.1,
+        ),
+        ("github-copilot", "gpt-6.1-terra", 1.0, 5.0, 0.05),
+        (
+            "amazon-bedrock",
+            "global.openai.gpt-6.1-terra",
+            1.0,
+            5.0,
+            0.05,
+        ),
+        // US cross-Region inference carries a 10% premium over the global profile.
+        ("amazon-bedrock", "us.openai.gpt-6.1-terra", 1.1, 5.5, 0.055),
+        ("cloudflare-ai-gateway", "gpt-6.1-terra", 1.0, 5.0, 0.05),
+    ] {
+        let model = get_builtin_model(provider, model_id)
+            .unwrap_or_else(|| panic!("{provider} lists {model_id}"));
+        assert_eq!(model.context_window, 1_050_000, "{provider} {model_id}");
+        assert_eq!(model.max_tokens, 128_000, "{provider} {model_id}");
+        assert_eq!(
+            (model.cost.input, model.cost.output, model.cost.cache_read),
+            (input, output, cache_read),
+            "{provider} {model_id}"
+        );
+        let tier = model
+            .cost
+            .tiers
+            .as_ref()
+            .and_then(|tiers| tiers.first())
+            .unwrap_or_else(|| panic!("{provider} {model_id} has a long-context tier"));
+        assert_eq!(tier.input_tokens_above, 272_000, "{provider} {model_id}");
+        assert_eq!(tier.input, input * 2.0, "{provider} {model_id}");
+        assert_eq!(tier.output, output * 1.5, "{provider} {model_id}");
+        let levels = get_supported_thinking_levels(&model);
+        assert!(
+            !levels.contains(&ModelThinkingLevel::Minimal),
+            "GPT-6.1 Terra rejects the minimal effort, but {provider} {model_id} offers {levels:?}"
+        );
+    }
+}
+
+#[test]
 fn gemini_4_argon_is_offered_through_the_gemini_api_and_vertex() {
     for provider in ["google", "google-vertex"] {
         let model = get_builtin_model(provider, "gemini-4-argon").expect("Argon model");
