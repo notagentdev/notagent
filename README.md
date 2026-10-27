@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.75 supports Apple Silicon Macs:
+Version 0.1.76 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,14 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.76
+
+- GPT-6.1 Terra is available with an OpenAI key and the Codex plan, and
+  through OpenRouter, the Vercel AI Gateway, GitHub Copilot, Amazon Bedrock
+  and the Cloudflare AI Gateway. It costs half as much as GPT-6.1 Sol.
+  On the Codex plan it has an 872K context window and efforts from low to
+  max.
 
 ### 0.1.75
 
