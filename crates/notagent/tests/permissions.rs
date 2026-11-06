@@ -456,6 +456,47 @@ fn a_write_inside_the_working_directory_is_approved_in_manual_mode() {
 }
 
 #[test]
+fn the_git_directory_guard_ignores_letter_case() {
+    for path in [".GIT/config", ".Git/hooks/pre-commit"] {
+        assert_eq!(
+            decide_in_chain("write", ApprovalLevel::Manual, json!({ "path": path })),
+            "git-control-path-access-ask",
+            "{path} is the git directory on a case-insensitive file system"
+        );
+    }
+}
+
+#[test]
+fn reading_the_agents_own_credential_files_is_asked_about() {
+    for path in [
+        notagent::config::get_auth_path(),
+        notagent::config::get_mcp_credentials_path(),
+    ] {
+        assert_eq!(
+            decide_in_chain(
+                "read",
+                ApprovalLevel::Auto,
+                json!({ "path": path.to_string_lossy() })
+            ),
+            "sensitive-file-access-ask",
+            "{} holds provider credentials",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn an_mcp_tool_with_a_path_inside_the_working_directory_is_still_asked_about() {
+    for tool in ["mcp__fs__write_file", "mcp__fs__delete"] {
+        assert_eq!(
+            decide_in_chain(tool, ApprovalLevel::Manual, json!({ "path": "src/a.ts" })),
+            "fallback-ask",
+            "{tool} names a path, which says nothing about what it does with it"
+        );
+    }
+}
+
+#[test]
 fn a_write_outside_the_working_directory_falls_through_to_the_trailing_ask() {
     assert_eq!(
         decide_in_chain(

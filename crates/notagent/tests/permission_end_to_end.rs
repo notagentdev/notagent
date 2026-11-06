@@ -678,6 +678,69 @@ async fn the_gate_lets_an_ordinary_in_directory_write_through_untouched() {
     assert!(shown.lock().expect("shown").is_empty());
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn a_write_through_a_symlink_that_leaves_the_workspace_is_asked_about() {
+    let workspace = Workspace::new();
+    let outside = Workspace::new();
+    std::os::unix::fs::symlink(&outside.path, workspace.path.join("notes")).expect("symlink");
+    let (presenter, shown) = recording(ApprovalAnswer::Deny);
+    let gate = gate(&workspace.cwd(), ApprovalLevel::Manual, presenter);
+    let arguments = input(json!({ "path": workspace.join("notes/authorized_keys") }));
+    assert!(
+        gate.before_tool_call(permission_call("write", &arguments), None)
+            .await
+            .is_some(),
+        "the path is inside the workspace only as written; the write lands outside it"
+    );
+    assert_eq!(shown.lock().expect("shown").len(), 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlink_into_a_secrets_directory_is_guarded_like_the_directory() {
+    let workspace = Workspace::new();
+    let secrets = Workspace::new();
+    let ssh = secrets.path.join(".ssh");
+    std::fs::create_dir(&ssh).expect("ssh dir");
+    std::os::unix::fs::symlink(&ssh, workspace.path.join("keys")).expect("symlink");
+    let (presenter, _shown) = recording(ApprovalAnswer::Deny);
+    let gate = gate(&workspace.cwd(), ApprovalLevel::Auto, presenter);
+    // A name no pattern knows on its own: only the directory makes it secret.
+    let arguments = input(json!({ "path": workspace.join("keys/known_hosts") }));
+    let block = gate
+        .before_tool_call(permission_call("read", &arguments), None)
+        .await
+        .expect("asks and is refused");
+    assert!(
+        block
+            .reason
+            .unwrap_or_default()
+            .contains("sensitive-file-access-ask"),
+        "reading through the link reads the secret it points at"
+    );
+}
+
+#[tokio::test]
+async fn allowing_a_destructive_command_for_the_session_still_asks_the_next_time() {
+    let workspace = Workspace::new();
+    let (presenter, shown) = recording(ApprovalAnswer::ApproveAlways);
+    let gate = gate(&workspace.cwd(), ApprovalLevel::Manual, presenter);
+    let arguments = input(json!({ "command": "rm -rf build" }));
+    for _ in 0..2 {
+        assert!(
+            gate.before_tool_call(permission_call("bash", &arguments), None)
+                .await
+                .is_none()
+        );
+    }
+    assert_eq!(
+        shown.lock().expect("shown").len(),
+        2,
+        "an irreversible command is confirmed every time, whatever the last answer was"
+    );
+}
+
 #[tokio::test]
 async fn the_gate_blocks_a_refused_call_and_ends_the_batch() {
     let workspace = Workspace::new();

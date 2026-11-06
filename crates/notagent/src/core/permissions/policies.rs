@@ -1,8 +1,12 @@
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
 
 use super::policy::{FnPolicy, PermissionContext, PermissionDecision, PermissionPolicy};
+use crate::config::{get_auth_path, get_mcp_credentials_path};
+use crate::core::modes::shells::MUTATING_TOOLS;
+use crate::core::tools::ToolName;
 use crate::core::tools::path_utils::{resolve_read_path, resolve_to_cwd};
 use crate::utils::paths::{is_absolute_path, main_separator, node_relative, node_resolve};
 
@@ -56,8 +60,10 @@ static SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     .collect()
 });
 
+/// Case-insensitive because the default file systems on macOS and Windows are:
+/// `.GIT/config` is `.git/config` there, and git runs what that file names.
 static GIT_CONTROL_PATH: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(^|/)\.git(/|$)").expect("git control pattern"));
+    LazyLock::new(|| Regex::new(r"(?i)(^|/)\.git(/|$)").expect("git control pattern"));
 
 fn target_path(context: &PermissionContext) -> Option<&str> {
     PATH_ARGUMENTS
@@ -76,6 +82,53 @@ fn absolute_target(context: &PermissionContext) -> Option<String> {
             resolve_to_cwd(raw, &context.cwd)
         },
     )
+}
+
+/// Symlinks are followed by every tool that opens a file, so a guard that only
+/// reads the path as written can be walked around: `notes -> ~/.ssh` makes
+/// `notes/authorized_keys` look like an ordinary file in the workspace.
+const MAX_LINK_HOPS: usize = 40;
+
+/// `path` with the symlinks among its existing components resolved. The part
+/// that does not exist yet, a file about to be created, is appended unchanged.
+fn resolve_links(path: &str) -> String {
+    let mut current = PathBuf::from(path);
+    let mut missing: Vec<std::ffi::OsString> = Vec::new();
+    for _ in 0..MAX_LINK_HOPS {
+        if let Ok(mut real) = std::fs::canonicalize(&current) {
+            real.extend(missing.iter().rev());
+            return real.to_string_lossy().into_owned();
+        }
+        // A dangling link still decides where a write lands.
+        if let Ok(target) = std::fs::read_link(&current) {
+            current = match current.parent() {
+                Some(parent) => parent.join(target),
+                None => target,
+            };
+            continue;
+        }
+        let (Some(parent), Some(name)) = (current.parent(), current.file_name()) else {
+            break;
+        };
+        missing.push(name.to_owned());
+        current = parent.to_path_buf();
+    }
+    path.to_string()
+}
+
+/// The path as written and the path it leads to; a guard that matches either
+/// one applies.
+fn guarded_paths(target: &str) -> [String; 2] {
+    [to_posix(target), to_posix(&resolve_links(target))]
+}
+
+/// This agent's own credential stores. Their names are generic, so no pattern
+/// recognises them, and reading one hands every provider key to the model.
+fn is_agent_credential_file(target: &str) -> bool {
+    let real = resolve_links(target).to_lowercase();
+    [get_auth_path(), get_mcp_credentials_path()]
+        .iter()
+        .any(|path| resolve_links(&path.to_string_lossy()).to_lowercase() == real)
 }
 
 fn is_inside(parent: &str, child: &str) -> bool {
@@ -99,11 +152,12 @@ pub fn sensitive_file_access_ask() -> Arc<dyn PermissionPolicy> {
         "sensitive-file-access-ask",
         |context: &PermissionContext| {
             let target = absolute_target(context)?;
-            let normalized = to_posix(&target);
-            if !SENSITIVE_PATTERNS
-                .iter()
-                .any(|pattern| pattern.is_match(&normalized))
-            {
+            let sensitive = guarded_paths(&target).iter().any(|path| {
+                SENSITIVE_PATTERNS
+                    .iter()
+                    .any(|pattern| pattern.is_match(path))
+            }) || is_agent_credential_file(&target);
+            if !sensitive {
                 return None;
             }
             Some(PermissionDecision::Ask {
@@ -126,7 +180,10 @@ pub fn git_control_path_access_ask() -> Arc<dyn PermissionPolicy> {
                 return None;
             }
             let target = absolute_target(context)?;
-            if !GIT_CONTROL_PATH.is_match(&to_posix(&target)) {
+            if !guarded_paths(&target)
+                .iter()
+                .any(|path| GIT_CONTROL_PATH.is_match(path))
+            {
                 return None;
             }
             Some(PermissionDecision::Ask {
@@ -170,12 +227,21 @@ pub fn default_tool_approve() -> Arc<dyn PermissionPolicy> {
 
 /// Writes inside the working directory are the ordinary case and are approved.
 /// A write outside it is not, and falls through to the trailing ask.
+/// Only the built-in editing tools qualify. An MCP tool may take a `path` and
+/// do anything with it, delete included, and it is active even in a read-only
+/// mode; its argument names are no evidence of what it does.
 pub fn git_cwd_write_approve() -> Arc<dyn PermissionPolicy> {
     Arc::new(FnPolicy::new(
         "git-cwd-write-approve",
         |context: &PermissionContext| {
+            let tool = ToolName::parse(&context.tool_name)?;
+            if !MUTATING_TOOLS.contains(&tool) {
+                return None;
+            }
             let target = absolute_target(context)?;
-            is_inside(&context.cwd, &target).then_some(PermissionDecision::Approve)
+            let inside = is_inside(&context.cwd, &target)
+                && is_inside(&resolve_links(&context.cwd), &resolve_links(&target));
+            inside.then_some(PermissionDecision::Approve)
         },
     ))
 }

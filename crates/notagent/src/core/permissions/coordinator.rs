@@ -114,11 +114,31 @@ impl ApprovalCoordinator {
         key: &str,
         signal: Option<&CancellationToken>,
     ) -> ApprovalAnswer {
+        self.request_with_memory(request, Some(key), signal).await
+    }
+
+    /// Asks without consulting or extending the session's remembered answers,
+    /// for calls that must be confirmed every time. "Allow for this session"
+    /// given here permits this one call and nothing after it.
+    pub async fn request_every_time(
+        &self,
+        request: ApprovalRequest,
+        signal: Option<&CancellationToken>,
+    ) -> ApprovalAnswer {
+        self.request_with_memory(request, None, signal).await
+    }
+
+    async fn request_with_memory(
+        &self,
+        request: ApprovalRequest,
+        key: Option<&str>,
+        signal: Option<&CancellationToken>,
+    ) -> ApprovalAnswer {
         let aborted = self.aborted_token();
         if aborted.is_cancelled() || signal.is_some_and(CancellationToken::is_cancelled) {
             return ApprovalAnswer::Deny;
         }
-        if self.is_remembered(key) {
+        if key.is_some_and(|key| self.is_remembered(key)) {
             return ApprovalAnswer::ApproveAlways;
         }
 
@@ -130,7 +150,10 @@ impl ApprovalCoordinator {
             return ApprovalAnswer::Deny;
         }
         let answer = self.race(request, &aborted, signal).await;
-        if answer_persists(answer) && answer_allows(answer) {
+        if let Some(key) = key
+            && answer_persists(answer)
+            && answer_allows(answer)
+        {
             self.state
                 .lock()
                 .expect("approval state")

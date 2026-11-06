@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::coordinator::{ApprovalCoordinator, approval_key_for};
+use super::policies::is_destructive_call;
 use super::policy::{PermissionContext, PermissionDecision, PermissionPolicy, evaluate_policies};
 use super::request::{answer_allows, build_approval_request};
 use crate::core::hooks::runner::HookVerdict;
@@ -130,11 +131,14 @@ impl PermissionHandler {
             });
         };
 
-        let answer = self
-            .options
-            .coordinator
-            .request(request, &approval_key_for(&context), signal)
-            .await;
+        let coordinator = &self.options.coordinator;
+        let answer = if is_destructive_call(&context) {
+            coordinator.request_every_time(request, signal).await
+        } else {
+            coordinator
+                .request(request, &approval_key_for(&context), signal)
+                .await
+        };
         if answer_allows(answer) {
             return None;
         }

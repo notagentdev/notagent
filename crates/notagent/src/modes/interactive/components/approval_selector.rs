@@ -76,8 +76,12 @@ impl ApprovalSelectorComponent {
             )));
         }
 
+        // An irreversible command is confirmed every time, so a session-wide
+        // answer would be a promise the gate does not keep.
+        let every_time = request.policy_name == "destructive-command-ask";
         let items: Vec<SelectItem> = APPROVAL_ANSWERS
             .iter()
+            .filter(|(answer, _)| !(every_time && *answer == ApprovalAnswer::ApproveAlways))
             .map(|(answer, label)| SelectItem {
                 value: answer.as_str().to_string(),
                 label: (*label).to_string(),
