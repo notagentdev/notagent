@@ -478,6 +478,17 @@ pub struct SessionTreeNode {
     pub label_timestamp: Option<String>,
 }
 
+/// The derived drop recurses once per level, and a long linear session is as
+/// deep as it is long. Children are moved onto a flat list instead.
+impl Drop for SessionTreeNode {
+    fn drop(&mut self) {
+        let mut pending = std::mem::take(&mut self.children);
+        while let Some(mut node) = pending.pop() {
+            pending.append(&mut node.children);
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionModel {
     pub provider: String,
@@ -1986,26 +1997,37 @@ impl SessionManager {
             }
         }
 
-        fn assemble(
-            index: usize,
-            nodes: &mut Vec<Option<SessionTreeNode>>,
-            child_indices: &[Vec<usize>],
-        ) -> SessionTreeNode {
-            let mut node = nodes[index].take().expect("each entry is assembled once");
-            let mut children: Vec<SessionTreeNode> = child_indices[index]
-                .iter()
-                .map(|child| assemble(*child, nodes, child_indices))
-                .collect();
-            // Oldest first, newest at the bottom.
-            children.sort_by_key(|child| parse_timestamp_ms(child.entry.timestamp()).unwrap_or(0));
-            node.children = children;
-            node
-        }
-
+        // Assembled bottom-up with an explicit stack rather than by recursion:
+        // a session is mostly one chain, so its depth is its length, and a few
+        // thousand frames overflow the stack.
         let mut slots: Vec<Option<SessionTreeNode>> = nodes.into_iter().map(Some).collect();
+        let mut assembled: Vec<Option<SessionTreeNode>> = Vec::with_capacity(slots.len());
+        assembled.resize_with(slots.len(), || None);
+        for &root in &root_indices {
+            let mut stack: Vec<(usize, bool)> = vec![(root, false)];
+            while let Some((index, children_done)) = stack.pop() {
+                if !children_done {
+                    stack.push((index, true));
+                    stack.extend(child_indices[index].iter().map(|child| (*child, false)));
+                    continue;
+                }
+                let Some(mut node) = slots[index].take() else {
+                    continue;
+                };
+                let mut children: Vec<SessionTreeNode> = child_indices[index]
+                    .iter()
+                    .filter_map(|child| assembled[*child].take())
+                    .collect();
+                // Oldest first, newest at the bottom.
+                children
+                    .sort_by_key(|child| parse_timestamp_ms(child.entry.timestamp()).unwrap_or(0));
+                node.children = children;
+                assembled[index] = Some(node);
+            }
+        }
         root_indices
             .into_iter()
-            .map(|index| assemble(index, &mut slots, &child_indices))
+            .filter_map(|index| assembled[index].take())
             .collect()
     }
 

@@ -660,17 +660,32 @@ async fn handle_command(
     }
 }
 
+/// Post-order over an explicit stack: a session's tree is about as deep as the
+/// session is long, too deep to recurse over.
 fn session_tree_to_json(nodes: &[crate::core::session_manager::SessionTreeNode]) -> Value {
-    Value::Array(
-        nodes
-            .iter()
-            .map(|node| {
+    use crate::core::session_manager::SessionTreeNode;
+    enum Step<'a> {
+        Enter(&'a SessionTreeNode),
+        Leave(&'a SessionTreeNode),
+    }
+
+    let mut converted: Vec<Value> = Vec::new();
+    let mut stack: Vec<Step<'_>> = nodes.iter().rev().map(Step::Enter).collect();
+    while let Some(step) = stack.pop() {
+        match step {
+            Step::Enter(node) => {
+                stack.push(Step::Leave(node));
+                stack.extend(node.children.iter().rev().map(Step::Enter));
+            }
+            Step::Leave(node) => {
+                let first_child = converted.len().saturating_sub(node.children.len());
+                let children = converted.split_off(first_child);
                 let mut map = Map::new();
                 map.insert(
                     "entry".to_owned(),
                     serde_json::to_value(&node.entry).unwrap_or(Value::Null),
                 );
-                map.insert("children".to_owned(), session_tree_to_json(&node.children));
+                map.insert("children".to_owned(), Value::Array(children));
                 if let Some(label) = &node.label {
                     map.insert("label".to_owned(), Value::from(label.clone()));
                 }
@@ -680,8 +695,9 @@ fn session_tree_to_json(nodes: &[crate::core::session_manager::SessionTreeNode])
                         Value::from(label_timestamp.clone()),
                     );
                 }
-                Value::Object(map)
-            })
-            .collect(),
-    )
+                converted.push(Value::Object(map));
+            }
+        }
+    }
+    Value::Array(converted)
 }

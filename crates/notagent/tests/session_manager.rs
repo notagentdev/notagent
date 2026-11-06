@@ -328,6 +328,32 @@ fn get_tree_returns_a_single_root_for_a_linear_session() {
 }
 
 #[test]
+fn a_long_linear_session_builds_and_drops_its_tree_without_recursing() {
+    // Test threads have a 2 MiB stack, so per-level recursion overflows long
+    // before this depth.
+    const ENTRIES: usize = 50_000;
+    let mut session = in_memory();
+    let mut last = String::new();
+    for index in 0..ENTRIES {
+        last = session
+            .append_message(&user_msg(&index.to_string()))
+            .expect("append");
+    }
+
+    let tree = session.get_tree();
+    assert_eq!(tree.len(), 1, "a linear session has one root");
+    let mut node = &tree[0];
+    let mut depth = 1;
+    while let Some(child) = node.children.first() {
+        node = child;
+        depth += 1;
+    }
+    assert_eq!(depth, ENTRIES, "every entry sits on the one chain");
+    assert_eq!(node.entry.id(), last);
+    drop(tree);
+}
+
+#[test]
 fn get_tree_returns_siblings_after_a_branch() {
     let mut session = in_memory();
     let id1 = session.append_message(&user_msg("1")).expect("append");
