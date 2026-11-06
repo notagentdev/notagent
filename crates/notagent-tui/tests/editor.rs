@@ -9,7 +9,7 @@ use notagent_tui::components::editor::{
 };
 use notagent_tui::components::select_list::SelectListTheme;
 use notagent_tui::test_terminal::VirtualTerminal;
-use notagent_tui::tui::{Component, TuiCore};
+use notagent_tui::tui::{Component, Focusable, TuiCore};
 use notagent_tui::tui_main_screen::TuiMainScreen;
 
 fn default_select_list_theme() -> SelectListTheme {
@@ -421,6 +421,60 @@ fn preserves_umlauts_across_line_breaks() {
         editor.handle_input(character);
     }
     assert_eq!(editor.get_text(), "äöü\nÄÖÜ");
+}
+
+#[test]
+fn moving_up_onto_an_umlaut_line_keeps_the_visual_column_and_renders() {
+    let (_tui, mut editor) = editor();
+    editor.set_focused(true);
+    editor.set_text("äöü\nabc");
+    editor.handle_input("\x1b[D");
+    editor.handle_input("\x1b[A");
+    editor.render(80);
+    editor.handle_input("x");
+    assert_eq!(
+        editor.get_text(),
+        "äöxü\nabc",
+        "the cursor must land on the same column, two characters in, not two bytes in"
+    );
+}
+
+#[test]
+fn moving_down_from_cjk_onto_ascii_lands_on_a_character_boundary() {
+    let (_tui, mut editor) = editor();
+    editor.set_focused(true);
+    editor.set_text("abcd\n漢字");
+    editor.handle_input("\x1b[A");
+    editor.handle_input("\x1b[B");
+    editor.render(80);
+    editor.handle_input("x");
+    assert_eq!(
+        editor.get_text(),
+        "abcd\n漢字x",
+        "four columns on the ASCII line are both double-width characters below"
+    );
+}
+
+#[test]
+fn page_scrolling_across_multibyte_lines_never_splits_a_character() {
+    let (_tui, mut editor) = editor();
+    editor.set_focused(true);
+    let text = (0..20)
+        .map(|index| if index % 2 == 0 { "ääää" } else { "abc" })
+        .collect::<Vec<_>>()
+        .join("\n");
+    editor.set_text(&text);
+    for key in ["\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "\x1b[5~"] {
+        editor.handle_input(key);
+        editor.render(80);
+    }
+    let (line, col) = editor.get_cursor();
+    let lines: Vec<&str> = text.split('\n').collect();
+    assert!(
+        lines[line].is_char_boundary(col),
+        "cursor ({line}, {col}) is inside a character of {:?}",
+        lines[line]
+    );
 }
 
 #[test]

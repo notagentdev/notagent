@@ -344,6 +344,45 @@ struct VisualLine {
     length: usize,
 }
 
+/// Display width of `line[start..end]`; out-of-range or split bounds count as
+/// empty rather than panicking.
+fn width_between(line: &str, start: usize, end: usize) -> usize {
+    line.get(start..end).map_or(0, visible_width)
+}
+
+/// The rightmost column the cursor may occupy on `visual_line`. On a wrapped
+/// segment that is not the last of its line, the end position belongs to the
+/// next segment, so the last grapheme's start is the limit.
+fn max_visual_col(line: &str, visual_line: VisualLine, is_last_segment: bool) -> usize {
+    let text = line
+        .get(visual_line.start_col..visual_line.start_col + visual_line.length)
+        .unwrap_or("");
+    let width = visible_width(text);
+    if is_last_segment {
+        return width;
+    }
+    let last_width = graphemes(text).next_back().map_or(0, visible_width);
+    width.saturating_sub(last_width.max(1))
+}
+
+/// The byte offset on `visual_line` whose column is `column`, or the closest
+/// grapheme start before it. Never inside a character.
+fn offset_at_visual_col(line: &str, visual_line: VisualLine, column: usize) -> usize {
+    let end = (visual_line.start_col + visual_line.length).min(line.len());
+    let text = line.get(visual_line.start_col..end).unwrap_or("");
+    let mut offset = visual_line.start_col;
+    let mut width = 0;
+    for grapheme in graphemes(text) {
+        let grapheme_width = visible_width(grapheme);
+        if width + grapheme_width > column {
+            break;
+        }
+        width += grapheme_width;
+        offset += grapheme.len();
+    }
+    offset
+}
+
 /// Colouring of the editor.
 pub struct EditorTheme {
     /// Applied to the horizontal borders.
@@ -911,32 +950,31 @@ impl Editor {
             return;
         };
 
+        // Columns here are display columns, not byte offsets: a byte offset
+        // carried from one line to another lands inside a multi-byte character
+        // as soon as the two lines differ in encoding width.
         // A cursor snapped to a segment start keeps its pre-snap position so
         // the next vertical move resolves the right visual column.
+        let source_line = self.state.lines[current_vl.logical_line].clone();
         let current_visual_col = match self.snapped_from_cursor_col {
             Some(snapped_from) => {
                 let vl_index =
                     Self::find_visual_line_at(visual_lines, current_vl.logical_line, snapped_from);
-                snapped_from - visual_lines[vl_index].start_col
+                width_between(&source_line, visual_lines[vl_index].start_col, snapped_from)
             }
-            None => self.state.cursor_col - current_vl.start_col,
+            None => width_between(&source_line, current_vl.start_col, self.state.cursor_col),
         };
 
         let is_last_source_segment = current_visual_line == visual_lines.len() - 1
             || visual_lines[current_visual_line + 1].logical_line != current_vl.logical_line;
-        let source_max_visual_col = if is_last_source_segment {
-            current_vl.length
-        } else {
-            current_vl.length.saturating_sub(1)
-        };
+        let source_max_visual_col =
+            max_visual_col(&source_line, current_vl, is_last_source_segment);
 
+        let logical_line = self.state.lines[target_vl.logical_line].clone();
         let is_last_target_segment = target_visual_line == visual_lines.len() - 1
             || visual_lines[target_visual_line + 1].logical_line != target_vl.logical_line;
-        let target_max_visual_col = if is_last_target_segment {
-            target_vl.length
-        } else {
-            target_vl.length.saturating_sub(1)
-        };
+        let target_max_visual_col =
+            max_visual_col(&logical_line, target_vl, is_last_target_segment);
 
         let move_to_visual_col = self.compute_vertical_move_column(
             current_visual_col,
@@ -945,9 +983,7 @@ impl Editor {
         );
 
         self.state.cursor_line = target_vl.logical_line;
-        let target_col = target_vl.start_col + move_to_visual_col;
-        let logical_line = self.state.lines[target_vl.logical_line].clone();
-        self.state.cursor_col = target_col.min(logical_line.len());
+        self.state.cursor_col = offset_at_visual_col(&logical_line, target_vl, move_to_visual_col);
 
         // Snap onto atomic segment boundaries (paste markers) so the cursor
         // never lands inside a multi-grapheme unit.
@@ -1049,7 +1085,11 @@ impl Editor {
                     self.set_cursor_col(0);
                 } else if let Some(current_vl) = visual_lines.get(current_visual_line) {
                     // At the very end: remember the column for vertical moves.
-                    self.preferred_visual_col = Some(self.state.cursor_col - current_vl.start_col);
+                    self.preferred_visual_col = Some(width_between(
+                        &current_line,
+                        current_vl.start_col,
+                        self.state.cursor_col,
+                    ));
                 }
             } else if self.state.cursor_col > 0 {
                 let before_cursor = &current_line[..self.state.cursor_col];
