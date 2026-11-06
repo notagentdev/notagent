@@ -637,7 +637,80 @@ fn resolve_write_log_path() -> Option<std::path::PathBuf> {
     Some(path)
 }
 
+/// What the panic hook puts back. A panic unwinds past `stop()`, and without
+/// this the shell is left with echo, line editing and signals switched off and
+/// the input protocols still on, so the user has to type `reset` blind.
+/// Only a panic on the thread that started the terminal restores it: the hook
+/// also sees panics a background task catches, and the TUI keeps running
+/// after those.
+static PANIC_RESTORE: std::sync::Mutex<Option<(RawModeState, std::thread::ThreadId)>> =
+    std::sync::Mutex::new(None);
+static PANIC_ALT_SCREEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PANIC_HOOK: std::sync::Once = std::sync::Once::new();
+
+/// Everything `start()` and the alternate screen may have switched on. Each
+/// sequence is a no-op on a terminal where its mode is already off.
+const PANIC_RESET_SEQUENCE: &str = "\x1b[?1006l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?2004l\x1b[<u\x1b[>4;0m\x1b[?7h\x1b[?25h";
+
+/// Marks whether the alternate screen is up, so a panic leaves it and its
+/// message ends up on the normal screen where it stays readable.
+pub(crate) fn set_alt_screen_for_panic(active: bool) {
+    PANIC_ALT_SCREEN.store(active, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn arm_panic_restore(state: Option<RawModeState>) {
+    if let Ok(mut slot) = PANIC_RESTORE.lock() {
+        *slot = state.map(|state| (state, std::thread::current().id()));
+    }
+    PANIC_HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            restore_after_panic();
+            previous(info);
+        }));
+    });
+}
+
+fn disarm_panic_restore() {
+    if let Ok(mut slot) = PANIC_RESTORE.lock() {
+        *slot = None;
+    }
+}
+
+fn restore_after_panic() {
+    // A panic while the slot is locked must not deadlock the hook.
+    let current = std::thread::current().id();
+    let state = match PANIC_RESTORE.try_lock() {
+        Ok(mut slot) if slot.is_some_and(|(_, owner)| owner == current) => slot.take(),
+        _ => None,
+    };
+    let Some((state, _)) = state else {
+        return;
+    };
+    let mut reset = String::from(PANIC_RESET_SEQUENCE);
+    if PANIC_ALT_SCREEN.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        reset.push_str("\x1b[?1049l");
+    }
+    // Straight to the descriptor: the panic may have happened while another
+    // thread held the stdout lock.
+    #[cfg(unix)]
+    // SAFETY: the buffer is valid for its length for the duration of the call.
+    unsafe {
+        libc::write(
+            libc::STDOUT_FILENO,
+            reset.as_ptr().cast::<libc::c_void>(),
+            reset.len(),
+        );
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = std::io::stdout().write_all(reset.as_bytes());
+    }
+    restore_raw_mode(&state);
+}
+
 /// Saved terminal state so `stop()` can restore it.
+#[derive(Clone, Copy)]
 struct RawModeState {
     #[cfg(unix)]
     termios: libc::termios,
@@ -806,6 +879,9 @@ impl Terminal for ProcessTerminal {
 
         // Save previous state and enable raw mode.
         self.saved_termios = enable_raw_mode();
+        if matches!(self.output, OutputSink::Stdout) {
+            arm_panic_restore(self.saved_termios);
+        }
 
         // Enable bracketed paste mode — the terminal wraps pastes in
         // \x1b[200~ … \x1b[201~.
@@ -911,6 +987,7 @@ impl Terminal for ProcessTerminal {
 
         // Restore raw mode state.
         if let Some(state) = self.saved_termios.take() {
+            disarm_panic_restore();
             restore_raw_mode(&state);
         }
     }
@@ -1456,7 +1533,36 @@ impl ProcessTerminalPump {
 
 #[cfg(test)]
 mod tests {
-    use super::{Duration, Instant, ProcessTerminal, find_cursor_report};
+    use super::{
+        Duration, Instant, PANIC_RESTORE, ProcessTerminal, RawModeState, arm_panic_restore,
+        disarm_panic_restore, find_cursor_report, restore_after_panic,
+    };
+
+    #[test]
+    fn only_a_panic_on_the_terminal_thread_restores_the_terminal() {
+        #[cfg(unix)]
+        let state = RawModeState {
+            termios: unsafe { std::mem::zeroed() },
+        };
+        #[cfg(not(unix))]
+        let state = RawModeState { _unused: () };
+        arm_panic_restore(Some(state));
+
+        std::thread::spawn(restore_after_panic).join().unwrap();
+        assert!(
+            PANIC_RESTORE.lock().unwrap().is_some(),
+            "a panic on another thread must leave the running terminal alone"
+        );
+
+        // stdin is not a terminal under the test harness, so the restore
+        // itself is a no-op here; what matters is that the slot is consumed.
+        restore_after_panic();
+        assert!(
+            PANIC_RESTORE.lock().unwrap().is_none(),
+            "a panic on the terminal thread must restore the saved state"
+        );
+        disarm_panic_restore();
+    }
 
     #[test]
     fn one_late_cursor_report_is_swallowed_and_later_keys_pass() {

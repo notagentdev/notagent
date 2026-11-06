@@ -2021,6 +2021,7 @@ impl TuiAltScreen {
         let enter =
             format!("{ENTER_ALT_SCREEN}{DISABLE_AUTOWRAP}{mouse_sequence}\x1b[2J\x1b[H\x1b[?25l");
         self.core.with_terminal(|terminal| terminal.write(&enter));
+        crate::terminal::set_alt_screen_for_panic(true);
 
         let core = self.core.clone();
         self.core
@@ -2051,6 +2052,7 @@ impl TuiAltScreen {
             return;
         }
         self.alt_screen_active = false;
+        crate::terminal::set_alt_screen_for_panic(false);
         if options.preserve_screen {
             let buffer = format!(
                 "{BEGIN_SYNCHRONIZED_OUTPUT}{EXIT_ALT_SCREEN}\x1b[?25h{END_SYNCHRONIZED_OUTPUT}"
