@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.76 supports Apple Silicon Macs:
+Version 0.1.77 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -98,6 +98,25 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.77
+
+- Hooks in a project's `.notagent/hooks.json` run only after you trust the
+  project. A cloned repository can no longer run commands on its first turn.
+- Permission prompts are harder to get around. MCP tools that take a path
+  are asked about instead of approved like built-in edits, also in plan
+  mode. "Allow for this session" is no longer offered for irreversible
+  commands such as `rm -rf`, which are confirmed every time. Writes through
+  a symlink that leads out of the workspace are asked about, `.GIT/config`
+  is guarded like `.git/config`, and reading notagent's own `auth.json` or
+  `mcp-credentials.json` asks first.
+- Moving the cursor up or down in a prompt with umlauts, CJK or emoji no
+  longer crashes the TUI, and a crash no longer leaves the terminal without
+  echo.
+- `/tree` works on long sessions; it used to crash past roughly 7000
+  entries.
+- A value of the wrong type in `settings.json` is ignored on its own, with a
+  warning, instead of silently resetting every setting in the file.
 
 ### 0.1.76
 
