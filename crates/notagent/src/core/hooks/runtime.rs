@@ -9,7 +9,7 @@ use super::runner::{
     HookRunResult, HookStdout, HookVerdict, HookVerdictOutcome, decide_hooks, hook_context,
     is_hook_fault, run_hooks,
 };
-use super::{Hook, HookDiagnostic, select_hooks};
+use super::{Hook, HookDiagnostic, LoadHooksResult, select_hooks};
 
 /// How a message reaches the user. Mirrors the levels the UI already has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +24,9 @@ pub type HookReporter = Arc<dyn Fn(&str, HookReportLevel) + Send + Sync>;
 pub type HookContextSource = Arc<dyn Fn() -> HookSessionContext + Send + Sync>;
 /// Cancels running hooks when the turn is aborted.
 pub type HookSignalSource = Arc<dyn Fn() -> Option<CancellationToken> + Send + Sync>;
+/// Whether the project the project hooks came from is trusted, read at every
+/// emit: trust is resolved after the runtime exists, and can be granted later.
+pub type ProjectTrustSource = Arc<dyn Fn() -> bool + Send + Sync>;
 
 pub struct HookRuntimeOptions {
     pub hooks: Vec<Hook>,
@@ -79,6 +82,8 @@ pub fn describe_failure(result: &HookRunResult) -> String {
 
 pub struct HookRuntime {
     hooks: Vec<Hook>,
+    project_hooks: Vec<Hook>,
+    project_trusted: Option<ProjectTrustSource>,
     diagnostics: Vec<HookDiagnostic>,
     context: HookContextSource,
     report: Option<HookReporter>,
@@ -89,11 +94,42 @@ impl HookRuntime {
     pub fn new(options: HookRuntimeOptions) -> Self {
         Self {
             hooks: options.hooks,
+            project_hooks: Vec::new(),
+            project_trusted: None,
             diagnostics: options.diagnostics,
             context: options.context,
             report: options.report,
             signal: options.signal,
         }
+    }
+
+    /// Adds hooks declared by the project, which run only while `trusted` says
+    /// so. They come after the user's, matching the load order of one list.
+    pub fn with_project_hooks(
+        mut self,
+        loaded: LoadHooksResult,
+        trusted: ProjectTrustSource,
+    ) -> Self {
+        self.project_hooks = loaded.hooks;
+        self.diagnostics.extend(loaded.diagnostics);
+        self.project_trusted = Some(trusted);
+        self
+    }
+
+    fn project_hooks_active(&self) -> bool {
+        !self.project_hooks.is_empty()
+            && self
+                .project_trusted
+                .as_ref()
+                .is_some_and(|trusted| trusted())
+    }
+
+    fn selected(&self, event: HookEvent, tool_name: Option<&str>) -> Vec<&Hook> {
+        let mut selected = select_hooks(&self.hooks, event, tool_name);
+        if self.project_hooks_active() {
+            selected.extend(select_hooks(&self.project_hooks, event, tool_name));
+        }
+        selected
     }
 
     fn report(&self, message: &str, level: HookReportLevel) {
@@ -108,12 +144,12 @@ impl HookRuntime {
 
     /// Whether anything at all is declared, so callers can skip work entirely.
     pub fn is_empty(&self) -> bool {
-        self.hooks.is_empty()
+        self.hooks.is_empty() && !self.project_hooks_active()
     }
 
     /// Whether an event would run anything. Cheap enough to call per tool call.
     pub fn has(&self, event: HookEvent, tool_name: Option<&str>) -> bool {
-        !select_hooks(&self.hooks, event, tool_name).is_empty()
+        !self.selected(event, tool_name).is_empty()
     }
 
     /// Shows what was rejected or accepted with a caveat at load time. Called
@@ -143,7 +179,7 @@ impl HookRuntime {
         fields: Map<String, Value>,
         tool_name: Option<&str>,
     ) -> Vec<HookContextOutput> {
-        let selected = select_hooks(&self.hooks, event, tool_name);
+        let selected = self.selected(event, tool_name);
         if selected.is_empty() {
             return Vec::new();
         }
@@ -206,7 +242,7 @@ impl HookRuntime {
                 cancelled: false,
             };
         }
-        let selected = select_hooks(&self.hooks, event, tool_name);
+        let selected = self.selected(event, tool_name);
         if selected.is_empty() {
             return HookVerdictOutcome {
                 verdict: HookVerdict::Abstain,

@@ -12,8 +12,8 @@ use notagent::core::hooks::runtime::{
     HookContextOutput, HookReportLevel, HookRuntime, HookRuntimeOptions,
 };
 use notagent::core::hooks::{
-    DEFAULT_HOOK_TIMEOUT_MS, HOOKS_FILE_NAME, Hook, HookDiagnostic, MAX_HOOK_TIMEOUT_MS,
-    is_blocking_hook, load_hooks, matches_tool, select_hooks,
+    DEFAULT_HOOK_TIMEOUT_MS, HOOKS_FILE_NAME, Hook, HookDiagnostic, LoadHooksResult,
+    MAX_HOOK_TIMEOUT_MS, is_blocking_hook, load_hooks, matches_tool, select_hooks,
 };
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
@@ -849,6 +849,38 @@ impl Capture {
 
 fn post(command: &str) -> Hook {
     hook_with(command, HookEvent::PostToolUse, 10_000, None)
+}
+
+#[tokio::test]
+async fn project_hooks_run_only_while_the_project_is_trusted() {
+    let capture = Capture::new();
+    let trusted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let trust_source = Arc::clone(&trusted);
+    let (runtime, _reports) = runtime(Vec::new());
+    let runtime = runtime.with_project_hooks(
+        LoadHooksResult {
+            hooks: vec![post(&capture.command())],
+            diagnostics: Vec::new(),
+        },
+        Arc::new(move || trust_source.load(std::sync::atomic::Ordering::SeqCst)),
+    );
+
+    assert!(
+        !runtime.has(HookEvent::PostToolUse, None),
+        "an untrusted project's hook is not offered"
+    );
+    runtime.emit(HookEvent::PostToolUse, Map::new(), None).await;
+    assert!(
+        capture.read().is_none(),
+        "a cloned repository must not run its hooks before the user trusts it"
+    );
+
+    trusted.store(true, std::sync::atomic::Ordering::SeqCst);
+    runtime.emit(HookEvent::PostToolUse, Map::new(), None).await;
+    assert!(
+        capture.read().is_some(),
+        "once trusted, the project's hook runs"
+    );
 }
 
 fn fields(entries: Value) -> Map<String, Value> {

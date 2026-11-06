@@ -733,43 +733,67 @@ pub async fn main(args: Vec<String>) -> i32 {
     let question_present: Arc<Mutex<Option<QuestionDisplay>>> = Arc::new(Mutex::new(None));
     let hook_report: Arc<Mutex<Option<HookReporter>>> = Arc::new(Mutex::new(None));
 
-    let hook_declarations = load_hooks(&[
-        get_agent_dir(),
-        Path::new(&current_dir()).join(crate::config::CONFIG_DIR_NAME),
-    ]);
+    // Project hooks exist before trust does: the runtime is built here, the
+    // arguments are parsed below, and the trust prompt runs with the first
+    // resource load. So the decision is read at every emit, in the order
+    // `build_runtime` applies it: this run's answer, the command-line
+    // override, then the stored decision.
+    let trust_store = Arc::new(ProjectTrustStore::new(&get_agent_dir().to_string_lossy()));
+    let project_trust_by_cwd: Arc<Mutex<HashMap<String, bool>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let project_trust_override: Arc<std::sync::OnceLock<bool>> =
+        Arc::new(std::sync::OnceLock::new());
+    let hook_declarations = load_hooks(&[get_agent_dir()]);
+    let project_hook_cwd = current_dir();
+    let project_hook_declarations =
+        load_hooks(&[Path::new(&project_hook_cwd).join(crate::config::CONFIG_DIR_NAME)]);
+    let hook_trust_by_cwd = Arc::clone(&project_trust_by_cwd);
+    let hook_trust_override = Arc::clone(&project_trust_override);
+    let hook_trust_store = Arc::clone(&trust_store);
+    let project_hooks_trusted = Arc::new(move || {
+        hook_trust_by_cwd
+            .lock()
+            .ok()
+            .and_then(|trust| trust.get(&project_hook_cwd).copied())
+            .or_else(|| hook_trust_override.get().copied())
+            .unwrap_or_else(|| hook_trust_store.get(&project_hook_cwd).ok().flatten() == Some(true))
+    });
     let context_session = Arc::clone(&permission_session);
     let report_target = Arc::clone(&hook_report);
-    let hook_runtime = Arc::new(HookRuntime::new(HookRuntimeOptions {
-        hooks: hook_declarations.hooks,
-        diagnostics: hook_declarations.diagnostics,
-        context: Arc::new(move || {
-            let session = context_session.lock().expect("poisoned").clone();
-            HookSessionContext {
-                session_id: session
-                    .as_ref()
-                    .map(|session| session.session_id())
-                    .unwrap_or_default(),
-                transcript_path: session.as_ref().and_then(|session| session.session_file()),
-                cwd: current_dir(),
-            }
-        }),
-        report: Some(Arc::new(move |message, level| {
-            let reporter = report_target.lock().expect("poisoned").clone();
-            match reporter {
-                Some(reporter) => reporter(message, level),
-                // Before the UI exists there is nowhere else to put this, and a
-                // hook failure at startup is exactly the one worth seeing.
-                None => eprintln!(
-                    "{}: {message}",
-                    match level {
-                        HookReportLevel::Error => "Error",
-                        _ => "Warning",
-                    }
-                ),
-            }
-        })),
-        signal: None,
-    }));
+    let hook_runtime = Arc::new(
+        HookRuntime::new(HookRuntimeOptions {
+            hooks: hook_declarations.hooks,
+            diagnostics: hook_declarations.diagnostics,
+            context: Arc::new(move || {
+                let session = context_session.lock().expect("poisoned").clone();
+                HookSessionContext {
+                    session_id: session
+                        .as_ref()
+                        .map(|session| session.session_id())
+                        .unwrap_or_default(),
+                    transcript_path: session.as_ref().and_then(|session| session.session_file()),
+                    cwd: current_dir(),
+                }
+            }),
+            report: Some(Arc::new(move |message, level| {
+                let reporter = report_target.lock().expect("poisoned").clone();
+                match reporter {
+                    Some(reporter) => reporter(message, level),
+                    // Before the UI exists there is nowhere else to put this, and a
+                    // hook failure at startup is exactly the one worth seeing.
+                    None => eprintln!(
+                        "{}: {message}",
+                        match level {
+                            HookReportLevel::Error => "Error",
+                            _ => "Warning",
+                        }
+                    ),
+                }
+            })),
+            signal: None,
+        })
+        .with_project_hooks(project_hook_declarations, project_hooks_trusted),
+    );
 
     let state_session = Arc::clone(&permission_session);
     let present_target = Arc::clone(&permission_present);
@@ -1044,14 +1068,14 @@ pub async fn main(args: Vec<String>) -> i32 {
     }
     time("createSessionManager");
 
-    let trust_store = Arc::new(ProjectTrustStore::new(&agent_dir));
+    if let Some(trusted) = parsed.project_trust_override {
+        let _ = project_trust_override.set(trusted);
+    }
     let trust_prompt_mode = if parsed.help || parsed.list_models.is_some() {
         AppMode::Print
     } else {
         app_mode
     };
-    let project_trust_by_cwd: Arc<Mutex<HashMap<String, bool>>> =
-        Arc::new(Mutex::new(HashMap::new()));
 
     let resolved_skill_paths = resolve_cli_paths(&cwd, parsed.skills.as_ref());
     let resolved_prompt_template_paths = resolve_cli_paths(&cwd, parsed.prompt_templates.as_ref());

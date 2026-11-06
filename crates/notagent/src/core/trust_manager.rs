@@ -35,8 +35,11 @@ pub struct ProjectTrustOption {
 #[error("{0}")]
 pub struct TrustStoreError(pub String);
 
-const TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES: [&str; 7] = [
+const TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES: [&str; 8] = [
     "settings.json",
+    // Hooks run shell commands on the first turn; a cloned repository must not
+    // be able to do that before the user has said they trust it.
+    "hooks.json",
     "extensions",
     "skills",
     "prompts",
