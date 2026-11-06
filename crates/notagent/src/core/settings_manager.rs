@@ -329,7 +329,69 @@ fn to_map(settings: &Settings) -> Map<String, Value> {
 }
 
 fn from_map(map: Map<String, Value>) -> Settings {
-    serde_json::from_value(Value::Object(map)).unwrap_or_default()
+    from_map_lenient(map).0
+}
+
+fn parses_as_settings(map: &Map<String, Value>) -> bool {
+    Settings::deserialize(&Value::Object(map.clone())).is_ok()
+}
+
+/// Settings from a map, leaving out every value that does not fit its field,
+/// with the dotted names of what was left out. All-or-nothing parsing turned
+/// one mistyped key into the silent loss of every setting in the file.
+/// Nested objects are checked one level down, so a bad `compaction.x` keeps
+/// the rest of `compaction`.
+fn from_map_lenient(map: Map<String, Value>) -> (Settings, Vec<String>) {
+    let whole = Value::Object(map);
+    if let Ok(settings) = Settings::deserialize(&whole) {
+        return (settings, Vec::new());
+    }
+    let Value::Object(map) = whole else {
+        return (Settings::default(), Vec::new());
+    };
+    let mut kept = Map::new();
+    let mut ignored = Vec::new();
+    for (key, value) in map {
+        let single = Map::from_iter([(key.clone(), value.clone())]);
+        if parses_as_settings(&single) {
+            kept.insert(key, value);
+            continue;
+        }
+        let Value::Object(nested) = value else {
+            ignored.push(key);
+            continue;
+        };
+        let mut nested_kept = Map::new();
+        for (nested_key, nested_value) in nested {
+            let probe = Map::from_iter([(
+                key.clone(),
+                Value::Object(Map::from_iter([(nested_key.clone(), nested_value.clone())])),
+            )]);
+            if parses_as_settings(&probe) {
+                nested_kept.insert(nested_key, nested_value);
+            } else {
+                ignored.push(format!("{key}.{nested_key}"));
+            }
+        }
+        let candidate = Map::from_iter([(key.clone(), Value::Object(nested_kept.clone()))]);
+        if parses_as_settings(&candidate) {
+            kept.insert(key, Value::Object(nested_kept));
+        } else {
+            ignored.push(key);
+        }
+    }
+    let settings = Settings::deserialize(&Value::Object(kept)).unwrap_or_default();
+    (settings, ignored)
+}
+
+/// The warning shown for values `from_map_lenient` left out.
+fn ignored_settings_message(ignored: &[String]) -> Option<String> {
+    (!ignored.is_empty()).then(|| {
+        format!(
+            "Ignored settings with a value of the wrong type: {}",
+            ignored.join(", ")
+        )
+    })
 }
 
 // --- Storage -----------------------------------------------------------------
@@ -530,22 +592,23 @@ impl SettingsManager {
         options: SettingsManagerCreateOptions,
     ) -> Self {
         let project_trusted = options.project_trusted.unwrap_or(true);
-        let (global_settings, global_error) =
+        let (global_settings, global_error, global_warning) =
             try_load(storage.as_ref(), SettingsScope::Global, true);
-        let (project_settings, project_error) =
+        let (project_settings, project_error, project_warning) =
             try_load(storage.as_ref(), SettingsScope::Project, project_trusted);
         let mut errors = Vec::new();
-        if let Some(error) = &global_error {
-            errors.push(SettingsError {
-                scope: SettingsScope::Global,
-                message: error.clone(),
-            });
-        }
-        if let Some(error) = &project_error {
-            errors.push(SettingsError {
-                scope: SettingsScope::Project,
-                message: error.clone(),
-            });
+        for (scope, message) in [
+            (SettingsScope::Global, &global_error),
+            (SettingsScope::Global, &global_warning),
+            (SettingsScope::Project, &project_error),
+            (SettingsScope::Project, &project_warning),
+        ] {
+            if let Some(message) = message {
+                errors.push(SettingsError {
+                    scope,
+                    message: message.clone(),
+                });
+            }
         }
         let settings = deep_merge_settings(&global_settings, &project_settings);
         Self {
@@ -613,25 +676,25 @@ impl SettingsManager {
                 return;
             }
         }
-        let (project_settings, error) =
+        let (project_settings, error, warning) =
             try_load(self.storage.as_ref(), SettingsScope::Project, true);
         let mut state = self.lock();
         state.project_settings = project_settings;
         state.project_load_error = error.clone();
-        if let Some(error) = error {
+        for message in [error, warning].into_iter().flatten() {
             state.errors.push(SettingsError {
                 scope: SettingsScope::Project,
-                message: error,
+                message,
             });
         }
         state.settings = deep_merge_settings(&state.global_settings, &state.project_settings);
     }
 
     pub fn reload(&self) {
-        let (global_settings, global_error) =
+        let (global_settings, global_error, global_warning) =
             try_load(self.storage.as_ref(), SettingsScope::Global, true);
         let project_trusted = self.lock().project_trusted;
-        let (project_settings, project_error) = try_load(
+        let (project_settings, project_error, project_warning) = try_load(
             self.storage.as_ref(),
             SettingsScope::Project,
             project_trusted,
@@ -665,6 +728,14 @@ impl SettingsManager {
                     scope: SettingsScope::Project,
                     message: error,
                 });
+            }
+        }
+        for (scope, warning) in [
+            (SettingsScope::Global, global_warning),
+            (SettingsScope::Project, project_warning),
+        ] {
+            if let Some(message) = warning {
+                state.errors.push(SettingsError { scope, message });
             }
         }
         state.settings = deep_merge_settings(&state.global_settings, &state.project_settings);
@@ -1749,31 +1820,37 @@ fn queue_mode(value: &Option<Value>) -> QueueMode {
     }
 }
 
+/// The settings, the error that made the file unusable (which also blocks
+/// writing it back), and a warning about values that were left out.
 fn try_load(
     storage: &dyn SettingsStorage,
     scope: SettingsScope,
     project_trusted: bool,
-) -> (Settings, Option<String>) {
+) -> (Settings, Option<String>, Option<String>) {
     if scope == SettingsScope::Project && !project_trusted {
-        return (Settings::default(), None);
+        return (Settings::default(), None, None);
     }
     let mut content: Option<String> = None;
     if let Err(error) = storage.with_lock(scope, &mut |current| {
         content = current;
         None
     }) {
-        return (Settings::default(), Some(error));
+        return (Settings::default(), Some(error), None);
     }
     let Some(content) = content.filter(|content| !content.is_empty()) else {
-        return (Settings::default(), None);
+        return (Settings::default(), None, None);
     };
     match serde_json::from_str::<Value>(&content) {
-        Ok(Value::Object(map)) => (from_map(migrate_settings(map)), None),
+        Ok(Value::Object(map)) => {
+            let (settings, ignored) = from_map_lenient(migrate_settings(map));
+            (settings, None, ignored_settings_message(&ignored))
+        }
         Ok(_) => (
             Settings::default(),
             Some("Settings file must contain an object".to_owned()),
+            None,
         ),
-        Err(error) => (Settings::default(), Some(error.to_string())),
+        Err(error) => (Settings::default(), Some(error.to_string()), None),
     }
 }
 

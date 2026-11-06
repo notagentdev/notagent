@@ -228,6 +228,53 @@ fn ignores_project_settings_until_the_project_is_trusted() {
 }
 
 #[test]
+fn one_value_of_the_wrong_type_drops_only_that_value() {
+    let harness = harness();
+    std::fs::write(
+        harness.agent_dir.join("settings.json"),
+        json!({
+            "defaultProvider": "anthropic",
+            "defaultModel": "some-model",
+            "retry": { "maxRetries": "5" },
+            "compaction": { "enabled": false, "reserveTokens": "16384" }
+        })
+        .to_string(),
+    )
+    .expect("writes");
+
+    let manager = manager(&harness);
+    assert_eq!(
+        manager.get_default_provider().as_deref(),
+        Some("anthropic"),
+        "a mistyped retry value must not take the provider with it"
+    );
+    assert_eq!(manager.get_default_model().as_deref(), Some("some-model"));
+    assert!(
+        !manager.get_compaction_enabled(),
+        "the valid half of a nested object survives its invalid half"
+    );
+
+    let errors = manager.drain_errors();
+    assert_eq!(errors.len(), 1, "one warning names what was left out");
+    assert!(
+        errors[0].message.contains("retry.maxRetries")
+            && errors[0].message.contains("compaction.reserveTokens"),
+        "the warning names each ignored value: {}",
+        errors[0].message
+    );
+
+    // Leaving a value out is not a broken file: writes still go through.
+    manager.set_global_field("theme", json!("light"));
+    manager.flush();
+    let saved = read_settings(&harness.agent_dir.join("settings.json"));
+    assert_eq!(saved["theme"], "light");
+    assert_eq!(
+        saved["retry"]["maxRetries"], "5",
+        "the file keeps what the user wrote, even the part this build ignores"
+    );
+}
+
+#[test]
 fn records_and_drains_load_errors_without_losing_the_file() {
     let harness = harness();
     let settings_path = harness.agent_dir.join("settings.json");
