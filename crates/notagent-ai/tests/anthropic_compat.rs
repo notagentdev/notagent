@@ -114,6 +114,7 @@ fn marks_the_builtin_models_that_use_adaptive_thinking() {
         "kimi-coding/kimi-for-coding",
         "kimi-coding/k3",
         "kimi-coding/kimi-for-coding-highspeed",
+        "minimax/MiniMax-M3.1-Flash",
         "opencode/claude-opus-4-8",
         "opencode/claude-opus-5",
         "vercel-ai-gateway/anthropic/claude-opus-4.8",
@@ -142,7 +143,7 @@ fn marks_the_builtin_models_that_use_adaptive_thinking() {
     }
     // No model outside the adaptive families carries the flag.
     let pattern = regex::Regex::new(
-        r"(opus[-.](4[-.][678]|5)|sonnet[-.]4[-.]6|sonnet[-.]5|fable[-.]5|kimi-coding/)",
+        r"(opus[-.](4[-.][678]|5)|sonnet[-.]4[-.]6|sonnet[-.]5|fable[-.]5|kimi-coding/|minimax/MiniMax-M3\.1-Flash)",
     )
     .expect("valid pattern");
     for model_id in &flagged {
@@ -243,6 +244,18 @@ async fn force_adaptive_thinking_overrides_the_payload_shape() {
             "{model_id}"
         );
     }
+
+    // MiniMax M3.1 Flash always thinks: its Anthropic endpoint takes only
+    // adaptive thinking with an effort and answers `disabled` with a 400.
+    let minimax = get_builtin_model("minimax", "MiniMax-M3.1-Flash").expect("minimax");
+    let payload = capture_payload(&minimax, user_context(), Some(ThinkingLevel::Low), None).await;
+    assert_eq!(payload["thinking"]["type"], json!("adaptive"));
+    assert_eq!(payload["output_config"], json!({ "effort": "low" }));
+    assert!(
+        !notagent_ai::models::get_supported_thinking_levels(&minimax)
+            .contains(&notagent_ai::types::ModelThinkingLevel::Off),
+        "off is not offered for a model that cannot stop thinking"
+    );
 
     // A built-in adaptive model can opt out.
     let mut opus = get_builtin_model("anthropic", "claude-opus-4-8").expect("opus");

@@ -1063,7 +1063,7 @@ fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
 
     let models = builtin_models(None);
     let list = models.get_models(Some("cline-pass"));
-    assert_eq!(list.len(), 9, "every ClinePass model is present");
+    assert_eq!(list.len(), 8, "every ClinePass model is present");
     for model in &list {
         assert!(model.id.starts_with("cline-pass/"), "{}", model.id);
         assert_eq!(model.api, "openai-completions");
@@ -1092,8 +1092,7 @@ fn cline_pass_is_an_openai_compatible_provider_without_per_token_cost() {
             "cline-pass/mimo-v2.5",
             "cline-pass/mimo-v2.5-pro",
             "cline-pass/minimax-m3",
-            "cline-pass/qwen3.7-max",
-            "cline-pass/qwen3.7-plus",
+            "cline-pass/minimax-m3.1-flash",
             "cline-pass/qwen3.8-max",
         ],
         "the catalog contains exactly the public Cline Pass lineup"

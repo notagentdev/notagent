@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-10-27T20:20:06.695Z",
-  "structureHash": "a050bdd75333959a3982187fec3e76e86aaf71787ff31d2b629935d6893ffb43",
+  "generatedAt": "2026-11-07T03:41:26.800Z",
+  "structureHash": "df475b45beb28167cfe6aff75522e91416bad4f9d80f96e6106082b907a7b127",
   "files": {
     "amazon-bedrock.json": "85c704d1aa6173fab25d770b7faed0c5740dd95144e22882956432bcf79620de",
     "ant-ling.json": "4979fe79d99ed97382d7ce40170c6132e932e77906de1eb54464c042e7d63633",
@@ -9,7 +9,7 @@
     "azure-openai-responses.json": "282800fde89c53742130934f14432d77d1d2902a0e04400382f550c631288771",
     "baseten.json": "e4d1ec84e8180a53e21c1511b8d78e497784515c33ba8397382ac3450c8b126e",
     "cerebras.json": "38272a7525d6680c71bb4bb3c4085e871768b400832e2013b0e7fd92f8fd4f05",
-    "cline-pass.json": "e9de0bc08e904c810348551ba331a806c58cf2b145346e56164ae64aacbdca63",
+    "cline-pass.json": "66fa34b297d689d6594aaffae3270d0b6eae87a13f014f4495d4434a73721e68",
     "cloudflare-ai-gateway.json": "0e434dfd3cee49fb3b60fe15942a5e685533cb69b2e0c8f5fb381f96103c431f",
     "cloudflare-workers-ai.json": "07ef63208ff7517fd1a80962f18143e21de399640423329490b157f459ccf995",
     "deepseek.json": "465e4210b1541de6a0d458e4721e1e9a864862008cad54d827c10dd557035a72",
@@ -21,7 +21,7 @@
     "huggingface.json": "7616a851e53d254e375b760abe2b6148e8961a102bd5c7af31829a0f2dc8e5c5",
     "kimi-coding.json": "b544d778797e01994ab886c8c44820df287ca281ae9b027086904140b39f4ede",
     "minimax-cn.json": "65d37e55a6d9585855f94b3fb7739308d107fe248ebd9e1001d1c5d4606ad2c4",
-    "minimax.json": "c7dc5765995ae77242916430929c7cc9a782589f7e483e13f7e01663190d028e",
+    "minimax.json": "02661f50e42e050392d2c25266ef815613718216e4c87e5b436b5e3516fbb854",
     "mistral.json": "e3a109306644bf2f2fa38fece50b2d3ce1dbe3b87b1f1b9e2d70cce7eb5c0ea1",
     "moonshotai-cn.json": "b9b18d1231a82df456813936d9ed4ab1c851441a8665fd86f6a33379041466ef",
     "moonshotai.json": "e2ec132076180f318d40abf686adadaa30ba9577d80a3187385bfdf4acfc072a",
