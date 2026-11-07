@@ -108,7 +108,7 @@ async fn a_failing_tool_call_shows_the_error_in_the_row() {
         // one that keeps its own row.
         driver.wait_for("● Patch").await;
         driver.wait_for_across_wraps("does-not-exist.txt").await;
-        driver.assert_shows("Could not edit file");
+        driver.wait_for("Could not edit file").await;
         driver.wait_for("The file is missing.").await;
     })
     .await;
