@@ -1,3 +1,7 @@
+use notagent::core::compaction::{
+    DEFAULT_COMPACTION_SETTINGS, estimate_context_tokens, estimate_tokens, prepare_compaction,
+    usage_correction_after_rebuild,
+};
 use notagent::core::context_fold::{
     FOLD_ENTRY_TYPE, FOLD_MESSAGE_TYPE, FOLD_REMINDER_TYPE, UNFOLD_ENTRY_TYPE, UnfoldRecord,
     active_folds, foldable_steps, plan_fold, search_folds,
@@ -382,4 +386,91 @@ fn folds_survive_a_reload_from_the_session_file() {
             .any(|text| text.contains("persisted summary"))
     );
     assert_eq!(fold_messages(&reopened), 1);
+}
+
+fn tool_call_without_usage(call_id: &str, text: &str) -> AgentMessage {
+    let mut value = serde_json::to_value(tool_call(call_id, text)).expect("json");
+    value["usage"]["input"] = json!(0);
+    value["usage"]["output"] = json!(0);
+    value["usage"]["totalTokens"] = json!(0);
+    serde_json::from_value(value).expect("assistant without usage")
+}
+
+fn sum(messages: &[AgentMessage]) -> i64 {
+    messages.iter().map(estimate_tokens).sum::<u64>() as i64
+}
+
+#[test]
+fn a_stale_provider_count_is_corrected_by_what_the_fold_changed() {
+    let mut manager = in_memory();
+    let steps = session_with_steps(&mut manager, 4);
+    manager
+        .append_message(&tool_call("call-now", "folding"))
+        .expect("the step making the fold call, with the provider's count");
+    let before = manager.build_session_context().messages;
+    fold(&mut manager, &steps[0], &steps[2], "summary").expect("fold");
+    let after = manager.build_session_context().messages;
+
+    let correction = usage_correction_after_rebuild(&before, &after);
+    assert_ne!(correction, 0, "a fold ahead of the count makes it stale");
+    assert_eq!(
+        correction,
+        sum(&after) - sum(&before),
+        "the count covers everything up to the newest answer, all of which the fold changed"
+    );
+}
+
+#[test]
+fn without_a_provider_count_the_estimate_is_not_corrected_twice() {
+    let mut manager = in_memory();
+    manager.append_message(&user("find the bug")).expect("user");
+    let steps: Vec<String> = (0..4)
+        .map(|index| {
+            let call = format!("call-{index}");
+            let id = manager
+                .append_message(&tool_call_without_usage(&call, "searching"))
+                .expect("assistant");
+            manager
+                .append_message(&tool_result(&call, &format!("result needle-{index}")))
+                .expect("result");
+            id
+        })
+        .collect();
+    manager
+        .append_message(&tool_call_without_usage("call-now", "folding"))
+        .expect("newest");
+    let before = manager.build_session_context().messages;
+    fold(&mut manager, &steps[0], &steps[2], "summary").expect("fold");
+    let after = manager.build_session_context().messages;
+
+    let correction = usage_correction_after_rebuild(&before, &after);
+    assert_eq!(
+        correction, 0,
+        "the estimate already measures the folded context; a correction would subtract the fold again"
+    );
+    assert_eq!(estimate_context_tokens(&after).tokens as i64, sum(&after));
+}
+
+#[test]
+fn compaction_summarizes_the_context_the_agent_sees() {
+    let mut manager = in_memory();
+    let steps = session_with_steps(&mut manager, 4);
+    fold(&mut manager, &steps[0], &steps[1], "folded summary text").expect("fold");
+    let entries: Vec<SessionEntry> = manager.get_branch(None).into_iter().cloned().collect();
+    let summarized = |apply: bool| {
+        serde_json::to_string(
+            &prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, apply)
+                .expect("prepared")
+                .messages_to_summarize,
+        )
+        .expect("json")
+    };
+
+    let folded = summarized(true);
+    assert!(folded.contains("folded summary text") && !folded.contains("needle-0"));
+    let full = summarized(false);
+    assert!(
+        full.contains("needle-0") && !full.contains("folded summary text"),
+        "with folding off the agent reads the original steps, so the summary must come from them"
+    );
 }

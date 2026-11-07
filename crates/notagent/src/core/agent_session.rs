@@ -636,6 +636,8 @@ impl AgentSession {
 
         session.install_agent_next_turn_refresh();
         session.install_agent_context_preparation();
+        // `create_agent_session` sets this before it builds the first context;
+        // a session constructed directly gets it here.
         let folding = session.settings_manager.get_context_folding_enabled();
         session.with_session_manager(|manager| manager.set_apply_context_folds(folding));
         session.install_agent_after_tool_call();
@@ -3852,7 +3854,13 @@ impl AgentSession {
             .into_iter()
             .cloned()
             .collect::<Vec<_>>();
-        if prepare_compaction(&entries, &settings).is_none() {
+        if prepare_compaction(
+            &entries,
+            &settings,
+            self.settings_manager.get_context_folding_enabled(),
+        )
+        .is_none()
+        {
             return Ok(messages);
         }
 
@@ -3921,9 +3929,9 @@ impl AgentSession {
     /// The size starts from the provider's count at the last answer, which
     /// still includes what a fold has just removed; left alone, the first
     /// request after a fold would be measured as if nothing had been folded,
-    /// and compaction would fire on a context the fold already shrank. So the
-    /// size is corrected by what the rebuild added or removed, until the next
-    /// answer brings a fresh count.
+    /// and compaction would fire on a context the fold already shrank. So a
+    /// stale count is corrected by what the rebuild changed ahead of it,
+    /// until the next answer brings a fresh count.
     fn apply_context_folds_before_request(
         &self,
         messages: Vec<AgentMessage>,
@@ -3931,13 +3939,15 @@ impl AgentSession {
         let mut messages = messages;
         let mut correction: i64 = 0;
         if self.context_fold_pending.swap(false, Ordering::SeqCst) {
-            let before = estimate_messages_tokens(&messages);
             // The loop owns a separate snapshot, as after a compaction: the
             // agent state and the returned list must both change.
-            messages =
+            let rebuilt =
                 self.with_session_manager(|manager| manager.build_session_context().messages);
+            correction = crate::core::compaction::compaction::usage_correction_after_rebuild(
+                &messages, &rebuilt,
+            );
+            messages = rebuilt;
             self.agent.set_messages(messages.clone());
-            correction = estimate_messages_tokens(&messages) as i64 - before as i64;
         }
         let measure = |messages: &[AgentMessage]| {
             (estimate_context_tokens(messages).tokens as i64 + correction).max(0) as u64
@@ -4220,7 +4230,11 @@ impl AgentSession {
             .collect();
         let settings = self.compaction_settings();
 
-        let Some(preparation) = prepare_compaction(&path_entries, &settings) else {
+        let Some(preparation) = prepare_compaction(
+            &path_entries,
+            &settings,
+            self.settings_manager.get_context_folding_enabled(),
+        ) else {
             if matches!(path_entries.last(), Some(SessionEntry::Compaction(_))) {
                 return Err("Already compacted".to_string());
             }
@@ -4446,7 +4460,13 @@ impl AgentSession {
             .into_iter()
             .cloned()
             .collect();
-        if prepare_compaction(&path_entries, &settings).is_none() {
+        if prepare_compaction(
+            &path_entries,
+            &settings,
+            self.settings_manager.get_context_folding_enabled(),
+        )
+        .is_none()
+        {
             return false;
         }
 

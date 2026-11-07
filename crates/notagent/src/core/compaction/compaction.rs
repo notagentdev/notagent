@@ -35,7 +35,7 @@ use crate::core::compaction::utils::{
 };
 use crate::core::messages::convert_to_llm;
 use crate::core::session_manager::{
-    LeafSelector, SessionEntry, build_context_entries, build_session_context,
+    LeafSelector, SessionEntry, build_context_entries, build_session_context_with_folds,
     session_entry_to_context_messages,
 };
 
@@ -220,6 +220,26 @@ pub fn estimate_context_tokens(messages: &[AgentMessage]) -> ContextUsageEstimat
         trailing_tokens,
         last_usage_index: Some(index),
     }
+}
+
+/// How far the provider's last count is off after the context was rebuilt
+/// from `before` into `after`, as by a fold. The count covers everything up
+/// to the assistant message that carries it, so only a change ahead of that
+/// message makes it stale. When that message is gone, or no message carries a
+/// count, `estimate_context_tokens` already measures the rebuilt list and
+/// nothing needs correcting; correcting anyway would subtract the change twice.
+pub fn usage_correction_after_rebuild(before: &[AgentMessage], after: &[AgentMessage]) -> i64 {
+    let (Some((_, old)), Some((_, new))) = (
+        last_assistant_usage_info(before),
+        last_assistant_usage_info(after),
+    ) else {
+        return 0;
+    };
+    if before[old] != after[new] {
+        return 0;
+    }
+    let sum = |messages: &[AgentMessage]| messages.iter().map(estimate_tokens).sum::<u64>() as i64;
+    sum(&after[..=new]) - sum(&before[..=old])
 }
 
 /// Whether the context has grown into the space reserved for the next request.
@@ -608,17 +628,25 @@ pub struct CompactionPreparation {
 }
 
 /// Works out what a compaction would do, or `None` when there is nothing to do.
+/// `apply_context_folds` must match what the agent sees: the summary is
+/// written from that context, and with folding off it would otherwise be
+/// written from fold summaries the agent no longer reads.
 pub fn prepare_compaction(
     path_entries: &[SessionEntry],
     settings: &CompactionSettings,
+    apply_context_folds: bool,
 ) -> Option<CompactionPreparation> {
     if matches!(path_entries.last(), Some(SessionEntry::Compaction(_))) {
         return None;
     }
 
     let context_entries = build_context_entries(path_entries, LeafSelector::Undefined);
-    let messages_to_summarize =
-        build_session_context(path_entries, LeafSelector::Undefined).messages;
+    let messages_to_summarize = build_session_context_with_folds(
+        path_entries,
+        LeafSelector::Undefined,
+        apply_context_folds,
+    )
+    .messages;
     if messages_to_summarize.is_empty() {
         return None;
     }

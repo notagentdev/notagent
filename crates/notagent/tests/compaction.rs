@@ -372,7 +372,8 @@ fn keeps_every_user_message_verbatim() {
         ))));
     }
 
-    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
+    let preparation =
+        prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, true).expect("prepared");
 
     let kept = extract_text(&preparation.retained_messages);
     for index in 0..10u64 {
@@ -400,7 +401,7 @@ fn keeps_both_ends_and_marks_the_gap() {
         retained_user_tokens: 300,
         ..DEFAULT_COMPACTION_SETTINGS
     };
-    let preparation = prepare_compaction(&entries, &settings).expect("prepared");
+    let preparation = prepare_compaction(&entries, &settings, true).expect("prepared");
 
     assert!(!preparation.retained.head.is_empty(), "no head kept");
     assert!(!preparation.retained.tail.is_empty(), "no tail kept");
@@ -424,7 +425,8 @@ fn carries_no_elision_note_when_nothing_was_dropped() {
         builder.message(user_message("short")),
         builder.message(assistant("work")),
     ];
-    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
+    let preparation =
+        prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, true).expect("prepared");
     let kept = extract_text(&preparation.retained_messages);
     assert!(!kept.contains("dropped roughly"), "{kept}");
 }
@@ -436,7 +438,7 @@ fn refuses_a_session_that_is_only_user_messages() {
         builder.message(user_message("one")),
         builder.message(user_message("two")),
     ];
-    assert!(prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).is_none());
+    assert!(prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, true).is_none());
 }
 
 #[test]
@@ -449,7 +451,7 @@ fn refuses_to_compact_twice_in_a_row() {
         builder.message(assistant("work")),
         builder.compaction("summary", &first_id),
     ];
-    assert!(prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).is_none());
+    assert!(prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, true).is_none());
 }
 
 /// The oldest retained entry is what an older build would keep from, and it
@@ -464,7 +466,8 @@ fn points_the_compatibility_field_at_the_oldest_retained_entry() {
         builder.message(assistant("work")),
         builder.message(user_message("second")),
     ];
-    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
+    let preparation =
+        prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, true).expect("prepared");
     assert_eq!(preparation.first_kept_entry_id, first_id);
 }
 
@@ -486,7 +489,8 @@ fn a_second_compaction_summarizes_the_retained_messages_and_the_first_note() {
     let a3 = builder.message(assistant("assistant msg 3"));
 
     let entries = vec![u1, a1, u2, compaction, u3, a3];
-    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
+    let preparation =
+        prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, true).expect("prepared");
 
     let summarized = extract_text(&preparation.messages_to_summarize);
     assert!(summarized.contains("user msg 1"), "{summarized}");
@@ -521,7 +525,8 @@ fn parses_the_large_session_fixture() {
 #[test]
 fn keeps_the_whole_of_a_large_sessions_user_input() {
     let entries = large_session_entries();
-    let preparation = prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS).expect("prepared");
+    let preparation =
+        prepare_compaction(&entries, &DEFAULT_COMPACTION_SETTINGS, true).expect("prepared");
 
     assert_eq!(preparation.retained.omitted_tokens, 0);
     let kept: u64 = preparation

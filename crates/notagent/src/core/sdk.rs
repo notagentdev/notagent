@@ -68,6 +68,9 @@ pub async fn create_agent_session(options: CreateAgentSessionOptions) -> CreateA
     let settings_manager = Arc::clone(&options.settings_manager);
     let model_runtime = Arc::clone(&options.model_runtime);
     let mut session_manager = options.session_manager;
+    // Before the first context is built: a resumed session with folding
+    // switched off must start from its full history.
+    session_manager.set_apply_context_folds(settings_manager.get_context_folding_enabled());
 
     let existing = session_manager.build_session_context();
     let has_existing_session = !existing.messages.is_empty();

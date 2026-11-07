@@ -880,6 +880,15 @@ pub fn build_session_context(entries: &[SessionEntry], leaf: LeafSelector<'_>) -
     build_session_context_with_log(entries, leaf, None, true)
 }
 
+/// Builds the context with context folds applied or not.
+pub fn build_session_context_with_folds(
+    entries: &[SessionEntry],
+    leaf: LeafSelector<'_>,
+    apply_folds: bool,
+) -> SessionContext {
+    build_session_context_with_log(entries, leaf, None, apply_folds)
+}
+
 /// Builds the context, pointing a compaction summary at `session_file` so the
 /// model can look up what the summary replaced.
 fn build_session_context_with_log(
