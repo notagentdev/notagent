@@ -7,6 +7,7 @@ pub mod bash_executor;
 pub mod bash_filter;
 pub mod cache_stats;
 pub mod compaction;
+pub mod context_fold;
 pub mod defaults;
 pub mod delegation;
 pub mod diagnostics;

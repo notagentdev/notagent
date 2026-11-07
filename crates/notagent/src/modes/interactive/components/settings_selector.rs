@@ -143,6 +143,8 @@ pub struct SettingsConfig {
     pub bash_filter: bool,
     /// Compact reads and the minified editing tools.
     pub minified_tools: bool,
+    /// `context_fold` and its reminders.
+    pub context_folding: bool,
 }
 
 impl Default for SettingsConfig {
@@ -152,6 +154,7 @@ impl Default for SettingsConfig {
             atomic_leases: false,
             bash_filter: false,
             minified_tools: true,
+            context_folding: true,
             show_images: false,
             image_width_cells: 0,
             auto_resize_images: false,
@@ -197,6 +200,7 @@ pub struct SettingsCallbacks {
     /// Bash filter toggle (v0.1.20).
     pub on_bash_filter_change: Box<dyn FnMut(bool)>,
     pub on_minified_tools_change: Box<dyn FnMut(bool)>,
+    pub on_context_folding_change: Box<dyn FnMut(bool)>,
     pub on_show_images_change: Box<dyn FnMut(bool)>,
     pub on_image_width_cells_change: Box<dyn FnMut(u64)>,
     pub on_auto_resize_images_change: Box<dyn FnMut(bool)>,
@@ -239,6 +243,7 @@ impl Default for SettingsCallbacks {
             on_atomic_leases_change: Box::new(|_| {}),
             on_bash_filter_change: Box::new(|_| {}),
             on_minified_tools_change: Box::new(|_| {}),
+            on_context_folding_change: Box::new(|_| {}),
             on_show_images_change: Box::new(|_| {}),
             on_image_width_cells_change: Box::new(|_| {}),
             on_auto_resize_images_change: Box::new(|_| {}),
@@ -1017,6 +1022,17 @@ impl SettingsSelectorComponent {
                 submenu: None,
             },
             SettingItem {
+                id: "context-folding".to_string(),
+                label: "Context folding".to_string(),
+                description: Some(
+                    "Let the agent fold finished work into summaries of its own with context_fold, reminded as the context fills up. Off removes the tool and shows the full history again; compaction still applies."
+                        .to_string(),
+                ),
+                current_value: bool_value(config.context_folding),
+                values: Some(vec!["true".to_string(), "false".to_string()]),
+                submenu: None,
+            },
+            SettingItem {
                 id: "bash-filter".to_string(),
                 label: "Bash filter".to_string(),
                 description: Some(
@@ -1412,6 +1428,7 @@ impl SettingsSelectorComponent {
                     "atomic-leases" => (callbacks.on_atomic_leases_change)(new_value == "true"),
                     "bash-filter" => (callbacks.on_bash_filter_change)(new_value == "true"),
                     "minified-tools" => (callbacks.on_minified_tools_change)(new_value == "true"),
+                    "context-folding" => (callbacks.on_context_folding_change)(new_value == "true"),
                     "show-images" => (callbacks.on_show_images_change)(new_value == "true"),
                     "image-width-cells" => {
                         (callbacks.on_image_width_cells_change)(parse_int(new_value))

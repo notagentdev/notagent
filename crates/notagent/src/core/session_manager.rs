@@ -877,7 +877,7 @@ fn build_context_entries_indexed<'a>(
 
 /// Build the session context from entries using tree traversal.
 pub fn build_session_context(entries: &[SessionEntry], leaf: LeafSelector<'_>) -> SessionContext {
-    build_session_context_with_log(entries, leaf, None)
+    build_session_context_with_log(entries, leaf, None, true)
 }
 
 /// Builds the context, pointing a compaction summary at `session_file` so the
@@ -886,6 +886,7 @@ fn build_session_context_with_log(
     entries: &[SessionEntry],
     leaf: LeafSelector<'_>,
     session_file: Option<&str>,
+    apply_folds: bool,
 ) -> SessionContext {
     let index = build_entry_index(entries);
     let path = build_session_path(entries, leaf, &index);
@@ -901,8 +902,24 @@ fn build_session_context_with_log(
         .find_map(|entry| entry.as_compaction())
         .and_then(|entry| entry.retained.as_ref());
 
+    let folds = if apply_folds {
+        crate::core::context_fold::active_folds(&context_entries)
+    } else {
+        Vec::new()
+    };
     let mut messages: Vec<AgentMessage> = Vec::new();
-    for entry in context_entries {
+    for piece in crate::core::context_fold::fold_context(&context_entries, &folds) {
+        let entry = match piece {
+            crate::core::context_fold::ContextPiece::Entry(entry) => entry,
+            crate::core::context_fold::ContextPiece::Fold(fold) => {
+                let timestamp = context_entries
+                    .get(fold.end)
+                    .and_then(|entry| parse_timestamp_ms(entry.timestamp()))
+                    .unwrap_or(0);
+                messages.push(crate::core::context_fold::fold_message(fold, timestamp));
+                continue;
+            }
+        };
         let mut entry_messages = session_entry_to_context_messages(entry);
         if let Some(session_file) = session_file {
             for message in &mut entry_messages {
@@ -1392,6 +1409,9 @@ pub struct SessionManager {
     labels_by_id: BTreeMap<String, String>,
     label_timestamps_by_id: BTreeMap<String, String>,
     leaf_id: Option<String>,
+    /// Whether context folds shape the context; off when the user switched
+    /// folding off, which shows the full history again.
+    apply_context_folds: bool,
 }
 
 use std::collections::BTreeMap;
@@ -1420,6 +1440,7 @@ impl SessionManager {
             labels_by_id: BTreeMap::new(),
             label_timestamps_by_id: BTreeMap::new(),
             leaf_id: None,
+            apply_context_folds: true,
         };
         if persist && !manager.session_dir.is_empty() && !Path::new(&manager.session_dir).exists() {
             std::fs::create_dir_all(&manager.session_dir).map_err(io_error)?;
@@ -1950,7 +1971,11 @@ impl SessionManager {
             .session_file
             .as_deref()
             .filter(|file| self.persist && Path::new(file).is_file());
-        build_session_context_with_log(&entries, leaf, session_file)
+        build_session_context_with_log(&entries, leaf, session_file, self.apply_context_folds)
+    }
+
+    pub fn set_apply_context_folds(&mut self, apply: bool) {
+        self.apply_context_folds = apply;
     }
 
     pub fn get_header(&self) -> Option<&SessionHeader> {

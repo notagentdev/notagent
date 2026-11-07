@@ -108,6 +108,9 @@ const READ_ONLY_TOOLS: &[ToolName] = &[
     // Keeping a checklist changes nothing in the workspace, and a read-only
     // session doing multi-step research wants one as much as a worker does.
     ToolName::TodoWrite,
+    // Folding changes what the model reads, never the workspace, and a long
+    // read-only investigation fills the context as fast as any other.
+    ToolName::ContextFold,
     // exception is narrow enough to keep the gate meaningful: it only ever
     // creates a new file under `plans/`, never overwrites, and derives the
     // name rather than taking it. A read-only session cannot reach anything

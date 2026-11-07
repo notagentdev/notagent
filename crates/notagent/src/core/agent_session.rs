@@ -409,6 +409,15 @@ fn estimate_messages_tokens(messages: &[AgentMessage]) -> u64 {
     messages.iter().map(estimate_tokens).sum()
 }
 
+/// Unfolded finished work, in tokens, that earns a reminder to fold. Asking
+/// on growth rather than on fill keeps folds few and large: every fold
+/// re-sends what follows it without the prompt cache, so a stream of small
+/// ones costs more than it saves. Capped at a quarter of the window so a
+/// small window still hears it well before compaction.
+const FOLD_REMINDER_GROWTH_TOKENS: u64 = 50_000;
+/// Matches a search returns at most, so one broad query cannot flood the context.
+const FOLD_SEARCH_LIMIT: usize = 20;
+
 // ============================================================================
 // Mutable state
 // ============================================================================
@@ -522,6 +531,11 @@ pub struct AgentSession {
     auto_compaction_signal: Mutex<Option<CancellationToken>>,
     context_preparation_failed: AtomicBool,
     overflow_recovery_attempted: AtomicBool,
+    /// Set when a fold or unfold was recorded during a run, so the next
+    /// request rebuilds the context from the session before it is sent.
+    context_fold_pending: AtomicBool,
+    /// The unfolded finished work, in tokens, at the last fold reminder.
+    fold_reminder_mass: AtomicU64,
     branch_summary_signal: Mutex<Option<CancellationToken>>,
 
     // Retry state
@@ -584,6 +598,8 @@ impl AgentSession {
             auto_compaction_signal: Mutex::new(None),
             context_preparation_failed: AtomicBool::new(false),
             overflow_recovery_attempted: AtomicBool::new(false),
+            context_fold_pending: AtomicBool::new(false),
+            fold_reminder_mass: AtomicU64::new(0),
             branch_summary_signal: Mutex::new(None),
             retry_signal: Mutex::new(None),
             retry_attempt: AtomicU64::new(0),
@@ -620,6 +636,8 @@ impl AgentSession {
 
         session.install_agent_next_turn_refresh();
         session.install_agent_context_preparation();
+        let folding = session.settings_manager.get_context_folding_enabled();
+        session.with_session_manager(|manager| manager.set_apply_context_folds(folding));
         session.install_agent_after_tool_call();
         session.build_runtime(BuildRuntimeOptions {
             active_tool_names: session.initial_active_tool_names.clone(),
@@ -1869,6 +1887,21 @@ impl AgentSession {
                     Arc::new(move || store.lock().expect("poisoned").all().to_vec())
                 },
             }),
+            // Main session only, and only while folding is on: absent sources
+            // leave the tool out of the registry altogether.
+            context_fold: self
+                .settings_manager
+                .get_context_folding_enabled()
+                .then(|| {
+                    let weak = Arc::downgrade(self);
+                    crate::core::tools::context_fold::ContextFoldToolSources {
+                        handler: Arc::new(move |action| {
+                            weak.upgrade()
+                                .ok_or_else(|| "the session has ended".to_owned())
+                                .and_then(|session| session.handle_context_fold(action))
+                        }),
+                    }
+                }),
             find_codebase: Some(self.find_codebase_options()),
             write: Some(WriteToolOptions {
                 leases: Some(self.lease_gate()),
@@ -3799,15 +3832,15 @@ impl AgentSession {
         messages: Vec<AgentMessage>,
         parent_signal: Option<CancellationToken>,
     ) -> Result<Vec<AgentMessage>, notagent_agent::agent::AgentError> {
+        // Folding runs first so that compaction only fires when the context is
+        // still too full after the model's own folds; the two never act on the
+        // same request for the same reason.
+        let (messages, context_tokens) = self.apply_context_folds_before_request(messages);
         let settings = self.compaction_settings();
         if parent_signal
             .as_ref()
             .is_some_and(CancellationToken::is_cancelled)
-            || !should_compact(
-                estimate_context_tokens(&messages).tokens,
-                self.current_context_window(),
-                &settings,
-            )
+            || !should_compact(context_tokens, self.current_context_window(), &settings)
         {
             return Ok(messages);
         }
@@ -3879,6 +3912,241 @@ impl AgentSession {
                 });
                 Err(notagent_agent::agent::AgentError(error))
             }
+        }
+    }
+
+    /// Rebuilds the context after a fold or unfold earlier in the run, then
+    /// reminds the model to fold once enough finished work has built up.
+    /// Returns the messages and the context size the compaction check uses.
+    /// The size starts from the provider's count at the last answer, which
+    /// still includes what a fold has just removed; left alone, the first
+    /// request after a fold would be measured as if nothing had been folded,
+    /// and compaction would fire on a context the fold already shrank. So the
+    /// size is corrected by what the rebuild added or removed, until the next
+    /// answer brings a fresh count.
+    fn apply_context_folds_before_request(
+        &self,
+        messages: Vec<AgentMessage>,
+    ) -> (Vec<AgentMessage>, u64) {
+        let mut messages = messages;
+        let mut correction: i64 = 0;
+        if self.context_fold_pending.swap(false, Ordering::SeqCst) {
+            let before = estimate_messages_tokens(&messages);
+            // The loop owns a separate snapshot, as after a compaction: the
+            // agent state and the returned list must both change.
+            messages =
+                self.with_session_manager(|manager| manager.build_session_context().messages);
+            self.agent.set_messages(messages.clone());
+            correction = estimate_messages_tokens(&messages) as i64 - before as i64;
+        }
+        let measure = |messages: &[AgentMessage]| {
+            (estimate_context_tokens(messages).tokens as i64 + correction).max(0) as u64
+        };
+        if !self.settings_manager.get_context_folding_enabled() {
+            let tokens = measure(&messages);
+            return (messages, tokens);
+        }
+        if let Some(reminder) = self.fold_reminder(measure(&messages)) {
+            let content = notagent_ai::types::UserContent::Text(reminder);
+            let appended = self.with_session_manager(|manager| {
+                manager.append_custom_message_entry(
+                    crate::core::context_fold::FOLD_REMINDER_TYPE,
+                    serde_json::to_value(&content).unwrap_or(Value::Null),
+                    false,
+                    None,
+                )
+            });
+            if appended.is_ok() {
+                messages.push(AgentMessage::Custom(
+                    notagent_agent::harness::messages::create_custom_message(
+                        crate::core::context_fold::FOLD_REMINDER_TYPE,
+                        content,
+                        false,
+                        None,
+                        chrono::Utc::now().timestamp_millis(),
+                    ),
+                ));
+                self.agent.set_messages(messages.clone());
+            }
+        }
+        let tokens = measure(&messages);
+        (messages, tokens)
+    }
+
+    /// The reminder to fold, once the finished work nobody folded yet has
+    /// grown by the threshold since the last fold or the last reminder. It
+    /// names the range to fold and its size, not how full the window is: a
+    /// fill level invites folding work that is still in use.
+    fn fold_reminder(&self, context_tokens: u64) -> Option<String> {
+        let window = self.current_context_window();
+        let threshold = match window {
+            0 => FOLD_REMINDER_GROWTH_TOKENS,
+            window => FOLD_REMINDER_GROWTH_TOKENS.min(window / 4),
+        };
+        // The unfolded work is part of the context, so a smaller context
+        // cannot hold enough of it; this spares the walk over the session.
+        if context_tokens < threshold {
+            self.fold_reminder_mass.store(0, Ordering::SeqCst);
+            return None;
+        }
+        let (count, mass, first, last) = self.with_session_manager(|manager| {
+            let entries = manager.build_context_entries();
+            let refs: Vec<&SessionEntry> = entries.iter().collect();
+            let foldable = crate::core::context_fold::foldable_steps(&refs);
+            (
+                foldable.len(),
+                foldable.iter().map(|step| step.tokens).sum::<u64>(),
+                foldable.first().map(|step| step.id.clone()),
+                foldable.last().map(|step| step.id.clone()),
+            )
+        });
+        let mut reminded = self.fold_reminder_mass.load(Ordering::SeqCst);
+        // Less unfolded work than at the last reminder means a fold answered it.
+        if mass < reminded {
+            reminded = 0;
+            self.fold_reminder_mass.store(0, Ordering::SeqCst);
+        }
+        let (Some(first), Some(last)) = (first, last) else {
+            return None;
+        };
+        if mass < reminded + threshold {
+            return None;
+        }
+        self.fold_reminder_mass.store(mass, Ordering::SeqCst);
+        Some(format!(
+            "[Context reminder: {count} finished step(s), about {mass} tokens, have built up since the last fold. Fold what the task no longer needs verbatim into one summary: context_fold with action \"fold\", from \"{first}\" up to at most \"{last}\". Keep in the summary what later work still needs: paths, exact values, decisions, open problems.]"
+        ))
+    }
+
+    /// Carries out a `context_fold` action against the session.
+    fn handle_context_fold(
+        &self,
+        action: crate::core::tools::context_fold::ContextFoldAction,
+    ) -> Result<String, String> {
+        use crate::core::context_fold::{
+            FOLD_ENTRY_TYPE, UNFOLD_ENTRY_TYPE, UnfoldRecord, active_folds, foldable_steps,
+            plan_fold, search_folds,
+        };
+        use crate::core::tools::context_fold::ContextFoldAction;
+
+        let window = self.current_context_window();
+        let tokens = estimate_messages_tokens(&self.agent.state().messages);
+        self.with_session_manager(|manager| {
+            let entries = manager.build_context_entries();
+            let refs: Vec<&SessionEntry> = entries.iter().collect();
+            match action {
+                ContextFoldAction::Status => {
+                    let mut lines = vec![match window {
+                        0 => format!("Context: about {tokens} tokens."),
+                        window => format!(
+                            "Context: about {tokens} of {window} tokens ({}%).",
+                            tokens.saturating_mul(100) / window
+                        ),
+                    }];
+                    let steps = foldable_steps(&refs);
+                    if steps.is_empty() {
+                        lines.push("No finished steps to fold.".to_owned());
+                    } else {
+                        lines.push(format!("Foldable steps, oldest first ({}):", steps.len()));
+                        lines.extend(steps.iter().map(|step| {
+                            format!("- {} ~{} tokens: {}", step.id, step.tokens, step.preview)
+                        }));
+                        if let Some((step, extend)) =
+                            crate::core::context_fold::next_fold_start(&refs)
+                        {
+                            lines.push(match extend {
+                                Some(fold) => format!(
+                                    "The next fold starts at {step}, or at fold {fold} to extend it."
+                                ),
+                                None => format!("The next fold starts at {step}."),
+                            });
+                        }
+                    }
+                    let folds = active_folds(&refs);
+                    if !folds.is_empty() {
+                        lines.push(format!("Folds in force ({}):", folds.len()));
+                        lines.extend(folds.iter().map(|fold| {
+                            let first_line = fold.record.summary.lines().next().unwrap_or_default();
+                            format!(
+                                "- {} {} step(s), ~{} tokens folded: {first_line}",
+                                fold.id, fold.record.steps, fold.record.folded_tokens
+                            )
+                        }));
+                    }
+                    Ok(lines.join("\n"))
+                }
+                ContextFoldAction::Fold { from, to, summary } => {
+                    let planned = plan_fold(&refs, &from, &to, &summary)?;
+                    let record = planned.record;
+                    let id = manager
+                        .append_custom_entry(
+                            FOLD_ENTRY_TYPE,
+                            Some(serde_json::to_value(&record).map_err(|error| error.to_string())?),
+                        )
+                        .map_err(|error| error.to_string())?;
+                    self.context_fold_pending.store(true, Ordering::SeqCst);
+                    Ok(format!(
+                        "Folded {} step(s), about {} tokens, into fold {id}. From your next request on, the summary stands in for them; unfold {id} restores them.",
+                        record.steps, record.folded_tokens
+                    ))
+                }
+                ContextFoldAction::Unfold { fold_id } => {
+                    if !active_folds(&refs).iter().any(|fold| fold.id == fold_id) {
+                        return Err(format!(
+                            "{fold_id} is not a fold in force; list them with action \"status\""
+                        ));
+                    }
+                    manager
+                        .append_custom_entry(
+                            UNFOLD_ENTRY_TYPE,
+                            Some(
+                                serde_json::to_value(UnfoldRecord {
+                                    fold_id: fold_id.clone(),
+                                })
+                                .map_err(|error| error.to_string())?,
+                            ),
+                        )
+                        .map_err(|error| error.to_string())?;
+                    self.context_fold_pending.store(true, Ordering::SeqCst);
+                    Ok(format!(
+                        "Unfolded {fold_id}. From your next request on, its steps are back in the context."
+                    ))
+                }
+                ContextFoldAction::Search { query } => {
+                    let hits = search_folds(&refs, &query, FOLD_SEARCH_LIMIT);
+                    if hits.is_empty() {
+                        return Ok(format!("No match for \"{query}\" inside the folds in force."));
+                    }
+                    let mut lines = vec![format!("{} match(es) for \"{query}\":", hits.len())];
+                    lines.extend(hits.iter().map(|hit| {
+                        format!("- fold {} (entry {}): {}", hit.fold_id, hit.entry_id, hit.snippet)
+                    }));
+                    Ok(lines.join("\n"))
+                }
+            }
+        })
+    }
+
+    /// Applies the context-folding setting: the tool, its reminders, and
+    /// whether folds shape the context. Rebuilds the tools like the minified
+    /// switch, adding the tool back explicitly when it is switched on.
+    pub fn apply_context_folding_setting(self: &Arc<Self>) {
+        let enabled = self.settings_manager.get_context_folding_enabled();
+        self.with_session_manager(|manager| manager.set_apply_context_folds(enabled));
+        self.context_fold_pending.store(true, Ordering::SeqCst);
+        let mut active = self.get_active_tool_names();
+        let name = ToolName::ContextFold.as_str().to_owned();
+        if enabled && !active.contains(&name) && self.active_mode_tool_names().contains(&name) {
+            active.push(name);
+        }
+        self.build_runtime(BuildRuntimeOptions {
+            active_tool_names: Some(active),
+        });
+        if !self.is_streaming() {
+            let messages =
+                self.with_session_manager(|manager| manager.build_session_context().messages);
+            self.agent.set_messages(messages);
+            self.context_fold_pending.store(false, Ordering::SeqCst);
         }
     }
 

@@ -42,6 +42,7 @@ fn config() -> SettingsConfig {
         atomic_leases: false,
         bash_filter: false,
         minified_tools: true,
+        context_folding: true,
         show_images: false,
         image_width_cells: 80,
         auto_resize_images: true,

@@ -16,7 +16,7 @@ use crate::utils::paths::{is_absolute_path, main_separator, node_relative, node_
 /// own tool calls come back through this same chain, so what it does is decided
 /// where every other call is. Asking about the delegation as well would be a
 /// prompt about an action that has no effect.
-const READ_ONLY_TOOLS: [&str; 12] = [
+const READ_ONLY_TOOLS: [&str; 13] = [
     "read",
     "read_minified",
     "grep",
@@ -32,6 +32,9 @@ const READ_ONLY_TOOLS: [&str; 12] = [
     "task_output",
     // Writing the checklist touches nothing but the checklist.
     "todo_write",
+    // Folding rewrites what the model reads next, from the session's own
+    // history; no file is touched.
+    "context_fold",
     // A question changes nothing, and a permission prompt in front of it would
     // ask the user whether they may be asked.
     "ask_user_question",

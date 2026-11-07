@@ -226,6 +226,9 @@ settings_struct!(
     /// Whether `read` compacts source and the minified editing tools are
     /// attached; absent = on.
     minified_tools: bool,
+    /// Whether the model may fold finished work into summaries of its own
+    /// with `context_fold`; absent = on.
+    context_folding: bool,
     /// The footer line with the working directory and git branch;
     /// absent = hidden (user decision 2026-08-25).
     show_workspace_in_footer: bool,
@@ -1178,6 +1181,17 @@ impl SettingsManager {
 
     pub fn set_minified_tools_enabled(&self, enabled: bool) {
         self.set_global_field("minifiedTools", Value::from(enabled));
+    }
+
+    /// Off removes `context_fold` and its reminders, and folds already made
+    /// stop applying: the model sees the full history again, with compaction
+    /// as the backstop. A fold is only a view, so nothing is lost either way.
+    pub fn get_context_folding_enabled(&self) -> bool {
+        self.settings_snapshot().context_folding.unwrap_or(true)
+    }
+
+    pub fn set_context_folding_enabled(&self, enabled: bool) {
+        self.set_global_field("contextFolding", Value::from(enabled));
     }
 
     /// the filter replaces what the model reads with a compacted form, which

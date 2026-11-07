@@ -4643,6 +4643,7 @@ impl InteractiveMode {
             atomic_leases: settings.get_atomic_leases_enabled(),
             bash_filter: settings.get_bash_filter_enabled(),
             minified_tools: settings.get_minified_tools_enabled(),
+            context_folding: settings.get_context_folding_enabled(),
         };
 
         let callbacks = SettingsCallbacks {
@@ -4675,6 +4676,16 @@ impl InteractiveMode {
                     settings.set_minified_tools_enabled(enabled);
                     session.apply_minified_tools_setting();
                     effect(&tx, id, SettingsEffect::MinifiedTools);
+                })
+            },
+            // The tool list changes and so may the context, so the session
+            // rebuilds both; nothing in the UI depends on it.
+            on_context_folding_change: {
+                let settings = Arc::clone(&settings);
+                let session = Arc::clone(&session);
+                Box::new(move |enabled| {
+                    settings.set_context_folding_enabled(enabled);
+                    session.apply_context_folding_setting();
                 })
             },
             on_show_images_change: {

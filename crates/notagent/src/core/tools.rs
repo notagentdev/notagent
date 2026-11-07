@@ -1,5 +1,6 @@
 pub mod ask_user_question;
 pub mod bash;
+pub mod context_fold;
 pub mod edit;
 pub mod edit_diff;
 pub mod file_lease;
@@ -51,6 +52,8 @@ pub enum ToolName {
     TodoWrite,
     CreateGoal,
     UpdateGoal,
+    /// Folds finished work into the model's own summary; see `core/context_fold.rs`.
+    ContextFold,
     Write,
     /// get it too — see `core/tools/plan_create.rs` for why that is not a hole.
     PlanCreate,
@@ -69,7 +72,7 @@ pub enum ToolName {
 }
 
 /// Every tool name, in the order `allToolNames` inserts them.
-pub const ALL_TOOL_NAMES: [ToolName; 21] = [
+pub const ALL_TOOL_NAMES: [ToolName; 22] = [
     ToolName::Read,
     ToolName::Bash,
     ToolName::Edit,
@@ -83,6 +86,7 @@ pub const ALL_TOOL_NAMES: [ToolName; 21] = [
     ToolName::TodoWrite,
     ToolName::CreateGoal,
     ToolName::UpdateGoal,
+    ToolName::ContextFold,
     ToolName::Write,
     ToolName::PlanCreate,
     ToolName::AskUserQuestion,
@@ -113,6 +117,7 @@ impl ToolName {
             ToolName::TodoWrite => "todo_write",
             ToolName::CreateGoal => "create_goal",
             ToolName::UpdateGoal => "update_goal",
+            ToolName::ContextFold => "context_fold",
             ToolName::Write => "write",
             ToolName::PlanCreate => "plan_create",
             ToolName::AskUserQuestion => "ask_user_question",
@@ -157,6 +162,9 @@ use crate::core::tools::ask_user_question::{
     create_ask_user_question_tool_definition,
 };
 use crate::core::tools::bash::{BashToolOptions, create_bash_tool, create_bash_tool_definition};
+use crate::core::tools::context_fold::{
+    ContextFoldToolSources, create_context_fold_tool, create_context_fold_tool_definition,
+};
 use crate::core::tools::edit::{EditToolOptions, create_edit_tool, create_edit_tool_definition};
 use crate::core::tools::find::{FindToolOptions, create_find_tool, create_find_tool_definition};
 use crate::core::tools::find_codebase::{
@@ -214,6 +222,9 @@ pub struct ToolsOptions {
     pub todo_write: Option<TodoWriteToolSources>,
     /// the two goal tools refuse there.
     pub goal: Option<GoalToolSources>,
+    /// Absent outside the main session and while folding is switched off,
+    /// which is what leaves the tool out.
+    pub context_fold: Option<ContextFoldToolSources>,
     pub bash: Option<BashToolOptions>,
     pub write: Option<WriteToolOptions>,
     pub plan_create: Option<PlanCreateToolOptions>,
@@ -235,6 +246,7 @@ impl ToolsOptions {
     /// Whether this tool exists under these options.
     pub fn offers(&self, tool_name: ToolName) -> bool {
         !(self.plain_source && tool_name.is_minified_editing_tool())
+            && (tool_name != ToolName::ContextFold || self.context_fold.is_some())
     }
 
     fn read_options(&self) -> Option<ReadToolOptions> {
@@ -302,6 +314,9 @@ pub fn create_tool_definition(
         ToolName::UpdateGoal => Arc::new(create_update_goal_tool_definition(
             options.and_then(|options| options.goal.clone()),
         )),
+        ToolName::ContextFold => Arc::new(create_context_fold_tool_definition(
+            options.and_then(|options| options.context_fold.clone()),
+        )),
         ToolName::Write => Arc::new(create_write_tool_definition(
             cwd,
             options.and_then(|options| options.write.clone()),
@@ -368,6 +383,9 @@ pub fn create_tool(tool_name: ToolName, cwd: &str, options: Option<&ToolsOptions
         ToolName::CreateGoal => create_goal_tool(options.and_then(|options| options.goal.clone())),
         ToolName::UpdateGoal => {
             create_update_goal_tool(options.and_then(|options| options.goal.clone()))
+        }
+        ToolName::ContextFold => {
+            create_context_fold_tool(options.and_then(|options| options.context_fold.clone()))
         }
         ToolName::Write => {
             create_write_tool(cwd, options.and_then(|options| options.write.clone()))
