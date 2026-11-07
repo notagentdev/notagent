@@ -1617,10 +1617,26 @@ fn format_tool_call(name: &str, arguments: &Map<String, Value>) -> String {
         "patch" => format!("[patch: {}]", argument_path(arguments)),
         "patch_minified" => format!("[patch minified: {}]", argument_path(arguments)),
         "multi_patch_minified" => {
-            let path = argument_path(arguments);
-            let count = match arguments.get("edits") {
-                Some(Value::Array(edits)) => edits.len(),
-                _ => 0,
+            let files = crate::core::tools::patch_minified::files_argument_paths(arguments);
+            let path = if files.is_empty() {
+                argument_path(arguments)
+            } else {
+                files
+                    .iter()
+                    .map(|file| shorten_path(file))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let count = match arguments.get("files") {
+                Some(Value::Array(entries)) => entries
+                    .iter()
+                    .filter_map(|entry| entry.get("edits").and_then(Value::as_array))
+                    .map(Vec::len)
+                    .sum(),
+                _ => match arguments.get("edits") {
+                    Some(Value::Array(edits)) => edits.len(),
+                    _ => 0,
+                },
             };
             let suffix = if count > 0 {
                 format!(" ({count})")

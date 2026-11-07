@@ -17,7 +17,7 @@ use crate::core::mini_read::apply_minified_edit;
 use crate::core::snapshots::{SnapshotStore, capture_before_mutation};
 use crate::core::tools::edit_diff::{generate_diff_string, generate_unified_patch, strip_bom};
 use crate::core::tools::file_lease::{LeaseCoordinator, LeaseGate};
-use crate::core::tools::file_mutation_queue::with_file_mutation_queue;
+use crate::core::tools::file_mutation_queue::{shares_queue, with_file_mutation_queues};
 use crate::core::tools::path_utils::resolve_to_cwd;
 use crate::core::tools::render_utils::{call_title, render_mutation_tool_path, str_arg};
 use crate::core::tools::tool_definition::{
@@ -62,27 +62,72 @@ fn patch_minified_schema() -> Value {
     })
 }
 
+fn multi_patch_minified_edits() -> Value {
+    json!({
+        "type": "array",
+        "items": minified_edit_properties(),
+        "description": "Edits applied in order. Each one operates on the result of the previous edit, against a freshly rebuilt minified view.",
+    })
+}
+
+fn multi_patch_minified_keep_comments() -> Value {
+    json!({
+        "type": "boolean",
+        "description": "Whether comments participate in the minified view. Must match the view used to choose the edits.",
+    })
+}
+
+/// One file as a call names it: either the whole call (`path` and `edits`) or
+/// one entry of `files`. Neither form is required on its own, so the schema
+/// requires nothing at the top and `execute` checks that exactly one is given.
 fn multi_patch_minified_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "path": { "type": "string", "description": "Path to the file to edit (relative or absolute)" },
-            "edits": {
+            "path": { "type": "string", "description": "Path to the file to edit (relative or absolute). For one file; use files to edit several." },
+            "edits": multi_patch_minified_edits(),
+            "keep_comments": multi_patch_minified_keep_comments(),
+            "files": {
                 "type": "array",
-                "items": minified_edit_properties(),
-                "description": "Edits applied in order. Each one operates on the result of the previous edit, against a freshly rebuilt minified view.",
-            },
-            "keep_comments": {
-                "type": "boolean",
-                "description": "Whether comments participate in the minified view. Must match the view used to choose the edits.",
+                "description": "Several files edited in one call, instead of path and edits. Preferred whenever more than one file changes: batch as many files per call as possible. All or nothing: if any edit in any file fails, no file is changed.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Path to the file to edit (relative or absolute)" },
+                        "edits": multi_patch_minified_edits(),
+                        "keep_comments": multi_patch_minified_keep_comments(),
+                    },
+                    "required": ["path", "edits"],
+                },
             },
         },
-        "required": ["path", "edits"],
     })
 }
 
+/// The `path` of every entry in a call's `files` argument. Shared with
+/// everything that reasons about which files a call touches — permissions,
+/// compaction summaries, the session tree — so none of them sees only the
+/// first file of a multi-file call.
+pub fn files_argument_paths(arguments: &Map<String, Value>) -> Vec<&str> {
+    arguments
+        .get("files")
+        .and_then(Value::as_array)
+        .map(|files| {
+            files
+                .iter()
+                .filter_map(|file| {
+                    file.get("path")
+                        .or_else(|| file.get("file_path"))
+                        .and_then(Value::as_str)
+                })
+                .filter(|path| !path.trim().is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 const SHARED_USAGE: &[&str] = &[
-    "- When minified editing tools are attached, you must use them for edits to existing source files; this is mandatory, not a preference. Use patch_minified for one replacement and multi_patch_minified for multiple replacements in one file when attached. Do not bypass them with plain patch, write, or shell commands.",
+    "- When minified editing tools are attached, you must use them for edits to existing source files; this is mandatory, not a preference. Use patch_minified for one replacement in one file, and multi_patch_minified for everything else when attached: several replacements in one file, and edits to several files, which belong together in one call (files) rather than one call per file. Do not bypass them with plain patch, write, or shell commands.",
     "- If a minified edit fails because the source changed or the match is ambiguous, re-read with read and correct the match before considering a fallback. Plain patch is a fallback only when a concrete limitation or failure still prevents a safe minified edit; state the reason first.",
     "- Read the file with `read` first when attached; copying old_string from that output is the most reliable path.",
     "- old_string and new_string may be given in compact `read` form or in normal source formatting; if an exact match fails, the tool normalizes them into minified form and retries exact matching.",
@@ -242,15 +287,120 @@ fn apply_minified_replace(
     }
 }
 
-/// The shared write path of `patch_minified` and `multi_patch_minified`.
+/// One file's part of a call.
+struct FileEdits {
+    path: String,
+    edits: Vec<MinifiedEditRequest>,
+    keep_comments: bool,
+}
+
+/// A file whose edits applied in memory and that waits for the write.
+struct PreparedFile {
+    path: String,
+    absolute_path: String,
+    bom: String,
+    original: String,
+    updated: String,
+    warnings: Vec<String>,
+    edit_count: usize,
+}
+
+/// The diff, patch and first changed line of one prepared file, as details.
+fn file_details(file: &PreparedFile) -> Map<String, Value> {
+    let diff_result = generate_diff_string(&file.original, &file.updated, 4);
+    let patch = generate_unified_patch(&file.path, &file.original, &file.updated, 4);
+    let mut details = Map::new();
+    details.insert("diff".to_owned(), Value::from(diff_result.diff));
+    details.insert("patch".to_owned(), Value::from(patch));
+    if let Some(first_changed_line) = diff_result.first_changed_line {
+        details.insert("firstChangedLine".to_owned(), json!(first_changed_line));
+    }
+    details
+}
+
+fn with_warnings(summary: String, warnings: &[String]) -> String {
+    if warnings.is_empty() {
+        return summary;
+    }
+    format!(
+        "{summary}\n\nWarnings:\n{}",
+        warnings
+            .iter()
+            .map(|warning| format!("- {warning}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+}
+
+/// The result of a call. One file keeps the shape single-file calls always
+/// had; several files carry one details entry each under `files`.
+fn edits_result(prepared: &[PreparedFile]) -> AgentToolResult {
+    let (text, details) = match prepared {
+        [file] => {
+            let mut details = file_details(file);
+            details.insert("warnings".to_owned(), json!(file.warnings));
+            let summary = format!(
+                "Successfully applied {} minified edit(s) to {}.",
+                file.edit_count, file.path
+            );
+            (with_warnings(summary, &file.warnings), details)
+        }
+        _ => {
+            let warnings: Vec<String> = prepared
+                .iter()
+                .flat_map(|file| {
+                    file.warnings
+                        .iter()
+                        .map(move |warning| format!("{}: {warning}", file.path))
+                })
+                .collect();
+            let summary = format!(
+                "Successfully applied {} minified edit(s) to {} files: {}.",
+                prepared.iter().map(|file| file.edit_count).sum::<usize>(),
+                prepared.len(),
+                prepared
+                    .iter()
+                    .map(|file| file.path.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            let files = prepared
+                .iter()
+                .map(|file| {
+                    let mut entry = file_details(file);
+                    entry.insert("path".to_owned(), Value::from(file.path.clone()));
+                    entry.insert("warnings".to_owned(), json!(file.warnings));
+                    Value::Object(entry)
+                })
+                .collect::<Vec<_>>();
+            let mut details = Map::new();
+            details.insert("files".to_owned(), Value::Array(files));
+            details.insert("warnings".to_owned(), json!(warnings));
+            (with_warnings(summary, &warnings), details)
+        }
+    };
+    AgentToolResult {
+        content: vec![TextOrImageContent::Text(TextContent::new(text))],
+        details: Some(Value::Object(details)),
+        usage: None,
+        added_tool_names: None,
+        terminate: None,
+    }
+}
+
+/// The shared write path of `patch_minified` and `multi_patch_minified`, for
+/// one file or several.
+/// Several files are all or nothing. Every file is locked, read and edited in
+/// memory before the first write, so a match that fails anywhere changes
+/// nothing. A write that fails part way puts the files already written back to
+/// what they held; a file system offers no transaction across files, and this
+/// is the closest it gets.
 /// Takes the tool it runs for rather than its pieces: it needs the cwd, the
 /// operations, the lease coordinator and the tool name, which is the tool
 /// itself.
 async fn run_edits(
     tool: &PatchMinifiedToolDefinition,
-    path: &str,
-    edits: Vec<MinifiedEditRequest>,
-    keep_comments: bool,
+    files: Vec<FileEdits>,
     signal: Option<CancellationToken>,
 ) -> Result<AgentToolResult, ToolExecutionError> {
     let cwd = tool.cwd.as_str();
@@ -258,15 +408,41 @@ async fn run_edits(
     let leases = &tool.leases;
     let snapshots = tool.snapshots.clone();
     let tool_name = tool.name();
+    let several = files.len() > 1;
 
-    if edits.is_empty() {
+    if files.is_empty() {
         return Err(ToolExecutionError::new(
-            "Patch tool input is invalid. edits must contain at least one replacement.",
+            "Patch tool input is invalid. files must contain at least one file.",
         ));
     }
-    let absolute_path = resolve_to_cwd(path, cwd);
+    if let Some(file) = files.iter().find(|file| file.edits.is_empty()) {
+        return Err(ToolExecutionError::new(if several {
+            format!(
+                "Patch tool input is invalid. edits for {} must contain at least one replacement.",
+                file.path
+            )
+        } else {
+            "Patch tool input is invalid. edits must contain at least one replacement.".to_owned()
+        }));
+    }
+    let absolute_paths: Vec<String> = files
+        .iter()
+        .map(|file| resolve_to_cwd(&file.path, cwd))
+        .collect();
+    for (index, absolute) in absolute_paths.iter().enumerate() {
+        if let Some(offset) = absolute_paths[index + 1..]
+            .iter()
+            .position(|other| shares_queue(absolute, other))
+        {
+            return Err(ToolExecutionError::new(format!(
+                "Patch tool input is invalid. {} and {} are the same file; put all of its edits into one entry of files.",
+                files[index].path,
+                files[index + 1 + offset].path
+            )));
+        }
+    }
 
-    with_file_mutation_queue(&absolute_path, async {
+    with_file_mutation_queues(&absolute_paths, async {
         // Do not abort from a listener: that would release the mutation queue
         // while a filesystem call is still in flight.
         let throw_if_aborted = || -> Result<(), ToolExecutionError> {
@@ -279,131 +455,160 @@ async fn run_edits(
         };
         throw_if_aborted()?;
 
-        // Reserved inside the mutation queue, which already serializes this
-        // process: a lease conflict therefore always names a foreign holder,
-        // never a second call of our own. `None` when leases are off, and every
-        // lease step below is then a no-op.
-        let lease = leases
-            .reserve(
-                std::path::Path::new(&absolute_path),
-                tool_name,
-                PATCH_MINIFIED_LEASE_DURATION_MS,
-            )
-            .await
-            .map_err(|error| ToolExecutionError::new(error.to_string()))?;
-
+        // Every lease taken so far, released again if anything fails.
+        let mut reserved: Vec<crate::core::tools::file_lease::FileLease> = Vec::new();
         let result = async {
-            throw_if_aborted()?;
-
-            if let Err(error) = operations.access(&absolute_path).await {
+            let mut prepared: Vec<PreparedFile> = Vec::with_capacity(files.len());
+            for (file, absolute_path) in files.iter().zip(&absolute_paths) {
+                let path = file.path.as_str();
+                // Reserved inside the mutation queue, which already serializes
+                // this process: a lease conflict therefore always names a
+                // foreign holder, never a second call of our own. `None` when
+                // leases are off, and every lease step below is then a no-op.
+                if let Some(lease) = leases
+                    .reserve(Path::new(absolute_path), tool_name, PATCH_MINIFIED_LEASE_DURATION_MS)
+                    .await
+                    .map_err(|error| ToolExecutionError::new(error.to_string()))?
+                {
+                    reserved.push(lease);
+                }
                 throw_if_aborted()?;
-                return Err(ToolExecutionError::new(format!(
-                    "Could not edit file: {path}. {error}."
-                )));
-            }
-            throw_if_aborted()?;
 
-            let buffer = operations
-                .read_file(&absolute_path)
-                .await
-                .map_err(ToolExecutionError::new)?;
-            // The whole file is written back, so a lossy decode would replace
-            // every invalid byte in it, not only the ones the edit touched.
-            let raw_content = String::from_utf8(buffer).map_err(|_| {
-                ToolExecutionError::new(format!(
-                    "Could not edit file: {path}. The file is not valid UTF-8 \
-                     (binary or unsupported encoding); editing it would corrupt \
-                     bytes outside the edited range."
-                ))
-            })?;
-            throw_if_aborted()?;
-
-            // Strip the BOM before matching: the model will not include an invisible
-            // BOM in old_string. It is restored verbatim on write.
-            let (bom, original) = strip_bom(&raw_content);
-
-            // Apply every edit sequentially against the result of the previous one,
-            // re-minifying per edit because each splice invalidates the source map.
-            let mut current = original.to_owned();
-            let mut warnings: Vec<String> = Vec::new();
-            for edit in &edits {
-                let (content, edit_warnings) =
-                    apply_minified_replace(path, &current, edit, keep_comments)
-                        .map_err(ToolExecutionError::new)?;
-                current = content;
-                warnings.extend(edit_warnings);
+                if let Err(error) = operations.access(absolute_path).await {
+                    throw_if_aborted()?;
+                    return Err(ToolExecutionError::new(format!(
+                        "Could not edit file: {path}. {error}."
+                    )));
+                }
                 throw_if_aborted()?;
+
+                let buffer = operations
+                    .read_file(absolute_path)
+                    .await
+                    .map_err(ToolExecutionError::new)?;
+                // The whole file is written back, so a lossy decode would
+                // replace every invalid byte in it, not only the ones the edit
+                // touched.
+                let raw_content = String::from_utf8(buffer).map_err(|_| {
+                    ToolExecutionError::new(format!(
+                        "Could not edit file: {path}. The file is not valid UTF-8 \
+                         (binary or unsupported encoding); editing it would corrupt \
+                         bytes outside the edited range."
+                    ))
+                })?;
+                throw_if_aborted()?;
+
+                // Strip the BOM before matching: the model will not include an
+                // invisible BOM in old_string. It is restored verbatim on write.
+                let (bom, original) = strip_bom(&raw_content);
+
+                // Apply every edit sequentially against the result of the
+                // previous one, re-minifying per edit because each splice
+                // invalidates the source map.
+                let mut current = original.to_owned();
+                let mut warnings: Vec<String> = Vec::new();
+                for edit in &file.edits {
+                    let (content, edit_warnings) =
+                        apply_minified_replace(path, &current, edit, file.keep_comments)
+                            .map_err(|error| {
+                                ToolExecutionError::new(if several {
+                                    format!("{path}: {error}")
+                                } else {
+                                    error
+                                })
+                            })?;
+                    current = content;
+                    warnings.extend(edit_warnings);
+                    throw_if_aborted()?;
+                }
+                prepared.push(PreparedFile {
+                    path: file.path.clone(),
+                    absolute_path: absolute_path.clone(),
+                    bom: bom.to_owned(),
+                    original: original.to_owned(),
+                    updated: current,
+                    warnings,
+                    edit_count: file.edits.len(),
+                });
             }
 
             // Always: a patch only ever applies to a file that is already
             // there, so there is always an earlier state to return to.
-            capture_before_mutation(snapshots.as_ref(), Path::new(&absolute_path))
-                .await
-                .map_err(ToolExecutionError::new)?;
+            for file in &prepared {
+                capture_before_mutation(snapshots.as_ref(), Path::new(&file.absolute_path))
+                    .await
+                    .map_err(ToolExecutionError::new)?;
+            }
             throw_if_aborted()?;
 
-            // The pre-commit check runs immediately before the write: the lease
-            // must still be ours and the file must still hold the content the edits
-            // were minified against.
-            let committed = match &lease {
-                Some(lease) => Some(
+            // The pre-commit check runs immediately before the writes: each
+            // lease must still be ours and each file must still hold the
+            // content its edits were minified against.
+            let mut committed = Vec::with_capacity(reserved.len());
+            for lease in &reserved {
+                committed.push(
                     leases
                         .prepare_commit(lease.clone())
                         .await
                         .map_err(|error| ToolExecutionError::new(error.to_string()))?,
-                ),
-                None => None,
-            };
+                );
+            }
 
-            operations
-                .write_file(&absolute_path, &format!("{bom}{current}"))
-                .await
-                .map_err(ToolExecutionError::new)?;
+            for (written, file) in prepared.iter().enumerate() {
+                let write = operations
+                    .write_file(
+                        &file.absolute_path,
+                        &format!("{}{}", file.bom, file.updated),
+                    )
+                    .await;
+                if let Err(error) = write {
+                    let mut message = format!("Could not write {}: {error}", file.path);
+                    let mut unrestored = Vec::new();
+                    for done in &prepared[..written] {
+                        let restored = operations
+                            .write_file(
+                                &done.absolute_path,
+                                &format!("{}{}", done.bom, done.original),
+                            )
+                            .await;
+                        if let Err(restore_error) = restored {
+                            unrestored.push(format!(
+                                "Could not put {} back after that failure: {restore_error}. It holds the edited content.",
+                                done.path
+                            ));
+                        }
+                    }
+                    if written > 0 && unrestored.is_empty() {
+                        message.push_str(
+                            "\nThe files already written were put back; no file is changed.",
+                        );
+                    }
+                    for line in unrestored {
+                        message.push('\n');
+                        message.push_str(&line);
+                    }
+                    return Err(ToolExecutionError::new(message));
+                }
+            }
 
-            if let Some(committed) = &committed {
+            for lease in &committed {
                 leases
-                    .release(committed)
+                    .release(lease)
                     .await
                     .map_err(|error| ToolExecutionError::new(error.to_string()))?;
             }
             throw_if_aborted()?;
 
-            let diff_result = generate_diff_string(original, &current, 4);
-            let patch = generate_unified_patch(path, original, &current, 4);
-            let summary = format!(
-                "Successfully applied {} minified edit(s) to {path}.",
-                edits.len()
-            );
-            let text = if warnings.is_empty() {
-                summary
-            } else {
-                format!(
-                    "{summary}\n\nWarnings:\n{}",
-                    warnings
-                        .iter()
-                        .map(|warning| format!("- {warning}"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
-            };
-            let mut details = Map::new();
-            details.insert("diff".to_owned(), Value::from(diff_result.diff));
-            details.insert("patch".to_owned(), Value::from(patch));
-            if let Some(first_changed_line) = diff_result.first_changed_line {
-                details.insert("firstChangedLine".to_owned(), json!(first_changed_line));
-            }
-            details.insert("warnings".to_owned(), json!(warnings));
-            Ok(AgentToolResult {
-                content: vec![TextOrImageContent::Text(TextContent::new(text))],
-                details: Some(Value::Object(details)),
-                usage: None,
-                added_tool_names: None,
-                terminate: None,
-            })
+            Ok(edits_result(&prepared))
         }
         .await;
 
-        leases.release_on_error(lease.as_ref(), result).await
+        if result.is_err() {
+            for lease in &reserved {
+                let _ = leases.release(lease).await;
+            }
+        }
+        result
     })
     .await
 }
@@ -425,6 +630,61 @@ fn edit_request(value: &Value) -> MinifiedEditRequest {
             .and_then(Value::as_bool)
             .unwrap_or(false),
     }
+}
+
+fn string_param(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn bool_param(value: &Value, key: &str) -> bool {
+    value.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn edits_param(value: &Value) -> Vec<MinifiedEditRequest> {
+    value
+        .get("edits")
+        .and_then(Value::as_array)
+        .map(|edits| edits.iter().map(edit_request).collect())
+        .unwrap_or_default()
+}
+
+/// The files a `multi_patch_minified` call names: the entries of `files`, or
+/// the call itself when it uses the one-file form. A `keep_comments` on the
+/// call applies to every entry that does not set its own.
+fn multi_file_edits(params: &Value) -> Result<Vec<FileEdits>, ToolExecutionError> {
+    let Some(entries) = params.get("files").filter(|files| !files.is_null()) else {
+        return Ok(vec![FileEdits {
+            path: string_param(params, "path"),
+            edits: edits_param(params),
+            keep_comments: bool_param(params, "keep_comments"),
+        }]);
+    };
+    let Some(entries) = entries.as_array() else {
+        return Err(ToolExecutionError::new(
+            "Patch tool input is invalid. files must be an array of {path, edits}.",
+        ));
+    };
+    if !string_param(params, "path").is_empty() || params.get("edits").is_some() {
+        return Err(ToolExecutionError::new(
+            "Patch tool input is invalid. Give either files, or path with edits, not both.",
+        ));
+    }
+    let default_keep_comments = bool_param(params, "keep_comments");
+    Ok(entries
+        .iter()
+        .map(|entry| FileEdits {
+            path: string_param(entry, "path"),
+            edits: edits_param(entry),
+            keep_comments: entry
+                .get("keep_comments")
+                .and_then(Value::as_bool)
+                .unwrap_or(default_keep_comments),
+        })
+        .collect())
 }
 
 pub struct PatchMinifiedToolDefinition {
@@ -477,9 +737,11 @@ pub fn create_multi_patch_minified_tool_definition(
         snapshots: options.snapshots,
         multi: true,
         description: description(&[
-            "Performs multiple sequential precise edits on a single file in the minified view — the multi-edit counterpart of `patch_minified`. Prefer this over several `patch_minified` calls on the same file.",
+            "Performs multiple sequential precise edits in the minified view — the multi-edit counterpart of `patch_minified`. Prefer this over several `patch_minified` calls on the same file.",
             "",
-            "All rules of `patch_minified` apply to each edit. Each edit operates on the result of the previous one: the tool re-minifies between edits so every next match uses a fresh source map. The edits are atomic — if any edit fails, none are applied.",
+            "Edit as many files as possible per call. Whenever you have edits for more than one file ready, put them all into one call with files: [{path, edits, keep_comments?}] instead of making one call per file — every extra call costs a round trip and splits one change into pieces that can half-succeed. Use path and edits only when a single file is all you are changing. Each file appears once in files; put all of its edits into that entry.",
+            "",
+            "All rules of `patch_minified` apply to each edit. Each edit operates on the result of the previous one in the same file: the tool re-minifies between edits so every next match uses a fresh source map. The call is atomic — if any edit in any file fails, no file is changed.",
             "",
             "Usage:",
         ]),
@@ -512,8 +774,68 @@ fn patch_path_arg(args: &Value) -> Option<String> {
 }
 
 fn format_patch_call(label: &str, args: &Value, theme: &Theme, cwd: &str) -> String {
-    let path_display = render_mutation_tool_path(patch_path_arg(args).as_deref(), theme, cwd, None);
+    let files = args
+        .as_object()
+        .map(files_argument_paths)
+        .unwrap_or_default();
+    let path_display = if files.is_empty() {
+        render_mutation_tool_path(patch_path_arg(args).as_deref(), theme, cwd, None)
+    } else {
+        files
+            .iter()
+            .map(|path| render_mutation_tool_path(Some(path), theme, cwd, None))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
     format!("{}{path_display}", call_title(theme, label))
+}
+
+/// The diff sections of a result: one per file, each under its path when the
+/// call edited several.
+fn diff_sections(
+    details: Option<&Value>,
+    raw_path: Option<String>,
+    theme: &Theme,
+    cwd: &str,
+) -> Vec<String> {
+    fn push_diff(sections: &mut Vec<String>, diff: &str, file_path: Option<String>) {
+        sections.push(render_diff(diff, &RenderDiffOptions { file_path }));
+        // The badge style closes the diff with its summary; the standard
+        if block_style().is_compact()
+            && let Some(info) = diff_info_line(diff)
+        {
+            sections.push(info);
+        }
+    }
+    fn non_empty_diff(value: &Value) -> Option<&str> {
+        value
+            .get("diff")
+            .and_then(Value::as_str)
+            .filter(|diff| !diff.is_empty())
+    }
+
+    let mut sections = Vec::new();
+    let Some(details) = details else {
+        return sections;
+    };
+    match details.get("files").and_then(Value::as_array) {
+        Some(files) => {
+            for file in files {
+                let path = file.get("path").and_then(Value::as_str).map(str::to_owned);
+                let Some(diff) = non_empty_diff(file) else {
+                    continue;
+                };
+                sections.push(render_mutation_tool_path(path.as_deref(), theme, cwd, None));
+                push_diff(&mut sections, diff, path);
+            }
+        }
+        None => {
+            if let Some(diff) = non_empty_diff(details) {
+                push_diff(&mut sections, diff, raw_path);
+            }
+        }
+    }
+    sections
 }
 
 impl ToolDefinition for PatchMinifiedToolDefinition {
@@ -539,7 +861,7 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
 
     fn prompt_snippet(&self) -> Option<&str> {
         Some(if self.multi {
-            "Apply several precise minified-view edits to one file"
+            "Apply several precise minified-view edits to one file or several files at once"
         } else {
             "Edit code precisely through the compact minified view"
         })
@@ -548,7 +870,7 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
     fn prompt_guidelines(&self) -> Vec<String> {
         vec![
             if self.multi {
-                "When multi_patch_minified is attached, you must use it for multiple replacements in one source file. Minified editing tools are mandatory, not a preference; do not bypass them with plain patch, write, or shell commands."
+                "When multi_patch_minified is attached, you must use it for multiple replacements in one source file. Edit as many files as possible per call: when edits for several files are ready, send them together through its files parameter, not one call per file. Minified editing tools are mandatory, not a preference; do not bypass them with plain patch, write, or shell commands."
             } else {
                 "When patch_minified is attached, you must use it for single replacements in existing source files. Minified editing tools are mandatory, not a preference; do not bypass them with plain patch, write, or shell commands. Read with read first when attached; never paste a minified view into a plain patch call."
             }
@@ -581,33 +903,17 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
         &self,
         result: ToolRenderResult<'_>,
         _options: ToolRenderResultOptions,
-        _theme: &Theme,
+        theme: &Theme,
         context: &ToolRenderContext,
     ) -> Option<ComponentRef> {
         let raw_path = patch_path_arg(&context.args);
-        let mut sections: Vec<String> = Vec::new();
-        let diff = if context.is_error {
+        let details = if context.is_error {
             None
         } else {
-            result
-                .details
-                .and_then(|details| details.get("diff"))
-                .and_then(Value::as_str)
-                .filter(|diff| !diff.is_empty())
+            result.details
         };
+        let sections = diff_sections(details, raw_path, theme, &context.cwd);
         let badge_style = block_style().is_compact();
-        if let Some(diff) = diff {
-            sections.push(render_diff(
-                diff,
-                &RenderDiffOptions {
-                    file_path: raw_path,
-                },
-            ));
-            // The badge style closes the diff with its summary; the standard
-            if badge_style && let Some(info) = diff_info_line(diff) {
-                sections.push(info);
-            }
-        }
         let mut state = tool_render_state::<PatchRenderState>(&context.state);
         if sections.is_empty() {
             let component = state
@@ -641,25 +947,16 @@ impl ToolDefinition for PatchMinifiedToolDefinition {
         _context: Option<ToolContext>,
     ) -> BoxFuture<'a, Result<AgentToolResult, ToolExecutionError>> {
         Box::pin(async move {
-            let path = params
-                .get("path")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-            let edits = if self.multi {
-                params
-                    .get("edits")
-                    .and_then(Value::as_array)
-                    .map(|edits| edits.iter().map(edit_request).collect())
-                    .unwrap_or_default()
+            let files = if self.multi {
+                multi_file_edits(&params)?
             } else {
-                vec![edit_request(&params)]
+                vec![FileEdits {
+                    path: string_param(&params, "path"),
+                    edits: vec![edit_request(&params)],
+                    keep_comments: bool_param(&params, "keep_comments"),
+                }]
             };
-            let keep_comments = params
-                .get("keep_comments")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            run_edits(self, &path, edits, keep_comments, signal).await
+            run_edits(self, files, signal).await
         })
     }
 }
@@ -865,6 +1162,108 @@ mod tests {
             .await
             .expect("patch");
         assert!(directory.read("file.rs").contains("let a = 2;"));
+    }
+
+    /// Local file access whose writes to one named file fail.
+    struct FailingWrite {
+        file_name: &'static str,
+    }
+
+    impl PatchMinifiedOperations for FailingWrite {
+        fn read_file<'a>(
+            &'a self,
+            absolute_path: &'a str,
+        ) -> BoxFuture<'a, Result<Vec<u8>, String>> {
+            LocalPatchMinifiedOperations.read_file(absolute_path)
+        }
+
+        fn write_file<'a>(
+            &'a self,
+            absolute_path: &'a str,
+            content: &'a str,
+        ) -> BoxFuture<'a, Result<(), String>> {
+            if absolute_path.ends_with(self.file_name) {
+                return Box::pin(async { Err("disk full".to_owned()) });
+            }
+            LocalPatchMinifiedOperations.write_file(absolute_path, content)
+        }
+
+        fn access<'a>(&'a self, absolute_path: &'a str) -> BoxFuture<'a, Result<(), String>> {
+            LocalPatchMinifiedOperations.access(absolute_path)
+        }
+    }
+
+    fn two_files() -> Value {
+        json!({
+            "files": [
+                { "path": "a.rs", "edits": [{ "old_string": "let a = 1;", "new_string": "let a = 2;" }] },
+                { "path": "b.rs", "edits": [{ "old_string": "let a = 1;", "new_string": "let a = 3;" }] },
+            ],
+        })
+    }
+
+    #[tokio::test]
+    async fn a_write_that_fails_part_way_puts_the_written_files_back() {
+        let directory = TempDir::new();
+        let original = "fn main() {\n    let a = 1;\n}\n";
+        directory.write("a.rs", original);
+        directory.write("b.rs", original);
+        let tool = create_multi_patch_minified_tool_definition(
+            &directory.cwd(),
+            Some(PatchMinifiedToolOptions {
+                operations: Some(Arc::new(FailingWrite { file_name: "b.rs" })),
+                ..PatchMinifiedToolOptions::default()
+            }),
+        );
+
+        let error = tool
+            .execute("call-1", two_files(), None, None, None)
+            .await
+            .expect_err("the second write fails");
+
+        assert!(error.message.contains("disk full"), "{}", error.message);
+        assert!(
+            error.message.contains("put back"),
+            "the error says the first file was restored: {}",
+            error.message
+        );
+        assert_eq!(
+            directory.read("a.rs"),
+            original,
+            "a.rs was written before b.rs failed and must hold its old content again"
+        );
+        assert_eq!(directory.read("b.rs"), original);
+    }
+
+    #[tokio::test]
+    async fn a_foreign_lease_on_any_file_blocks_every_file() {
+        let directory = TempDir::new();
+        let original = "fn main() {\n    let a = 1;\n}\n";
+        directory.write("a.rs", original);
+        directory.write("b.rs", original);
+        plant_foreign_lease(&directory, &directory.path.join("b.rs")).await;
+
+        let tool = create_multi_patch_minified_tool_definition(&directory.cwd(), with_leases(true));
+        let error = tool
+            .execute("call-1", two_files(), None, None, None)
+            .await
+            .expect_err("b.rs is leased");
+
+        assert!(
+            error.message.contains("file is currently leased"),
+            "{}",
+            error.message
+        );
+        assert_eq!(directory.read("a.rs"), original);
+        let leases = FileLeaseStore::for_workspace(&directory.cwd());
+        assert_eq!(
+            leases
+                .get_by_path(&directory.path.join("a.rs"))
+                .await
+                .expect("get"),
+            None,
+            "the lease taken on a.rs before b.rs was refused is released again"
+        );
     }
 
     #[tokio::test]

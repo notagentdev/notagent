@@ -260,6 +260,166 @@ async fn applies_edits_sequentially_against_the_previous_result() {
 }
 
 #[tokio::test]
+async fn edits_several_files_in_one_call() {
+    let workspace = Workspace::new();
+    workspace.write("a.rs", RUST_FIXTURE);
+    workspace.write("b.rs", RUST_FIXTURE);
+    let tool = create_multi_patch_minified_tool_definition(&workspace.dir(), None);
+
+    let result = run(
+        &tool,
+        json!({
+            "files": [
+                { "path": "a.rs", "edits": [{ "old_string": "let x = 1;", "new_string": "let x = 10;" }] },
+                { "path": "b.rs", "edits": [
+                    { "old_string": "let y = 2;", "new_string": "let y = 20;" },
+                    { "old_string": "let y = 20;", "new_string": "let y = 21;" },
+                ] },
+            ],
+        }),
+    )
+    .await
+    .expect("applies");
+
+    assert!(workspace.read("a.rs").contains("let x = 10;"));
+    assert!(workspace.read("b.rs").contains("let y = 21;"));
+    assert!(
+        text_output(&result).contains("3 minified edit(s) to 2 files: a.rs, b.rs"),
+        "{}",
+        text_output(&result)
+    );
+    let files = result.details.as_ref().expect("details")["files"]
+        .as_array()
+        .expect("one details entry per file")
+        .clone();
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[1]["path"], "b.rs");
+    assert!(
+        files[1]["diff"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("let y = 21;"),
+        "each file carries its own diff"
+    );
+}
+
+#[tokio::test]
+async fn a_failing_edit_in_one_file_changes_no_file() {
+    let workspace = Workspace::new();
+    workspace.write("a.rs", RUST_FIXTURE);
+    workspace.write("b.rs", RUST_FIXTURE);
+    let tool = create_multi_patch_minified_tool_definition(&workspace.dir(), None);
+
+    let error = run(
+        &tool,
+        json!({
+            "files": [
+                { "path": "a.rs", "edits": [{ "old_string": "let x = 1;", "new_string": "let x = 10;" }] },
+                { "path": "b.rs", "edits": [{ "old_string": "not in the file", "new_string": "x" }] },
+            ],
+        }),
+    )
+    .await
+    .expect_err("the second file does not match");
+
+    assert!(
+        error.message.starts_with("b.rs:"),
+        "the error names the file that failed: {}",
+        error.message
+    );
+    assert_eq!(
+        workspace.read("a.rs"),
+        RUST_FIXTURE,
+        "the first file's edit matched, but the call is all or nothing"
+    );
+}
+
+#[tokio::test]
+async fn naming_the_same_file_twice_is_refused() {
+    let workspace = Workspace::new();
+    workspace.write("a.rs", RUST_FIXTURE);
+    let tool = create_multi_patch_minified_tool_definition(&workspace.dir(), None);
+
+    let error = run(
+        &tool,
+        json!({
+            "files": [
+                { "path": "a.rs", "edits": [{ "old_string": "let x = 1;", "new_string": "let x = 10;" }] },
+                { "path": "./a.rs", "edits": [{ "old_string": "let y = 2;", "new_string": "let y = 20;" }] },
+            ],
+        }),
+    )
+    .await
+    .expect_err("one file, two entries");
+
+    assert!(
+        error.message.contains("are the same file"),
+        "{}",
+        error.message
+    );
+    assert_eq!(workspace.read("a.rs"), RUST_FIXTURE);
+}
+
+#[tokio::test]
+async fn refuses_files_together_with_path_and_edits() {
+    let workspace = Workspace::new();
+    workspace.write("a.rs", RUST_FIXTURE);
+    let tool = create_multi_patch_minified_tool_definition(&workspace.dir(), None);
+
+    let error = run(
+        &tool,
+        json!({
+            "path": "a.rs",
+            "edits": [{ "old_string": "let x = 1;", "new_string": "let x = 10;" }],
+            "files": [
+                { "path": "a.rs", "edits": [{ "old_string": "let y = 2;", "new_string": "let y = 20;" }] },
+            ],
+        }),
+    )
+    .await
+    .expect_err("ambiguous call");
+
+    assert!(error.message.contains("not both"), "{}", error.message);
+    assert_eq!(workspace.read("a.rs"), RUST_FIXTURE);
+}
+
+#[tokio::test]
+async fn a_files_entry_inherits_keep_comments_from_the_call() {
+    let workspace = Workspace::new();
+    workspace.write("a.rs", RUST_FIXTURE);
+    workspace.write("b.rs", RUST_FIXTURE);
+    let tool = create_multi_patch_minified_tool_definition(&workspace.dir(), None);
+
+    // The comment is only part of the view with keep_comments.
+    run(
+        &tool,
+        json!({
+            "keep_comments": true,
+            "files": [
+                { "path": "a.rs", "edits": [{ "old_string": "// keep me", "new_string": "// kept" }] },
+                { "path": "b.rs", "keep_comments": false, "edits": [{ "old_string": "let x = 1;", "new_string": "let x = 10;" }] },
+            ],
+        }),
+    )
+    .await
+    .expect("applies");
+
+    assert!(workspace.read("a.rs").contains("// kept"));
+    assert!(workspace.read("b.rs").contains("let x = 10;"));
+}
+
+#[test]
+fn the_multi_patch_description_asks_for_several_files_per_call() {
+    let tool = create_multi_patch_minified_tool_definition("/tmp", None);
+    assert!(
+        tool.description()
+            .contains("Edit as many files as possible per call"),
+        "the model is told to batch files rather than call once per file"
+    );
+    assert!(tool.parameters()["properties"]["files"].is_object());
+}
+
+#[tokio::test]
 async fn is_atomic_a_failing_edit_leaves_the_file_untouched() {
     let workspace = Workspace::new();
     let path = workspace.write("main.rs", RUST_FIXTURE);

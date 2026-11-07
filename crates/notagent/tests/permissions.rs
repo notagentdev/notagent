@@ -455,6 +455,67 @@ fn a_write_inside_the_working_directory_is_approved_in_manual_mode() {
     );
 }
 
+fn multi_file(second: &str) -> Value {
+    json!({
+        "files": [
+            { "path": "src/a.rs", "edits": [] },
+            { "path": second, "edits": [] },
+        ]
+    })
+}
+
+#[test]
+fn a_multi_file_patch_inside_the_working_directory_is_approved() {
+    assert_eq!(
+        decide_in_chain(
+            "multi_patch_minified",
+            ApprovalLevel::Manual,
+            multi_file("src/b.rs")
+        ),
+        "git-cwd-write-approve"
+    );
+}
+
+#[test]
+fn every_file_of_a_multi_file_patch_passes_the_guards() {
+    for (second, policy) in [
+        (".git/config", "git-control-path-access-ask"),
+        (".env", "sensitive-file-access-ask"),
+        ("/etc/hosts", "fallback-ask"),
+    ] {
+        assert_eq!(
+            decide_in_chain(
+                "multi_patch_minified",
+                ApprovalLevel::Manual,
+                multi_file(second)
+            ),
+            policy,
+            "a harmless first file must not carry {second} past the guards"
+        );
+    }
+}
+
+#[test]
+fn a_multi_file_call_is_remembered_and_described_by_all_of_its_files() {
+    let arguments = input(multi_file("src/b.rs"));
+    let key = approval_key("multi_patch_minified", &arguments);
+    assert!(
+        key.contains("src/a.rs") && key.contains("src/b.rs"),
+        "an answer about one set of files must not cover another: {key}"
+    );
+    let context = ctx(
+        "multi_patch_minified",
+        ApprovalLevel::Manual,
+        multi_file("src/b.rs"),
+        "/tmp",
+    );
+    assert_eq!(
+        describe_target(&context).as_deref(),
+        Some("src/a.rs, src/b.rs"),
+        "the prompt shows every file the user is approving"
+    );
+}
+
 #[test]
 fn the_git_directory_guard_ignores_letter_case() {
     for path in [".GIT/config", ".Git/hooks/pre-commit"] {

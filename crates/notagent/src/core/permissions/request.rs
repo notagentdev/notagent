@@ -53,7 +53,18 @@ const PATH_ARGUMENTS: [&str; 2] = ["path", "file_path"];
 
 static WHITESPACE_RUN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("whitespace"));
 
+fn shorten_against_cwd(context: &PermissionContext, value: &str) -> String {
+    let absolute = node_resolve(&[&context.cwd, value]);
+    let relative = node_relative(&node_resolve(&[&context.cwd]), &absolute);
+    if !relative.is_empty() && !relative.starts_with("..") {
+        relative
+    } else {
+        absolute
+    }
+}
+
 /// Shortens a path against the working directory, leaving outside paths absolute.
+/// A multi-file call lists every file: the user is approving all of them.
 pub fn describe_target(context: &PermissionContext) -> Option<String> {
     for key in PATH_ARGUMENTS {
         let Some(value) = context.input.get(key).and_then(|value| value.as_str()) else {
@@ -62,13 +73,18 @@ pub fn describe_target(context: &PermissionContext) -> Option<String> {
         if value.trim().is_empty() {
             continue;
         }
-        let absolute = node_resolve(&[&context.cwd, value]);
-        let relative = node_relative(&node_resolve(&[&context.cwd]), &absolute);
-        return Some(if !relative.is_empty() && !relative.starts_with("..") {
-            relative
-        } else {
-            absolute
-        });
+        return Some(shorten_against_cwd(context, value));
+    }
+
+    let files = crate::core::tools::patch_minified::files_argument_paths(&context.input);
+    if !files.is_empty() {
+        return Some(
+            files
+                .iter()
+                .map(|file| shorten_against_cwd(context, file))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
     }
 
     let command = context

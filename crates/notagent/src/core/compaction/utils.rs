@@ -5,6 +5,8 @@ use notagent_ai::types::{AssistantContent, Message};
 use notagent_ai::utils::text::content_text_with;
 use serde::{Deserialize, Serialize};
 
+use crate::core::tools::patch_minified::files_argument_paths;
+
 /// The files a stretch of conversation read, wrote and edited.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FileOperations {
@@ -27,6 +29,11 @@ pub fn extract_file_ops_from_message(message: &AgentMessage, file_ops: &mut File
         let AssistantContent::ToolCall(call) = block else {
             continue;
         };
+        if call.name == "multi_patch_minified" {
+            for path in files_argument_paths(&call.arguments) {
+                file_ops.edited.insert(path.to_string());
+            }
+        }
         let Some(path) = call.arguments.get("path").and_then(|path| path.as_str()) else {
             continue;
         };
@@ -178,6 +185,11 @@ pub fn extract_operations_from_message(message: &AgentMessage, outline: &mut Ope
         let AssistantContent::ToolCall(call) = block else {
             continue;
         };
+        if call.name == "multi_patch_minified" {
+            for path in files_argument_paths(&call.arguments) {
+                outline.record(path, Operation::Patched);
+            }
+        }
         let path = call.arguments.get("path").and_then(|path| path.as_str());
         match (call.name.as_str(), path) {
             ("read" | "read_minified", Some(path)) => outline.record(path, Operation::Read),

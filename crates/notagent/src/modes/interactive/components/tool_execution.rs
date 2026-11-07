@@ -205,7 +205,20 @@ fn patch_old_new(args: &Value) -> (String, String) {
             .unwrap_or_default()
             .to_string()
     };
-    if let Some(edits) = args.get("edits").and_then(Value::as_array) {
+    // A multi-file call counts the edits of every file.
+    let edits: Vec<&Value> = match args.get("files").and_then(Value::as_array) {
+        Some(files) => files
+            .iter()
+            .filter_map(|file| file.get("edits").and_then(Value::as_array))
+            .flatten()
+            .collect(),
+        None => args
+            .get("edits")
+            .and_then(Value::as_array)
+            .map(|edits| edits.iter().collect())
+            .unwrap_or_default(),
+    };
+    if args.get("files").is_some() || args.get("edits").is_some() {
         let old = edits
             .iter()
             .map(|edit| string_field(edit, "old_string", "search"))

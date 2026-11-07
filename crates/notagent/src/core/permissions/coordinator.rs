@@ -25,13 +25,17 @@ pub trait ApprovalObserver: Send + Sync {
 }
 
 /// Identifies a call for the purpose of remembering a session-wide answer.
+/// A multi-file call is keyed by all of its files, so an answer about one set
+/// of files never covers a call that adds another.
 pub fn approval_key(tool_name: &str, input: &serde_json::Map<String, Value>) -> String {
     let target = ["path", "file_path", "command"]
         .into_iter()
         .find_map(|key| input.get(key))
         .and_then(Value::as_str);
+    let files = crate::core::tools::patch_minified::files_argument_paths(input);
     match target {
         Some(target) => format!("{tool_name}:{target}"),
+        None if !files.is_empty() => format!("{tool_name}:{}", files.join("\n")),
         None => tool_name.to_string(),
     }
 }

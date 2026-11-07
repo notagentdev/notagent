@@ -66,6 +66,34 @@ where
     result
 }
 
+/// Serialize against every file in `file_paths` at once. The queues are taken
+/// in key order, so two calls naming the same files in different orders cannot
+/// each hold one queue while waiting for the other.
+pub async fn with_file_mutation_queues<T, F>(file_paths: &[String], operation: F) -> T
+where
+    F: Future<Output = T>,
+{
+    let mut keys: Vec<String> = file_paths
+        .iter()
+        .map(|path| mutation_queue_key(path))
+        .collect();
+    keys.sort();
+    keys.dedup();
+    let queues: Vec<Arc<AsyncMutex<()>>> = keys.iter().map(|key| queue_for(key)).collect();
+    let result = {
+        let mut guards = Vec::with_capacity(queues.len());
+        for queue in &queues {
+            guards.push(queue.lock().await);
+        }
+        operation.await
+    };
+    drop(queues);
+    for key in &keys {
+        release(key);
+    }
+    result
+}
+
 /// True while a queue is being tracked for `file_path`; used by the tests.
 pub fn is_queue_tracked(file_path: &str) -> bool {
     let key = mutation_queue_key(file_path);

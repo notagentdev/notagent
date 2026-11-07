@@ -7,6 +7,7 @@ use super::policy::{FnPolicy, PermissionContext, PermissionDecision, PermissionP
 use crate::config::{get_auth_path, get_mcp_credentials_path};
 use crate::core::modes::shells::MUTATING_TOOLS;
 use crate::core::tools::ToolName;
+use crate::core::tools::patch_minified::files_argument_paths;
 use crate::core::tools::path_utils::{resolve_read_path, resolve_to_cwd};
 use crate::utils::paths::{is_absolute_path, main_separator, node_relative, node_resolve};
 
@@ -65,23 +66,34 @@ static SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 static GIT_CONTROL_PATH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(^|/)\.git(/|$)").expect("git control pattern"));
 
-fn target_path(context: &PermissionContext) -> Option<&str> {
-    PATH_ARGUMENTS
+/// Every path a call names: its `path` (or `file_path`) and the `path` of each
+/// entry in `files`. A guard that looked only at the first would let a
+/// multi-file call carry `.git/config` in its second entry past it.
+fn target_paths(context: &PermissionContext) -> Vec<&str> {
+    let single = PATH_ARGUMENTS
         .iter()
         .filter_map(|key| context.input.get(*key))
         .filter_map(|value| value.as_str())
-        .find(|value| !value.trim().is_empty())
+        .find(|value| !value.trim().is_empty());
+    single
+        .into_iter()
+        .chain(files_argument_paths(&context.input))
+        .collect()
 }
 
-fn absolute_target(context: &PermissionContext) -> Option<String> {
-    let raw = target_path(context)?;
-    Some(
-        if matches!(context.tool_name.as_str(), "read" | "read_minified") {
-            resolve_read_path(raw, &context.cwd)
-        } else {
-            resolve_to_cwd(raw, &context.cwd)
-        },
-    )
+fn absolute(context: &PermissionContext, raw: &str) -> String {
+    if matches!(context.tool_name.as_str(), "read" | "read_minified") {
+        resolve_read_path(raw, &context.cwd)
+    } else {
+        resolve_to_cwd(raw, &context.cwd)
+    }
+}
+
+/// The first path, as written, for which `matches` holds on its absolute form.
+fn first_target_where(context: &PermissionContext, matches: impl Fn(&str) -> bool) -> Option<&str> {
+    target_paths(context)
+        .into_iter()
+        .find(|raw| matches(&absolute(context, raw)))
 }
 
 /// Symlinks are followed by every tool that opens a file, so a guard that only
@@ -151,19 +163,16 @@ pub fn sensitive_file_access_ask() -> Arc<dyn PermissionPolicy> {
     Arc::new(FnPolicy::new(
         "sensitive-file-access-ask",
         |context: &PermissionContext| {
-            let target = absolute_target(context)?;
-            let sensitive = guarded_paths(&target).iter().any(|path| {
-                SENSITIVE_PATTERNS
-                    .iter()
-                    .any(|pattern| pattern.is_match(path))
-            }) || is_agent_credential_file(&target);
-            if !sensitive {
-                return None;
-            }
+            let sensitive = first_target_where(context, |target| {
+                guarded_paths(target).iter().any(|path| {
+                    SENSITIVE_PATTERNS
+                        .iter()
+                        .any(|pattern| pattern.is_match(path))
+                }) || is_agent_credential_file(target)
+            })?;
             Some(PermissionDecision::Ask {
                 reason: Some(format!(
-                    "{} looks like a credentials or shell startup file.",
-                    target_path(context).unwrap_or_default()
+                    "{sensitive} looks like a credentials or shell startup file."
                 )),
             })
         },
@@ -179,18 +188,13 @@ pub fn git_control_path_access_ask() -> Arc<dyn PermissionPolicy> {
             if READ_ONLY_TOOLS.contains(&context.tool_name.as_str()) {
                 return None;
             }
-            let target = absolute_target(context)?;
-            if !guarded_paths(&target)
-                .iter()
-                .any(|path| GIT_CONTROL_PATH.is_match(path))
-            {
-                return None;
-            }
+            let control = first_target_where(context, |target| {
+                guarded_paths(target)
+                    .iter()
+                    .any(|path| GIT_CONTROL_PATH.is_match(path))
+            })?;
             Some(PermissionDecision::Ask {
-                reason: Some(format!(
-                    "{} is inside the git control directory.",
-                    target_path(context).unwrap_or_default()
-                )),
+                reason: Some(format!("{control} is inside the git control directory.")),
             })
         },
     ))
@@ -238,9 +242,17 @@ pub fn git_cwd_write_approve() -> Arc<dyn PermissionPolicy> {
             if !MUTATING_TOOLS.contains(&tool) {
                 return None;
             }
-            let target = absolute_target(context)?;
-            let inside = is_inside(&context.cwd, &target)
-                && is_inside(&resolve_links(&context.cwd), &resolve_links(&target));
+            let targets = target_paths(context);
+            if targets.is_empty() {
+                return None;
+            }
+            let real_cwd = resolve_links(&context.cwd);
+            // Every file must be inside; one outside sends the whole call to
+            // the trailing ask.
+            let inside = targets.iter().all(|raw| {
+                let target = absolute(context, raw);
+                is_inside(&context.cwd, &target) && is_inside(&real_cwd, &resolve_links(&target))
+            });
             inside.then_some(PermissionDecision::Approve)
         },
     ))

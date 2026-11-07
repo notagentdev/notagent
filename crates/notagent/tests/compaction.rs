@@ -937,3 +937,38 @@ async fn cuts_an_oversized_history_once_before_sending() {
     assert!(!cut.text.contains("[User]: 0 "), "{}", &cut.text[..80]);
     assert!(cut.text.contains("9 xxx"));
 }
+
+#[test]
+fn every_file_of_a_multi_file_patch_counts_as_edited() {
+    let mut message = assistant_message("", mock_usage(100, 50, 0, 0));
+    message.content = vec![AssistantContent::ToolCall(notagent_ai::types::ToolCall {
+        id: "call-1".to_owned(),
+        name: "multi_patch_minified".to_owned(),
+        arguments: json!({
+            "files": [
+                { "path": "src/a.rs", "edits": [] },
+                { "path": "src/b.rs", "edits": [] },
+            ]
+        })
+        .as_object()
+        .cloned()
+        .unwrap_or_default(),
+        thought_signature: None,
+        namespace: None,
+        extra: serde_json::Map::new(),
+    })];
+    let mut file_ops = notagent::core::compaction::create_file_ops();
+    notagent::core::compaction::extract_file_ops_from_message(
+        &AgentMessage::Assistant(message),
+        &mut file_ops,
+    );
+    assert_eq!(
+        file_ops
+            .edited
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec!["src/a.rs", "src/b.rs"],
+        "the summary lists every file the call changed, not none"
+    );
+}
