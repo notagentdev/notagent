@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.77 supports Apple Silicon Macs:
+Version 0.1.78 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -56,7 +56,8 @@ features reduce the part of the context spent on source reads and shell output:
   comments removed, blank lines dropped, indentation collapsed to one space
   per nesting level. `patch_minified` and `multi_patch_minified` edit through
   that same view — a source map translates the edit back to the real file, and
-  nothing is written until every edit succeeds. Surveying and navigating code
+  nothing is written until every edit succeeds. `multi_patch_minified` edits
+  several files in one call, all or nothing. Surveying and navigating code
   costs a fraction of reading the original source. Set `keep_comments=true`
   when comments or documentation matter. Images are detected automatically;
   `view="original"` requires a concrete `reason`.
@@ -98,6 +99,23 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.78
+
+- Context folding: the agent folds finished work, such as a search it has
+  used or a test run it has read, into a summary it writes itself, and can
+  unfold or search it later. The original stays in the session. Folds go in
+  order and the agent is reminded only after about 50K tokens of new
+  finished work, so the prompt cache before a fold stays intact and
+  compaction is needed far less often. On by default; switch it off under
+  `/settings`, Context folding, which shows the full history again.
+- `multi_patch_minified` edits several files in one call. Every file is
+  checked before anything is written, and a failed write rolls back the
+  files already written.
+- MiniMax M3.1 Flash is available with a MiniMax key and through Cline
+  Pass, with a 1M context window and efforts from low to max. On MiniMax it
+  always thinks; through Cline Pass thinking can also be switched off.
+- Qwen3.7 Max and Qwen3.7 Plus are no longer offered through Cline Pass.
 
 ### 0.1.77
 
