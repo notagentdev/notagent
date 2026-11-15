@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.78 supports Apple Silicon Macs:
+Version 0.1.79 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -48,6 +48,15 @@ separate agent with copied context. Switching modes keeps the shared history
 intact and changes only the compact mode-specific instructions and tool
 surface, allowing provider prompt caches to reuse matching prefixes rather than
 warming a new agent from scratch.
+
+**Context folding instead of early compaction.** The agent folds finished work,
+such as a search it has used or a test run it has read, into a summary it
+writes itself. The original stays in the session, and the agent can unfold or
+search a fold whenever it needs the details again. Folds go in order, so
+everything before a fold stays a cached prefix, and the agent is reminded only
+after about 50K tokens of new finished work, so folding costs the cache rarely.
+Compaction stays as the safety net but is needed far less often. On by
+default; switch it off under `/settings`, Context folding.
 
 **Cut compactable tool output by at least 50% in the checked workloads.** Two
 features reduce the part of the context spent on source reads and shell output:
@@ -99,6 +108,16 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.79
+
+- Claude Fable 5.2 is available with an Anthropic key or a Claude plan, and
+  through Amazon Bedrock, OpenRouter, Vercel AI Gateway, GitHub Copilot,
+  OpenCode, and Cloudflare AI Gateway. It has a 1M context window, 128K
+  output tokens, and always thinks, with efforts up to max. It is cheaper
+  than Fable 5.1: $8 input and $40 output per million tokens.
+- OpenRouter's Claude Fable Latest now points at Fable 5.2 and is priced
+  accordingly.
 
 ### 0.1.78
 
