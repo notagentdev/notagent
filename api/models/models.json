@@ -826,6 +826,31 @@
         "max": "max"
       }
     },
+    "global.anthropic.claude-fable-5-2": {
+      "id": "global.anthropic.claude-fable-5-2",
+      "name": "Claude Fable 5.2 (Global)",
+      "api": "bedrock-converse-stream",
+      "provider": "amazon-bedrock",
+      "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "global.anthropic.claude-haiku-4-5-20251001-v1:0": {
       "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
       "name": "Claude Haiku 4.5 (Global)",
@@ -2325,6 +2350,31 @@
         "max": "max"
       }
     },
+    "us.anthropic.claude-fable-5-2": {
+      "id": "us.anthropic.claude-fable-5-2",
+      "name": "Claude Fable 5.2 (US)",
+      "api": "bedrock-converse-stream",
+      "provider": "amazon-bedrock",
+      "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8.8,
+        "output": 44,
+        "cacheRead": 0.22,
+        "cacheWrite": 11
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
       "id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
       "name": "Claude Haiku 4.5 (US)",
@@ -2990,6 +3040,36 @@
       "compat": {
         "forceAdaptiveThinking": true,
         "supportsStrictTools": true
+      }
+    },
+    "claude-fable-5-2": {
+      "id": "claude-fable-5-2",
+      "name": "Claude Fable 5.2",
+      "api": "anthropic-messages",
+      "provider": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsStrictTools": true,
+        "supportsTemperature": false
       }
     },
     "claude-haiku-4-5": {
@@ -5416,6 +5496,36 @@
         "max": "max"
       }
     },
+    "claude-fable-5-2": {
+      "id": "claude-fable-5-2",
+      "name": "Claude Fable 5.2",
+      "api": "anthropic-messages",
+      "provider": "cloudflare-ai-gateway",
+      "baseUrl": "https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}/anthropic",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "compat": {
+        "sendSessionAffinityHeaders": true,
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      },
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
     "claude-haiku-4.5": {
       "id": "claude-haiku-4.5",
       "name": "Claude Haiku 4.5 (latest)",
@@ -7576,6 +7686,42 @@
         "output": 50,
         "cacheRead": 1,
         "cacheWrite": 12.5
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "headers": {
+        "User-Agent": "GitHubCopilotChat/0.35.0",
+        "Editor-Version": "vscode/1.107.0",
+        "Editor-Plugin-Version": "copilot-chat/0.35.0",
+        "Copilot-Integration-Id": "vscode-chat"
+      },
+      "compat": {
+        "supportsStore": false,
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "claude-fable-5.2": {
+      "id": "claude-fable-5.2",
+      "name": "Claude Fable 5.2",
+      "api": "openai-completions",
+      "provider": "github-copilot",
+      "baseUrl": "https://api.individual.githubcopilot.com",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
       },
       "contextWindow": 1000000,
       "maxTokens": 128000,
@@ -15890,6 +16036,35 @@
         "forceAdaptiveThinking": true
       }
     },
+    "claude-fable-5-2": {
+      "id": "claude-fable-5-2",
+      "name": "Claude Fable 5.2",
+      "api": "anthropic-messages",
+      "provider": "opencode",
+      "baseUrl": "https://opencode.ai/zen",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      }
+    },
     "claude-haiku-4-5": {
       "id": "claude-haiku-4-5",
       "name": "Claude Haiku 4.5",
@@ -18533,6 +18708,64 @@
         "output": 50,
         "cacheRead": 1,
         "cacheWrite": 12.5
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "compat": {
+        "thinkingFormat": "openrouter",
+        "cacheControlFormat": "anthropic"
+      },
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "anthropic/claude-fable-5.2": {
+      "id": "anthropic/claude-fable-5.2",
+      "name": "Anthropic: Claude Fable 5.2",
+      "api": "openai-completions",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "provider": "openrouter",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "compat": {
+        "thinkingFormat": "openrouter",
+        "cacheControlFormat": "anthropic"
+      },
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "anthropic/claude-fable-5.2:batch": {
+      "id": "anthropic/claude-fable-5.2:batch",
+      "name": "Anthropic: Claude Fable 5.2 (batch)",
+      "api": "openai-completions",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "provider": "openrouter",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 4,
+        "output": 20,
+        "cacheRead": 0.1,
+        "cacheWrite": 5
       },
       "contextWindow": 1000000,
       "maxTokens": 128000,
@@ -26932,10 +27165,10 @@
         "image"
       ],
       "cost": {
-        "input": 10,
-        "output": 50,
-        "cacheRead": 1,
-        "cacheWrite": 12.5
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
       },
       "contextWindow": 1000000,
       "maxTokens": 128000,
@@ -29904,6 +30137,35 @@
       },
       "compat": {
         "forceAdaptiveThinking": true
+      }
+    },
+    "anthropic/claude-fable-5.2": {
+      "id": "anthropic/claude-fable-5.2",
+      "name": "Claude Fable 5.2",
+      "api": "anthropic-messages",
+      "baseUrl": "https://ai-gateway.vercel.sh",
+      "provider": "vercel-ai-gateway",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 8,
+        "output": 40,
+        "cacheRead": 0.2,
+        "cacheWrite": 10
+      },
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
       }
     },
     "anthropic/claude-haiku-4.5": {

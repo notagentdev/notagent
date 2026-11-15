@@ -825,6 +825,31 @@
       "max": "max"
     }
   },
+  "global.anthropic.claude-fable-5-2": {
+    "id": "global.anthropic.claude-fable-5-2",
+    "name": "Claude Fable 5.2 (Global)",
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.2,
+      "cacheWrite": 10
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 128000,
+    "thinkingLevelMap": {
+      "off": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
   "global.anthropic.claude-haiku-4-5-20251001-v1:0": {
     "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
     "name": "Claude Haiku 4.5 (Global)",
@@ -2315,6 +2340,31 @@
       "output": 50,
       "cacheRead": 1,
       "cacheWrite": 12.5
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 128000,
+    "thinkingLevelMap": {
+      "off": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
+  "us.anthropic.claude-fable-5-2": {
+    "id": "us.anthropic.claude-fable-5-2",
+    "name": "Claude Fable 5.2 (US)",
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 8.8,
+      "output": 44,
+      "cacheRead": 0.22,
+      "cacheWrite": 11
     },
     "contextWindow": 1000000,
     "maxTokens": 128000,

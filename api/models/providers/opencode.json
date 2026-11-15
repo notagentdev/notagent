@@ -51,6 +51,35 @@
       "forceAdaptiveThinking": true
     }
   },
+  "claude-fable-5-2": {
+    "id": "claude-fable-5-2",
+    "name": "Claude Fable 5.2",
+    "api": "anthropic-messages",
+    "provider": "opencode",
+    "baseUrl": "https://opencode.ai/zen",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.2,
+      "cacheWrite": 10
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 128000,
+    "thinkingLevelMap": {
+      "off": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    },
+    "compat": {
+      "forceAdaptiveThinking": true,
+      "supportsTemperature": false
+    }
+  },
   "claude-haiku-4-5": {
     "id": "claude-haiku-4-5",
     "name": "Claude Haiku 4.5",

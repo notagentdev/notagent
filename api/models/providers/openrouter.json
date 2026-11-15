@@ -240,6 +240,64 @@
       "max": "max"
     }
   },
+  "anthropic/claude-fable-5.2": {
+    "id": "anthropic/claude-fable-5.2",
+    "name": "Anthropic: Claude Fable 5.2",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.2,
+      "cacheWrite": 10
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 128000,
+    "compat": {
+      "thinkingFormat": "openrouter",
+      "cacheControlFormat": "anthropic"
+    },
+    "thinkingLevelMap": {
+      "off": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
+  "anthropic/claude-fable-5.2:batch": {
+    "id": "anthropic/claude-fable-5.2:batch",
+    "name": "Anthropic: Claude Fable 5.2 (batch)",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": [
+      "text",
+      "image"
+    ],
+    "cost": {
+      "input": 4,
+      "output": 20,
+      "cacheRead": 0.1,
+      "cacheWrite": 5
+    },
+    "contextWindow": 1000000,
+    "maxTokens": 128000,
+    "compat": {
+      "thinkingFormat": "openrouter",
+      "cacheControlFormat": "anthropic"
+    },
+    "thinkingLevelMap": {
+      "off": null,
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
   "anthropic/claude-fable-5:batch": {
     "id": "anthropic/claude-fable-5:batch",
     "name": "Anthropic: Claude Fable 5 (batch)",
@@ -8626,10 +8684,10 @@
       "image"
     ],
     "cost": {
-      "input": 10,
-      "output": 50,
-      "cacheRead": 1,
-      "cacheWrite": 12.5
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.2,
+      "cacheWrite": 10
     },
     "contextWindow": 1000000,
     "maxTokens": 128000,

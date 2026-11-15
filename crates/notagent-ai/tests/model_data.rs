@@ -1152,11 +1152,12 @@ fn gpt_6_sol_and_luna_are_offered_through_the_api_and_the_codex_plan() {
 }
 
 #[test]
-fn claude_opus_5_5_sonnet_5_5_and_fable_5_1_are_in_the_anthropic_catalog() {
+fn claude_opus_5_5_sonnet_5_5_and_fable_5_1_and_5_2_are_in_the_anthropic_catalog() {
     for (model_id, input, output, cache_read, cache_write) in [
         ("claude-opus-5-5", 4.0, 20.0, 0.2, 5.0),
         ("claude-sonnet-5-5", 2.0, 10.0, 0.2, 2.5),
         ("claude-fable-5-1", 10.0, 50.0, 0.25, 12.5),
+        ("claude-fable-5-2", 8.0, 40.0, 0.2, 10.0),
     ] {
         let model = get_builtin_model("anthropic", model_id).expect(model_id);
 
@@ -1185,6 +1186,88 @@ fn claude_opus_5_5_sonnet_5_5_and_fable_5_1_are_in_the_anthropic_catalog() {
                 ModelThinkingLevel::Max,
             ],
             "{model_id}"
+        );
+    }
+}
+
+#[test]
+fn claude_fable_5_2_is_offered_wherever_its_providers_list_it() {
+    // Regional Bedrock profiles carry the 10 percent premium over global ones.
+    for (provider, model_id, input, output, cache_read, cache_write) in [
+        ("anthropic", "claude-fable-5-2", 8.0, 40.0, 0.2, 10.0),
+        (
+            "amazon-bedrock",
+            "global.anthropic.claude-fable-5-2",
+            8.0,
+            40.0,
+            0.2,
+            10.0,
+        ),
+        (
+            "amazon-bedrock",
+            "us.anthropic.claude-fable-5-2",
+            8.8,
+            44.0,
+            0.22,
+            11.0,
+        ),
+        (
+            "cloudflare-ai-gateway",
+            "claude-fable-5-2",
+            8.0,
+            40.0,
+            0.2,
+            10.0,
+        ),
+        ("github-copilot", "claude-fable-5.2", 8.0, 40.0, 0.2, 10.0),
+        ("opencode", "claude-fable-5-2", 8.0, 40.0, 0.2, 10.0),
+        (
+            "openrouter",
+            "anthropic/claude-fable-5.2",
+            8.0,
+            40.0,
+            0.2,
+            10.0,
+        ),
+        (
+            "openrouter",
+            "anthropic/claude-fable-5.2:batch",
+            4.0,
+            20.0,
+            0.1,
+            5.0,
+        ),
+        (
+            "openrouter",
+            "~anthropic/claude-fable-latest",
+            8.0,
+            40.0,
+            0.2,
+            10.0,
+        ),
+        (
+            "vercel-ai-gateway",
+            "anthropic/claude-fable-5.2",
+            8.0,
+            40.0,
+            0.2,
+            10.0,
+        ),
+    ] {
+        let label = format!("{provider}/{model_id}");
+        let model = get_builtin_model(provider, model_id).expect(&label);
+
+        assert_eq!(model.context_window, 1_000_000, "{label}");
+        assert_eq!(model.max_tokens, 128_000, "{label}");
+        assert_eq!(
+            (model.cost.input, model.cost.output),
+            (input, output),
+            "{label}"
+        );
+        assert_eq!(
+            (model.cost.cache_read, model.cost.cache_write),
+            (cache_read, cache_write),
+            "{label}"
         );
     }
 }
