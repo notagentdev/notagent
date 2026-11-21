@@ -6,6 +6,7 @@ mod session_handle;
 mod state;
 mod transport;
 mod types;
+#[cfg(unix)]
 mod unix;
 
 pub use client::PiClient;
@@ -17,4 +18,5 @@ pub use types::{
     ConnectionState, ConnectionStateChange, CreateSessionOptions, ListenerErrorHandler,
     PiClientOptions, Unsubscribe,
 };
+#[cfg(unix)]
 pub use unix::{UnixTransportOptions, create_unix_transport_factory};

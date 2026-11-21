@@ -16,7 +16,9 @@ use crate::core::output_guard::{
 use crate::modes::json_event::{compaction_result_to_json, to_json_event};
 use crate::modes::rpc::jsonl::{JsonlLineSplitter, serialize_json_line};
 use crate::modes::rpc::rpc_types::*;
-use crate::utils::shell::kill_tracked_detached_children;
+use crate::utils::shell::{
+    TerminationSignal, kill_tracked_detached_children, wait_for_termination_signal,
+};
 
 pub type RpcOutputSink = Arc<dyn Fn(&Value) + Send + Sync>;
 
@@ -201,19 +203,11 @@ pub async fn run_rpc_mode(runtime_host: Arc<AgentSessionRuntime>) -> ! {
     // that stopped reading would make the flush wait forever.
     let signal_state = Arc::clone(&state);
     tokio::spawn(async move {
-        let Ok(mut terminate) =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        else {
+        let Some(signal) = wait_for_termination_signal().await else {
             return;
         };
-        let Ok(mut hangup) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
-        else {
-            return;
-        };
-        let (exit_code, drain) = tokio::select! {
-            _ = terminate.recv() => (143, false),
-            _ = hangup.recv() => (129, true),
-        };
+        let exit_code = signal.exit_code();
+        let drain = signal == TerminationSignal::Hangup;
         kill_tracked_detached_children();
         signal_state.shutdown(exit_code, drain).await;
     });

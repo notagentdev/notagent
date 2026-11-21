@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+#[cfg(unix)]
+use notagent::config::get_self_update_unavailable_instruction;
 use notagent::config::{
     InstallEnv, InstallMethod, SelfUpdateCommand, SelfUpdateCommandStep, SelfUpdatePackageTarget,
-    detect_install_method, get_self_update_command, get_self_update_unavailable_instruction,
-    get_update_instruction,
+    detect_install_method, get_self_update_command, get_update_instruction,
 };
 
 /// PATH is process-global, so the tests that stub package managers run serially.

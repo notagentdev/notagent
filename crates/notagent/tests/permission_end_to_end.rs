@@ -97,6 +97,7 @@ fn unanswered() -> ApprovalPresenter {
     })
 }
 
+#[cfg(unix)]
 fn pre_tool_use(command: &str, matcher: Option<&str>) -> Hook {
     Hook {
         event: HookEvent::PreToolUse,

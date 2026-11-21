@@ -66,6 +66,7 @@ pub trait AuthStorageBackend: Send + Sync {
 
 /// auth.json is written 0600 in a 0700 directory: it holds bearer tokens.
 const AUTH_FILE_MODE: u32 = 0o600;
+#[cfg(unix)]
 const AUTH_DIR_MODE: u32 = 0o700;
 
 const LOCK_STALE: Duration = Duration::from_secs(30);

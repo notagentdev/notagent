@@ -4,7 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use notagent_server::PiServer;
 use notagent_server::errors::ServerError;
-use notagent_server::testing::{ProtocolTestClient, TestServerService, connect_unix_test_client};
+use notagent_server::testing::TestServerService;
+#[cfg(unix)]
+use notagent_server::testing::{ProtocolTestClient, connect_unix_test_client};
+#[cfg(unix)]
 use notagent_server::transports::unix::{UnixServerOptions, create_unix_server};
 
 pub struct Harness {
@@ -28,10 +31,12 @@ pub fn temp_directory() -> tempfile::TempDir {
         .expect("temp dir")
 }
 
+#[cfg(unix)]
 pub fn unix_options(path: &str) -> UnixServerOptions {
     UnixServerOptions::new(path)
 }
 
+#[cfg(unix)]
 pub async fn start_server(service: TestServerService, mut options: UnixServerOptions) -> Harness {
     let directory = temp_directory();
     options.path = socket_path(&directory);
@@ -44,11 +49,13 @@ pub async fn start_server(service: TestServerService, mut options: UnixServerOpt
     }
 }
 
+#[cfg(unix)]
 pub async fn start_default_server() -> Harness {
     let service = TestServerService::new();
     start_server(service, UnixServerOptions::default()).await
 }
 
+#[cfg(unix)]
 pub async fn connect(server: &PiServer) -> Arc<ProtocolTestClient> {
     let address = server.addresses().first().expect("address").clone();
     connect_unix_test_client(&address).await.expect("connects")
@@ -153,6 +160,7 @@ impl PiServerService for HookedService {
     }
 }
 
+#[cfg(unix)]
 pub async fn start_hooked_server(
     service: HookedService,
     mut options: UnixServerOptions,

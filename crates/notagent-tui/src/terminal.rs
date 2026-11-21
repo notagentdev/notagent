@@ -191,6 +191,9 @@ pub struct ProcessTerminal {
     stdin_rx: Option<mpsc::UnboundedReceiver<Vec<u8>>>,
     #[cfg(unix)]
     resize_signal: Option<tokio::signal::unix::Signal>,
+    /// Without SIGWINCH the pump polls the size; this is the last one it saw.
+    #[cfg(not(unix))]
+    polled_size: Option<(usize, usize)>,
     progress_active: bool,
     progress_next_keepalive: Option<Instant>,
     write_log_path: Option<std::path::PathBuf>,
@@ -227,6 +230,8 @@ impl ProcessTerminal {
             stdin_rx: None,
             #[cfg(unix)]
             resize_signal: None,
+            #[cfg(not(unix))]
+            polled_size: None,
             progress_active: false,
             progress_next_keepalive: None,
             write_log_path: resolve_write_log_path(),
@@ -560,6 +565,8 @@ impl ProcessTerminal {
             rx,
             #[cfg(unix)]
             resize_signal: self.resize_signal.take(),
+            #[cfg(not(unix))]
+            polled_size: self.polled_size,
         })
     }
 
@@ -573,6 +580,10 @@ impl ProcessTerminal {
         #[cfg(unix)]
         {
             self.resize_signal = parts.resize_signal;
+        }
+        #[cfg(not(unix))]
+        {
+            self.polled_size = parts.polled_size;
         }
     }
 
@@ -714,8 +725,18 @@ fn restore_after_panic() {
 struct RawModeState {
     #[cfg(unix)]
     termios: libc::termios,
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    console: ConsoleModes,
+    #[cfg(not(any(unix, windows)))]
     _unused: (),
+}
+
+/// Console modes of the stdin and stdout handles before `start()` changed them.
+#[cfg(windows)]
+#[derive(Clone, Copy)]
+struct ConsoleModes {
+    input: Option<u32>,
+    output: Option<u32>,
 }
 
 #[cfg(unix)]
@@ -750,12 +771,73 @@ fn restore_raw_mode(state: &RawModeState) {
     unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &state.termios) };
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn console_mode(handle: windows_sys::Win32::Foundation::HANDLE) -> Option<u32> {
+    let mut mode = 0;
+    // SAFETY: `mode` is a valid, writable u32 for the duration of the call.
+    (unsafe { windows_sys::Win32::System::Console::GetConsoleMode(handle, &mut mode) } != 0)
+        .then_some(mode)
+}
+
+#[cfg(windows)]
+fn enable_raw_mode() -> Option<RawModeState> {
+    use windows_sys::Win32::System::Console::{
+        ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
+        ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetStdHandle,
+        STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetConsoleMode,
+    };
+    // The console counterpart of the termios change above: without it the
+    // console hands input over line by line, echoes it itself and turns
+    // Ctrl+C into a signal instead of a key. Output must interpret VT
+    // sequences, which classic conhost does not do unless asked.
+    // SAFETY: plain console API calls on the process' own std handles.
+    unsafe {
+        let input_handle = GetStdHandle(STD_INPUT_HANDLE);
+        let output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        let input = console_mode(input_handle);
+        let output = console_mode(output_handle);
+        if input.is_none() && output.is_none() {
+            return None;
+        }
+        if let Some(mode) = input {
+            let raw = (mode & !(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT))
+                | ENABLE_VIRTUAL_TERMINAL_INPUT;
+            SetConsoleMode(input_handle, raw);
+        }
+        if let Some(mode) = output {
+            SetConsoleMode(
+                output_handle,
+                mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+            );
+        }
+        Some(RawModeState {
+            console: ConsoleModes { input, output },
+        })
+    }
+}
+
+#[cfg(windows)]
+fn restore_raw_mode(state: &RawModeState) {
+    use windows_sys::Win32::System::Console::{
+        GetStdHandle, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetConsoleMode,
+    };
+    // SAFETY: plain console API calls on the process' own std handles.
+    unsafe {
+        if let Some(mode) = state.console.input {
+            SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), mode);
+        }
+        if let Some(mode) = state.console.output {
+            SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), mode);
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn enable_raw_mode() -> Option<RawModeState> {
     Some(RawModeState { _unused: () })
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn restore_raw_mode(_state: &RawModeState) {}
 
 /// Terminal size from the OS, or `None` when stdout is not a terminal.
@@ -772,7 +854,26 @@ fn terminal_size() -> Option<(usize, usize)> {
     Some((usize::from(size.ws_col), usize::from(size.ws_row)))
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn terminal_size() -> Option<(usize, usize)> {
+    use windows_sys::Win32::System::Console::{
+        CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo, GetStdHandle, STD_OUTPUT_HANDLE,
+    };
+    // SAFETY: `info` is a valid, writable struct for the duration of the call.
+    let window = unsafe {
+        let mut info: CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
+        if GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &mut info) == 0 {
+            return None;
+        }
+        info.srWindow
+    };
+    // The visible window, not the scrollback buffer behind it.
+    let columns = usize::try_from(i32::from(window.Right) - i32::from(window.Left) + 1).ok()?;
+    let rows = usize::try_from(i32::from(window.Bottom) - i32::from(window.Top) + 1).ok()?;
+    (columns > 0 && rows > 0).then_some((columns, rows))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn terminal_size() -> Option<(usize, usize)> {
     None
 }
@@ -902,6 +1003,10 @@ impl Terminal for ProcessTerminal {
         // events that lose modifier information. Must run AFTER raw mode, which
         // resets console mode flags.
         enable_windows_vt_input();
+        #[cfg(not(unix))]
+        {
+            self.polled_size = terminal_size();
+        }
 
         // Only before the first reader thread exists: a reader from an earlier
         // start stays blocked in `read` after `stop()` and would take the reply.
@@ -1117,6 +1222,8 @@ pub(crate) struct PumpLeaseParts {
     rx: mpsc::UnboundedReceiver<Vec<u8>>,
     #[cfg(unix)]
     resize_signal: Option<tokio::signal::unix::Signal>,
+    #[cfg(not(unix))]
+    polled_size: Option<(usize, usize)>,
 }
 
 /// Stdin channel and input handler parked for the duration of a drain.
@@ -1421,11 +1528,13 @@ impl<'a> PumpLease<'a> {
         #[cfg(not(unix))]
         {
             let rx = &mut parts.rx;
+            let polled_size = &mut parts.polled_size;
             tokio::select! {
                 chunk = rx.recv() => match chunk {
                     Some(chunk) => PumpWake::Chunk(chunk),
                     None => PumpWake::Eof,
                 },
+                () = wait_for_size_change(polled_size) => PumpWake::Resize,
                 () = async {
                     match next_deadline {
                         Some(deadline) => tokio::time::sleep_until(deadline).await,
@@ -1433,6 +1542,24 @@ impl<'a> PumpLease<'a> {
                     }
                 } => PumpWake::Deadline,
             }
+        }
+    }
+}
+
+/// How often the size is polled where no resize signal exists. Short enough
+/// that a dragged window edge redraws smoothly, long enough to cost nothing.
+#[cfg(not(unix))]
+const RESIZE_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+/// Resolves once the terminal size differs from `last`, which it then updates.
+#[cfg(not(unix))]
+async fn wait_for_size_change(last: &mut Option<(usize, usize)>) {
+    loop {
+        tokio::time::sleep(RESIZE_POLL_INTERVAL).await;
+        let current = terminal_size();
+        if current != *last {
+            *last = current;
+            return;
         }
     }
 }
@@ -1544,7 +1671,15 @@ mod tests {
         let state = RawModeState {
             termios: unsafe { std::mem::zeroed() },
         };
-        #[cfg(not(unix))]
+        // No saved modes: restoring this state touches nothing.
+        #[cfg(windows)]
+        let state = RawModeState {
+            console: super::ConsoleModes {
+                input: None,
+                output: None,
+            },
+        };
+        #[cfg(not(any(unix, windows)))]
         let state = RawModeState { _unused: () };
         arm_panic_restore(Some(state));
 

@@ -254,10 +254,7 @@ impl BashOperations for LocalBashOperations {
             #[cfg(unix)]
             builder.process_group(0);
             #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                builder.creation_flags(0x0800_0000);
-            }
+            builder.creation_flags(0x0800_0000);
 
             let mut child = builder.spawn().map_err(|error| {
                 BashExecError::Other(if error.kind() == std::io::ErrorKind::NotFound {

@@ -117,9 +117,9 @@ pub fn get_shell_config(custom_shell_path: Option<&str>) -> Result<ShellConfig, 
             .map(|path| format!("  {path}"))
             .collect::<Vec<_>>()
             .join("\n");
-        return Err(format!(
+        Err(format!(
             "No bash shell found. Options:\n  1. Install Git for Windows: https://git-scm.com/download/win\n  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n  3. Set shellPath in settings.json\n\nSearched Git Bash in:\n{searched}"
-        ));
+        ))
     }
 
     #[cfg(not(windows))]
@@ -210,6 +210,60 @@ pub fn kill_tracked_detached_children() {
     );
     for pid in pids {
         kill_process_tree(pid);
+    }
+}
+
+/// How the outside world asked this process to go away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminationSignal {
+    /// SIGTERM, or a Windows logoff or system shutdown.
+    Terminate,
+    /// SIGHUP, or the Windows console window being closed.
+    Hangup,
+}
+
+impl TerminationSignal {
+    /// The shell's exit code for a process killed by this signal.
+    pub fn exit_code(self) -> i32 {
+        match self {
+            Self::Terminate => 143,
+            Self::Hangup => 129,
+        }
+    }
+}
+
+/// Waits until the process is asked to exit from outside. `None` means the
+/// handlers could not be installed, in which case the caller simply never
+/// hears about it.
+pub async fn wait_for_termination_signal() -> Option<TerminationSignal> {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut terminate = signal(SignalKind::terminate()).ok()?;
+        let mut hangup = signal(SignalKind::hangup()).ok()?;
+        tokio::select! {
+            _ = terminate.recv() => Some(TerminationSignal::Terminate),
+            _ = hangup.recv() => Some(TerminationSignal::Hangup),
+        }
+    }
+    #[cfg(windows)]
+    {
+        // Ctrl+C and Ctrl+Break reach the terminal UI as key presses, so only
+        // the events that end the console session count here. Windows kills
+        // the process a few seconds after these, which bounds the cleanup.
+        use tokio::signal::windows::{ctrl_close, ctrl_logoff, ctrl_shutdown};
+        let mut close = ctrl_close().ok()?;
+        let mut logoff = ctrl_logoff().ok()?;
+        let mut shutdown = ctrl_shutdown().ok()?;
+        tokio::select! {
+            _ = close.recv() => Some(TerminationSignal::Hangup),
+            _ = logoff.recv() => Some(TerminationSignal::Terminate),
+            _ = shutdown.recv() => Some(TerminationSignal::Terminate),
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        std::future::pending().await
     }
 }
 

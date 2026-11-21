@@ -68,7 +68,7 @@ use crate::core::user_questions::{
     QuestionAnswer, QuestionDisplay, QuestionPresenter, QuestionPresenterSource, UserQuestion,
 };
 use crate::migrations::run_migrations;
-use crate::utils::shell::kill_tracked_detached_children;
+use crate::utils::shell::{kill_tracked_detached_children, wait_for_termination_signal};
 use notagent_tui::tui::run_until;
 use tokio_util::sync::CancellationToken;
 
@@ -1251,23 +1251,11 @@ pub async fn main(args: Vec<String>) -> i32 {
             // session down gracefully — the children first, then the session
             // teardown and the terminal restore inside the mode, which owns
             let shutdown_signal = CancellationToken::new();
-            #[cfg(unix)]
             let signal_task = {
                 let shutdown_signal = shutdown_signal.clone();
                 tokio::spawn(async move {
-                    let Ok(mut terminate) =
-                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    else {
+                    if wait_for_termination_signal().await.is_none() {
                         return;
-                    };
-                    let Ok(mut hangup) =
-                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
-                    else {
-                        return;
-                    };
-                    tokio::select! {
-                        _ = terminate.recv() => {}
-                        _ = hangup.recv() => {}
                     }
                     kill_tracked_detached_children();
                     shutdown_signal.cancel();
@@ -1303,7 +1291,6 @@ pub async fn main(args: Vec<String>) -> i32 {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(question_display);
             // `run_until` renders and pumps stdin while the mode runs.
             let exit_code = run_until(renderer.as_mut(), pump.as_mut(), run).await;
-            #[cfg(unix)]
             signal_task.abort();
             stop_theme_watcher();
             restore_stdout();

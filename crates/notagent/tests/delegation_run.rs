@@ -3,9 +3,10 @@ use std::sync::{Arc, Mutex};
 
 use notagent::core::delegation::agent_type::SubagentType;
 use notagent::core::delegation::run::ChildSkill;
+#[cfg(unix)]
+use notagent::core::delegation::run::run_delegation_with_hooks;
 use notagent::core::delegation::run::{
     DelegationOptions, MAX_ANSWER_CHARS, child_tool_names, render_child_prompt, run_delegation,
-    run_delegation_with_hooks,
 };
 #[cfg(unix)]
 use notagent::core::hooks::Hook;

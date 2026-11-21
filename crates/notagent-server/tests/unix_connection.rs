@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use notagent_protocol::{
     HelloErrorTag, ProtocolError, ProtocolErrorCode, ServerHelloError, ServerMessage,
     ServerMessageDecoder, encode_server_message,

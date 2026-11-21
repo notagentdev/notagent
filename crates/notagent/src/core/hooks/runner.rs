@@ -181,6 +181,7 @@ fn signal_process_tree(pid: u32, signal: libc::c_int) {
 }
 
 struct ProcessTree {
+    #[cfg(not(windows))]
     pid: Option<u32>,
     #[cfg(windows)]
     job: WindowsJob,
@@ -190,10 +191,9 @@ impl ProcessTree {
     fn attach(child: &tokio::process::Child) -> Result<Self, String> {
         #[cfg(windows)]
         {
-            return Ok(Self {
-                pid: child.id(),
+            Ok(Self {
                 job: WindowsJob::attach(child)?,
-            });
+            })
         }
         #[cfg(not(windows))]
         {

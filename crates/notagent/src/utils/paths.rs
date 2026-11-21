@@ -82,11 +82,12 @@ pub fn get_file_revision(path: &str) -> Option<String> {
     }
     #[cfg(windows)]
     {
+        // Volume serial and file index would identify the file the way dev
+        // and inode do, but they are unstable in std. A file replaced by an
+        // atomic rename still gets a new creation time, so the token changes.
         use std::os::windows::fs::MetadataExt;
         Some(format!(
-            "{}:{}:{}:{}:{}",
-            metadata.volume_serial_number().unwrap_or(0),
-            metadata.file_index().unwrap_or(0),
+            "{}:{}:{}",
             metadata.file_size(),
             metadata.last_write_time(),
             metadata.creation_time()

@@ -10,7 +10,7 @@ use crate::core::output_guard::{
 };
 use crate::modes::json_event::to_json_event;
 use crate::modes::rpc::jsonl::serialize_json_line;
-use crate::utils::shell::kill_tracked_detached_children;
+use crate::utils::shell::{kill_tracked_detached_children, wait_for_termination_signal};
 
 /// Output mode of [`run_print_mode`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,19 +87,10 @@ pub async fn run_print_mode(
     // the shell's convention for a process killed by that signal.
     let signal_host = Arc::clone(&runtime_host);
     let signal_task = tokio::spawn(async move {
-        let Ok(mut terminate) =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        else {
+        let Some(signal) = wait_for_termination_signal().await else {
             return;
         };
-        let Ok(mut hangup) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
-        else {
-            return;
-        };
-        let exit_code = tokio::select! {
-            _ = terminate.recv() => 143,
-            _ = hangup.recv() => 129,
-        };
+        let exit_code = signal.exit_code();
         kill_tracked_detached_children();
         signal_host.dispose().await;
         flush_raw_stdout().await;

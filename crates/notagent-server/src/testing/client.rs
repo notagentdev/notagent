@@ -6,8 +6,11 @@ use notagent_protocol::{
     ClientHello, ClientMessage, Command, HelloTag, PROTOCOL_VERSION, RequestEnvelope, RequestTag,
     ResponseEnvelope, ServerMessage, ServerMessageDecoder, encode_client_message,
 };
+#[cfg(unix)]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+#[cfg(unix)]
 use tokio::net::UnixStream;
+#[cfg(unix)]
 use tokio::net::unix::OwnedWriteHalf;
 
 use crate::errors::ServerError;
@@ -226,10 +229,12 @@ impl ProtocolTestClient {
     }
 }
 
+#[cfg(unix)]
 struct UnixWireChannel {
     writer: tokio::sync::Mutex<Option<OwnedWriteHalf>>,
 }
 
+#[cfg(unix)]
 #[async_trait]
 impl WireChannel for UnixWireChannel {
     async fn send(&self, chunk: Vec<u8>) -> Result<(), ServerError> {
@@ -258,6 +263,7 @@ impl WireChannel for UnixWireChannel {
     }
 }
 
+#[cfg(unix)]
 pub async fn connect_unix_test_client(path: &str) -> Result<Arc<ProtocolTestClient>, ServerError> {
     let stream = UnixStream::connect(path)
         .await
