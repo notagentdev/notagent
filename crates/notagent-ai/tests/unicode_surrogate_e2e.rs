@@ -240,7 +240,7 @@ unicode_block!(
     unicode_minimax_provider,
     "MINIMAX_API_KEY",
     "minimax",
-    "MiniMax-M2.7"
+    "MiniMax-M3"
 );
 unicode_block!(
     unicode_xiaomi_provider,

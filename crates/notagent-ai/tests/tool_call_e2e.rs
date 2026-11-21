@@ -143,7 +143,7 @@ orphan_block!(
     orphan_minimax_provider,
     "MINIMAX_API_KEY",
     "minimax",
-    "MiniMax-M2.7"
+    "MiniMax-M3"
 );
 orphan_block!(
     orphan_xiaomi_provider,

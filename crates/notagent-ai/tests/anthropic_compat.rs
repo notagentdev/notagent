@@ -117,6 +117,7 @@ fn marks_the_builtin_models_that_use_adaptive_thinking() {
         "kimi-coding/k3",
         "kimi-coding/kimi-for-coding-highspeed",
         "minimax/MiniMax-M3.1-Flash",
+        "minimax-cn/MiniMax-M3.1-Flash",
         "opencode/claude-fable-5-2",
         "opencode/claude-opus-4-8",
         "opencode/claude-opus-5",
@@ -147,7 +148,7 @@ fn marks_the_builtin_models_that_use_adaptive_thinking() {
     }
     // No model outside the adaptive families carries the flag.
     let pattern = regex::Regex::new(
-        r"(opus[-.](4[-.][678]|5)|sonnet[-.]4[-.]6|sonnet[-.]5|fable[-.]5|kimi-coding/|minimax/MiniMax-M3\.1-Flash)",
+        r"(opus[-.](4[-.][678]|5)|sonnet[-.]4[-.]6|sonnet[-.]5|fable[-.]5|kimi-coding/|minimax(-cn)?/MiniMax-M3\.1-Flash)",
     )
     .expect("valid pattern");
     for model_id in &flagged {

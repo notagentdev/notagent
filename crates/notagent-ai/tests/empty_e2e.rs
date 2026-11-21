@@ -161,7 +161,7 @@ env_gated_block!(
     minimax_provider_empty_messages,
     "MINIMAX_API_KEY",
     "minimax",
-    "MiniMax-M2.7"
+    "MiniMax-M3"
 );
 env_gated_block!(
     xiaomi_provider_empty_messages,

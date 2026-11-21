@@ -724,7 +724,7 @@ async fn mistral_provider() {
 #[tokio::test(flavor = "multi_thread")]
 async fn minimax_provider_m2_7() {
     skip_unless!(env("MINIMAX_API_KEY").is_some(), "MINIMAX_API_KEY");
-    let llm = model("minimax", "MiniMax-M2.7");
+    let llm = model("minimax", "MiniMax-M3");
     run(
         &llm,
         &simple_options(None),

@@ -141,7 +141,7 @@ tokens_block!(
     tokens_minimax_provider,
     "MINIMAX_API_KEY",
     "minimax",
-    "MiniMax-M2.7"
+    "MiniMax-M3"
 );
 tokens_block!(
     tokens_kimi_provider,
@@ -434,7 +434,7 @@ total_tokens_block!(
     total_tokens_minimax,
     "MINIMAX_API_KEY",
     "minimax",
-    "MiniMax-M2.7"
+    "MiniMax-M3"
 );
 total_tokens_block!(
     total_tokens_xiaomi,

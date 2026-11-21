@@ -410,7 +410,10 @@ fn baseten_resolves_its_api_key_from_the_environment() {
 // Qwen Token Plan
 // ---------------------------------------------------------------------------
 
-const QWEN_TEXT_MODELS: [&str; 15] = [
+const QWEN_TEXT_MODELS: [&str; 19] = [
+    "glm-5.3",
+    "deepseek-v4.1-flash",
+    "deepseek-v4.1-flash-1017",
     "MiniMax-M2.5",
     "deepseek-v3.2",
     "deepseek-v4-flash",
@@ -426,9 +429,13 @@ const QWEN_TEXT_MODELS: [&str; 15] = [
     "qwen3.7-max",
     "qwen3.7-plus",
     "qwen3.8-max",
+    "qwen4-max",
 ];
 
-const QWEN_INDIVIDUAL_TEXT_MODELS: [&str; 7] = [
+const QWEN_INDIVIDUAL_TEXT_MODELS: [&str; 11] = [
+    "glm-5.3",
+    "deepseek-v4.1-flash",
+    "deepseek-v4.1-flash-1017",
     "deepseek-v4-flash-0731",
     "deepseek-v4-pro",
     "glm-5.2",
@@ -436,6 +443,7 @@ const QWEN_INDIVIDUAL_TEXT_MODELS: [&str; 7] = [
     "qwen3.7-max",
     "qwen3.7-plus",
     "qwen3.8-max",
+    "qwen4-max",
 ];
 
 const QWEN_IMAGE_MODELS: [&str; 4] = [
@@ -445,7 +453,10 @@ const QWEN_IMAGE_MODELS: [&str; 4] = [
     "wan2.7-image-pro",
 ];
 
-const QWEN_THINKING_MODELS: [&str; 14] = [
+const QWEN_THINKING_MODELS: [&str; 18] = [
+    "glm-5.3",
+    "deepseek-v4.1-flash",
+    "deepseek-v4.1-flash-1017",
     "deepseek-v3.2",
     "deepseek-v4-flash",
     "deepseek-v4-pro",
@@ -460,6 +471,7 @@ const QWEN_THINKING_MODELS: [&str; 14] = [
     "qwen3.7-max",
     "qwen3.7-plus",
     "qwen3.8-max",
+    "qwen4-max",
 ];
 
 const QWEN_REASONING_EFFORT_MODELS: [&str; 5] = [
@@ -994,6 +1006,272 @@ fn gpt_6_1_sol_is_offered_through_every_gateway_that_lists_it() {
             !levels.contains(&ModelThinkingLevel::Off)
                 && !levels.contains(&ModelThinkingLevel::Minimal),
             "GPT-6.1 Sol rejects the none and minimal efforts, but {provider} {model_id} offers {levels:?}"
+        );
+    }
+}
+
+#[test]
+fn gpt_6_2_astra_and_sol_are_offered_through_the_api_codex_and_the_gateways_that_list_them() {
+    // (provider, model id, context window, input, output, cache read) at 272K
+    // input tokens or fewer. Astra is 20 percent cheaper than GPT-6 Astra; Sol
+    // keeps the GPT-6.1 Sol prices.
+    for (provider, model_id, context_window, input, output, cache_read) in [
+        ("openai", "gpt-6.2-astra", 1_050_000, 8.0, 40.0, 0.4),
+        ("openai", "gpt-6.2-sol", 1_050_000, 2.0, 10.0, 0.1),
+        ("openai-codex", "gpt-6.2-astra", 872_000, 8.0, 40.0, 0.4),
+        ("openai-codex", "gpt-6.2-sol", 872_000, 2.0, 10.0, 0.1),
+        (
+            "openrouter",
+            "openai/gpt-6.2-astra",
+            1_050_000,
+            8.0,
+            40.0,
+            0.4,
+        ),
+        (
+            "openrouter",
+            "openai/gpt-6.2-astra-pro",
+            1_050_000,
+            8.0,
+            40.0,
+            0.4,
+        ),
+        (
+            "openrouter",
+            "openai/gpt-6.2-astra:batch",
+            1_050_000,
+            4.0,
+            20.0,
+            0.2,
+        ),
+        (
+            "openrouter",
+            "openai/gpt-6.2-sol",
+            1_050_000,
+            2.0,
+            10.0,
+            0.1,
+        ),
+        (
+            "openrouter",
+            "openai/gpt-6.2-sol-pro:batch",
+            1_050_000,
+            1.0,
+            5.0,
+            0.05,
+        ),
+        (
+            "vercel-ai-gateway",
+            "openai/gpt-6.2-astra",
+            1_050_000,
+            8.0,
+            40.0,
+            0.4,
+        ),
+        (
+            "vercel-ai-gateway",
+            "openai/gpt-6.2-astra-fast",
+            1_050_000,
+            16.0,
+            80.0,
+            0.8,
+        ),
+        (
+            "vercel-ai-gateway",
+            "openai/gpt-6.2-sol-fast",
+            1_050_000,
+            4.0,
+            20.0,
+            0.2,
+        ),
+        (
+            "cloudflare-ai-gateway",
+            "gpt-6.2-astra",
+            1_050_000,
+            8.0,
+            40.0,
+            0.4,
+        ),
+        (
+            "cloudflare-ai-gateway",
+            "gpt-6.2-sol",
+            1_050_000,
+            2.0,
+            10.0,
+            0.1,
+        ),
+        ("opencode", "gpt-6.2-astra", 1_050_000, 8.0, 40.0, 0.4),
+        ("opencode", "gpt-6.2-sol", 1_050_000, 2.0, 10.0, 0.1),
+    ] {
+        let model = get_builtin_model(provider, model_id)
+            .unwrap_or_else(|| panic!("{provider} lists {model_id}"));
+        assert_eq!(
+            model.context_window, context_window,
+            "{provider} {model_id}"
+        );
+        assert_eq!(model.max_tokens, 128_000, "{provider} {model_id}");
+        assert_eq!(
+            (model.cost.input, model.cost.output, model.cost.cache_read),
+            (input, output, cache_read),
+            "{provider} {model_id}"
+        );
+        let tier = model
+            .cost
+            .tiers
+            .as_ref()
+            .and_then(|tiers| tiers.first())
+            .unwrap_or_else(|| panic!("{provider} {model_id} has a long-context tier"));
+        assert_eq!(tier.input_tokens_above, 272_000, "{provider} {model_id}");
+        assert_eq!(
+            (tier.input, tier.output),
+            (input * 2.0, output * 1.5),
+            "above 272K input doubles and output costs 1.5 times, but {provider} {model_id} differs"
+        );
+        let levels = get_supported_thinking_levels(&model);
+        assert!(
+            !levels.contains(&ModelThinkingLevel::Off)
+                && !levels.contains(&ModelThinkingLevel::Minimal),
+            "GPT-6.2 rejects the none effort, but {provider} {model_id} offers {levels:?}"
+        );
+    }
+}
+
+#[test]
+fn qwen4_max_is_on_every_token_plan_edition() {
+    for provider in [
+        "qwen-token-plan",
+        "qwen-token-plan-individual",
+        "qwen-token-plan-cn",
+    ] {
+        let model = get_builtin_model(provider, "qwen4-max")
+            .unwrap_or_else(|| panic!("{provider} lists Qwen4 Max"));
+        assert_eq!(model.context_window, 1_000_000, "{provider}");
+        assert_eq!(model.max_tokens, 131_072, "{provider}");
+        assert!(
+            model.input.contains(&Modality::Image),
+            "{provider} takes images"
+        );
+        // The model accepts only low, high and xhigh; medium and max would be
+        // remapped silently, so they are not offered.
+        let levels = get_supported_thinking_levels(&model);
+        assert!(
+            levels.contains(&ModelThinkingLevel::Xhigh)
+                && !levels.contains(&ModelThinkingLevel::Medium)
+                && !levels.contains(&ModelThinkingLevel::Max),
+            "{provider} offers {levels:?}"
+        );
+    }
+}
+
+#[test]
+fn glm_5_3_and_deepseek_v4_1_flash_take_only_their_documented_efforts_on_the_token_plans() {
+    for provider in [
+        "qwen-token-plan",
+        "qwen-token-plan-individual",
+        "qwen-token-plan-cn",
+    ] {
+        let glm = get_builtin_model(provider, "glm-5.3")
+            .unwrap_or_else(|| panic!("{provider} lists GLM-5.3"));
+        assert_eq!(
+            (glm.context_window, glm.max_tokens),
+            (1_048_576, 131_072),
+            "{provider}"
+        );
+        // GLM-5.3 cannot think less than low, so off is not offered.
+        assert_eq!(
+            get_supported_thinking_levels(&glm),
+            vec![
+                ModelThinkingLevel::Low,
+                ModelThinkingLevel::High,
+                ModelThinkingLevel::Max,
+            ],
+            "{provider} GLM-5.3"
+        );
+        for model_id in ["deepseek-v4.1-flash", "deepseek-v4.1-flash-1017"] {
+            let flash = get_builtin_model(provider, model_id)
+                .unwrap_or_else(|| panic!("{provider} lists {model_id}"));
+            assert!(
+                flash.input.contains(&Modality::Image),
+                "{provider} {model_id} takes images"
+            );
+            assert_eq!(
+                get_supported_thinking_levels(&flash),
+                vec![
+                    ModelThinkingLevel::Off,
+                    ModelThinkingLevel::Low,
+                    ModelThinkingLevel::High,
+                    ModelThinkingLevel::Max,
+                ],
+                "{provider} {model_id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn qwen4_max_and_minimax_m3_1_flash_are_offered_through_the_gateways_that_list_them() {
+    // (provider, model id, context window, max tokens, input, output)
+    for (provider, model_id, context_window, max_tokens, input, output) in [
+        (
+            "openrouter",
+            "qwen/qwen4-max",
+            1_000_000,
+            131_072,
+            1.425,
+            4.275,
+        ),
+        (
+            "vercel-ai-gateway",
+            "alibaba/qwen4-max",
+            1_000_000,
+            384_000,
+            1.5,
+            4.5,
+        ),
+        (
+            "openrouter",
+            "minimax/minimax-m3.1-flash",
+            1_048_576,
+            524_288,
+            0.15,
+            0.6,
+        ),
+        (
+            "vercel-ai-gateway",
+            "minimax/minimax-m3.1-flash",
+            1_000_000,
+            524_288,
+            0.15,
+            0.6,
+        ),
+    ] {
+        let model = get_builtin_model(provider, model_id)
+            .unwrap_or_else(|| panic!("{provider} lists {model_id}"));
+        assert_eq!(
+            (model.context_window, model.max_tokens),
+            (context_window, max_tokens),
+            "{provider} {model_id}"
+        );
+        assert_eq!(
+            (model.cost.input, model.cost.output),
+            (input, output),
+            "{provider} {model_id}"
+        );
+    }
+}
+
+#[test]
+fn minimax_offers_only_the_m3_family_on_both_platforms() {
+    for provider in ["minimax", "minimax-cn"] {
+        let mut ids: Vec<_> = get_builtin_models(provider)
+            .into_iter()
+            .map(|model| model.id)
+            .collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            ["MiniMax-M3", "MiniMax-M3.1-Flash"],
+            "{provider} lists the current MiniMax models and nothing retired"
         );
     }
 }

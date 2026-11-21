@@ -125,7 +125,7 @@ overflow_block!(
     overflow_minimax,
     "MINIMAX_API_KEY",
     "minimax",
-    "MiniMax-M2.7",
+    "MiniMax-M3",
     None
 );
 overflow_block!(

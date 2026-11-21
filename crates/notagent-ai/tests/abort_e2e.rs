@@ -178,7 +178,7 @@ async fn baseten_provider_abort() {
 #[tokio::test(flavor = "multi_thread")]
 async fn minimax_provider_abort() {
     skip_unless!(env("MINIMAX_API_KEY").is_some(), "MINIMAX_API_KEY");
-    abort_pair(&model("minimax", "MiniMax-M2.7"), &simple_options(None)).await;
+    abort_pair(&model("minimax", "MiniMax-M3"), &simple_options(None)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
