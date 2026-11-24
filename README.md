@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.79 supports Apple Silicon Macs:
+Version 0.1.80 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -39,6 +39,10 @@ cargo build --release
 
 The binary is `target/release/notagent`. Run the complete project gate with
 `scripts/check.sh`.
+
+The workspace also builds for Windows (`cargo build --release` gives
+`target\release\notagent.exe`). The terminal UI uses the Windows console
+API there; Windows builds are not yet part of the release.
 
 ## Why notagent?
 
@@ -108,6 +112,27 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.80
+
+- GPT-6.2 Astra and Sol are available through the OpenAI API, a ChatGPT
+  plan (Codex), OpenRouter, Vercel AI Gateway, Cloudflare AI Gateway and
+  OpenCode. Both have a 1M context window and 128K output tokens. Astra
+  costs $8 input and $40 output per million tokens, 20 percent less than
+  GPT-6 Astra; Sol keeps the GPT-6.1 Sol price of $2 and $10.
+- GLM-5.4 is available on the z.ai GLM Coding Plan, global and China. It
+  reads images, has a 1M context window and 128K output tokens.
+- Qwen4 Max is available on every Qwen Token Plan edition, OpenRouter and
+  Vercel AI Gateway. The Token Plans also gain GLM-5.3 and DeepSeek V4.1
+  Flash, including its 1017 snapshot.
+- MiniMax M3.1 Flash is available on the China platform and through
+  OpenRouter and Vercel AI Gateway. MiniMax M2.7 is gone from both MiniMax
+  platforms, which retired it.
+- The startup notice about package updates (`notagent update --extensions`)
+  is gone.
+- notagent builds for Windows: the remote session sockets are Unix-only, and
+  the terminal sets the console modes, reads the window size and follows
+  resizes.
 
 ### 0.1.79
 
