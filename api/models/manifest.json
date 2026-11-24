@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-11-21T02:17:48.813Z",
-  "structureHash": "1df5a64a2d66f723bcf3dbb5801a1d73d63f95c9c4483f23a7351305ae2195b7",
+  "generatedAt": "2026-11-24T08:09:20.954Z",
+  "structureHash": "ca1e472b28d83c32a75a6ff4a7f34b364d2f7a45b9b4b8f3dc7e5394014a318c",
   "files": {
     "amazon-bedrock.json": "2ba3cc7ed103b218fba4dcc73fdd5f94a609ed7129eb47f7b665aa9e6c370616",
     "ant-ling.json": "4979fe79d99ed97382d7ce40170c6132e932e77906de1eb54464c042e7d63633",
@@ -41,7 +41,7 @@
     "xiaomi-token-plan-cn.json": "684892b5fe6fa371d6040d2011c0fa33facd650d2eaf19f5dbee8efb33016200",
     "xiaomi-token-plan-sgp.json": "b19e79b82ac4fdcb080e6d220106797504c885ed70b27fc2b3c1aa4810f32963",
     "xiaomi.json": "810368d3828c8bb9498012a0d48639030c0c216b8c13e79da02daa515aa23448",
-    "zai-coding-cn.json": "5e8957da33155048ebe0857a54dff0750b5e9e8b8e1d36c92ebead2685a032b8",
-    "zai.json": "39d4d417b0c2d2a1c929ee1c3096d3512446bd35622664bfd96d99669a397e70"
+    "zai-coding-cn.json": "cf34753cb21e982ba7328f32438681c6c2032cbd1aa35fdee98e9a2eef33a52e",
+    "zai.json": "ed1d3103f5d5e0da47a0effab14dcf57b10c7e02ebd0305659eefe6645c1750c"
   }
 }

@@ -1143,3 +1143,37 @@ fn glm_5_3_is_available_on_zai_and_absent_from_cline_pass() {
         "ClinePass does not carry GLM-5.3"
     );
 }
+
+#[test]
+fn glm_5_4_is_on_both_coding_plans_and_not_yet_on_cline_pass() {
+    let models = builtin_models(None);
+
+    for provider in ["zai", "zai-coding-cn"] {
+        let model = models
+            .get_model(provider, "glm-5.4")
+            .unwrap_or_else(|| panic!("{provider} lists GLM-5.4"));
+
+        assert_eq!(model.name, "GLM-5.4");
+        assert!(model.reasoning);
+        assert_eq!(
+            (model.context_window, model.max_tokens),
+            (1_000_000, 131_072),
+            "{provider}"
+        );
+        assert!(
+            model.input.contains(&Modality::Image),
+            "GLM-5.4 reads images, unlike GLM-5.3, but {provider} lists {:?}",
+            model.input
+        );
+        // The plan maps a disabled thinking request to its lowest effort, so
+        // the same zai thinking toggle as GLM-5.3 applies.
+        assert!(model.thinking_level_map.is_none(), "{provider}");
+    }
+
+    assert!(
+        models
+            .get_model("cline-pass", "cline-pass/glm-5.4")
+            .is_none(),
+        "ClinePass does not list GLM-5.4 yet"
+    );
+}

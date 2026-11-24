@@ -115,6 +115,34 @@
 			"contextWindow": 1000000,
 			"maxTokens": 131072
 		},
+		"glm-5.4": {
+			"id": "glm-5.4",
+			"name": "GLM-5.4",
+			"api": "openai-completions",
+			"provider": "zai-coding-cn",
+			"baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
+			"reasoning": true,
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"compat": {
+				"supportsStore": false,
+				"supportsDeveloperRole": false,
+				"supportsReasoningEffort": false,
+				"maxTokensField": "max_tokens",
+				"thinkingFormat": "zai",
+				"zaiToolStream": true
+			},
+			"contextWindow": 1000000,
+			"maxTokens": 131072
+		},
 		"glm-5.3": {
 			"id": "glm-5.3",
 			"name": "GLM-5.3",
