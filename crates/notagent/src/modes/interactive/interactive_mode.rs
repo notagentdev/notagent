@@ -67,7 +67,6 @@ use crate::core::model_resolver::{
     resolve_model_scope_from_models,
 };
 use crate::core::modes::indicator::format_mode_switch_notice;
-use crate::core::package_manager::{DefaultPackageManager, PackageManagerOptions};
 use crate::core::permissions::coordinator::ApprovalPresenter;
 use crate::core::permissions::request::{ApprovalAnswer, ApprovalRequest};
 use crate::core::session_cwd::{MissingSessionCwdError, format_missing_session_cwd_prompt};
@@ -775,9 +774,6 @@ enum UiMessage {
     ThemeChanged,
     VersionChecked {
         release: Option<Box<LatestPiRelease>>,
-    },
-    PackageUpdatesChecked {
-        packages: Vec<String>,
     },
     /// A hook diagnostic.
     Report {
@@ -1908,29 +1904,13 @@ impl InteractiveMode {
             self.show_warning(&message);
         }
 
-        // `void checkForNewPiVersion(...)`, `void checkForPackageUpdates(...)`,
-        // `void checkTmuxKeyboardSetup(...)` — the loop drives all three.
+        // Installed packages are not checked for updates at startup: the
+        // notice pointed at `update --extensions` on every launch while an
+        // update was pending, which read as noise rather than news.
         self.side_futures.push(Box::pin(async move {
             UiMessage::VersionChecked {
                 release: check_for_new_pi_version(VERSION).await.map(Box::new),
             }
-        }));
-        let package_cwd = self.cwd();
-        let package_settings = Arc::clone(&self.settings());
-        self.side_futures.push(Box::pin(async move {
-            let packages = DefaultPackageManager::new(PackageManagerOptions {
-                cwd: package_cwd,
-                agent_dir: get_agent_dir().to_string_lossy().into_owned(),
-                settings_manager: package_settings,
-                command_runner: None,
-            })
-            .check_for_available_updates()
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|update| update.display_name)
-            .collect();
-            UiMessage::PackageUpdatesChecked { packages }
         }));
         // A dynamic provider's catalog entry is only as fresh as its last
         // network refresh, and startup restores from cache. Without this, a
@@ -2650,11 +2630,6 @@ impl InteractiveMode {
                     self.show_new_version_notification(*release);
                 }
             }
-            UiMessage::PackageUpdatesChecked { packages } => {
-                if !packages.is_empty() {
-                    self.show_package_update_notification(packages);
-                }
-            }
             UiMessage::Report { message, level } => match level {
                 HookReportLevel::Error => self.show_error(&message),
                 _ => self.show_warning(&message),
@@ -2888,43 +2863,6 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    fn show_package_update_notification(&mut self, packages: Vec<String>) {
-        let action = theme().fg(
-            ThemeColor::Accent,
-            &format!("{APP_NAME} update --extensions"),
-        );
-        let update_instruction = format!(
-            "{}{action}",
-            theme().fg(ThemeColor::Muted, "Package updates are available. Run ")
-        );
-        let package_lines = packages
-            .iter()
-            .map(|package| format!("- {package}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let border = || {
-            component_ref(DynamicBorder::new(Some(Rc::new(|text: &str| {
-                theme().fg(ThemeColor::Warning, text)
-            }))))
-        };
-        let mut chat = self.chat_container.borrow_mut();
-        chat.add_child(component_ref(Spacer::new(1)));
-        chat.add_child(border());
-        chat.add_child(component_ref(Text::new(
-            format!(
-                "{}\n{update_instruction}\n{}\n{package_lines}",
-                theme().bold(&theme().fg(ThemeColor::Warning, "Package Updates Available")),
-                theme().fg(ThemeColor::Muted, "Packages:")
-            ),
-            1,
-            0,
-        )));
-        chat.add_child(border());
-        drop(chat);
-        self.ui.request_render();
-    }
-
-    /// `maybeShowCacheMissNotice(message)` and `addCacheMissNotice(miss)`
     fn maybe_show_cache_miss_notice(&mut self, message: &AssistantMessage) {
         if !self.settings().get_show_cache_miss_notices() {
             return;
