@@ -11,7 +11,7 @@ Scripted model responses; real TUI, file edits and tests.
 
 ## Installation
 
-Version 0.1.80 supports Apple Silicon Macs:
+Version 0.1.81 supports Apple Silicon Macs:
 
 ```sh
 brew install --cask notagentdev/tap/notagent
@@ -112,6 +112,14 @@ never blocks a file.
   runtime, no node_modules.
 
 ## Update notes
+
+### 0.1.81
+
+- A project's `.notagent/extensions` directory no longer asks for trust,
+  and notagent no longer looks for resources in it. Extensions were removed
+  in an earlier version.
+- About 2,200 lines of unused code and stale comments are gone. Nothing
+  else changes in behaviour.
 
 ### 0.1.80
 
