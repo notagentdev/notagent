@@ -7,7 +7,6 @@ use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_p
 use crate::providers::cloudflare_auth::CloudflareWorkersAiAuth;
 use crate::providers::cloudflare_stream::cloudflare_streams;
 
-/// `cloudflareWorkersAIProvider()`
 pub fn cloudflare_workers_ai_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "cloudflare-workers-ai".to_string(),

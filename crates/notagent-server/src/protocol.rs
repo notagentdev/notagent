@@ -7,7 +7,7 @@ use notagent_protocol::{
     AbortedAssistantTranscriptItem, AbortedTag, AssistantStopReason, AssistantTag,
     AssistantTranscriptItem, CompleteAssistantTranscriptItem, CompleteTag,
     CompleteToolTranscriptItem, ErrorAssistantTranscriptItem, ErrorTag, ErrorToolTranscriptItem,
-    FalseTag, ImageContent, ImageTag, JsonValue, ModelCost, ModelInput, ModelMetadata, RunningTag,
+    FalseTag, ImageContent, ImageTag, JsonValue, ModelCost, ModelInput, ModelMetadata,
     StreamingAssistantTranscriptItem, StreamingTag, TextContent, TextTag, ThinkingContent,
     ThinkingLevel, ThinkingTag, ToolCallContent, ToolCallTag, ToolContent, ToolTag,
     ToolTranscriptItem, TrueTag, Usage, UsageCost, UserContent as ProtocolUserContent, UserTag,
@@ -327,29 +327,6 @@ pub fn to_protocol_tool_result_message(
         status: CompleteTag,
         is_error: FalseTag,
     }))
-}
-
-/// `RunningToolTranscriptItem` for a tool call that has not produced a result yet.
-pub fn to_protocol_running_tool_call(
-    call: &ToolCall,
-    id: &str,
-    timestamp_ms: i64,
-) -> Result<ToolTranscriptItem, ServerError> {
-    Ok(ToolTranscriptItem::Running(
-        notagent_protocol::RunningToolTranscriptItem {
-            id: identifier(id, "Transcript item id")?,
-            role: ToolTag,
-            tool_call_id: identifier(&call.id, "Tool call id")?,
-            tool_name: identifier(&call.name, "Tool call name")?,
-            input: to_protocol_json_value(&JsonValue::Object(call.arguments.clone()))?,
-            content: Vec::new(),
-            details: None,
-            usage: None,
-            timestamp: timestamp(timestamp_ms)?,
-            status: RunningTag,
-            is_error: FalseTag,
-        },
-    ))
 }
 
 pub fn to_protocol_model_metadata(

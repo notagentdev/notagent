@@ -175,7 +175,6 @@ fn js_length(text: &str) -> usize {
     text.chars().map(char::len_utf16).sum()
 }
 
-/// `s.replace(/[\n\t]/g, " ").trim()`
 fn normalize(text: &str) -> String {
     text.replace(['\n', '\t'], " ").trim().to_string()
 }
@@ -1689,7 +1688,6 @@ fn format_tool_call(name: &str, arguments: &Map<String, Value>) -> String {
     }
 }
 
-/// `shortenPath(String(args.path || "."))`
 fn argument_or_dot(arguments: &Map<String, Value>) -> String {
     let path = js_string(arguments.get("path"));
     shorten_path(if path.is_empty() { "." } else { &path })

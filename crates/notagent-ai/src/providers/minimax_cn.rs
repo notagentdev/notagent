@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `minimax_cnProvider()`
 pub fn minimax_cn_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "minimax-cn".to_string(),

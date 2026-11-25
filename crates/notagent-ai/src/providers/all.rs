@@ -74,12 +74,10 @@ pub fn builtin_models(options: Option<CreateModelsOptions>) -> Arc<Models> {
     models
 }
 
-/// `builtinImagesProviders()`
 pub fn builtin_images_providers() -> Vec<Arc<dyn ImagesProvider>> {
     crate::images_models::builtin_images_providers()
 }
 
-/// `builtinImagesModels(options?)`
 pub fn builtin_images_models(options: Option<CreateModelsOptions>) -> Arc<ImagesModels> {
     crate::images_models::builtin_images_models(options)
 }

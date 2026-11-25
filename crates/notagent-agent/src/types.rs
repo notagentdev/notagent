@@ -69,7 +69,6 @@ pub struct AfterToolCallResult {
     pub terminate: Option<bool>,
 }
 
-/// `BeforeToolCallContext`
 #[derive(Debug, Clone)]
 pub struct BeforeToolCallContext {
     pub assistant_message: AssistantMessage,
@@ -78,7 +77,6 @@ pub struct BeforeToolCallContext {
     pub context: AgentContext,
 }
 
-/// `AfterToolCallContext`
 #[derive(Debug, Clone)]
 pub struct AfterToolCallContext {
     pub assistant_message: AssistantMessage,
@@ -89,7 +87,6 @@ pub struct AfterToolCallContext {
     pub context: AgentContext,
 }
 
-/// `ShouldStopAfterTurnContext`
 #[derive(Debug, Clone)]
 pub struct ShouldStopAfterTurnContext {
     pub message: AssistantMessage,

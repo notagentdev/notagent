@@ -14,7 +14,6 @@ use crate::utils::provider_retry::{
 };
 use crate::utils::sanitize_unicode::sanitize_surrogates;
 
-/// `buildParams(model, context)`
 pub fn build_request_body(model: &ImagesModel, context: &ImagesContext) -> Value {
     let content: Vec<Value> = context
         .input
@@ -91,7 +90,6 @@ pub fn build_request_headers(
     headers
 }
 
-/// `parseUsage(rawUsage, model)`
 pub fn parse_usage(raw_usage: &Value, model: &ImagesModel) -> Usage {
     let prompt_tokens = raw_usage
         .get("prompt_tokens")
@@ -165,7 +163,6 @@ impl ProviderErrorInfo for ImagesRequestError {
     }
 }
 
-/// `generateImages(model, context, options)`
 pub async fn generate_images(
     model: &ImagesModel,
     context: &ImagesContext,

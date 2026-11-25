@@ -65,16 +65,6 @@ impl Session {
         }
     }
 
-    pub fn with_id_generator(
-        storage: Arc<SqliteSessionStorage>,
-        id_generator: Box<dyn IdGenerator>,
-    ) -> Self {
-        Self {
-            storage,
-            id_generator,
-        }
-    }
-
     pub fn storage(&self) -> &Arc<SqliteSessionStorage> {
         &self.storage
     }
@@ -120,16 +110,6 @@ impl Session {
         self.append_message_to_lane(lane, message).await
     }
 
-    pub async fn append_custom_entry_in_lane(
-        &self,
-        lane: &str,
-        custom_type: &str,
-        data: Option<Value>,
-    ) -> Result<String, SessionError> {
-        self.append_custom_entry_to_lane(lane, custom_type, data)
-            .await
-    }
-
     pub fn get_entry(&self, id: &str) -> Result<Option<Entry>, SessionError> {
         self.storage.get_entry(id)
     }
@@ -172,17 +152,6 @@ impl Session {
         bounds: &BranchBounds,
     ) -> Result<Vec<Entry>, SessionError> {
         self.query_branch_entries("main", query, bounds, query.limit)
-    }
-
-    pub fn find_entry_on_branch(
-        &self,
-        query: &EntryQuery,
-        bounds: &BranchBounds,
-    ) -> Result<Option<Entry>, SessionError> {
-        Ok(self
-            .query_branch_entries("main", query, bounds, Some(1))?
-            .into_iter()
-            .next())
     }
 
     pub async fn append_message(&self, message: AgentMessage) -> Result<String, SessionError> {

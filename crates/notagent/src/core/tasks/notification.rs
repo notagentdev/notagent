@@ -216,10 +216,9 @@ pub struct TaskNotifier {
     host: Arc<dyn TaskNotificationHost>,
     delivered: Mutex<HashSet<String>>,
     in_flight: Mutex<HashSet<String>>,
-    /// Deviation (class 1): the JS promise chain that serialises delivery
-    /// becomes a fair async mutex — two tasks finishing at once would otherwise
-    /// both read the streaming state before either had delivered, and both
-    /// would start a turn.
+    /// Serialises delivery: two tasks finishing at once would otherwise both
+    /// read the streaming state before either had delivered, and both would
+    /// start a turn.
     queue: tokio::sync::Mutex<()>,
 }
 
@@ -231,14 +230,6 @@ impl TaskNotifier {
             in_flight: Mutex::new(HashSet::new()),
             queue: tokio::sync::Mutex::new(()),
         }
-    }
-
-    /// Records an announcement that reached the conversation by another route.
-    pub fn mark_delivered(&self, task_id: &str, status: &str) {
-        self.delivered
-            .lock()
-            .expect("poisoned")
-            .insert(notification_key(task_id, status));
     }
 
     /// Announces a settled task.

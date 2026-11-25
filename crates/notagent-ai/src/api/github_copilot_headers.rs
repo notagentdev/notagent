@@ -10,7 +10,6 @@ pub fn infer_copilot_initiator(messages: &[Message]) -> &'static str {
     }
 }
 
-/// `hasCopilotVisionInput(messages)`
 pub fn has_copilot_vision_input(messages: &[Message]) -> bool {
     messages.iter().any(|message| match message {
         Message::User(message) => match &message.content {
@@ -27,7 +26,6 @@ pub fn has_copilot_vision_input(messages: &[Message]) -> bool {
     })
 }
 
-/// `buildCopilotDynamicHeaders({ messages, hasImages })`
 pub fn build_copilot_dynamic_headers(
     messages: &[Message],
     has_images: bool,

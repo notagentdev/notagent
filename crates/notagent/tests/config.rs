@@ -122,7 +122,6 @@ fn command(
     }
 }
 
-/// `createNpmPrefixInstall`
 fn npm_prefix_install(prefix: &str) -> (TempDir, PathBuf, PathBuf) {
     let directory = TempDir::new(prefix);
     let package_dir = directory.create_dir("lib/node_modules/@notagentdev/notagent-coding-agent");

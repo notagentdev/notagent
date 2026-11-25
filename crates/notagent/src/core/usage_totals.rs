@@ -3,7 +3,6 @@ use serde_json::Value;
 
 use crate::core::session_manager::SessionEntry;
 
-/// `UsageTotals`
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct UsageTotals {
     pub input: u64,
@@ -13,12 +12,10 @@ pub struct UsageTotals {
     pub cost: f64,
 }
 
-/// `createUsageTotals()`
 pub fn create_usage_totals() -> UsageTotals {
     UsageTotals::default()
 }
 
-/// `addUsageToTotals(totals, usage)`
 pub fn add_usage_to_totals(totals: &mut UsageTotals, usage: &Usage) {
     totals.input += usage.input;
     totals.output += usage.output;
@@ -27,7 +24,6 @@ pub fn add_usage_to_totals(totals: &mut UsageTotals, usage: &Usage) {
     totals.cost += usage.cost.total;
 }
 
-/// `UsageCostBreakdownEntry`
 #[derive(Debug, Clone, PartialEq)]
 pub struct UsageCostBreakdownEntry {
     pub key: String,
@@ -35,12 +31,10 @@ pub struct UsageCostBreakdownEntry {
     pub tokens: u64,
 }
 
-/// `getUsageCostBreakdown(entries)` — group attributable assistant usage by
-/// model and all other usage into a separate bucket.
-/// Deviation (class 1): the insertion order of a JavaScript `Map` is kept by an
-/// explicit key list, because Rust's `HashMap` has none and the sort below is
-/// not total — entries with equal cost keep the order in which they first
-/// appeared, exactly as `Array.prototype.sort` does for a `Map` iteration.
+/// Group attributable assistant usage by model and all other usage into a
+/// separate bucket. An explicit key list keeps the insertion order, because
+/// the sort below is stable: entries with equal cost keep the order in which
+/// they first appeared.
 pub fn get_usage_cost_breakdown(entries: &[SessionEntry]) -> Vec<UsageCostBreakdownEntry> {
     let mut order: Vec<String> = Vec::new();
     let mut totals_by_key: std::collections::HashMap<String, UsageTotals> =
@@ -111,7 +105,7 @@ pub fn get_usage_cost_breakdown(entries: &[SessionEntry]) -> Vec<UsageCostBreakd
     breakdown
 }
 
-/// An absent or malformed `usage` object drops the entry, the same way the
+/// An absent or malformed `usage` object drops the entry.
 fn parse_usage(value: Option<&Value>) -> Option<Usage> {
     serde_json::from_value::<Usage>(value?.clone()).ok()
 }

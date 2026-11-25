@@ -140,10 +140,6 @@ impl AgentSessionRuntime {
         *self.rebind_session.lock().expect("poisoned") = rebind;
     }
 
-    pub fn set_before_session_invalidate(&self, before: Option<BeforeSessionInvalidate>) {
-        *self.before_session_invalidate.lock().expect("poisoned") = before;
-    }
-
     /// Settles the current session and takes it out of service.
     async fn teardown_current(&self, reason: ReplacementReason) {
         let session = self.session();
@@ -444,7 +440,7 @@ impl AgentSessionRuntime {
         session
             .shutdown_hooks(ReplacementReason::Quit.as_str())
             .await;
-        // Every MCP server this session started is a process it owns; the
+        // Every MCP server this session started is a process it owns.
         session.shutdown_mcp_servers().await;
         if let Some(before) = self
             .before_session_invalidate

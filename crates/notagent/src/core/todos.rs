@@ -62,8 +62,7 @@ pub fn is_todo_active(todo: &Todo) -> bool {
 /// Rejects rather than repairs: a task with an empty description is a bug in
 /// the call, and silently dropping it would leave the model believing it
 /// tracked something it did not.
-/// Deviation (class 1): the ceiling counts characters where JS counts UTF-16
-/// code units; the two differ only for astral characters.
+/// The length ceiling counts characters.
 pub fn validate_todo_items(items: &[Todo]) -> Result<(), String> {
     for item in items {
         if item.content.trim().is_empty() {

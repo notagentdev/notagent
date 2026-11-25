@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{CONFIG_DIR_NAME, get_agent_dir};
+use crate::config::get_agent_dir;
 
 /// The file both configuration locations use.
 pub const MCP_CONFIG_FILE: &str = ".mcp.json";
@@ -640,11 +640,6 @@ pub fn save_mcp_trust_store(store: &McpTrustStore) -> std::io::Result<()> {
     }
     let serialized = serde_json::to_vec_pretty(store)?;
     std::fs::write(path, serialized)
-}
-
-/// The workspace-local directory name, for callers building a config path.
-pub fn workspace_config_dir(cwd: &Path) -> PathBuf {
-    cwd.join(CONFIG_DIR_NAME)
 }
 
 #[cfg(test)]

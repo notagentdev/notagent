@@ -402,7 +402,7 @@ impl DefaultResourceLoader {
 
         let normalized_path = resolve_path_default(file_path, &current_dir())
             .unwrap_or_else(|_| file_path.to_string());
-        let roots = ["skills", "prompts", "themes", "extensions"];
+        let roots = ["skills", "prompts", "themes"];
         for root in roots {
             let candidate = Path::new(&self.agent_dir).join(root);
             let candidate = candidate.to_string_lossy();

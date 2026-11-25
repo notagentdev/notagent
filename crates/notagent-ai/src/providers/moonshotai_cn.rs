@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `moonshotai_cnProvider()`
 pub fn moonshotai_cn_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "moonshotai-cn".to_string(),

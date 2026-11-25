@@ -34,7 +34,6 @@ pub fn filter_models(models: Vec<Model>, credential: Option<&Credential>) -> Vec
         .collect()
 }
 
-/// `githubCopilotProvider()`
 pub fn github_copilot_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "github-copilot".to_string(),

@@ -412,7 +412,6 @@ pub(crate) fn node_relative(from: &str, to: &str) -> String {
     parts.join(&main_separator().to_string())
 }
 
-/// `url.fileURLToPath(url)`.
 fn file_url_to_path(url: &str) -> Result<String, PathError> {
     let Some(rest) = url.strip_prefix("file://") else {
         return Err(PathError::InvalidUrl);

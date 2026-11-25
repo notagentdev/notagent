@@ -24,7 +24,7 @@ fn keeps_cli_highlight_default_styled_scopes_mapped_to_theme_styles() {
     setup();
     // (`\x1b[38;2;206;145;120m/foo+/gi\x1b[39m`): highlight.js gives `/foo+/gi`
     // the single scope `regexp`. tree-sitter splits it — the delimiters are
-    // `operator`, the body and the flags are `string` — so the body carries the
+    // `operator`, the body and the flags are `string`.
     let javascript = highlight_code("const re = /foo+/gi;", Some("javascript"));
     assert!(
         javascript[0].contains("\x1b[38;2;206;145;120mfoo+\x1b[39m"),

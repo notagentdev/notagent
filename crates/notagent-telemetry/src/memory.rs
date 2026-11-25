@@ -6,7 +6,6 @@ use crate::{
     TelemetryContext, TelemetrySpan,
 };
 
-/// `RecordedTelemetryEvent`
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordedTelemetryEvent {
     pub name: String,
@@ -61,7 +60,6 @@ fn copy_attributes(attributes: Option<&SpanAttributes>) -> SpanAttributes {
     attributes.cloned().unwrap_or_default()
 }
 
-/// `mergeAttributes`
 fn merge_attributes(current: &SpanAttributes, attributes: SpanAttributes) -> SpanAttributes {
     let mut merged = current.clone();
     for (name, value) in attributes {

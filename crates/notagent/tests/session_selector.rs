@@ -206,7 +206,6 @@ fn does_not_start_redundant_all_loads_when_toggling_scopes_while_all_is_already_
     selector.apply_load_result(all_request, Ok(vec![make_session("all")]));
 }
 
-/// `createSymlinkedSessionPaths()`
 struct SymlinkedSessionPaths {
     _base_dir: tempfile::TempDir,
     parent_alias_a: String,

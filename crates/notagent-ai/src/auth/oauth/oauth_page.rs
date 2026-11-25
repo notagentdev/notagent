@@ -1,6 +1,5 @@
 const LOGO_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true"><g fill="currentColor"><path d="M96 66H77C69 66 65 70 65 78v100c0 8 4 12 12 12h19v-18H82V84h14V66Z"/><path d="M160 66h19c8 0 12 4 12 12v100c0 8-4 12-12 12h-19v-18h14V84h-14V66Z"/><path d="M99 94h17l29 45V94h14v68h-15l-31-47v47H99V94Z"/></g></svg>"##;
 
-/// `escapeHtml(value)`
 fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -10,7 +9,6 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-/// `renderPage({ title, heading, message, details? })`
 fn render_page(title: &str, heading: &str, message: &str, details: Option<&str>) -> String {
     let title = escape_html(title);
     let heading = escape_html(heading);
@@ -103,7 +101,6 @@ fn render_page(title: &str, heading: &str, message: &str, details: Option<&str>)
     )
 }
 
-/// `oauthSuccessHtml(message)`
 pub fn oauth_success_html(message: &str) -> String {
     render_page(
         "Authentication successful",
@@ -113,7 +110,6 @@ pub fn oauth_success_html(message: &str) -> String {
     )
 }
 
-/// `oauthErrorHtml(message, details?)`
 pub fn oauth_error_html(message: &str, details: Option<&str>) -> String {
     render_page(
         "Authentication failed",

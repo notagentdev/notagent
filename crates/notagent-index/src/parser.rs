@@ -136,11 +136,6 @@ impl RustParser {
         self.parser.parse(source, None)
     }
 
-    /// Incrementally update an existing tree after edits
-    pub fn parse_with_old_tree(&mut self, source: &str, old_tree: &Tree) -> Option<Tree> {
-        self.parser.parse(source, Some(old_tree))
-    }
-
     /// Get the tree-sitter language
     pub fn language(&self) -> Language {
         tree_sitter_rust::LANGUAGE.into()

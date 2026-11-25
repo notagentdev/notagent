@@ -407,11 +407,6 @@ impl ExploreBlockComponent {
         self.open
     }
 
-    /// Toggles the expanded view; the mode calls this on the expand key.
-    pub fn toggle_expanded(&mut self) {
-        self.expanded = !self.expanded;
-    }
-
     pub fn set_expanded(&mut self, expanded: bool) {
         self.expanded = expanded;
     }

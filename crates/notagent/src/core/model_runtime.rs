@@ -45,7 +45,6 @@ struct ModelRuntimeSnapshot {
     auth: BTreeMap<String, AuthCheck>,
 }
 
-/// `CreateModelRuntimeOptions`
 #[derive(Default)]
 pub struct CreateModelRuntimeOptions {
     /// Credential storage. Defaults to the file at `auth_path`.
@@ -86,7 +85,6 @@ impl ModelRuntimeAuthOverrides {
     }
 }
 
-/// `CredentialSynchronizationOperation`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CredentialSynchronizationOperation {
     Login,
@@ -232,7 +230,6 @@ impl ModelRuntime {
         runtime
     }
 
-    /// `ModelRuntime.create(options)`
     pub async fn create(options: CreateModelRuntimeOptions) -> Result<Arc<Self>, String> {
         let store: Arc<dyn CredentialStore> = match options.credentials {
             Some(credentials) => credentials,
@@ -354,7 +351,6 @@ impl ModelRuntime {
         Arc::clone(&self.config.lock().expect("model config"))
     }
 
-    /// `configureRadiusProviders()`
     fn configure_radius_providers(&self) {
         let config = self.config();
         let mut builtins = self.builtins.lock().expect("builtins");
@@ -393,7 +389,6 @@ impl ModelRuntime {
         }
     }
 
-    /// `providerIds()`
     fn provider_ids(&self) -> Vec<String> {
         let mut ids: Vec<String> = Vec::new();
         let mut push = |id: &String| {
@@ -418,7 +413,6 @@ impl ModelRuntime {
         ids
     }
 
-    /// `recomposeProvider(providerId)`
     fn recompose_provider(&self, provider_id: &str) {
         let base = self
             .native_extension_providers
@@ -475,7 +469,6 @@ impl ModelRuntime {
         }
     }
 
-    /// `rebuildProviders()`
     fn rebuild_providers(&self) {
         self.models.clear_providers();
         self.composition_errors
@@ -488,7 +481,6 @@ impl ModelRuntime {
         self.update_model_snapshot();
     }
 
-    /// `updateModelSnapshot()`
     fn update_model_snapshot(&self) {
         let all = self.models.get_models(None);
         let mut snapshot = self.snapshot.lock().expect("snapshot");
@@ -552,7 +544,6 @@ impl ModelRuntime {
         Ok(())
     }
 
-    /// `queueAvailabilityRefresh(signal?)`
     async fn queue_availability_refresh(
         &self,
         signal: Option<CancellationToken>,
@@ -584,7 +575,6 @@ impl ModelRuntime {
         result
     }
 
-    /// `refreshProviderAvailability(providerId, signal)`
     async fn refresh_provider_availability(
         &self,
         provider_id: &str,
@@ -730,7 +720,6 @@ impl ModelRuntime {
         self.models.check_auth(provider_id, options).await
     }
 
-    /// `getAvailable(providerId?, options?)`
     pub async fn get_available(
         &self,
         provider_id: Option<&str>,
@@ -771,7 +760,6 @@ impl ModelRuntime {
         self.snapshot.lock().expect("snapshot").available.clone()
     }
 
-    /// `getError()`
     pub fn get_error(&self) -> Option<String> {
         let mut errors: Vec<String> = Vec::new();
         if let Some(config_error) = self.config().get_error() {
@@ -848,7 +836,6 @@ impl ModelRuntime {
             .contains(provider_id)
     }
 
-    /// `getAuth(providerId, overrides?)`
     pub async fn get_auth_for_provider(
         &self,
         provider_id: &str,
@@ -911,7 +898,6 @@ impl ModelRuntime {
         )
     }
 
-    /// `synchronizeCredentialState(providerId, operation, credential, signal)`
     async fn synchronize_credential_state(
         &self,
         provider_id: &str,
@@ -961,7 +947,6 @@ impl ModelRuntime {
             .map_err(|error| failure(error.message))
     }
 
-    /// `setRuntimeApiKey(providerId, apiKey, options?)`
     pub async fn set_runtime_api_key(
         &self,
         provider_id: &str,
@@ -989,7 +974,6 @@ impl ModelRuntime {
         .await
     }
 
-    /// `removeRuntimeApiKey(providerId, options?)`
     pub async fn remove_runtime_api_key(
         &self,
         provider_id: &str,
@@ -1021,7 +1005,6 @@ impl ModelRuntime {
             .map_err(|error| ModelsError::new(ModelsErrorCode::Auth, error.0))
     }
 
-    /// `getProviderAuthStatus(providerId)`
     pub fn get_provider_auth_status(&self, provider_id: &str) -> AuthStatus {
         if self.credentials.has_runtime_api_key(provider_id) {
             return AuthStatus::configured(AuthStatusSource::Runtime);
@@ -1056,7 +1039,6 @@ impl ModelRuntime {
         }
     }
 
-    /// `prepareRequest(model, options)`
     async fn prepare_request(
         &self,
         model: &Model,
@@ -1113,7 +1095,6 @@ impl ModelRuntime {
         })
     }
 
-    /// `stream(model, context, options?)`
     pub fn stream(
         self: &Arc<Self>,
         model: &Model,
@@ -1149,7 +1130,6 @@ impl ModelRuntime {
         self.stream(model, context, options).result().await
     }
 
-    /// `streamSimple(model, context, options?)`
     pub fn stream_simple(
         self: &Arc<Self>,
         model: &Model,
@@ -1185,7 +1165,6 @@ impl ModelRuntime {
         self.stream_simple(model, context, options).result().await
     }
 
-    /// `fetchDeferred(model, handle, options?)`
     pub async fn fetch_deferred(
         self: &Arc<Self>,
         model: &Model,
@@ -1215,7 +1194,6 @@ impl ModelRuntime {
         Ok(stream.result().await)
     }
 
-    /// `cancelDeferred(model, handle, options?)`
     pub async fn cancel_deferred(
         self: &Arc<Self>,
         model: &Model,
@@ -1244,7 +1222,6 @@ impl ModelRuntime {
         cancel.await
     }
 
-    /// `login(providerId, type, interaction)`
     pub async fn login(
         &self,
         provider_id: &str,
@@ -1271,7 +1248,6 @@ impl ModelRuntime {
         Ok(credential)
     }
 
-    /// `logout(providerId, options?)`
     pub async fn logout(
         &self,
         provider_id: &str,
@@ -1300,7 +1276,6 @@ impl ModelRuntime {
         .await
     }
 
-    /// `refresh(options?)`
     pub async fn refresh(&self, options: ModelsRefreshOptions) -> ModelsRefreshResult {
         *self.config.lock().expect("model config") =
             Arc::new(ModelConfig::load(self.models_path.as_deref()).await);
@@ -1364,7 +1339,6 @@ impl ModelRuntime {
         }
     }
 
-    /// `registerNativeProvider(provider)`
     pub fn register_native_provider(
         self: &Arc<Self>,
         provider: Arc<dyn Provider>,
@@ -1383,7 +1357,6 @@ impl ModelRuntime {
         Ok(())
     }
 
-    /// `unregisterProvider(providerId)`
     pub fn unregister_provider(self: &Arc<Self>, provider_id: &str) {
         self.native_extension_providers
             .lock()
@@ -1412,7 +1385,6 @@ pub type TransformHeaders = Arc<
     dyn Fn(ProviderHeaders) -> futures::future::BoxFuture<'static, ProviderHeaders> + Send + Sync,
 >;
 
-/// `ModelsRequestTransforms`
 #[derive(Clone, Default)]
 pub struct ModelsRequestTransforms {
     /// Transform fully assembled model/auth/request headers before provider dispatch.

@@ -56,7 +56,7 @@ pub struct ToolRenderResultOptions {
 }
 
 /// The result half handed to [`ToolDefinition::render_result`].
-/// `renderResult` receives `{ content, details }` only; whether the result is an
+/// `renderResult` receives `{ content, details }` only.
 #[derive(Debug, Clone, Copy)]
 pub struct ToolRenderResult<'a> {
     pub content: &'a [TextOrImageContent],
@@ -327,16 +327,6 @@ pub fn wrap_tool_definition(
         definition,
         context_factory,
     })
-}
-
-pub fn wrap_tool_definitions(
-    definitions: Vec<Arc<dyn ToolDefinition>>,
-    context_factory: Option<Arc<dyn Fn() -> ToolContext + Send + Sync>>,
-) -> Vec<Arc<dyn AgentTool>> {
-    definitions
-        .into_iter()
-        .map(|definition| wrap_tool_definition(definition, context_factory.clone()))
-        .collect()
 }
 
 impl AgentTool for WrappedToolDefinition {

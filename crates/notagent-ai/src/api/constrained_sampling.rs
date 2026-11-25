@@ -24,7 +24,6 @@ const UNSUPPORTED_STRICT_SCHEMA_KEYS: [&str; 16] = [
     "else",
 ];
 
-/// `UnsupportedStrictJsonSchemaError`
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct UnsupportedStrictJsonSchema(pub String);
@@ -180,7 +179,6 @@ fn make_json_schema_node_strict(schema: &mut Value) -> Result<(), UnsupportedStr
     Ok(())
 }
 
-/// `makeStrictJsonSchema(schema)`
 pub fn make_strict_json_schema(schema: &Value) -> Result<Value, UnsupportedStrictJsonSchema> {
     let mut cloned = schema.clone();
     if !cloned.is_object() {
@@ -197,7 +195,6 @@ pub fn make_strict_json_schema(schema: &Value) -> Result<Value, UnsupportedStric
     Ok(cloned)
 }
 
-/// `getJsonSchemaToolParameters(tool, strict)`
 pub fn get_json_schema_tool_parameters(tool: &Tool, strict: Option<bool>) -> Value {
     match strict {
         Some(true) => {
@@ -207,7 +204,6 @@ pub fn get_json_schema_tool_parameters(tool: &Tool, strict: Option<bool>) -> Val
     }
 }
 
-/// `resolveJsonSchemaStrictSampling(tool, supportsStrictMode)`
 pub fn resolve_json_schema_strict_sampling(
     tool: &Tool,
     supports_strict_mode: bool,
@@ -241,7 +237,6 @@ pub fn resolve_json_schema_strict_sampling(
     Ok(None)
 }
 
-/// `GrammarConstrainedSampling`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrammarConstrainedSampling {
     pub format: GrammarSyntax,
@@ -256,7 +251,6 @@ pub enum GrammarSyntax {
     Regex,
 }
 
-/// `inferGrammarInputProperty(tool)`
 fn infer_grammar_input_property(tool: &Tool) -> Result<String, String> {
     let Some(schema) = tool.parameters.as_object() else {
         return Err("grammar constrained sampling requires an object parameter schema".to_string());
@@ -298,7 +292,6 @@ fn infer_grammar_input_property(tool: &Tool) -> Result<String, String> {
     Ok(input_property)
 }
 
-/// `resolveGrammarConstrainedSampling(tool, supportsOpenAIGrammarTools)`
 pub fn resolve_grammar_constrained_sampling(
     tool: &Tool,
     supports_openai_grammar_tools: bool,
@@ -342,7 +335,6 @@ pub fn resolve_grammar_constrained_sampling(
     }
 }
 
-/// `createGrammarToolInputProperties(tools, supportsOpenAIGrammarTools)`
 pub fn create_grammar_tool_input_properties(
     tools: Option<&[Tool]>,
     supports_openai_grammar_tools: bool,
@@ -358,7 +350,6 @@ pub fn create_grammar_tool_input_properties(
     Ok(properties)
 }
 
-/// `getGrammarToolInput(toolName, arguments, inputProperty)`
 pub fn get_grammar_tool_input(
     tool_name: &str,
     arguments: &Map<String, Value>,
@@ -372,7 +363,6 @@ pub fn get_grammar_tool_input(
     }
 }
 
-/// `GrammarToolInputJsonBuffer`
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GrammarToolInputJsonBuffer {
     pub input: String,
@@ -380,7 +370,6 @@ pub struct GrammarToolInputJsonBuffer {
     pub closed: bool,
 }
 
-/// `appendGrammarToolInputJsonDelta(buffer, inputProperty, nextInput, close)`
 pub fn append_grammar_tool_input_json_delta(
     buffer: &mut GrammarToolInputJsonBuffer,
     input_property: &str,

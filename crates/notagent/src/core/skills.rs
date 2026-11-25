@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
@@ -729,15 +729,6 @@ pub fn load_skills(options: &LoadSkillsOptions) -> LoadSkillsResult {
         skills: skill_map.into_iter().map(|(_, skill)| skill).collect(),
         diagnostics: all_diagnostics,
     }
-}
-
-/// The skill directories the defaults cover, for callers that need to name
-/// them without loading anything.
-pub fn default_skill_dirs(cwd: &str, agent_dir: &str) -> (PathBuf, PathBuf) {
-    (
-        Path::new(agent_dir).join("skills"),
-        Path::new(cwd).join(CONFIG_DIR_NAME).join("skills"),
-    )
 }
 
 /// The skills shipped with the binary, written into the user skills directory

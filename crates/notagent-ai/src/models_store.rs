@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use crate::auth::types::BoxFuture;
 use crate::types::Model;
 
-/// `ModelsStoreEntry`
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelsStoreEntry {
@@ -22,7 +21,6 @@ pub struct ModelsStoreEntry {
     pub etag: Option<String>,
 }
 
-/// `ModelsStoreOperationOptions`
 #[derive(Debug, Clone, Default)]
 pub struct ModelsStoreOperationOptions {
     pub signal: Option<tokio_util::sync::CancellationToken>,
@@ -33,7 +31,6 @@ pub struct ModelsStoreOperationOptions {
 #[error("{0}")]
 pub struct ModelsStoreError(pub String);
 
-/// `ModelsStore`
 pub trait ModelsStore: Send + Sync {
     fn read(
         &self,

@@ -10,7 +10,7 @@ use super::policy::PermissionContext;
 use super::request::{ApprovalAnswer, ApprovalRequest, answer_allows, answer_persists};
 
 /// Presents one request and resolves when the user answers.
-/// Deviation (class 1): a presenter that fails answers `Deny` itself, where the
+/// A presenter that fails answers `Deny` itself.
 pub type ApprovalPresenter =
     Arc<dyn Fn(ApprovalRequest) -> BoxFuture<'static, ApprovalAnswer> + Send + Sync>;
 
@@ -46,7 +46,7 @@ pub fn approval_key_for(context: &PermissionContext) -> String {
 }
 
 struct CoordinatorState {
-    /// Cancelled while the session is aborted; replaced by `reset`, since the
+    /// Cancelled while the session is aborted; replaced by `reset`.
     aborted: CancellationToken,
     remembered: HashSet<String>,
 }

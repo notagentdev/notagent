@@ -8,7 +8,6 @@ use crate::providers::cloudflare_auth::CloudflareAiGatewayAuth;
 use crate::providers::cloudflare_stream::cloudflare_streams;
 use crate::types::ProviderStreams;
 
-/// `cloudflareAIGatewayProvider()`
 pub fn cloudflare_ai_gateway_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "cloudflare-ai-gateway".to_string(),

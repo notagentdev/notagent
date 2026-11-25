@@ -715,7 +715,7 @@ impl RenderLoop for InteractiveRenderer {
 // Messages the components post into the loop
 // ============================================================================
 
-/// One of the app actions the editor dispatches (`onAction` in
+/// One of the app actions the editor dispatches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppAction {
     /// `app.clear` — Ctrl+C.
@@ -725,7 +725,6 @@ enum AppAction {
     /// `app.message.dequeue`.
     Dequeue,
     Copy,
-    /// `app.clipboard.pasteImage`.
     PasteImage,
     CycleMode,
     CycleThinking,
@@ -920,7 +919,7 @@ enum UiMessage {
 // A text component with a collapsed and an expanded form
 // ============================================================================
 
-/// a `dyn Component` cannot be inspected that way, so the mode keeps the
+/// A component that can switch between its collapsed and expanded form.
 trait Expandable {
     fn set_expanded(&mut self, expanded: bool);
 }
@@ -1000,16 +999,6 @@ impl ExpandableText {
             expanded,
         }
     }
-
-    /// Used by `setToolsExpanded`, which arrives with the expansion slice.
-    #[allow(dead_code)]
-    fn set_expanded(&mut self, expanded: bool) {
-        self.text.set_text(if expanded {
-            self.expanded.clone()
-        } else {
-            self.collapsed.clone()
-        });
-    }
 }
 
 impl Component for ExpandableText {
@@ -1042,7 +1031,6 @@ pub struct InteractiveMode {
     /// without rebuilding the header.
     minified_tools_notice: Rc<RefCell<Container>>,
     /// Filled by `showLoadedResources`, which arrives with the resources slice.
-    #[allow(dead_code)]
     loaded_resources_container: Rc<RefCell<Container>>,
     chat_container: Rc<RefCell<TranscriptContainer>>,
     document_container: Rc<RefCell<Container>>,
@@ -1072,7 +1060,6 @@ pub struct InteractiveMode {
     footer: Rc<RefCell<FooterComponent>>,
     footer_data: Arc<crate::core::footer_data_provider::FooterDataProvider>,
     /// Handed to the selectors and the custom editors of the later slices.
-    #[allow(dead_code)]
     keybindings: Rc<RefCell<KeybindingsManager>>,
     theme_controller: InteractiveThemeController,
     /// The layout the alternate screen renders (`fullscreenLayoutRoot`).
@@ -1135,7 +1122,7 @@ pub struct InteractiveMode {
     next_panel_refresh: Option<Instant>,
     /// Whether anything could be detached, as of the last panel refresh.
     has_foreground_tasks: Rc<std::cell::Cell<bool>>,
-    /// Work the loop drives alongside everything else; each future ends in a
+    /// Work the loop drives alongside everything else.
     side_futures: Vec<Pin<Box<dyn Future<Output = UiMessage>>>>,
     active_selector: Option<ActiveSelector>,
     selector_id: u64,
@@ -1434,11 +1421,10 @@ impl InteractiveMode {
         }
     }
 
-    /// `permissionPresent = (request) => interactiveMode.requestApproval(request)`
-    /// Deviation (class 1): the gate runs wherever the tool call runs and needs
-    /// a `Send` presenter, while the dialog is `!Send`. The presenter therefore
-    /// hands the request to the loop and awaits the answer on a `oneshot`; a
-    /// dropped channel is a denial, exactly as a dismissed dialog is.
+    /// The gate runs wherever the tool call runs and needs a `Send` presenter,
+    /// while the dialog is `!Send`. The presenter therefore hands the request
+    /// to the loop and awaits the answer on a `oneshot`; a dropped channel is a
+    /// denial, exactly as a dismissed dialog is.
     pub fn approval_presenter(&self) -> ApprovalPresenter {
         let tx = self.approval_tx.clone();
         Arc::new(move |request: ApprovalRequest| {
@@ -1555,8 +1541,8 @@ impl InteractiveMode {
 
         self.render_initial_messages();
 
-        // Deviation (class 1): the theme watcher fires from its own thread, so
-        // the callback posts a repaint into the loop instead of touching the
+        // The theme watcher fires from its own thread, so it posts a repaint
+        // into the loop.
         let tx = self.ui_tx.clone();
         on_theme_change(Arc::new(move || {
             let _ = tx.send(UiMessage::ThemeChanged);
@@ -1566,9 +1552,8 @@ impl InteractiveMode {
         self.update_available_provider_count();
     }
 
-    /// list `init` builds.
+    /// Build the fullscreen layout: the transcript scrolls.
     fn mount(&mut self) {
-        // `init()` builds the fullscreen layout: the transcript scrolls, the
         let transcript = component_ref(ScrollView::new(
             Rc::clone(&self.document_container) as ComponentRef,
             ScrollViewOptions {
@@ -2910,7 +2895,6 @@ impl InteractiveMode {
         )));
     }
 
-    /// `maybeWarnAboutAnthropicSubscriptionAuth(model)`
     async fn maybe_warn_about_anthropic_subscription_auth(&mut self, model: Option<Model>) {
         if self.settings().get_warnings().anthropic_extra_usage == Some(false)
             || self.anthropic_subscription_warning_shown
@@ -3031,7 +3015,6 @@ impl InteractiveMode {
         self.format_display_path(full_path)
     }
 
-    /// `buildScopeGroups(items)` and `formatScopeGroups(groups, options)`
     fn format_scope_groups(
         &self,
         items: &[(String, Option<SourceInfo>)],
@@ -3381,8 +3364,7 @@ impl InteractiveMode {
         self.ui.request_render();
     }
 
-    /// `addLoadedSection(name, collapsedBody, expandedBody)` of
-    /// `showLoadedResources`.
+    /// One collapsible section of the loaded-resources listing.
     fn add_loaded_section(&mut self, name: &str, collapsed: &str, expanded: &str) {
         let header = theme().fg(ThemeColor::MdHeading, &format!("[{name}]"));
         let section = Rc::new(RefCell::new(ExpandableText::new(
@@ -3403,8 +3385,7 @@ impl InteractiveMode {
     // Panels
     // ------------------------------------------------------------------
 
-    /// `refreshSubagentPanel` — driven by the loop's one-second tick instead of
-    /// `setInterval`.
+    /// Refresh the tasks panel; driven by the loop's one-second tick.
     fn refresh_tasks_panel(&mut self) {
         let manager = self.session().task_manager();
         // Settled work is included, which is what lets the lifecycle lines
@@ -3574,7 +3555,6 @@ impl InteractiveMode {
         }
     }
 
-    /// `toggleToolOutputExpansion()`/`setToolsExpanded(expanded)`
     fn toggle_tool_output_expansion(&mut self) {
         let expanded = !self.tool_output_expanded;
         self.tool_output_expanded = expanded;
@@ -4524,7 +4504,7 @@ impl InteractiveMode {
             .set_available_provider_count(providers.len() as u64);
     }
 
-    /// Deviation (class 1): the callbacks that only write a setting do so
+    /// The callbacks that only write a setting do so
     /// directly — the settings manager is shared and needs no loop. The ones
     /// that also change mode state (images in the transcript, thinking blocks,
     /// padding, the TUI mode, the theme) post an effect into the loop, where
@@ -5000,7 +4980,6 @@ impl InteractiveMode {
         self.fork_session(&leaf_id, ForkPosition::At).await;
     }
 
-    /// `maybeSaveImplicitProjectTrustAfterReload()`
     /// A session that started in a folder without trust-requiring resources was
     /// trusted implicitly. If the reload brought such resources in, that
     /// implicit decision is written down once, so the next start does not ask.
@@ -5232,7 +5211,6 @@ impl InteractiveMode {
         )
     }
 
-    /// `prefixAutocompleteDescription(description, sourceInfo)`
     fn prefix_autocomplete_description(
         &self,
         description: Option<String>,
@@ -6146,7 +6124,6 @@ impl InteractiveMode {
         self.show_selector(Rc::clone(&selector), selector, None);
     }
 
-    /// `showLoginProviderSelector(authType, initialSearchInput)`
     fn show_login_provider_selector(
         &mut self,
         auth_type: Option<AuthType>,
@@ -6311,8 +6288,7 @@ impl InteractiveMode {
         );
     }
 
-    /// `showLoginDialog(providerId, providerName)` and `showApiKeyLoginDialog`
-    /// Deviation (class 1): the auth flow runs wherever the runtime puts it and
+    /// The auth flow runs wherever the runtime puts it and
     /// needs a `Send` interaction, while the dialog is `!Send`. The interaction
     /// therefore posts its prompts and events into this loop and waits on
     /// `oneshot`s, the same bridge the approval dialog uses.
@@ -6593,9 +6569,8 @@ impl InteractiveMode {
     // Bash mode
     // ------------------------------------------------------------------
 
-    /// `handleBashCommand(command, excludeFromContext)`
     /// and the result it could hand back (class 2).
-    /// Deviation (class 1): the run is not awaited here but driven by the main
+    /// The run is not awaited here but driven by the main
     /// loop, because its chunk callback is `Send` and has to cross into the
     /// loop to reach the `!Send` component — awaiting inline would collect the
     /// whole output and show it in one go.
@@ -7215,7 +7190,7 @@ impl InteractiveMode {
         }
     }
 
-    /// `session.exportToHtml(outputPath)` — the session-side half lives in
+    /// `session.exportToHtml(outputPath)`.
     fn export_to_html(&self, output_path: Option<&str>) -> Result<String, String> {
         let session = self.session();
         // pre-rendered through the same renderers the transcript uses, so the
@@ -7315,7 +7290,7 @@ impl InteractiveMode {
         self.ui.set_focus(Some(Rc::clone(&loader) as ComponentRef));
         self.ui.request_render();
 
-        // `loader.onAbort` kills the child; the cancellation token reaches the
+        // `loader.onAbort` kills the child.
         let result = tokio::select! {
             result = crate::core::share::create_secret_gist(&temp_file, &runner) => Some(result),
             () = signal.cancelled() => None,
@@ -8108,7 +8083,7 @@ impl InteractiveMode {
     }
 
     /// over the list selector `showExtensionSelector` uses.
-    /// Deviation (class 1): the dialog blocks this loop until it answers, so the
+    /// The dialog blocks this loop until it answers, so the
     /// events of a run that is still going are handled after it closes. The
     /// caller's render loop keeps drawing and keeps feeding the dialog, which is
     /// what the dialog itself needs.
@@ -8394,9 +8369,8 @@ impl InteractiveMode {
         self.exit_code = Some(0);
     }
 
-    /// Deviation (class 1): instead of `process.exit(0)` the mode records the
-    /// exit code and lets [`Self::run`] return it, because the render loop
-    /// belongs to the caller and has to unwind.
+    /// The mode records the exit code and lets [`Self::run`] return it,
+    /// because the render loop belongs to the caller and has to unwind.
     async fn shutdown(&mut self) {
         if self.is_shutting_down {
             return;
@@ -8880,7 +8854,7 @@ fn json_string(value: &str) -> String {
 const DEFAULT_WORKING_MESSAGE: &str = "Working...";
 const DEFAULT_HIDDEN_THINKING_LABEL: &str = "Thinking...";
 
-/// `formatCompactList(items, options)` of `showLoadedResources`.
+/// A compact one-line list for the loaded-resources listing.
 fn compact_list(items: &[String], sort: bool) -> String {
     let mut labels: Vec<String> = items
         .iter()

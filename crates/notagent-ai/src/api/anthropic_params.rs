@@ -51,7 +51,6 @@ pub fn to_claude_code_name(name: &str) -> String {
         .unwrap_or_else(|| name.to_string())
 }
 
-/// `isOAuthToken(apiKey)`
 pub fn is_oauth_token(api_key: &str) -> bool {
     api_key.contains("sk-ant-oat")
 }
@@ -106,7 +105,6 @@ pub fn default_supports_tool_references(model: &Model) -> bool {
     major > 4 || (major == 4 && minor >= 5)
 }
 
-/// `getAnthropicCompat(model)`
 pub fn get_anthropic_compat(model: &Model) -> ResolvedAnthropicCompat {
     let compat = anthropic_compat(model);
     ResolvedAnthropicCompat {
@@ -143,7 +141,6 @@ pub fn force_adaptive_thinking(model: &Model) -> bool {
         .unwrap_or(false)
 }
 
-/// `resolveCacheRetention(cacheRetention, env)`
 pub fn resolve_cache_retention(
     cache_retention: Option<CacheRetention>,
     env: Option<&ProviderEnv>,
@@ -157,7 +154,6 @@ pub fn resolve_cache_retention(
     CacheRetention::Short
 }
 
-/// `getCacheControl(model, cacheRetention, env)`
 pub fn get_cache_control(
     model: &Model,
     cache_retention: Option<CacheRetention>,
@@ -232,7 +228,6 @@ fn convert_content_blocks(content: &[TextOrImageContent]) -> Value {
     Value::Array(blocks)
 }
 
-/// `convertToolResult(...)`
 fn convert_tool_result(
     message: &ToolResultMessage,
     is_oauth_token: bool,
@@ -275,7 +270,6 @@ fn convert_tool_result(
     (tool_result, sibling_content)
 }
 
-/// `convertMessages(...)`
 pub fn convert_messages(
     transformed_messages: &[Message],
     is_oauth_token: bool,
@@ -433,7 +427,6 @@ pub fn convert_messages(
     params
 }
 
-/// `convertTools(...)`
 pub fn convert_tools(
     tools: &[Tool],
     is_oauth_token: bool,
@@ -494,7 +487,6 @@ pub fn convert_tools(
         .collect()
 }
 
-/// `shouldUseFineGrainedToolStreamingBeta(model, context)`
 pub fn should_use_fine_grained_tool_streaming_beta(model: &Model, context: &Context) -> bool {
     context
         .tools
@@ -523,7 +515,6 @@ pub struct AnthropicOptions {
     pub env: Option<ProviderEnv>,
 }
 
-/// `AnthropicEffort`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnthropicEffort {
     Low,
@@ -556,7 +547,6 @@ impl AnthropicEffort {
     }
 }
 
-/// `AnthropicThinkingDisplay`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnthropicThinkingDisplay {
     Summarized,
@@ -572,7 +562,6 @@ impl AnthropicThinkingDisplay {
     }
 }
 
-/// `toolChoice`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnthropicToolChoice {
     Auto,
@@ -581,7 +570,6 @@ pub enum AnthropicToolChoice {
     Tool { name: String },
 }
 
-/// `mapThinkingLevelToEffort(model, level)`
 pub fn map_thinking_level_to_effort(
     model: &Model,
     level: Option<crate::types::ThinkingLevel>,
@@ -604,7 +592,6 @@ pub fn map_thinking_level_to_effort(
     }
 }
 
-/// `buildParams(model, context, isOAuthToken, options)`
 pub fn build_params(
     model: &Model,
     context: &Context,

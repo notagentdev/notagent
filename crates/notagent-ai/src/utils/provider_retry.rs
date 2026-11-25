@@ -7,7 +7,6 @@ use tokio_util::sync::CancellationToken;
 
 const DEFAULT_MAX_RETRY_DELAY_MS: u64 = 60_000;
 
-/// `ProviderRetryOptions`
 #[derive(Debug, Clone, Default)]
 pub struct ProviderRetryOptions {
     pub max_retries: Option<u32>,
@@ -35,7 +34,6 @@ pub enum ProviderRetryError<E> {
     Aborted,
 }
 
-/// `isRetryableProviderError(error)`
 fn is_retryable_provider_error(error: &impl ProviderErrorInfo) -> bool {
     match error.header("x-should-retry").as_deref() {
         Some("true") => return true,
@@ -64,7 +62,6 @@ fn validate_server_retry_delay_ms(
     Ok(delay_ms)
 }
 
-/// `getRetryDelayMs(error, retryIndex, maxRetryDelayMs)`
 fn retry_delay_ms(
     error: &impl ProviderErrorInfo,
     retry_index: u32,
@@ -115,7 +112,6 @@ async fn abortable_sleep(ms: f64, signal: Option<&CancellationToken>) -> bool {
     }
 }
 
-/// `retryProviderRequest(request, options)`
 pub async fn retry_provider_request<T, E, F, Fut>(
     mut request: F,
     options: ProviderRetryOptions,

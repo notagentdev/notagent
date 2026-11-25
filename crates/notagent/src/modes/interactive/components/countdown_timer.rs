@@ -15,7 +15,6 @@ pub struct CountdownTimer {
     next_tick_at: Option<Instant>,
 }
 
-/// `setInterval(..., 1000)`.
 const TICK_INTERVAL: Duration = Duration::from_secs(1);
 
 impl CountdownTimer {

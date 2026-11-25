@@ -30,7 +30,6 @@ const REFRESH_TIMEOUT: Duration = Duration::from_millis(15_000);
 /// `maxVisible` of `updateList`.
 const MAX_VISIBLE: usize = 10;
 
-/// `ModelItem`
 #[derive(Clone)]
 struct ModelItem {
     provider: String,
@@ -38,7 +37,6 @@ struct ModelItem {
     model: Model,
 }
 
-/// `ModelScope`
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ModelScope {
     /// `"all"`
@@ -330,7 +328,6 @@ impl ModelSelectorComponent {
         (self.request_render)();
     }
 
-    /// `dispose()`
     pub fn dispose(&mut self) {
         if self.closed {
             return;
@@ -506,13 +503,11 @@ impl ModelSelectorComponent {
         (self.on_select_callback)(model);
     }
 
-    /// `getSearchInput()`
     pub fn search_input(&self) -> Rc<RefCell<Input>> {
         Rc::clone(&self.search_input)
     }
 }
 
-/// `getScopeText()`
 fn scope_line(scope: ModelScope) -> String {
     let theme_instance = theme();
     let all_text = theme_instance.fg(
@@ -538,7 +533,6 @@ fn scope_line(scope: ModelScope) -> String {
     )
 }
 
-/// `getScopeHintText()`
 fn scope_hint_line() -> String {
     key_hint("tui.input.tab", "scope") + &theme().fg(ThemeColor::Muted, " (all/scoped)")
 }

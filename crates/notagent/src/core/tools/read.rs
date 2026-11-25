@@ -297,7 +297,6 @@ fn format_read_call(args: &Value, theme: &Theme, cwd: &str) -> String {
     )
 }
 
-/// `str(args?.file_path ?? args?.path)`
 fn read_path_arg(args: &Value) -> Option<String> {
     let raw = args
         .get("file_path")

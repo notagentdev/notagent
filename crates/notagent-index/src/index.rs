@@ -22,11 +22,8 @@ pub struct SymbolIndex {
 }
 
 /// Index for a single file
-#[allow(dead_code)] // tree and content_hash are reserved for incremental parsing
 struct FileIndex {
     symbols: Vec<Arc<Symbol>>,
-    tree: Option<Tree>,
-    content_hash: u64,
 }
 
 impl SymbolIndex {
@@ -55,8 +52,6 @@ impl SymbolIndex {
         // Store in file index
         let file_index = FileIndex {
             symbols: symbols.clone(),
-            tree: Some(tree),
-            content_hash: Self::hash_content(content),
         };
 
         // Update global symbol map
@@ -82,8 +77,6 @@ impl SymbolIndex {
         // Store in file index
         let file_index = FileIndex {
             symbols: symbols.clone(),
-            tree: None, // Don't store tree to avoid Send issues with rayon
-            content_hash: Self::hash_content(content),
         };
 
         // Update global symbol map
@@ -133,35 +126,17 @@ impl SymbolIndex {
         self.files.len()
     }
 
-    /// Insert a symbol directly (for loading from cache)
-    pub fn insert_symbol(&self, symbol: Arc<Symbol>) {
-        self.all_symbols
-            .insert((symbol.file_path.clone(), symbol.full_path.clone()), symbol);
-    }
-
     /// Restores one file's symbols from the cache, rebuilding its per-file
     /// entry alongside the flat map.
     /// Loading symbol by symbol left `files` empty, so a cache-loaded index
     /// looked complete to a search but `remove_file` found nothing to remove
     /// — a deleted file's symbols stayed findable for the rest of the run.
-    pub fn restore_file(&self, path: &Path, symbols: Vec<Arc<Symbol>>, content_hash: u64) {
+    pub fn restore_file(&self, path: &Path, symbols: Vec<Arc<Symbol>>) {
         for sym in &symbols {
             self.all_symbols
                 .insert((sym.file_path.clone(), sym.full_path.clone()), sym.clone());
         }
-        self.files.insert(
-            path.to_path_buf(),
-            FileIndex {
-                symbols,
-                tree: None,
-                content_hash,
-            },
-        );
-    }
-
-    /// Every file the index currently holds.
-    pub fn indexed_paths(&self) -> Vec<PathBuf> {
-        self.files.iter().map(|entry| entry.key().clone()).collect()
+        self.files.insert(path.to_path_buf(), FileIndex { symbols });
     }
 
     /// Extract symbols from a parsed tree
@@ -254,15 +229,6 @@ impl SymbolIndex {
         }
         None
     }
-
-    /// Simple content hash
-    fn hash_content(content: &str) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        hasher.finish()
-    }
 }
 
 impl Default for SymbolIndex {
@@ -305,7 +271,7 @@ mod tests {
             .unwrap();
         assert!(!symbols.is_empty(), "fixture yields at least one symbol");
 
-        index.restore_file(path, symbols, 42);
+        index.restore_file(path, symbols);
         assert_eq!(index.file_count(), 1, "the per-file entry is rebuilt");
         assert!(index.symbol_count() >= 1);
 

@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use crate::utils::clipboard::{ClipboardOperations, Platform, SystemClipboard, is_wayland_session};
 
-/// `ClipboardImage`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardImage {
     pub bytes: Vec<u8>,
@@ -16,7 +15,6 @@ const DEFAULT_LIST_TIMEOUT_MS: u64 = 1000;
 const DEFAULT_READ_TIMEOUT_MS: u64 = 3000;
 const DEFAULT_POWERSHELL_TIMEOUT_MS: u64 = 5000;
 
-/// `baseMimeType(mimeType)`
 fn base_mime_type(mime_type: &str) -> String {
     mime_type
         .split(';')
@@ -26,7 +24,6 @@ fn base_mime_type(mime_type: &str) -> String {
         .to_lowercase()
 }
 
-/// `extensionForImageMimeType(mimeType)`
 pub fn extension_for_image_mime_type(mime_type: &str) -> Option<&'static str> {
     match base_mime_type(mime_type).as_str() {
         "image/png" => Some("png"),
@@ -37,7 +34,6 @@ pub fn extension_for_image_mime_type(mime_type: &str) -> Option<&'static str> {
     }
 }
 
-/// `selectPreferredImageMimeType(mimeTypes)`
 fn select_preferred_image_mime_type(mime_types: &[String]) -> Option<String> {
     let normalized: Vec<(String, String)> = mime_types
         .iter()
@@ -84,7 +80,7 @@ pub struct SystemClipboardImages;
 impl ClipboardImageOperations for SystemClipboardImages {
     fn run(&self, command: &str, args: &[&str], timeout_ms: u64) -> Option<Vec<u8>> {
         // `spawnSync`'s timeout has no direct equivalent in `std::process`; the
-        // child is spawned and waited for, and the timeout is enforced by a
+        // child is spawned and waited for.
         use std::process::{Command, Stdio};
         let child = Command::new(command)
             .args(args)
@@ -134,7 +130,6 @@ impl ClipboardImageOperations for SystemClipboardImages {
     }
 }
 
-/// `isWSL(env)`
 fn is_wsl(env: &dyn ClipboardOperations, images: &dyn ClipboardImageOperations) -> bool {
     if env.env("WSL_DISTRO_NAME").is_some() || env.env("WSLENV").is_some() {
         return true;
@@ -153,7 +148,6 @@ fn lines(output: &[u8]) -> Vec<String> {
         .collect()
 }
 
-/// `readClipboardImageViaWlPaste()`
 fn read_via_wl_paste(images: &dyn ClipboardImageOperations) -> Option<ClipboardImage> {
     let list = images.run("wl-paste", &["--list-types"], DEFAULT_LIST_TIMEOUT_MS)?;
     let selected = select_preferred_image_mime_type(&lines(&list))?;
@@ -171,7 +165,6 @@ fn read_via_wl_paste(images: &dyn ClipboardImageOperations) -> Option<ClipboardI
     })
 }
 
-/// `readClipboardImageViaXclip()`
 fn read_via_xclip(images: &dyn ClipboardImageOperations) -> Option<ClipboardImage> {
     let targets = images.run(
         "xclip",
@@ -226,7 +219,6 @@ fn temp_png_path(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(format!("{prefix}-{}.png", uuid::Uuid::new_v4()))
 }
 
-/// `readClipboardImageViaPowerShell()`
 fn read_via_powershell_wsl(images: &dyn ClipboardImageOperations) -> Option<ClipboardImage> {
     let temp_file = temp_png_path("notagent-wsl-clip");
     let result = (|| {
@@ -313,7 +305,6 @@ fn read_via_osascript(images: &dyn ClipboardImageOperations) -> Option<Clipboard
     result
 }
 
-/// `readClipboardImage(options)`
 pub fn read_clipboard_image() -> Option<ClipboardImage> {
     read_clipboard_image_with(&SystemClipboard, &SystemClipboardImages)
 }

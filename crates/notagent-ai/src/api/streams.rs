@@ -6,7 +6,6 @@ use crate::api::{
 use crate::types::{Context, Model, ProviderStreams, SimpleStreamOptions, StreamOptions};
 use crate::utils::event_stream::AssistantMessageEventStream;
 
-/// `anthropicMessagesApi()`
 pub struct AnthropicMessagesApi;
 
 impl ProviderStreams for AnthropicMessagesApi {
@@ -43,7 +42,6 @@ impl ProviderStreams for AnthropicMessagesApi {
     }
 }
 
-/// `openAICompletionsApi()`
 pub struct OpenAICompletionsApi;
 
 impl ProviderStreams for OpenAICompletionsApi {
@@ -80,7 +78,6 @@ impl ProviderStreams for OpenAICompletionsApi {
     }
 }
 
-/// `openAIResponsesApi()`
 pub struct OpenAIResponsesApi;
 
 impl ProviderStreams for OpenAIResponsesApi {
@@ -117,7 +114,6 @@ impl ProviderStreams for OpenAIResponsesApi {
     }
 }
 
-/// `azureOpenAIResponsesApi()`
 pub struct AzureOpenAIResponsesApi;
 
 impl ProviderStreams for AzureOpenAIResponsesApi {
@@ -155,7 +151,6 @@ impl ProviderStreams for AzureOpenAIResponsesApi {
     }
 }
 
-/// `openAICodexResponsesApi()`
 pub struct OpenAICodexResponsesApi;
 
 impl ProviderStreams for OpenAICodexResponsesApi {
@@ -194,7 +189,6 @@ impl ProviderStreams for OpenAICodexResponsesApi {
     }
 }
 
-/// `googleGenerativeAIApi()`
 pub struct GoogleGenerativeAIApi;
 
 impl ProviderStreams for GoogleGenerativeAIApi {
@@ -229,7 +223,6 @@ impl ProviderStreams for GoogleGenerativeAIApi {
     }
 }
 
-/// `googleVertexApi()`
 pub struct GoogleVertexApi;
 
 impl ProviderStreams for GoogleVertexApi {
@@ -263,7 +256,6 @@ impl ProviderStreams for GoogleVertexApi {
     }
 }
 
-/// `mistralConversationsApi()`
 pub struct MistralConversationsApi;
 
 impl ProviderStreams for MistralConversationsApi {
@@ -301,7 +293,6 @@ impl ProviderStreams for MistralConversationsApi {
     }
 }
 
-/// `piMessagesApi()`
 pub struct PiMessagesApi;
 
 impl ProviderStreams for PiMessagesApi {
@@ -355,7 +346,6 @@ fn error_stream(model: &Model, message: &str) -> AssistantMessageEventStream {
     stream
 }
 
-/// `bedrockConverseStreamApi()`
 pub struct BedrockConverseStreamApi;
 
 impl ProviderStreams for BedrockConverseStreamApi {

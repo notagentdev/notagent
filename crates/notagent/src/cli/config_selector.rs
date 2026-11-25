@@ -12,7 +12,6 @@ use crate::modes::interactive::components::config_selector::{
 };
 use crate::modes::interactive::theme::theme::{init_theme, stop_theme_watcher};
 
-/// `ConfigSelectorOptions`
 pub struct ConfigSelectorOptions<'a> {
     pub resolved_paths: ScopedResolvedPaths,
     pub settings_manager: Arc<SettingsManager>,
@@ -23,7 +22,7 @@ pub struct ConfigSelectorOptions<'a> {
 }
 
 /// `selectConfig(options)` — returns when the selector closed.
-/// The `bool` reports which callback ended it: `true` for the exit path, which
+/// The `bool` reports which callback ended it: `true` for the exit path.
 pub async fn select_config(options: ConfigSelectorOptions<'_>) -> bool {
     init_theme(options.settings_manager.get_theme().as_deref(), true);
 

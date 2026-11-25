@@ -579,11 +579,6 @@ impl Editor {
         self.core.request_render();
     }
 
-    /// Horizontal padding.
-    pub fn get_padding_x(&self) -> usize {
-        self.padding_x
-    }
-
     /// Change the horizontal padding.
     pub fn set_padding_x(&mut self, padding: usize) {
         if self.padding_x != padding {
@@ -1985,11 +1980,6 @@ impl Editor {
         self.pending_autocomplete
             .as_ref()
             .map(|pending| pending.due_at.unwrap_or_else(std::time::Instant::now))
-    }
-
-    /// Whether a request is waiting to run.
-    pub fn has_pending_autocomplete(&self) -> bool {
-        self.pending_autocomplete.is_some()
     }
 
     fn apply_autocomplete_suggestions(

@@ -1,4 +1,3 @@
-/// `shortHash(str)`
 pub fn short_hash(text: &str) -> String {
     let mut h1: u32 = 0xdead_beef;
     let mut h2: u32 = 0x41c6_ce57;

@@ -126,8 +126,7 @@ impl InteractiveE2e {
 
 /// Drives a running interactive screen: send keys, wait for output, resize.
 /// The renderer is a trait object because the mode picks it
-/// (`TuiMainScreen` for `tuiMode: "regular"`, `TuiAltScreen` for
-/// `RenderLoop`.
+/// (`TuiMainScreen` or `TuiAltScreen`).
 pub struct InteractiveDriver {
     ui: Box<dyn RenderLoop>,
     pump: Box<dyn TerminalPump>,

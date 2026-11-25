@@ -2,23 +2,18 @@ use notagent_protocol::{JsonValue, ProtocolError, ProtocolErrorCode};
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum PiError {
-    /// `PiServerError`
     #[error("{message}")]
     Server {
         code: ProtocolErrorCode,
         message: String,
         details: Option<JsonValue>,
     },
-    /// `PiDisconnectedError`
     #[error("{0}")]
     Disconnected(String),
-    /// `PiClientDisposedError`
     #[error("Notagent client is disposed")]
     Disposed,
-    /// `PiSessionOwnershipError`
     #[error("{message}")]
     SessionOwnership { session_id: String, message: String },
-    /// `PiSessionDetachedError`
     #[error("Session {session_id} is not attached")]
     SessionDetached { session_id: String },
     /// `ProtocolValidationError` from `@notagent/protocol`

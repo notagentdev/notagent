@@ -7,7 +7,6 @@ use serde_json::{Value, json};
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
-/// `expectResponseId(model, options)`
 async fn expect_response_id(model: &Model, options: SimpleStreamOptions) {
     let context = context(
         Some("You are a helpful assistant. Be concise."),
@@ -298,7 +297,6 @@ fn count_pongs(text: &str) -> usize {
         .count()
 }
 
-/// `expectThinkingDisabledE2E(model, expectations)`
 async fn expect_thinking_disabled_e2e(
     model: &Model,
     options: SimpleStreamOptions,

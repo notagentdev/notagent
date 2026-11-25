@@ -30,8 +30,7 @@ pub struct SubagentTaskOptions {
     /// The star name the user sees it under (`core/delegation/aliases.rs`).
     pub alias: String,
     /// The run, already started, which the task observes rather than owns.
-    /// Deviation (class 1): a JS promise several places await becomes a
-    /// `oneshot` receiver here, since only the task itself awaits the answer.
+    /// A `oneshot` suffices, since only the task itself awaits the answer.
     pub run: oneshot::Receiver<SubagentRunResult>,
     pub cancel: SubagentCancelFn,
 }
@@ -94,7 +93,7 @@ impl BackgroundTask for SubagentTask {
             } else {
                 let watcher_signal = stop_signal.clone();
                 let watcher_cancel = Arc::clone(&cancel);
-                // Dropped with the guard below, which is what removing the
+                // Dropped with the guard below.
                 let stop_watcher = tokio::spawn(async move {
                     watcher_signal.cancelled().await;
                     watcher_cancel();

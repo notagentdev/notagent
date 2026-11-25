@@ -169,10 +169,8 @@ pub struct SubagentTaskInfo {
     pub alias: String,
 }
 
-/// Deviation (class 1): serde writes the `kind` discriminant as the first key of
-/// the record, while `{...base, kind}` puts it after the shared fields. Task
-/// records are written and read only by this app, and both forms parse to the
-/// same value.
+/// serde writes the `kind` discriminant as the first key; records that carry
+/// it after the shared fields parse to the same value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TaskInfo {

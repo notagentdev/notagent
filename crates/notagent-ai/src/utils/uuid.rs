@@ -27,7 +27,7 @@ pub fn uuidv7() -> String {
     next_uuidv7(&mut state, timestamp, random)
 }
 
-/// The algorithm itself, with clock and randomness injected so it can be tested the
+/// The algorithm itself.
 fn next_uuidv7(state: &mut MonotonicState, timestamp: i64, random: [u8; 16]) -> String {
     if !state.initialized || timestamp > state.last_timestamp {
         state.sequence = (random[6] as u32) << 24

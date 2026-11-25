@@ -66,7 +66,6 @@ pub struct LlamaModelMeta {
     pub ftype: Option<String>,
 }
 
-/// `LlamaModelInfo`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlamaModelInfo {
     pub id: String,
@@ -81,7 +80,6 @@ pub struct LlamaModelInfo {
     pub meta: Option<LlamaModelMeta>,
 }
 
-/// `LlamaModelEvent`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlamaModelEvent {
     pub model: String,
@@ -90,7 +88,6 @@ pub struct LlamaModelEvent {
     pub data: Option<Value>,
 }
 
-/// `LlamaProgress`
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LlamaProgress {
     pub message: String,
@@ -103,7 +100,6 @@ pub struct LlamaProgress {
 /// the polling loop report through it.
 pub type ProgressFn = Arc<dyn Fn(LlamaProgress) + Send + Sync>;
 
-/// `errorMessage(payload, fallback)`
 fn error_message(payload: Option<&Value>, fallback: &str) -> String {
     let Some(Value::Object(payload)) = payload else {
         return fallback.to_owned();
@@ -130,7 +126,6 @@ fn is_model_info(value: &Value) -> bool {
             .is_some_and(Value::is_string)
 }
 
-/// `sleep(ms, signal)`
 async fn sleep(milliseconds: u64, signal: Option<&CancellationToken>) -> Result<(), LlamaError> {
     race_with_abort_signal(
         tokio::time::sleep(Duration::from_millis(milliseconds)),
@@ -140,7 +135,6 @@ async fn sleep(milliseconds: u64, signal: Option<&CancellationToken>) -> Result<
     Ok(())
 }
 
-/// `parseLoadProgress(data)`
 fn parse_load_progress(data: Option<&Value>) -> Option<LlamaProgress> {
     let progress = data?.as_object()?.get("progress")?.as_object()?;
     let stage = match (progress.get("current"), progress.get("stage")) {
@@ -212,9 +206,8 @@ fn parse_download_progress(data: Option<&Value>) -> Option<LlamaProgress> {
     })
 }
 
-/// `Number.prototype.toFixed(digits)` for the two widths `formatBytes` uses.
-/// Deviation (class 3): Rust's `{:.n}` rounds ties to even, `toFixed` rounds them
-/// away from zero, so the tie is nudged before formatting.
+/// Fixed-point formatting that rounds ties away from zero; Rust's `{:.n}`
+/// rounds them to even, so the tie is nudged before formatting.
 pub(crate) fn to_fixed(value: f64, digits: u32) -> String {
     let scale = 10_f64.powi(i32::try_from(digits).unwrap_or(0));
     let scaled = value * scale;
@@ -226,7 +219,6 @@ pub(crate) fn to_fixed(value: f64, digits: u32) -> String {
     format!("{:.*}", digits as usize, rounded / scale)
 }
 
-/// `formatBytes(bytes)`
 pub fn format_bytes(bytes: f64) -> String {
     if bytes < 1024.0 {
         return format!("{} B", notagent_ai::utils::js_number::to_js_string(bytes));
@@ -247,11 +239,8 @@ pub fn format_bytes(bytes: f64) -> String {
     }
 }
 
-/// `normalizeLlamaServerUrl(value)` — management base URL without `/v1`.
-/// Deviation (class 1): an input the WHATWG parser accepts but `url` rejects
-/// (for example `127.0.0.1:8080`, where JS reads `127.0.0.1:` as the protocol)
-/// reports `Invalid URL` — the message of the `TypeError` JS raises for inputs
-/// neither parser accepts — instead of the http/https message.
+/// The management base URL without `/v1`. An input the URL parser rejects,
+/// such as `127.0.0.1:8080`, reports `Invalid URL`.
 pub fn normalize_llama_server_url(value: &str) -> Result<String, LlamaError> {
     let mut url =
         url::Url::parse(value.trim()).map_err(|_| LlamaError("Invalid URL".to_owned()))?;
@@ -287,13 +276,11 @@ fn replace_crlf(chunk: &[u8]) -> Vec<u8> {
     replaced
 }
 
-/// `buffer.indexOf("\n\n")`
 fn find_frame_end(buffer: &[u8]) -> Option<usize> {
     buffer.windows(2).position(|window| window == b"\n\n")
 }
 
-/// `LlamaClient`
-/// Cloneable so `loadAndWait`/`downloadAndWait` can hand a client to the
+/// Cloneable so the load and download waits can hand a client to a spawned task.
 #[derive(Clone)]
 pub struct LlamaClient {
     pub server_url: String,
@@ -350,7 +337,6 @@ impl LlamaClient {
         Ok(payload)
     }
 
-    /// `list({ reload?, signal? })`
     pub async fn list(
         &self,
         reload: bool,
@@ -380,7 +366,6 @@ impl LlamaClient {
             .collect()
     }
 
-    /// `load(model, signal)`
     pub async fn load(
         &self,
         model: &str,
@@ -391,7 +376,6 @@ impl LlamaClient {
         Ok(())
     }
 
-    /// `unload(model, signal)`
     pub async fn unload(
         &self,
         model: &str,
@@ -402,7 +386,6 @@ impl LlamaClient {
         Ok(())
     }
 
-    /// `unloadAndWait(model, signal)`
     pub async fn unload_and_wait(
         &self,
         model: &str,
@@ -424,7 +407,6 @@ impl LlamaClient {
         }
     }
 
-    /// `download(model, signal)`
     pub async fn download(
         &self,
         model: &str,
@@ -486,7 +468,6 @@ impl LlamaClient {
         Ok(())
     }
 
-    /// `loadAndWait(model, onProgress, signal)`
     pub async fn load_and_wait(
         &self,
         model: &str,
@@ -602,7 +583,6 @@ impl LlamaClient {
         }
     }
 
-    /// `downloadAndWait(model, onProgress, signal)`
     pub async fn download_and_wait(
         &self,
         model: &str,

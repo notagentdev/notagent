@@ -8,7 +8,6 @@ use notagent_ai::utils::provider_retry::{
     ProviderErrorInfo, ProviderRetryError, ProviderRetryOptions, retry_provider_request,
 };
 
-/// `providerError(status, headers)`
 #[derive(Debug, Clone)]
 struct TestProviderError {
     status: Option<u16>,

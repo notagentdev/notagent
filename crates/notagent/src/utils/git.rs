@@ -18,7 +18,6 @@ struct SplitRef {
     ref_name: Option<String>,
 }
 
-/// `url.match(/^git@([^:]+):(.+)$/)`
 fn scp_like(url: &str) -> Option<(&str, &str)> {
     let rest = url.strip_prefix("git@")?;
     let colon = rest.find(':')?;
@@ -71,7 +70,6 @@ fn parse_url(url: &str) -> Option<ParsedUrl> {
     })
 }
 
-/// `splitRef(url)`
 fn split_ref(url: &str) -> SplitRef {
     let unchanged = || SplitRef {
         repo: url.to_owned(),
@@ -153,7 +151,6 @@ fn decode_for_validation(value: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
-/// `hasUnsafeGitInstallPart(value, allowSlash)`
 fn has_unsafe_git_install_part(value: &str, allow_slash: bool) -> bool {
     let Some(decoded) = decode_for_validation(value) else {
         return true;
@@ -172,7 +169,6 @@ fn has_unsafe_git_install_part(value: &str, allow_slash: bool) -> bool {
     false
 }
 
-/// `buildGitSource(args)`
 fn build_git_source(
     repo: &str,
     host: &str,
@@ -204,7 +200,6 @@ fn build_git_source(
     })
 }
 
-/// `parseGenericGitUrl(url)`
 fn parse_generic_git_url(url: &str) -> Option<GitSource> {
     let split = split_ref(url);
     let repo_without_ref = split.repo.clone();

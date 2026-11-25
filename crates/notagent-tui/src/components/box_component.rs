@@ -49,7 +49,7 @@ impl BoxComponent {
     }
 
     /// Set the background function.
-    /// Deliberately does not invalidate: a changed background is detected by
+    /// Deliberately does not invalidate.
     pub fn set_bg_fn(&mut self, bg_fn: Option<BackgroundFn>) {
         self.bg_fn = bg_fn;
     }

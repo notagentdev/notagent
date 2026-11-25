@@ -55,7 +55,6 @@ impl ModelCatalog for ModelRuntime {
 pub const VALID_THINKING_LEVELS: [&str; 7] =
     ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
-/// `isValidThinkingLevel(level)`
 pub fn parse_thinking_level(level: &str) -> Option<ThinkingLevel> {
     match level {
         "off" => Some(ThinkingLevel::Off),
@@ -128,7 +127,6 @@ pub fn default_model_for_provider(provider: &str) -> Option<&'static str> {
         .map(|(_, model)| *model)
 }
 
-/// `ScopedModel`
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScopedModel {
     pub model: Model,
@@ -149,16 +147,11 @@ fn is_alias(id: &str) -> bool {
     !(tail[0] == b'-' && tail[1..].iter().all(u8::is_ascii_digit))
 }
 
-/// `String.prototype.localeCompare` for the model ids used here.
-/// Deviation (class 1): the ids are ASCII, where the ICU root collation that
-/// `localeCompare` uses orders like a case-insensitive comparison with a
-/// case-sensitive tiebreak; `sort((a, b) => b.id.localeCompare(a.id))` therefore
-/// reduces to a descending compare on `(lowercase, original)`.
+/// Sort key for model ids: case-insensitive with a case-sensitive tiebreak.
 fn locale_key(id: &str) -> (String, String) {
     (id.to_lowercase(), id.to_owned())
 }
 
-/// `findExactModelReferenceMatch(modelReference, availableModels)`
 pub fn find_exact_model_reference_match(
     model_reference: &str,
     available_models: &[Model],
@@ -209,7 +202,6 @@ pub fn find_exact_model_reference_match(
     (id_matches.len() == 1).then(|| id_matches[0].clone())
 }
 
-/// `tryMatchModel(modelPattern, availableModels)`
 fn try_match_model(model_pattern: &str, available_models: &[Model]) -> Option<Model> {
     if let Some(exact_match) = find_exact_model_reference_match(model_pattern, available_models) {
         return Some(exact_match);
@@ -243,7 +235,6 @@ fn try_match_model(model_pattern: &str, available_models: &[Model]) -> Option<Mo
     candidates.first().map(|model| (*model).clone())
 }
 
-/// `ParsedModelResult`
 #[derive(Debug, Clone, Default)]
 pub struct ParsedModelResult {
     pub model: Option<Model>,
@@ -251,7 +242,6 @@ pub struct ParsedModelResult {
     pub warning: Option<String>,
 }
 
-/// `buildFallbackModel(provider, modelId, availableModels)`
 fn build_fallback_model(
     provider: &str,
     model_id: &str,
@@ -276,7 +266,6 @@ fn build_fallback_model(
     })
 }
 
-/// `parseModelPattern(pattern, availableModels, options?)`
 pub fn parse_model_pattern(
     pattern: &str,
     available_models: &[Model],
@@ -333,7 +322,6 @@ pub fn parse_model_pattern(
     result
 }
 
-/// `ModelScopeDiagnostic`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelScopeDiagnostic {
     pub code: ModelScopeDiagnosticCode,
@@ -347,16 +335,13 @@ pub enum ModelScopeDiagnosticCode {
     InvalidThinkingLevel,
 }
 
-/// `ResolveModelScopeResult`
 #[derive(Debug, Clone, Default)]
 pub struct ResolveModelScopeResult {
     pub scoped_models: Vec<ScopedModel>,
     pub diagnostics: Vec<ModelScopeDiagnostic>,
 }
 
-/// `minimatch(value, pattern, { nocase: true })`
-/// Deviation (class 3, master substitution glob/minimatch → globset): `globset` with
-/// `literal_separator(true)` keeps minimatch's rule that `*` does not cross `/`.
+/// Case-insensitive glob match where `*` does not cross `/`.
 fn minimatch_nocase(value: &str, pattern: &str) -> bool {
     GlobBuilder::new(pattern)
         .case_insensitive(true)
@@ -368,7 +353,6 @@ fn minimatch_nocase(value: &str, pattern: &str) -> bool {
         .is_some_and(|glob| glob.compile_matcher().is_match(value))
 }
 
-/// `resolveModelScopeFromModels(patterns, models)`
 pub fn resolve_model_scope_from_models(
     patterns: &[String],
     models: &[Model],
@@ -459,7 +443,6 @@ pub fn resolve_model_scope_from_models(
     }
 }
 
-/// `resolveModelScopeWithDiagnostics(patterns, modelRuntime, options?)`
 pub async fn resolve_model_scope_with_diagnostics(
     patterns: &[String],
     model_runtime: &dyn ModelCatalog,
@@ -469,9 +452,7 @@ pub async fn resolve_model_scope_with_diagnostics(
     resolve_model_scope_from_models(patterns, &models)
 }
 
-/// `resolveModelScope(patterns, modelRuntime, options?)`
-/// Deviation (class 1): the diagnostics are returned instead of written to
-/// `console.warn`, so the caller owns the output channel.
+/// The diagnostics are returned, so the caller owns the output channel.
 pub async fn resolve_model_scope(
     patterns: &[String],
     model_runtime: &dyn ModelCatalog,
@@ -480,7 +461,6 @@ pub async fn resolve_model_scope(
     resolve_model_scope_with_diagnostics(patterns, model_runtime, options).await
 }
 
-/// `ResolveCliModelResult`
 #[derive(Debug, Clone, Default)]
 pub struct ResolveCliModelResult {
     pub model: Option<Model>,
@@ -490,7 +470,6 @@ pub struct ResolveCliModelResult {
     pub error: Option<String>,
 }
 
-/// `resolveCliModel(options)`
 pub fn resolve_cli_model(
     cli_provider: Option<&str>,
     cli_model: Option<&str>,
@@ -727,7 +706,6 @@ pub fn resolve_cli_model(
     }
 }
 
-/// `InitialModelResult`
 #[derive(Debug, Clone)]
 pub struct InitialModelResult {
     pub model: Option<Model>,
@@ -746,9 +724,7 @@ pub struct FindInitialModelOptions<'a> {
     pub model_runtime: &'a dyn ModelCatalog,
 }
 
-/// `findInitialModel(options)`
-/// Deviation (class 1): a CLI resolution error is returned instead of calling
-/// `process.exit(1)`; the caller (the CLI entry point) owns the exit.
+/// A CLI resolution error is returned; the CLI entry point owns the exit.
 pub fn find_initial_model(
     options: FindInitialModelOptions<'_>,
 ) -> Result<InitialModelResult, String> {
@@ -835,101 +811,4 @@ fn pick_default_available(available_models: &[Model]) -> Option<Model> {
         }
     }
     available_models.first().cloned()
-}
-
-/// `RestoredModel`
-#[derive(Debug, Clone, Default)]
-pub struct RestoredModel {
-    pub model: Option<Model>,
-    pub fallback_message: Option<String>,
-    /// `shouldPrintMessages` is set; returned so the caller owns the output channel.
-    pub messages: Vec<RestoreMessage>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RestoreMessage {
-    Info(String),
-    Warning(String),
-}
-
-/// `restoreModelFromSession(savedProvider, savedModelId, currentModel, shouldPrintMessages, modelRuntime)`
-pub fn restore_model_from_session(
-    saved_provider: &str,
-    saved_model_id: &str,
-    current_model: Option<&Model>,
-    should_print_messages: bool,
-    model_runtime: &dyn ModelCatalog,
-) -> RestoredModel {
-    let restored_model = model_runtime.get_model(saved_provider, saved_model_id);
-    let has_configured_auth = restored_model
-        .as_ref()
-        .is_some_and(|model| model_runtime.has_configured_auth(&model.provider));
-
-    let mut messages = Vec::new();
-    if let Some(restored_model) = restored_model.clone()
-        && has_configured_auth
-    {
-        if should_print_messages {
-            messages.push(RestoreMessage::Info(format!(
-                "Restored model: {saved_provider}/{saved_model_id}"
-            )));
-        }
-        return RestoredModel {
-            model: Some(restored_model),
-            fallback_message: None,
-            messages,
-        };
-    }
-
-    let reason = if restored_model.is_none() {
-        "model no longer exists"
-    } else {
-        "no auth configured"
-    };
-    if should_print_messages {
-        messages.push(RestoreMessage::Warning(format!(
-            "Could not restore model {saved_provider}/{saved_model_id} ({reason})."
-        )));
-    }
-
-    if let Some(current_model) = current_model {
-        if should_print_messages {
-            messages.push(RestoreMessage::Info(format!(
-                "Falling back to: {}/{}",
-                current_model.provider, current_model.id
-            )));
-        }
-        return RestoredModel {
-            fallback_message: Some(format!(
-                "Could not restore model {saved_provider}/{saved_model_id} ({reason}). Using {}/{}.",
-                current_model.provider, current_model.id
-            )),
-            model: Some(current_model.clone()),
-            messages,
-        };
-    }
-
-    let available_models = model_runtime.get_available_snapshot();
-    if let Some(fallback_model) = pick_default_available(&available_models) {
-        if should_print_messages {
-            messages.push(RestoreMessage::Info(format!(
-                "Falling back to: {}/{}",
-                fallback_model.provider, fallback_model.id
-            )));
-        }
-        return RestoredModel {
-            fallback_message: Some(format!(
-                "Could not restore model {saved_provider}/{saved_model_id} ({reason}). Using {}/{}.",
-                fallback_model.provider, fallback_model.id
-            )),
-            model: Some(fallback_model),
-            messages,
-        };
-    }
-
-    RestoredModel {
-        model: None,
-        fallback_message: None,
-        messages,
-    }
 }

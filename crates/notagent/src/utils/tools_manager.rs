@@ -115,7 +115,6 @@ fn platform() -> &'static str {
     }
 }
 
-/// `os.arch()`
 fn architecture() -> &'static str {
     if cfg!(target_arch = "aarch64") {
         "arm64"

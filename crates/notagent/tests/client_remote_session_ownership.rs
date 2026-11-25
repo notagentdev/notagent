@@ -14,7 +14,6 @@ use notagent::client::{
 use notagent_client::PiError;
 use notagent_protocol::ClientMessage;
 
-/// `respondToAttach`.
 fn respond_to_attach(server: &MemoryServer, session_id: &str) {
     let answering = server.clone();
     let session_id = session_id.to_owned();

@@ -2,9 +2,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-/// `PiManifest`
-/// Deviation (class 2): the `extensions` field is gone with the extension system
-/// (`plans/facts/extension-boundary.md` §6).
+/// The resources a package manifest declares.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PiManifest {
     pub skills: Option<Vec<String>>,
@@ -23,7 +21,7 @@ impl PiManifest {
     }
 }
 
-/// `ResourceType` of the package manager, minus `extensions` (class 2).
+/// The resource kinds a package can contribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceType {
     Skills,
@@ -57,7 +55,6 @@ impl ResourceType {
     }
 }
 
-/// `readPiManifest(packageJsonPath)`
 pub fn read_pi_manifest(package_json_path: &Path) -> Option<PiManifest> {
     let content = std::fs::read_to_string(package_json_path).ok()?;
     let package: Value = serde_json::from_str(&content).ok()?;

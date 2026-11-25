@@ -167,12 +167,6 @@ impl OperationOutline {
     pub fn records(&self) -> &[OperationRecord] {
         &self.records
     }
-
-    pub fn extend_from_records(&mut self, records: impl IntoIterator<Item = OperationRecord>) {
-        for record in records {
-            self.record(record.target, record.operation);
-        }
-    }
 }
 
 /// Records what each tool call in an assistant message did.

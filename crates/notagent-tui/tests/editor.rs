@@ -603,7 +603,7 @@ fn stops_at_fullwidth_chinese_punctuation() {
 }
 
 /// Same residual difference as
-/// [`stops_at_fullwidth_chinese_punctuation`]: the ASCII words move exactly as
+/// [`stops_at_fullwidth_chinese_punctuation`].
 #[test]
 fn handles_mixed_cjk_and_ascii_word_movement() {
     let (_tui, mut editor) = editor();

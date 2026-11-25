@@ -9,7 +9,6 @@ use crate::modes::interactive::theme::theme::{TerminalTheme, ThemeColor, theme};
 use super::dynamic_border::DynamicBorder;
 use super::keybinding_hints::{key_hint, raw_key_hint};
 
-/// `FirstTimeSetupResult`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FirstTimeSetupResult {
     /// The chosen theme.
@@ -18,7 +17,6 @@ pub struct FirstTimeSetupResult {
     pub share_analytics: bool,
 }
 
-/// `FirstTimeSetupOptions`
 pub struct FirstTimeSetupOptions {
     /// Theme detected from the terminal.
     pub detected_theme: TerminalTheme,

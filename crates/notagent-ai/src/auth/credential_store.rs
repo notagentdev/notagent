@@ -14,7 +14,6 @@ struct State {
     chains: BTreeMap<String, Arc<AsyncMutex<()>>>,
 }
 
-/// `InMemoryCredentialStore`
 #[derive(Default, Clone)]
 pub struct InMemoryCredentialStore {
     state: Arc<Mutex<State>>,

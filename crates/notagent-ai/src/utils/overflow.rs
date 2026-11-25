@@ -48,7 +48,6 @@ fn non_overflow_set() -> &'static RegexSet {
     SET.get_or_init(|| RegexSet::new(NON_OVERFLOW_PATTERNS).expect("non-overflow patterns compile"))
 }
 
-/// `isContextOverflow(message, contextWindow?)`
 pub fn is_context_overflow(message: &AssistantMessage, context_window: Option<u64>) -> bool {
     // Case 1: error message patterns.
     if message.stop_reason == StopReason::Error
@@ -85,7 +84,6 @@ pub fn is_context_overflow(message: &AssistantMessage, context_window: Option<u6
     false
 }
 
-/// `isRecoverableLength(message, desiredMaxOutput)`
 pub fn is_recoverable_length(message: &AssistantMessage, desired_max_output: u64) -> bool {
     message.stop_reason == StopReason::Length
         && desired_max_output > 0

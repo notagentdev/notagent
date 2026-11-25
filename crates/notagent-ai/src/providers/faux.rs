@@ -20,7 +20,6 @@ const DEFAULT_BASE_URL: &str = "http://localhost:0";
 const DEFAULT_MIN_TOKEN_SIZE: usize = 3;
 const DEFAULT_MAX_TOKEN_SIZE: usize = 5;
 
-/// `FauxModelDefinition`
 #[derive(Debug, Clone)]
 pub struct FauxModelDefinition {
     pub id: String,
@@ -46,12 +45,10 @@ impl FauxModelDefinition {
     }
 }
 
-/// `fauxText(text)`
 pub fn faux_text(text: impl Into<String>) -> AssistantContent {
     AssistantContent::Text(TextContent::new(text))
 }
 
-/// `fauxThinking(thinking)`
 pub fn faux_thinking(thinking: impl Into<String>) -> AssistantContent {
     AssistantContent::Thinking(ThinkingContent {
         thinking: thinking.into(),
@@ -61,7 +58,6 @@ pub fn faux_thinking(thinking: impl Into<String>) -> AssistantContent {
     })
 }
 
-/// `fauxToolCall(name, arguments, options?)`
 pub fn faux_tool_call(
     name: impl Into<String>,
     arguments: Value,
@@ -77,7 +73,6 @@ pub fn faux_tool_call(
     })
 }
 
-/// `fauxAssistantMessage(content, options?)`
 pub fn faux_assistant_message(
     content: Vec<AssistantContent>,
     stop_reason: StopReason,
@@ -100,7 +95,6 @@ pub fn faux_assistant_message(
     }
 }
 
-/// `FauxProviderState`
 #[derive(Debug, Default)]
 pub struct FauxProviderState {
     pub call_count: AtomicU64,
@@ -125,7 +119,6 @@ impl From<AssistantMessage> for FauxResponseStep {
     }
 }
 
-/// `RegisterFauxProviderOptions`
 #[derive(Clone, Default)]
 pub struct FauxProviderOptions {
     pub api: Option<String>,
@@ -165,7 +158,6 @@ pub struct FauxCore {
     deferred_poll_after_ms: Option<u64>,
 }
 
-/// `createFauxCore(options)`
 pub fn create_faux_core(options: FauxProviderOptions) -> Arc<FauxCore> {
     let api = options
         .api
@@ -237,12 +229,10 @@ pub fn create_faux_core(options: FauxProviderOptions) -> Arc<FauxCore> {
 }
 
 impl FauxCore {
-    /// `setResponses(responses)`
     pub fn set_responses(&self, responses: Vec<FauxResponseStep>) {
         *self.pending_responses.lock().expect("poisoned") = responses;
     }
 
-    /// `appendResponses(responses)`
     pub fn append_responses(&self, responses: Vec<FauxResponseStep>) {
         self.pending_responses
             .lock()
@@ -250,12 +240,10 @@ impl FauxCore {
             .extend(responses);
     }
 
-    /// `getPendingResponseCount()`
     pub fn pending_response_count(&self) -> usize {
         self.pending_responses.lock().expect("poisoned").len()
     }
 
-    /// `getModel()` / `getModel(id)`
     pub fn get_model(&self, model_id: Option<&str>) -> Option<Model> {
         match model_id {
             None => self.models.first().cloned(),
@@ -291,7 +279,6 @@ impl FauxCore {
         self.with_usage_estimate(cloned, context, None, None)
     }
 
-    /// `withUsageEstimate(message, context, options, promptCache)`
     fn with_usage_estimate(
         &self,
         message: AssistantMessage,
@@ -336,7 +323,6 @@ impl FauxCore {
         }
     }
 
-    /// `stream(model, context, options)`
     pub fn stream(
         self: &Arc<Self>,
         request_model: &Model,
@@ -433,7 +419,6 @@ impl FauxCore {
         outer
     }
 
-    /// `fetchDeferred(model, handle, options)`
     pub fn fetch_deferred(
         self: &Arc<Self>,
         request_model: &Model,
@@ -533,7 +518,6 @@ impl FauxCore {
         outer
     }
 
-    /// `cancelDeferred(model, handle, options)`
     pub fn cancel_deferred(&self, handle: &DeferredHandle) {
         self.state
             .cancelled_deferred
@@ -777,7 +761,6 @@ impl FauxCore {
         stream.end(Some(message));
     }
 
-    /// `scheduleChunk(chunk, tokensPerSecond)`
     async fn schedule_chunk(&self, chunk: &str) {
         match self.tokens_per_second.filter(|rate| *rate > 0.0) {
             None => tokio::task::yield_now().await,
@@ -789,7 +772,6 @@ impl FauxCore {
     }
 }
 
-/// `FauxProviderHandle`
 pub struct FauxProviderHandle {
     pub provider: Arc<BuiltProvider>,
     pub core: Arc<FauxCore>,
@@ -903,7 +885,6 @@ impl crate::auth::types::ApiKeyAuth for FauxAuth {
     }
 }
 
-/// `fauxProvider(options?)`
 pub fn faux_provider(options: FauxProviderOptions) -> FauxProviderHandle {
     let core = create_faux_core(options);
     let provider = create_provider(CreateProviderOptions {

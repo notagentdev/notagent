@@ -51,7 +51,7 @@ fn armin_clips_the_grid_to_a_narrow_terminal() {
         assert!(visible_width(line) <= 12, "{:?}", strip_ansi(line));
     }
     // bug-compat: only the grid rows are clipped. The message keeps its full
-    // length and overflows a terminal narrower than 15 columns, because
+    // length and overflows a terminal narrower than 15 columns.
     assert_eq!(strip_ansi(message), " ARMIN SAYS HI");
 }
 

@@ -648,7 +648,6 @@ fn wraps_shortened_absolute_paths_in_osc8_file_links() {
     reset_capabilities_cache();
 }
 
-/// `result.replace(/\x1b\]8;;.*?\x1b\\/g, "")`.
 fn strip_osc8(text: &str) -> String {
     let mut result = String::new();
     let mut rest = text;

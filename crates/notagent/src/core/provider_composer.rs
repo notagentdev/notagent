@@ -25,7 +25,6 @@ use crate::core::resolve_config_value::{
     is_config_value_configured, resolve_config_value_or_throw, resolve_headers_or_throw,
 };
 
-/// `AuthStatus`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthStatus {
     pub configured: bool,
@@ -141,7 +140,6 @@ fn merge_model_compat(model: &Model, override_compat: Option<&Value>) -> Option<
     )
 }
 
-/// `applyModelOverride(model, override)`
 fn apply_model_override(model: &Model, override_model: &ModelsJsonModelOverride) -> Model {
     let mut next = model.clone();
     if let Some(name) = &override_model.name {
@@ -186,7 +184,6 @@ fn apply_model_override(model: &Model, override_model: &ModelsJsonModelOverride)
     next
 }
 
-/// `modelFromJson(providerId, definition, providerConfig, defaults)`
 fn model_from_json(
     provider_id: &str,
     definition: &ModelsJsonModel,
@@ -272,7 +269,6 @@ fn model_from_json(
     })
 }
 
-/// `applyModelsJson(providerId, baseModels, config)`
 fn apply_models_json(
     provider_id: &str,
     base_models: &[Model],
@@ -338,7 +334,6 @@ fn apply_models_json(
 // Auth layering
 // ---------------------------------------------------------------------------
 
-/// `withConfiguredAuth(auth, headers, authHeader)`
 fn with_configured_auth(
     auth: ModelAuth,
     headers: Option<BTreeMap<String, String>>,
@@ -381,7 +376,6 @@ fn configured_headers(config: Option<&ModelsJsonProvider>) -> Option<BTreeMap<St
     config.and_then(|config| config.headers.clone())
 }
 
-/// `configContextEnv(values, ctx, explicit?)`
 async fn config_context_env(
     values: &[String],
     ctx: &dyn notagent_ai::auth::types::AuthContext,
@@ -411,7 +405,6 @@ fn auth_error(message: String) -> AuthError {
     AuthError(message)
 }
 
-/// `composeApiKeyAuth(providerId, base, config, extension)`
 struct ComposedApiKeyAuth {
     provider_id: String,
     inherited: Option<Arc<dyn ApiKeyAuth>>,
@@ -638,7 +631,6 @@ fn compose_api_key_auth(
     }))
 }
 
-/// `composeOAuthAuth(providerId, base, config, extension)`
 struct ComposedOAuthAuth {
     provider_id: String,
     inner: Arc<dyn OAuthAuth>,
@@ -716,7 +708,6 @@ fn compose_oauth_auth(
     }))
 }
 
-/// `rawModelHeaders(model, config, extension)`
 fn raw_model_headers(
     model: &Model,
     config: Option<&ModelsJsonProvider>,
@@ -859,9 +850,9 @@ impl Provider for ComposedProvider {
         &self.auth
     }
 
-    /// Deviation (class 1): `getModels` must not fail in Rust, so a layering error
-    /// that only appears after the base catalog changed yields an empty list; the
-    /// same inputs are rejected eagerly by [`compose_model_provider`].
+    /// Cannot fail, so a layering error that only appears after the base
+    /// catalog changed yields an empty list; the same inputs are rejected
+    /// eagerly by [`compose_model_provider`].
     fn get_models(&self) -> Vec<Model> {
         self.layered_models().unwrap_or_default()
     }
@@ -962,7 +953,6 @@ pub fn compose_model_provider(
     }))
 }
 
-/// `resolveConfiguredModelHeaders(model, config, extension, env?)`
 pub fn resolve_configured_model_headers(
     model: &Model,
     config: Option<&ModelsJsonProvider>,
@@ -976,14 +966,12 @@ pub fn resolve_configured_model_headers(
     .map_err(|error| error.to_string())
 }
 
-/// `CompatibilityRequestConfig`
 #[derive(Debug, Clone, Default)]
 pub struct CompatibilityRequestConfig {
     pub headers: Option<ProviderHeaders>,
     pub auth_header: bool,
 }
 
-/// `resolveCompatibilityRequestConfig(model, config, extension)`
 pub fn resolve_compatibility_request_config(
     model: &Model,
     config: Option<&ModelsJsonProvider>,
@@ -1020,7 +1008,6 @@ pub fn resolve_compatibility_request_config(
     })
 }
 
-/// `configuredRequestAuthStatus(config, extension)`
 pub fn configured_request_auth_status(config: Option<&ModelsJsonProvider>) -> Option<AuthStatus> {
     let value = configured_api_key(config)?;
     if is_command_config_value(&value) {

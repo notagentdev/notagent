@@ -45,7 +45,6 @@ fn relative(from: &str, to: &str) -> String {
     node_relative(&resolve(from), &resolve(to))
 }
 
-/// `path.basename(path)`.
 fn basename(path: &str) -> String {
     Path::new(path)
         .file_name()
@@ -53,7 +52,6 @@ fn basename(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// `path.dirname(path)`.
 fn dirname(path: &str) -> String {
     Path::new(path)
         .parent()
@@ -61,7 +59,6 @@ fn dirname(path: &str) -> String {
         .unwrap_or_else(|| ".".to_string())
 }
 
-/// `path.join(left, right)`.
 fn join(left: &str, right: &str) -> String {
     Path::new(left).join(right).to_string_lossy().into_owned()
 }
@@ -80,7 +77,7 @@ fn locale_compare(a: &str, b: &str) -> std::cmp::Ordering {
 // Types
 // ============================================================================
 
-/// The resource kinds the selector lists. `extensions` is gone with the
+/// The resource kinds the selector lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ResourceType {
     Skills,
@@ -360,7 +357,6 @@ fn build_groups(resolved: &ResolvedResources, agent_dir: &str) -> Vec<ResourceGr
 // Header
 // ============================================================================
 
-/// `ConfigSelectorHeader`.
 pub struct ConfigSelectorHeader {
     write_scope: ConfigWriteScope,
     project_mode_available: bool,
@@ -505,7 +501,6 @@ impl ResourceList {
         list
     }
 
-    /// `setWriteScope`.
     fn set_write_scope(&mut self, write_scope: ConfigWriteScope) {
         self.write_scope = write_scope;
         self.build_flat_list();
@@ -513,7 +508,7 @@ impl ResourceList {
         self.filter_items(&query);
     }
 
-    /// The scope switch of the outer component: it flips the write scope of the
+    /// The scope switch of the outer component.
     fn switch_write_scope(&mut self) {
         let next = if self.write_scope == ConfigWriteScope::Global {
             ConfigWriteScope::Project
@@ -790,7 +785,9 @@ impl ResourceList {
             },
         );
 
-        // Clean up empty filter object. The `extensions` key counts even though
+        // Clean up an empty filter object. The `extensions` key counts even
+        // though nothing reads it: dropping it would silently delete a filter
+        // the user wrote.
         let has_filters = pkg.extensions.is_some()
             || pkg.skills.is_some()
             || pkg.prompts.is_some()
@@ -1205,7 +1202,6 @@ impl ResourceList {
     }
 }
 
-/// `buildInheritedEnabledMap`.
 fn build_inherited_enabled_map(
     groups: &[ResourceGroup],
 ) -> std::collections::HashMap<String, bool> {
@@ -1265,7 +1261,7 @@ fn get_override_state_from_entries(
     state
 }
 
-/// `resolvePath(input, baseDir, { trim: true })`, falling back to the input the
+/// `resolvePath(input, baseDir, { trim: true })`.
 fn trimmed_resolve(input: &str, base_dir: &str) -> String {
     resolve_path(
         input,
@@ -1551,7 +1547,6 @@ impl Focusable for ResourceList {
 // Component
 // ============================================================================
 
-/// `ConfigSelectorComponent`.
 pub struct ConfigSelectorComponent {
     container: Container,
     resource_list: Rc<RefCell<ResourceList>>,

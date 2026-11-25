@@ -6,7 +6,6 @@ use notagent_protocol::{
     UpdatedTranscriptItem,
 };
 
-/// `TranscriptState`.
 /// only; the Rust functions take the state by value and hand back a new one, so
 /// the same "never mutate in place" contract holds.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,7 +16,6 @@ pub struct TranscriptState {
     pub tool_call_buffers: HashMap<String, String>,
 }
 
-/// `isJsonValue`.
 /// Rust cannot build a `serde_json::Value` that carries a non-plain object or a
 /// non-finite number, so only the finiteness guard has anything left to check —
 /// it stays because `serde_json` does parse `1e999` into an infinite `f64`.
@@ -41,7 +39,6 @@ fn parse_partial_tool_input(value: &str) -> JsonValue {
     JsonValue::String(value.to_owned())
 }
 
-/// `createTranscriptState`.
 pub fn create_transcript_state(snapshot: SessionSnapshot) -> TranscriptState {
     TranscriptState {
         snapshot,
@@ -62,7 +59,6 @@ pub fn apply_transcript_snapshot(
     create_transcript_state(snapshot)
 }
 
-/// `applyTranscriptProgress`.
 pub fn apply_transcript_progress(
     state: TranscriptState,
     progress: &TranscriptProgress,

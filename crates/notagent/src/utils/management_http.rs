@@ -31,9 +31,8 @@ pub fn site_client_builder() -> reqwest::ClientBuilder {
 }
 
 /// Send `request` with a bounded immediate retry.
-/// Deviation (class 3): `fetch` + `AbortSignal.timeout` become `reqwest` with a
-/// deadline; the request is rebuilt per attempt because a `reqwest::Request`
-/// cannot be cloned when it carries a streaming body.
+/// The request is rebuilt per attempt because a `reqwest::Request` cannot be
+/// cloned when it carries a streaming body.
 pub async fn fetch_with_retry(
     client: &reqwest::Client,
     build_request: impl Fn() -> reqwest::RequestBuilder,

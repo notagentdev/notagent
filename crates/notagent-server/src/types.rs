@@ -90,6 +90,3 @@ pub trait PiServerService: Send + Sync {
         session_id: &str,
     ) -> Result<Arc<dyn PiSessionRuntime>, ServerError>;
 }
-
-pub type SessionRuntime = dyn PiSessionRuntime;
-pub type SessionRuntimeEvent = PiSessionRuntimeEvent;

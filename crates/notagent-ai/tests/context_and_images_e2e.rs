@@ -11,7 +11,6 @@ use serde_json::{Value, json};
 
 const LOREM_IPSUM: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ";
 
-/// `generateOverflowContent(contextWindow)`
 fn generate_overflow_content(context_window: u64) -> String {
     let target_tokens = context_window + 10_000;
     let target_chars = target_tokens as f64 * 4.0 * 1.5;

@@ -1,4 +1,3 @@
-/// `describe("Jacobian conjecture session using dollar delimiters")`
 pub static JACOBIAN_CONJECTURE_SESSION_USING_DOLLAR_DELIMITERS: &[(&str, &str)] = &[
     ("\\mathbb{C}^3 \\to \\mathbb{C}^3", "ℂ³ → ℂ³"),
     (
@@ -54,7 +53,6 @@ pub static JACOBIAN_CONJECTURE_SESSION_USING_DOLLAR_DELIMITERS: &[(&str, &str)] 
     ("4+3xy", "4+3xy"),
 ];
 
-/// `describe("satellite calculation session using bracket delimiters")`
 pub static SATELLITE_CALCULATION_SESSION_USING_BRACKET_DELIMITERS: &[(&str, &str)] = &[
     (
         "E \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}} = 0.001\\ \\text{W/m}^2",
@@ -90,7 +88,6 @@ pub static SATELLITE_CALCULATION_SESSION_USING_BRACKET_DELIMITERS: &[(&str, &str
     ),
 ];
 
-/// `describe("Jacobian conjecture sessions using parenthesis and bracket delimiters")`
 pub static JACOBIAN_CONJECTURE_SESSIONS_USING_PARENTHESIS_AND_BRACKET_DELIMITERS: &[(
     &str,
     &str,
@@ -108,7 +105,6 @@ pub static JACOBIAN_CONJECTURE_SESSIONS_USING_PARENTHESIS_AND_BRACKET_DELIMITERS
     ("3", "3"),
 ];
 
-/// `describe("Jacobian matrix session using dollar delimiters")`
 pub static JACOBIAN_MATRIX_SESSION_USING_DOLLAR_DELIMITERS: &[(&str, &str)] = &[
     (
         "J = \\begin{pmatrix}\n\\frac{\\partial f_1}{\\partial x} & \\frac{\\partial f_1}{\\partial y} & \\frac{\\partial f_1}{\\partial z} \\\\\n\\frac{\\partial f_2}{\\partial x} & \\frac{\\partial f_2}{\\partial y} & \\frac{\\partial f_2}{\\partial z} \\\\\n\\frac{\\partial f_3}{\\partial x} & \\frac{\\partial f_3}{\\partial y} & \\frac{\\partial f_3}{\\partial z}\n\\end{pmatrix}",
@@ -149,7 +145,6 @@ pub static JACOBIAN_MATRIX_SESSION_USING_DOLLAR_DELIMITERS: &[(&str, &str)] = &[
     ("\\mathbb{P}^3", "ℙ³"),
 ];
 
-/// `describe("extended formulas from a renderer stress-test session")`
 pub static EXTENDED_FORMULAS_FROM_A_RENDERER_STRESS_TEST_SESSION: &[(&str, &str)] = &[
     ("e^{i\\pi}+1=0", "e^(iπ)+1 = 0"),
     (

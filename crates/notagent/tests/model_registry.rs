@@ -59,7 +59,6 @@ impl Drop for Fixture {
     }
 }
 
-/// `providerConfig(baseUrl, models, api?)`
 fn provider_config(base_url: &str, model_ids: &[&str], api: &str) -> Value {
     json!({
         "baseUrl": base_url,

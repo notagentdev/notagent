@@ -9,14 +9,12 @@ const CLOUDFLARE_API_KEY: &str = "CLOUDFLARE_API_KEY";
 const CLOUDFLARE_ACCOUNT_ID: &str = "CLOUDFLARE_ACCOUNT_ID";
 const CLOUDFLARE_GATEWAY_ID: &str = "CLOUDFLARE_GATEWAY_ID";
 
-/// `CloudflareAuthKind`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CloudflareAuthKind {
     WorkersAi,
     AiGateway,
 }
 
-/// `resolveValue(name, ctx, credential, signal)`
 async fn resolve_value(
     name: &str,
     ctx: &dyn AuthContext,
@@ -53,7 +51,6 @@ struct ResolvedCloudflareEnv {
     source: String,
 }
 
-/// `resolveCloudflareEnv(kind, ctx, credential, signal)`
 async fn resolve_cloudflare_env(
     kind: CloudflareAuthKind,
     ctx: &dyn AuthContext,
@@ -125,7 +122,6 @@ async fn prompt_secret(
         .await
 }
 
-/// `cloudflareWorkersAIAuth()`
 pub struct CloudflareWorkersAiAuth;
 
 impl ApiKeyAuth for CloudflareWorkersAiAuth {
@@ -176,7 +172,6 @@ impl ApiKeyAuth for CloudflareWorkersAiAuth {
     }
 }
 
-/// `cloudflareAIGatewayAuth()`
 pub struct CloudflareAiGatewayAuth;
 
 impl ApiKeyAuth for CloudflareAiGatewayAuth {

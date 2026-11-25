@@ -138,13 +138,11 @@ fn load_auth() -> BTreeMap<String, OAuthCredential> {
     serde_json::from_str(&content).unwrap_or_default()
 }
 
-/// `saveAuth(auth)`
 fn save_auth(auth: &BTreeMap<String, OAuthCredential>) -> Result<(), String> {
     let content = serde_json::to_string_pretty(auth).map_err(|error| error.to_string())?;
     std::fs::write(AUTH_FILE, content).map_err(|error| error.to_string())
 }
 
-/// `login(providerId)`
 async fn login(provider_id: &str) -> Result<(), String> {
     let providers = oauth_providers();
     let provider = providers

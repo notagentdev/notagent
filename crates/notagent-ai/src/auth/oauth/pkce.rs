@@ -3,7 +3,6 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::RngExt;
 use sha2::{Digest, Sha256};
 
-/// `base64urlEncode(bytes)`
 pub fn base64url_encode(bytes: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }

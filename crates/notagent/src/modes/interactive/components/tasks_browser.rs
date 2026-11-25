@@ -41,7 +41,6 @@ const LIST_COLUMN_RATIO: f64 = 0.32;
 /// Invoked with a task id.
 pub type TaskIdCallback = Box<dyn FnMut(&str)>;
 
-/// `TasksBrowserProps`
 pub struct TasksBrowserProps {
     /// Everything the session knows about.
     pub tasks: Vec<TaskInfo>,
@@ -159,7 +158,6 @@ pub fn visible_tasks(tasks: &[TaskInfo], filter: TasksFilter) -> Vec<TaskInfo> {
     shown
 }
 
-/// `TaskCounts`
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TaskCounts {
     /// Tasks still running.
@@ -240,23 +238,6 @@ impl TasksBrowserComponent {
     /// The task id whose stop is awaiting confirmation.
     pub fn pending_stop(&self) -> Option<&str> {
         self.pending_stop.as_deref()
-    }
-
-    /// When an armed stop gives up.
-    pub fn stop_confirm_deadline(&self) -> Option<Instant> {
-        self.pending_stop_deadline
-    }
-
-    /// Body of the confirmation timeout. `true` when the stop was disarmed.
-    pub fn tick_stop_confirm(&mut self) -> bool {
-        let Some(deadline) = self.pending_stop_deadline else {
-            return false;
-        };
-        if Instant::now() < deadline {
-            return false;
-        }
-        self.clear_pending_stop();
-        true
     }
 
     fn list(&self) -> Vec<TaskInfo> {

@@ -366,7 +366,7 @@ impl Component for FooterComponent {
                         (Some("toolResult"), Some(usage)) => {
                             add_usage_to_totals(&mut usage_totals, &usage);
                         }
-                        // An assistant message without usage still resets the
+                        // An assistant message without usage still resets the hit rate.
                         (Some("assistant"), None) => latest_cache_hit_rate = None,
                         _ => {}
                     }

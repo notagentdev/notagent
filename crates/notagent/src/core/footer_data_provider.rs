@@ -548,11 +548,9 @@ impl Inner {
         watchers.reftable_tables_list_poll = poll;
     }
 
-    /// `fs.watchFile`: polls the file and reports a change when its metadata
-    /// moved.
-    /// Deviation (class 1): the comparison is modification time plus size. Node
-    /// also compares the inode change time, which Rust exposes only per
-    /// platform; every write that changes ctime here also changes mtime.
+    /// Polls the file and reports a change when its modification time or size
+    /// moved. The inode change time is left out: it is platform-specific, and
+    /// every write that changes it here also changes the modification time.
     fn spawn_file_poll(
         inner: &Arc<Self>,
         path: PathBuf,

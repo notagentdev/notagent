@@ -43,7 +43,6 @@ const STATUS_SEARCHING: &str = "Searching Hugging Face…";
 /// `status` of an empty result.
 const STATUS_NO_MODELS: &str = "No GGUF models found";
 
-/// `LlamaManagerAction`
 #[derive(Debug, Clone, PartialEq)]
 pub enum LlamaManagerAction {
     /// `{ type: "model"; model }`
@@ -81,13 +80,8 @@ pub struct ProgressState {
 }
 
 impl ProgressState {
-    /// `Object.assign(state, progress)`.
-    /// Deviation (class 1): `Object.assign` distinguishes an absent key from an
-    /// explicit `undefined`, a Rust struct cannot. All three fields are copied,
-    /// which matches every sequence the client produces: `parseLoadProgress`
-    /// and `parseDownloadProgress` always carry the keys they may clear, and
-    /// the two key-less emissions (`{ message: "Loading model" }` and
-    /// where there is no ratio or detail to keep.
+    /// Take over a progress update. All three fields are copied: every update
+    /// the client produces carries the fields it may clear.
     pub fn apply(&mut self, progress: LlamaProgress) {
         self.message = progress.message;
         self.ratio = progress.ratio;
@@ -121,7 +115,6 @@ fn js_number(value: &str) -> Option<f64> {
     trimmed.parse::<f64>().ok()
 }
 
-/// `contextLabel(model)`
 fn context_label(model: &LlamaModelInfo) -> Option<String> {
     let format = |value: f64| -> String {
         if value >= 1000.0 {
@@ -156,7 +149,6 @@ fn context_label(model: &LlamaModelInfo) -> Option<String> {
     None
 }
 
-/// `modelDescription(model)`
 fn model_description(model: &LlamaModelInfo) -> String {
     let mut details: Vec<String> = Vec::new();
     let loaded =
@@ -172,7 +164,6 @@ fn model_description(model: &LlamaModelInfo) -> String {
     details.join(" · ")
 }
 
-/// `selectTheme(theme)`
 fn select_theme() -> SelectListTheme {
     SelectListTheme {
         selected_prefix: Rc::new(|text: &str| theme().fg(ThemeColor::Accent, text)),
@@ -183,7 +174,6 @@ fn select_theme() -> SelectListTheme {
     }
 }
 
-/// `frame(theme, title, body, footer)`
 fn frame(title: &str, body: Vec<ComponentRef>, footer: Option<&str>) -> Container {
     let accent = || {
         component_ref(DynamicBorder::new(Some(Rc::new(|text: &str| {
@@ -213,7 +203,6 @@ fn frame(title: &str, body: Vec<ComponentRef>, footer: Option<&str>) -> Containe
     container
 }
 
-/// `compactCount(value)`
 fn compact_count(value: f64) -> String {
     if value >= 1_000_000.0 {
         return format!(
@@ -339,7 +328,6 @@ impl HuggingFaceSearch {
         search
     }
 
-    /// `updateResults()`
     fn update_results(&mut self) {
         let theme_instance = theme();
         {
@@ -399,7 +387,6 @@ impl HuggingFaceSearch {
         (self.request_render)();
     }
 
-    /// `filterResults()`
     fn filter_results(&mut self) {
         if self.query.is_empty() {
             self.filtered_results = self.results.clone();
@@ -422,7 +409,6 @@ impl HuggingFaceSearch {
         self.update_results();
     }
 
-    /// `scheduleSearch()`
     fn schedule_search(&mut self) {
         self.debounce = None;
         if let Some(request) = self.request.take() {
@@ -512,7 +498,6 @@ impl HuggingFaceSearch {
         self.request = None;
     }
 
-    /// `close(model)`
     fn close(&mut self, model: Option<String>) {
         if self.closed {
             return;
@@ -665,7 +650,6 @@ impl LlamaView {
         self.seq
     }
 
-    /// `setContent(content, inputHandler, inputTarget)`
     fn set_content(
         &mut self,
         content: Container,
@@ -693,7 +677,6 @@ impl LlamaView {
         (self.request_render)();
     }
 
-    /// `showModels(serverUrl, models)`
     pub fn show_models(&mut self, server_url: &str, models: &[LlamaModelInfo]) -> u64 {
         let seq = self.next_seq();
         let mut sorted = models.to_vec();
@@ -767,7 +750,6 @@ impl LlamaView {
         seq
     }
 
-    /// `select(title, options)`
     pub fn select(&mut self, title: &str, options: &[String]) -> u64 {
         let seq = self.next_seq();
         let items: Vec<SelectItem> = options
@@ -807,7 +789,6 @@ impl LlamaView {
         seq
     }
 
-    /// `searchModels(search)`
     pub fn search_models(&mut self) -> u64 {
         let seq = self.next_seq();
         let component = Rc::new(RefCell::new(HuggingFaceSearch::new(
@@ -842,7 +823,6 @@ impl LlamaView {
         self.search.clone()
     }
 
-    /// `showStatus(title, message)`
     pub fn show_status(&mut self, title: &str, message: &str) {
         let content = frame(
             title,
@@ -855,7 +835,6 @@ impl LlamaView {
         self.set_content(content, None, None);
     }
 
-    /// `progress(state)`
     pub fn progress(&mut self, state: &ProgressState) -> u64 {
         let seq = match self.progress_seq {
             Some(seq) => seq,
@@ -870,7 +849,6 @@ impl LlamaView {
         seq
     }
 
-    /// `updateProgress(state)`
     pub fn update_progress(&mut self, state: &ProgressState) {
         if !self.showing_progress {
             return;

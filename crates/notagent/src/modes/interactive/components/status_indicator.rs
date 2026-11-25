@@ -216,7 +216,6 @@ impl StatusIndicator {
         self.settled
     }
 
-    /// `WorkingStatusIndicator`.
     pub fn working(message: impl Into<String>, indicator: Option<LoaderIndicatorOptions>) -> Self {
         Self::animated(
             StatusIndicatorKind::Working,
@@ -226,7 +225,6 @@ impl StatusIndicator {
         )
     }
 
-    /// `RetryStatusIndicator`.
     pub fn retry(attempt: u32, max_attempts: u32, delay_ms: u64) -> Self {
         let retry_message = RetryMessage {
             attempt,
@@ -246,7 +244,6 @@ impl StatusIndicator {
         indicator
     }
 
-    /// `CompactionStatusIndicator`.
     pub fn compaction(reason: CompactionStatusReason) -> Self {
         let cancel_hint = format!("({} to cancel)", key_text("app.interrupt"));
         let label = if reason == CompactionStatusReason::Manual {
@@ -269,7 +266,6 @@ impl StatusIndicator {
         )
     }
 
-    /// `BranchSummaryStatusIndicator`.
     pub fn branch_summary() -> Self {
         Self::animated(
             StatusIndicatorKind::BranchSummary,
@@ -292,7 +288,7 @@ impl StatusIndicator {
         self.countdown.as_ref().and_then(CountdownTimer::deadline)
     }
 
-    /// Advance the retry countdown; `true` when the message changed and the
+    /// Advance the retry countdown.
     pub fn tick_countdown(&mut self) -> bool {
         let Some(countdown) = self.countdown.as_mut() else {
             return false;

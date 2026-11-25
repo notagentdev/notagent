@@ -54,7 +54,6 @@ pub struct GoogleVertexOptions {
 // Endpoint resolution
 // ---------------------------------------------------------------------------
 
-/// `isPlaceholderApiKey(apiKey)`
 fn is_placeholder_api_key(api_key: &str) -> bool {
     api_key.starts_with('<')
         && api_key.ends_with('>')
@@ -70,7 +69,6 @@ pub fn resolve_api_key(api_key: Option<&str>) -> Option<String> {
     Some(api_key.to_string())
 }
 
-/// `resolveProject(options)`
 pub fn resolve_project(
     project: Option<&str>,
     env: Option<&ProviderEnv>,
@@ -87,7 +85,6 @@ pub fn resolve_project(
         })
 }
 
-/// `resolveLocation(options)`
 pub fn resolve_location(
     location: Option<&str>,
     env: Option<&ProviderEnv>,
@@ -114,7 +111,6 @@ pub fn resolve_custom_base_url(base_url: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-/// `baseUrlIncludesApiVersion(baseUrl)`
 pub fn base_url_includes_api_version(base_url: &str) -> bool {
     let pattern = regex::Regex::new(r"^v\d+(?:beta\d*)?$").expect("valid pattern");
     match Url::parse(base_url) {
@@ -184,11 +180,6 @@ pub fn build_request_url(model: &Model, endpoint: &VertexEndpoint) -> Result<Str
     Ok(segments.join("/"))
 }
 
-/// `buildGoogleAuthOptions(env)` — the key file ADC should use, when one is configured.
-pub fn google_application_credentials(env: Option<&ProviderEnv>) -> Option<String> {
-    get_provider_env_value("GOOGLE_APPLICATION_CREDENTIALS", env).filter(|value| !value.is_empty())
-}
-
 /// The `httpOptions.headers` of `buildHttpOptions`, merged model-first.
 pub fn build_client_headers(
     model: &Model,
@@ -224,7 +215,6 @@ fn disabled_thinking_config(model_id: &str) -> Value {
     json!({ "thinkingBudget": 0 })
 }
 
-/// `getGemini3ThinkingLevel(effort, model)`
 pub fn gemini3_thinking_level(effort: ThinkingLevel, model_id: &str) -> &'static str {
     if is_gemini3_pro_model(model_id) {
         return match effort {
@@ -375,7 +365,6 @@ pub type VertexTokenProvider = Arc<
         + Sync,
 >;
 
-/// `stream(model, context, options)`
 pub fn stream(
     model: Model,
     context: Context,
@@ -645,7 +634,6 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)`
 pub fn stream_simple(
     model: Model,
     context: Context,

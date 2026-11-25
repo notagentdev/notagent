@@ -74,7 +74,6 @@ pub struct BedrockError(pub String);
 // Model predicates
 // ---------------------------------------------------------------------------
 
-/// `getModelMatchCandidates(modelId, modelName)`
 fn model_match_candidates(model_id: &str, model_name: &str) -> Vec<String> {
     let values: Vec<&str> = if model_name.is_empty() {
         vec![model_id]
@@ -111,7 +110,6 @@ pub fn supports_adaptive_thinking(model_id: &str, model_name: &str) -> bool {
         })
 }
 
-/// `supportsNativeXhighEffort(model)`
 pub fn supports_native_xhigh_effort(model_id: &str, model_name: &str) -> bool {
     model_match_candidates(model_id, model_name)
         .iter()
@@ -122,7 +120,6 @@ pub fn supports_native_xhigh_effort(model_id: &str, model_name: &str) -> bool {
         })
 }
 
-/// `isAnthropicClaudeModel(model)`
 pub fn is_anthropic_claude_model(model_id: &str, model_name: &str) -> bool {
     let id = model_id.to_lowercase();
     let name = model_name.to_lowercase();
@@ -138,7 +135,6 @@ fn supports_thinking_signature(model: &Model) -> bool {
     is_anthropic_claude_model(&model.id, &model.name)
 }
 
-/// `supportsPromptCaching(model, env)`
 pub fn supports_prompt_caching(model: &Model, env: Option<&ProviderEnv>) -> bool {
     let candidates = model_match_candidates(&model.id, &model.name);
     let has_claude_ref = candidates
@@ -161,7 +157,6 @@ pub fn supports_prompt_caching(model: &Model, env: Option<&ProviderEnv>) -> bool
         || any(&["claude-3-5-haiku"])
 }
 
-/// `isGovCloudBedrockTarget(model, options)`
 pub fn is_gov_cloud_bedrock_target(model_id: &str, region: Option<&str>) -> bool {
     if region.is_some_and(|region| region.to_lowercase().starts_with("us-gov-")) {
         return true;
@@ -174,7 +169,6 @@ pub fn is_gov_cloud_bedrock_target(model_id: &str, region: Option<&str>) -> bool
 // Region, endpoint and credentials
 // ---------------------------------------------------------------------------
 
-/// `getConfiguredBedrockRegion(options)`
 pub fn configured_region(options: &BedrockOptions) -> Option<String> {
     options
         .region
@@ -190,7 +184,6 @@ pub fn configured_region(options: &BedrockOptions) -> Option<String> {
         })
 }
 
-/// `getStandardBedrockEndpointRegion(baseUrl)`
 pub fn standard_endpoint_region(base_url: &str) -> Option<String> {
     if base_url.is_empty() {
         return None;
@@ -205,7 +198,6 @@ pub fn standard_endpoint_region(base_url: &str) -> Option<String> {
     Some(pattern.captures(&host)?.get(1)?.as_str().to_string())
 }
 
-/// `shouldUseExplicitBedrockEndpoint(baseUrl, configuredRegion, hasAmbientConfiguredProfile)`
 pub fn should_use_explicit_endpoint(
     base_url: &str,
     configured_region: Option<&str>,
@@ -217,7 +209,6 @@ pub fn should_use_explicit_endpoint(
     configured_region.is_none() && !has_ambient_profile
 }
 
-/// `getConfiguredBedrockCredentials(env)`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BedrockCredentials {
     pub access_key_id: String,
@@ -353,7 +344,6 @@ pub fn is_reserved_header(key: &str) -> bool {
 // Request building
 // ---------------------------------------------------------------------------
 
-/// `resolveCacheRetention(cacheRetention, env)`
 fn resolve_cache_retention(
     cache_retention: Option<CacheRetention>,
     env: Option<&ProviderEnv>,
@@ -376,18 +366,15 @@ fn cache_point(cache_retention: CacheRetention) -> Value {
     json!({ "cachePoint": point })
 }
 
-/// `createNonBlankTextBlock(text)`
 fn non_blank_text_block(text: &str) -> Option<Value> {
     let sanitized = sanitize_surrogates(text);
     (!sanitized.trim().is_empty()).then(|| json!({ "text": sanitized }))
 }
 
-/// `createRequiredTextBlock(text)`
 fn required_text_block(text: &str) -> Value {
     non_blank_text_block(text).unwrap_or_else(|| json!({ "text": EMPTY_TEXT_PLACEHOLDER }))
 }
 
-/// `createImageBlock(mimeType, data)`
 fn image_block(mime_type: &str, data: &str) -> Result<Value, BedrockError> {
     let format = match mime_type {
         "image/jpeg" | "image/jpg" => "jpeg",
@@ -415,7 +402,6 @@ fn sanitize_bedrock_document(value: &Value) -> Value {
     }
 }
 
-/// `convertToolResultContent(content)`
 fn convert_tool_result_content(content: &[TextOrImageContent]) -> Result<Vec<Value>, BedrockError> {
     let mut result = Vec::new();
     for block in content {
@@ -436,7 +422,6 @@ fn convert_tool_result_content(content: &[TextOrImageContent]) -> Result<Vec<Val
     Ok(result)
 }
 
-/// `buildSystemPrompt(systemPrompt, model, cacheRetention, env)`
 fn build_system_prompt(
     system_prompt: Option<&str>,
     model: &Model,
@@ -451,7 +436,6 @@ fn build_system_prompt(
     Some(blocks)
 }
 
-/// `normalizeToolCallId(id)`
 fn normalize_tool_call_id(id: &str) -> String {
     let sanitized: String = id
         .chars()
@@ -466,7 +450,6 @@ fn normalize_tool_call_id(id: &str) -> String {
     sanitized.chars().take(64).collect()
 }
 
-/// `convertMessages(context, model, cacheRetention, env)`
 pub fn convert_messages(
     context: &Context,
     model: &Model,
@@ -611,7 +594,6 @@ pub fn convert_messages(
     Ok(result)
 }
 
-/// `convertToolConfig(tools, toolChoice, supportsStrictMode)`
 pub fn convert_tool_config(
     tools: Option<&[Tool]>,
     tool_choice: Option<&BedrockToolChoice>,
@@ -654,7 +636,6 @@ pub fn convert_tool_config(
     Ok(Some(Value::Object(config)))
 }
 
-/// `mapThinkingLevelToEffort(model, level)`
 fn map_thinking_level_to_effort(model: &Model, level: ThinkingLevel) -> String {
     if level == ThinkingLevel::Xhigh && supports_native_xhigh_effort(&model.id, &model.name) {
         return "xhigh".to_string();
@@ -675,7 +656,6 @@ fn map_thinking_level_to_effort(model: &Model, level: ThinkingLevel) -> String {
     .to_string()
 }
 
-/// `buildAdditionalModelRequestFields(model, options)`
 pub fn build_additional_model_request_fields(
     model: &Model,
     options: &BedrockOptions,
@@ -831,7 +811,6 @@ pub fn build_command_input(
 // Stop reasons and errors
 // ---------------------------------------------------------------------------
 
-/// `mapStopReason(reason)`
 pub fn map_stop_reason(reason: Option<&str>) -> (StopReason, Option<String>) {
     match reason {
         Some("end_turn") | Some("stop_sequence") => (StopReason::Stop, None),
@@ -860,7 +839,6 @@ pub fn bedrock_error_prefix(name: &str) -> &str {
 pub const BEDROCK_DATA_RETENTION_DOCS_URL: &str =
     "https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html";
 
-/// `formatBedrockError(error)`
 pub fn format_bedrock_error(
     exception_name: Option<&str>,
     status: Option<u16>,
@@ -902,7 +880,6 @@ pub fn format_bedrock_error(
 /// Over-long values are dropped rather than truncated: a truncated request id is not one.
 const MAX_BEDROCK_DIAGNOSTIC_VALUE_CHARS: usize = 200;
 
-/// `normalizeDiagnosticValue(value)`
 pub fn normalize_diagnostic_value(value: Option<&str>) -> Option<String> {
     let trimmed = value?.trim();
     if trimmed.is_empty() || trimmed.chars().count() > MAX_BEDROCK_DIAGNOSTIC_VALUE_CHARS {
@@ -920,7 +897,6 @@ pub fn extract_bedrock_error_code(name: Option<&str>) -> Option<String> {
     normalize_diagnostic_value(Some(name))
 }
 
-/// `appendBedrockFailureDiagnostic(output, error, fallbackRequestId)`
 pub fn bedrock_failure_diagnostic_details(
     status: Option<u16>,
     exception_name: Option<&str>,
@@ -1082,7 +1058,6 @@ impl BedrockStreamState {
         });
     }
 
-    /// `handleContentBlockDelta(event, …)`
     fn handle_content_block_delta(
         &mut self,
         event: &Value,
@@ -1204,7 +1179,6 @@ impl BedrockStreamState {
         }
     }
 
-    /// `handleContentBlockStop(event, …)`
     fn handle_content_block_stop(
         &mut self,
         event: &Value,
@@ -1256,7 +1230,6 @@ impl BedrockStreamState {
         }
     }
 
-    /// `handleMetadata(event, model, output)`
     fn handle_metadata(&mut self, event: &Value) {
         let Some(usage) = event.get("usage") else {
             return;
@@ -1691,7 +1664,7 @@ pub fn stream_item_to_json(event: &bedrock::types::ConverseStreamOutput) -> Valu
 // Transport and stream driver
 // ---------------------------------------------------------------------------
 
-/// cases: a resolved proxy (with http/https proxy agents) and
+/// The HTTP client the Bedrock SDK sends through.
 #[derive(Debug, Clone)]
 struct ReqwestHttpClient {
     client: reqwest::Client,
@@ -1978,7 +1951,6 @@ impl BedrockFailure {
     }
 }
 
-/// `stream(model, context, options)`
 pub fn stream(
     model: Model,
     context: Context,
@@ -2131,7 +2103,7 @@ async fn run_bedrock_request(
             Ok(None) => break,
             Err(error) => {
                 return Err(match error {
-                    // A modeled mid-stream exception carries no HTTP metadata of its
+                    // A modeled mid-stream exception carries no HTTP metadata.
                     SdkError::ServiceError(context) => {
                         let name = converse_stream_output_error_name(context.err());
                         BedrockFailure {
@@ -2169,7 +2141,6 @@ async fn run_bedrock_request(
     })
 }
 
-/// `streamSimple(model, context, options)`
 pub fn stream_simple(
     model: Model,
     context: Context,
@@ -2188,7 +2159,7 @@ pub fn stream_simple(
             region: None,
             profile: None,
             // `toolChoice`, `region`, `profile`, `requestMetadata`, `interleavedThinking`
-            // and `thinkingDisplay` only exist on the typed `BedrockOptions`; a caller of
+            // and `thinkingDisplay` only exist on the typed `BedrockOptions`.
             tool_choice: None,
             reasoning,
             thinking_budgets,

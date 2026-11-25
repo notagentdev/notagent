@@ -1480,7 +1480,7 @@ async fn a_reload_that_finds_project_resources_writes_the_implicit_trust_decisio
     local(async {
         let app = HeadlessApp::create().await;
         let terminal = VirtualTerminal::new(COLUMNS, ROWS);
-        // The session started in a folder without trust-requiring resources, so
+        // The session started in a folder without trust-requiring resources.
         let mut driver = Driver::start_with_options(
             &app,
             terminal,

@@ -110,7 +110,6 @@ fn should_proxy_hostname(hostname: &str, port: u16, env: Option<&ProviderEnv>) -
     })
 }
 
-/// `getProxyForUrl(targetUrl, env)`
 fn get_proxy_for_url(target_url: &str, env: Option<&ProviderEnv>) -> String {
     let Some(parsed) = parse_proxy_target_url(target_url) else {
         return String::new();
@@ -137,7 +136,6 @@ fn normalize_proxy_url(proxy: &str) -> String {
     }
 }
 
-/// `resolveHttpProxyUrlForTarget(targetUrl, env)`
 pub fn resolve_http_proxy_url_for_target(
     target_url: &str,
     env: Option<&ProviderEnv>,

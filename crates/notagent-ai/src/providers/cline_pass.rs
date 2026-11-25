@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `clinePassProvider()`
 pub fn cline_pass_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "cline-pass".to_string(),

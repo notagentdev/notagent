@@ -97,11 +97,8 @@ pub struct RetryPolicy {
     pub base_delay_ms: u64,
 }
 
-/// `onRetryScheduled(attempt, maxAttempts, delayMs, errorMessage)`
 pub type OnRetryScheduled = std::sync::Arc<dyn Fn(u32, u32, u64, String) + Send + Sync>;
-/// `onRetryAttemptStart()`
 pub type OnRetryAttemptStart = std::sync::Arc<dyn Fn() + Send + Sync>;
-/// `onRetryFinished(success, attempt, finalError?)`
 pub type OnRetryFinished = std::sync::Arc<dyn Fn(bool, u32, Option<String>) + Send + Sync>;
 
 /// Callbacks emitted by [`retry_assistant_call`] around each retry.
@@ -224,7 +221,6 @@ async fn sleep_with_cancellation(delay_ms: u64, signal: Option<&CancellationToke
     }
 }
 
-/// `isRetryableAssistantError(message)`
 pub fn is_retryable_assistant_error(message: &AssistantMessage) -> bool {
     if message.stop_reason != StopReason::Error {
         return false;

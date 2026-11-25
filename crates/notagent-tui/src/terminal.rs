@@ -159,7 +159,7 @@ pub fn resolve_escape_timeout_ms_from(env: &dyn Fn(&str) -> Option<String>) -> u
 /// Sink for everything the terminal writes.
 enum OutputSink {
     Stdout,
-    /// Only constructed by [`ProcessTerminal::with_writer`], which the
+    /// Only constructed by [`ProcessTerminal::with_writer`].
     #[cfg(feature = "test-terminal")]
     Collector(Box<dyn FnMut(&str)>),
 }
@@ -1186,7 +1186,7 @@ impl Terminal for ProcessTerminal {
 }
 
 /// On Windows add ENABLE_VIRTUAL_TERMINAL_INPUT (0x0200) to the stdin console
-/// handle so the terminal sends VT sequences for modified keys (e.g. \x1b[Z for
+/// handle so the terminal sends VT sequences for modified keys.
 #[cfg(windows)]
 fn enable_windows_vt_input() {
     use windows_sys::Win32::System::Console::{
@@ -1287,7 +1287,7 @@ pub trait TerminalPump {
 
 /// [`ProcessTerminal`] shared between the TUI, which owns it, and its pump.
 /// Created by [`ProcessTerminal::into_shared`]. Every method takes the borrow
-/// only for its own duration, so a handler running inside the pump can write to
+/// only for its own duration.
 pub struct SharedProcessTerminal(Rc<RefCell<ProcessTerminal>>);
 
 impl SharedProcessTerminal {

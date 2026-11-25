@@ -1,6 +1,4 @@
-/// `getPiUserAgent(version)`
-/// Deviation (class 4): the runtime token names the Rust distribution instead of
-/// `bun/<v>` or `node/<v>` — there is no Node runtime behind this binary.
+/// The User-Agent: version, platform, Rust toolchain and architecture.
 pub fn get_pi_user_agent(version: &str) -> String {
     format!(
         "notagent/{version} ({}; rust/{}; {})",

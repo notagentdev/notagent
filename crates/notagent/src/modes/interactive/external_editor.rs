@@ -85,7 +85,6 @@ fn run_editor(options: &ExternalEditorOptions, file_path: &PathBuf) -> ExternalE
     }
 }
 
-/// `mkdtempSync(join(tmpdir(), "notagent-editor-"))`.
 fn make_temp_dir() -> Option<PathBuf> {
     let base = std::env::temp_dir();
     for attempt in 0..32 {

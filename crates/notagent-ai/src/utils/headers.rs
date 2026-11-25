@@ -2,14 +2,6 @@ use std::collections::BTreeMap;
 
 use crate::types::ProviderHeaders;
 
-/// `headersToRecord(headers)`
-pub fn headers_to_record(headers: &[(String, String)]) -> BTreeMap<String, String> {
-    headers
-        .iter()
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect()
-}
-
 /// `providerHeadersToRecord(headers)` — drops `null` values, returns `None` when empty.
 pub fn provider_headers_to_record(
     headers: Option<&ProviderHeaders>,

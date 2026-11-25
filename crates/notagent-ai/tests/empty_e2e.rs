@@ -15,13 +15,11 @@ async fn test_empty_message(model: &Model, options: &SimpleStreamOptions) {
     assert_handled(&complete_simple(model, &context, options.clone()).await);
 }
 
-/// `testEmptyStringMessage(llm, options)`
 async fn test_empty_string_message(model: &Model, options: &SimpleStreamOptions) {
     let context = context(None, vec![user("")]);
     assert_handled(&complete_simple(model, &context, options.clone()).await);
 }
 
-/// `testWhitespaceOnlyMessage(llm, options)`
 async fn test_whitespace_only_message(model: &Model, options: &SimpleStreamOptions) {
     let context = context(None, vec![user("   \n\t  ")]);
     assert_handled(&complete_simple(model, &context, options.clone()).await);

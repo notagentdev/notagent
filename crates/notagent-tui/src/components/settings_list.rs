@@ -310,7 +310,7 @@ impl Component for SettingsList {
     }
 
     fn handle_input(&mut self, data: &str) {
-        // While a submenu is open all input goes to it. Its `done` lands in the
+        // While a submenu is open all input goes to it.
         if let Some(submenu) = self.submenu_component.clone() {
             submenu.borrow_mut().handle_input(data);
             let done = self.submenu_done.borrow_mut().take();

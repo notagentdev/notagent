@@ -7,7 +7,6 @@ use crate::utils::event_stream::{
     AssistantMessageEventStream, create_assistant_message_event_stream,
 };
 
-/// `createSetupErrorMessage(model, error)`
 pub fn create_setup_error_message(
     model: &Model,
     error: &dyn std::fmt::Display,

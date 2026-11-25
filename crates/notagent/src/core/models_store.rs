@@ -15,7 +15,6 @@ use crate::core::auth_storage::{AuthStorageBackend, FileAuthStorageBackend};
 use crate::utils::abort::race_with_abort_signal;
 use crate::utils::paths::{PathError, get_file_revision, normalize_path_default};
 
-/// `InMemoryCodingAgentModelsStore`
 /// duplicating the implementation.
 pub type InMemoryCodingAgentModelsStore = notagent_ai::models_store::InMemoryModelsStore;
 
@@ -133,14 +132,6 @@ impl FileModelsStore {
         let mut store = Self::new(path)?;
         store.storage = storage;
         Ok(store)
-    }
-
-    pub fn at_default_path() -> Result<Self, PathError> {
-        Self::new(
-            &crate::config::get_agent_dir()
-                .join("models-store.json")
-                .to_string_lossy(),
-        )
     }
 
     fn update_read_state(&self, data: StoredModels, revision: Option<String>) {

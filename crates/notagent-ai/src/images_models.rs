@@ -25,7 +25,6 @@ pub type FetchImagesModelsFn = Arc<
 /// The future returned by a dynamic provider's refresh.
 pub type RefreshImagesFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
 
-/// `ImagesProvider`
 pub trait ImagesProvider: Send + Sync {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
@@ -45,7 +44,6 @@ pub trait ImagesProvider: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = AssistantImages> + Send>>;
 }
 
-/// `CreateImagesProviderOptions`
 pub struct CreateImagesProviderOptions {
     pub id: String,
     /// Display name; defaults to `id`.
@@ -67,7 +65,6 @@ pub struct BuiltImagesProvider {
     api: Arc<dyn ProviderImages>,
 }
 
-/// `createImagesProvider(input)`
 pub fn create_images_provider(input: CreateImagesProviderOptions) -> Arc<BuiltImagesProvider> {
     Arc::new(BuiltImagesProvider {
         name: input.name.unwrap_or_else(|| input.id.clone()),
@@ -123,7 +120,6 @@ impl ImagesProvider for BuiltImagesProvider {
     }
 }
 
-/// `ImagesModels`
 pub struct ImagesModels {
     providers: Mutex<BTreeMap<String, Arc<dyn ImagesProvider>>>,
     order: Mutex<Vec<String>>,
@@ -131,7 +127,6 @@ pub struct ImagesModels {
     auth_context: Arc<dyn AuthContext>,
 }
 
-/// `createImagesModels(options)`
 pub fn create_images_models(options: Option<CreateModelsOptions>) -> Arc<ImagesModels> {
     let options = options.unwrap_or_default();
     Arc::new(ImagesModels {
@@ -206,7 +201,6 @@ impl ImagesModels {
             .cloned()
     }
 
-    /// `getModels(provider?)`
     pub fn get_models(&self, provider: Option<&str>) -> Vec<ImagesModel> {
         match provider {
             Some(provider) => self
@@ -227,7 +221,6 @@ impl ImagesModels {
             .find(|model| model.id == id)
     }
 
-    /// `refresh(provider?)`
     pub async fn refresh(&self, provider: Option<&str>) -> Result<(), ModelsError> {
         if let Some(provider) = provider {
             let Some(entry) = self.get_provider(provider) else {
@@ -254,7 +247,6 @@ impl ImagesModels {
         Ok(())
     }
 
-    /// `getAuth(providerId | model, overrides?)`
     pub async fn get_auth(
         &self,
         provider_id: &str,
@@ -418,12 +410,10 @@ pub fn openrouter_images_provider() -> Arc<BuiltImagesProvider> {
     })
 }
 
-/// `builtinImagesProviders()`
 pub fn builtin_images_providers() -> Vec<Arc<dyn ImagesProvider>> {
     vec![openrouter_images_provider()]
 }
 
-/// `builtinImagesModels(options)`
 pub fn builtin_images_models(options: Option<CreateModelsOptions>) -> Arc<ImagesModels> {
     let models = create_images_models(options);
     for provider in builtin_images_providers() {

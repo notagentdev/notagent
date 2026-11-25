@@ -27,7 +27,6 @@ struct MemoryServerState {
     message_listeners: Vec<MessageListener>,
 }
 
-/// `MemoryServer`.
 #[derive(Clone, Default)]
 pub struct MemoryServer {
     state: Arc<Mutex<MemoryServerState>>,
@@ -120,7 +119,6 @@ impl ByteTransport for MemoryTransport {
     }
 }
 
-/// `serverSnapshot`.
 pub fn server_snapshot() -> ServerSnapshot {
     ServerSnapshot {
         server_id: "server-1".to_owned(),
@@ -150,7 +148,6 @@ pub fn session_snapshot(id: &str) -> SessionSnapshot {
     }
 }
 
-/// `connectClient`.
 pub async fn connect_client(server: &MemoryServer) -> PiClient {
     let client = PiClient::new(PiClientOptions::new(server.factory())).expect("valid options");
     let answering = server.clone();
@@ -168,7 +165,6 @@ pub async fn connect_client(server: &MemoryServer) -> PiClient {
     client
 }
 
-/// `collectRequests`.
 #[derive(Clone, Default)]
 pub struct RequestLog {
     requests: Arc<Mutex<Vec<RequestEnvelope>>>,
@@ -383,7 +379,6 @@ pub fn session_removed_event(session_id: &str) -> ServerMessage {
     })
 }
 
-/// `openRemoteSession`.
 pub async fn open_remote_session(
     client: &PiClient,
     server: &MemoryServer,

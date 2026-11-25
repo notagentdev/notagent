@@ -144,7 +144,6 @@ impl<T, R> EventStream<T, R> {
 
 pub type AssistantMessageEventStream = EventStream<AssistantMessageEvent, AssistantMessage>;
 
-/// `createAssistantMessageEventStream()`
 pub fn create_assistant_message_event_stream() -> AssistantMessageEventStream {
     EventStream::new(
         |event| {

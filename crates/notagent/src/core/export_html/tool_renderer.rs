@@ -80,7 +80,7 @@ pub struct ToolDefinitionHtmlRenderer {
     theme: std::sync::Arc<Theme>,
     cwd: String,
     width: usize,
-    /// `renderedArgs`, `renderedStates` and the two component maps of the
+    /// The rendered arguments, states and components, keyed by tool call id.
     args: RefCell<BTreeMap<String, Value>>,
     states: RefCell<BTreeMap<String, ToolRenderStateRef>>,
     call_components: RefCell<BTreeMap<String, ComponentRef>>,
@@ -108,7 +108,6 @@ impl ToolDefinitionHtmlRenderer {
         }
     }
 
-    /// `getState(toolCallId)`
     fn state(&self, tool_call_id: &str) -> ToolRenderStateRef {
         let mut states = self.states.borrow_mut();
         Rc::clone(
@@ -118,7 +117,6 @@ impl ToolDefinitionHtmlRenderer {
         )
     }
 
-    /// `createRenderContext(...)`
     fn context(
         &self,
         tool_call_id: &str,

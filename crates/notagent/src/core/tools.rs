@@ -451,9 +451,8 @@ pub fn create_read_only_tool_definitions(
         .collect()
 }
 
-/// `createAllToolDefinitions` — every tool, keyed by name.
-/// Deviation (class 1): a `BTreeMap` rather than a record. `ToolName` orders by
-/// literal, which is the order the system prompt lists tools in.
+/// Every tool, keyed by name. `ToolName` orders by literal, which is the order
+/// the system prompt lists tools in.
 pub fn create_all_tool_definitions(
     cwd: &str,
     options: Option<&ToolsOptions>,
@@ -462,28 +461,5 @@ pub fn create_all_tool_definitions(
         .into_iter()
         .filter(|name| options.is_none_or(|options| options.offers(*name)))
         .map(|name| (name, create_tool_definition(name, cwd, options)))
-        .collect()
-}
-
-pub fn create_coding_tools(cwd: &str, options: Option<&ToolsOptions>) -> Vec<Tool> {
-    CODING_TOOL_NAMES
-        .into_iter()
-        .filter(|name| options.is_none_or(|options| options.offers(*name)))
-        .map(|name| create_tool(name, cwd, options))
-        .collect()
-}
-
-pub fn create_read_only_tools(cwd: &str, options: Option<&ToolsOptions>) -> Vec<Tool> {
-    READ_ONLY_TOOL_NAMES
-        .into_iter()
-        .map(|name| create_tool(name, cwd, options))
-        .collect()
-}
-
-pub fn create_all_tools(cwd: &str, options: Option<&ToolsOptions>) -> BTreeMap<ToolName, Tool> {
-    ALL_TOOL_NAMES
-        .into_iter()
-        .filter(|name| options.is_none_or(|options| options.offers(*name)))
-        .map(|name| (name, create_tool(name, cwd, options)))
         .collect()
 }

@@ -305,7 +305,6 @@ pub enum TelemetryParentDefinition {
     Spans { spans: Vec<String> },
 }
 
-/// `status: { default: "ok"; errorWhen: string }`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TelemetrySpanStatusDefinition {
     pub default: String,
@@ -313,7 +312,6 @@ pub struct TelemetrySpanStatusDefinition {
     pub error_when: String,
 }
 
-/// `TelemetrySpanDefinition`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TelemetrySpanDefinition {
     pub description: String,
@@ -332,8 +330,4 @@ pub struct TelemetrySpanDefinition {
 pub struct TelemetrySchemaDefinition {
     pub version: u32,
     pub spans: BTreeMap<String, TelemetrySpanDefinition>,
-}
-
-pub fn define_telemetry_schema(schema: TelemetrySchemaDefinition) -> TelemetrySchemaDefinition {
-    schema
 }

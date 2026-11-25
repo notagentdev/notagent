@@ -437,7 +437,6 @@ impl AuthStorage {
         storage
     }
 
-    /// `AuthStorage.create(authPath)`.
     pub fn create(auth_path: &str) -> Result<Self, PathError> {
         let normalized = normalize_path_default(auth_path)?;
         let backend = FileAuthStorageBackend::at(Path::new(&normalized));

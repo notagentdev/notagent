@@ -56,7 +56,6 @@ impl OpenAICompatCacheControl {
     }
 }
 
-/// `hasHeader(headers, name)`
 pub fn has_header(headers: Option<&ProviderHeaders>, name: &str) -> bool {
     let Some(headers) = headers else {
         return false;
@@ -85,7 +84,6 @@ pub fn get_client_api_key(
     )))
 }
 
-/// `hasToolHistory(messages)`
 fn has_tool_history(messages: &[Message]) -> bool {
     messages.iter().any(|message| match message {
         Message::ToolResult(_) => true,
@@ -122,7 +120,6 @@ fn get_tools_by_name<'a>(tools: Option<&'a [Tool]>, names: &[String]) -> Vec<&'a
         .collect()
 }
 
-/// `resolveCacheRetention(cacheRetention, env)`
 pub fn resolve_cache_retention(
     cache_retention: Option<CacheRetention>,
     env: Option<&ProviderEnv>,
@@ -136,7 +133,6 @@ pub fn resolve_cache_retention(
     CacheRetention::Short
 }
 
-/// `getCompatCacheControl(compat, cacheRetention)`
 fn get_compat_cache_control(
     compat: &ResolvedOpenAICompletionsCompat,
     cache_retention: CacheRetention,
@@ -198,7 +194,6 @@ fn effort_str(effort: ThinkingLevel) -> &'static str {
 // chat_template_kwargs / chat_template_args
 // ---------------------------------------------------------------------------
 
-/// `resolveChatTemplateKwargValue(model, options, value)`
 fn resolve_chat_template_kwarg_value(
     model: &Model,
     options: &OpenAICompletionsOptions,
@@ -231,7 +226,6 @@ fn resolve_chat_template_kwarg_value(
     }
 }
 
-/// `buildChatTemplateValues(model, options, values)`
 fn build_chat_template_values(
     model: &Model,
     options: &OpenAICompletionsOptions,
@@ -254,7 +248,6 @@ fn build_chat_template_values(
 // cache_control placement
 // ---------------------------------------------------------------------------
 
-/// `addCacheControlToTextContent(message, cacheControl)`
 fn add_cache_control_to_text_content(
     message: &mut Value,
     cache_control: &OpenAICompatCacheControl,
@@ -292,7 +285,6 @@ fn add_cache_control_to_text_content(
     }
 }
 
-/// `applyAnthropicCacheControl(messages, tools, cacheControl)`
 fn apply_anthropic_cache_control(
     messages: &mut [Value],
     tools: Option<&mut Vec<Value>>,
@@ -330,7 +322,6 @@ fn apply_anthropic_cache_control(
 // convertTools
 // ---------------------------------------------------------------------------
 
-/// `convertTools(tools, compat)`
 pub fn convert_tools(
     tools: &[&Tool],
     compat: &ResolvedOpenAICompletionsCompat,
@@ -419,13 +410,11 @@ fn normalize_tool_call_id(model: &Model, id: &str) -> String {
     id.to_string()
 }
 
-/// `ConvertCompletionsMessagesOptions`
 #[derive(Debug, Clone, Default)]
 pub struct ConvertCompletionsMessagesOptions<'a> {
     pub grammar_tool_input_properties: Option<&'a BTreeMap<String, String>>,
 }
 
-/// `convertMessages(model, context, compat, options)`
 pub fn convert_messages(
     model: &Model,
     context: &Context,
@@ -790,7 +779,6 @@ fn is_falsy(value: &Value) -> bool {
 // buildParams
 // ---------------------------------------------------------------------------
 
-/// `buildParams(model, context, options, compat, cacheRetention, grammarToolInputProperties)`
 pub fn build_params(
     model: &Model,
     context: &Context,

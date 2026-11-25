@@ -2,7 +2,6 @@ use crate::config::{DOCUMENTATION_URL, PROVIDER_DOCUMENTATION_URL};
 
 const UNKNOWN_PROVIDER: &str = "unknown";
 
-/// `getProviderLoginHelp()`
 pub fn get_provider_login_help() -> String {
     [
         "Use /login to log into a provider via OAuth or API key. See:".to_owned(),
@@ -12,12 +11,10 @@ pub fn get_provider_login_help() -> String {
     .join("\n")
 }
 
-/// `formatNoModelsAvailableMessage()`
 pub fn format_no_models_available_message() -> String {
     format!("No models available. {}", get_provider_login_help())
 }
 
-/// `formatNoModelSelectedMessage()`
 pub fn format_no_model_selected_message() -> String {
     format!(
         "No model selected.\n\n{}\n\nThen use /model to select a model.",
@@ -25,7 +22,6 @@ pub fn format_no_model_selected_message() -> String {
     )
 }
 
-/// `formatNoApiKeyFoundMessage(provider)`
 pub fn format_no_api_key_found_message(provider: &str) -> String {
     let provider_display = if provider == UNKNOWN_PROVIDER {
         "the selected model"

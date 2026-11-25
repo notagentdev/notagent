@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `ant_lingProvider()`
 pub fn ant_ling_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "ant-ling".to_string(),

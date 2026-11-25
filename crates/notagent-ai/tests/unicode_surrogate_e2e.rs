@@ -92,7 +92,6 @@ async fn run_tool_result_round_trip(
     complete_simple(model, &context, options.clone()).await
 }
 
-/// `testEmojiInToolResults(llm, options)`
 async fn test_emoji_in_tool_results(model: &Model, options: &SimpleStreamOptions) {
     let response = run_tool_result_round_trip(
         model,
@@ -113,7 +112,6 @@ async fn test_emoji_in_tool_results(model: &Model, options: &SimpleStreamOptions
     assert!(!response.content.is_empty());
 }
 
-/// `testRealWorldLinkedInData(llm, options)`
 async fn test_real_world_linkedin_data(model: &Model, options: &SimpleStreamOptions) {
     let response = run_tool_result_round_trip(
         model,
@@ -134,7 +132,6 @@ async fn test_real_world_linkedin_data(model: &Model, options: &SimpleStreamOpti
     assert!(has_text(&response));
 }
 
-/// `testUnpairedHighSurrogate(llm, options)`
 async fn test_unpaired_high_surrogate(model: &Model, options: &SimpleStreamOptions) {
     let sanitized = String::from_utf16_lossy(&[0xd83d]);
     let response = run_tool_result_round_trip(

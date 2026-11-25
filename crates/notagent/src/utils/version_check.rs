@@ -33,7 +33,6 @@ fn latest_version_url() -> String {
 }
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS: u64 = 10_000;
 
-/// `LatestPiRelease`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LatestPiRelease {
     pub version: String,
@@ -50,7 +49,6 @@ pub struct VersionCheckOptions {
     pub force_refresh: bool,
 }
 
-/// `comparePackageVersions(left, right)`
 pub fn compare_package_versions(
     left_version: &str,
     right_version: &str,
@@ -60,7 +58,6 @@ pub fn compare_package_versions(
     Some(left.cmp(&right))
 }
 
-/// `isNewerPackageVersion(candidate, current)`
 pub fn is_newer_package_version(candidate_version: &str, current_version: &str) -> bool {
     match compare_package_versions(candidate_version, current_version) {
         Some(ordering) => ordering.is_gt(),
@@ -68,7 +65,6 @@ pub fn is_newer_package_version(candidate_version: &str, current_version: &str) 
     }
 }
 
-/// `getLatestPiRelease(currentVersion, options)`
 pub async fn get_latest_pi_release(
     current_version: &str,
     options: VersionCheckOptions,
@@ -211,7 +207,6 @@ async fn fetch_release(
     }))
 }
 
-/// `getLatestPiVersion(currentVersion, options)`
 pub async fn get_latest_pi_version(
     current_version: &str,
     options: VersionCheckOptions,
@@ -221,7 +216,6 @@ pub async fn get_latest_pi_version(
         .map(|release| release.version))
 }
 
-/// `checkForNewPiVersion(currentVersion)`
 pub async fn check_for_new_pi_version(current_version: &str) -> Option<LatestPiRelease> {
     if std::env::var("NOTAGENT_SKIP_VERSION_CHECK").is_ok_and(|value| !value.is_empty()) {
         return None;

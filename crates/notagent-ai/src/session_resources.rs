@@ -20,7 +20,6 @@ impl SessionResourceCleanupHandle {
     }
 }
 
-/// `registerSessionResourceCleanup(cleanup)`
 pub fn register_session_resource_cleanup(
     cleanup: SessionResourceCleanup,
 ) -> SessionResourceCleanupHandle {
@@ -30,7 +29,6 @@ pub fn register_session_resource_cleanup(
     SessionResourceCleanupHandle(id)
 }
 
-/// `cleanupSessionResources(sessionId?)`
 /// cannot fail, so every one of them runs and nothing is collected.
 pub fn cleanup_session_resources(session_id: Option<&str>) {
     let registered: Vec<SessionResourceCleanup> = cleanups()

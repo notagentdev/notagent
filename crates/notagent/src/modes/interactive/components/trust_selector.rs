@@ -23,7 +23,6 @@ pub struct TrustSelection {
     pub updates: Vec<ProjectTrustUpdate>,
 }
 
-/// `TrustSelectorOptions`
 pub struct TrustSelectorOptions {
     /// The project directory.
     pub cwd: String,

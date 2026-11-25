@@ -13,12 +13,10 @@ fn slot() -> &'static Mutex<Option<StreamFn>> {
 )]
 pub struct NoDefaultStreamFn;
 
-/// `setDefaultStreamFn(streamFn)`
 pub fn set_default_stream_fn(stream_fn: Option<StreamFn>) {
     *slot().lock().expect("Default-StreamFn vergiftet") = stream_fn;
 }
 
-/// `getDefaultStreamFn()`
 pub fn get_default_stream_fn() -> Result<StreamFn, NoDefaultStreamFn> {
     slot()
         .lock()

@@ -92,7 +92,6 @@ pub fn is_wayland_session(operations: &dyn ClipboardOperations) -> bool {
         || operations.env("XDG_SESSION_TYPE").as_deref() == Some("wayland")
 }
 
-/// `isRemoteSession(env)`
 fn is_remote_session(operations: &dyn ClipboardOperations) -> bool {
     ["SSH_CONNECTION", "SSH_CLIENT", "MOSH_CONNECTION"]
         .iter()
@@ -103,7 +102,6 @@ fn has_env(operations: &dyn ClipboardOperations, name: &str) -> bool {
     operations.env(name).is_some_and(|value| !value.is_empty())
 }
 
-/// `emitOsc52(text)`
 fn emit_osc52(operations: &dyn ClipboardOperations, text: &str) -> bool {
     let encoded = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
     if encoded.len() > MAX_OSC52_ENCODED_LENGTH {
@@ -121,7 +119,6 @@ fn copy_to_x11_clipboard(operations: &dyn ClipboardOperations, text: &str) {
     operations.write("xsel", &["--clipboard", "--input"], text);
 }
 
-/// `copyToClipboard(text)`
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
     copy_to_clipboard_with(&SystemClipboard, text)
 }
@@ -175,7 +172,6 @@ pub fn copy_to_clipboard_with(
     }
 }
 
-/// `readClipboardText()`
 pub fn read_clipboard_text() -> Option<String> {
     read_clipboard_text_with(&SystemClipboard)
 }

@@ -70,7 +70,6 @@ fn replace_characters(
     Some(result)
 }
 
-/// `value.replace(/\s*([=+-])\s*/g, "$1")`.
 fn strip_spaces_around_operators(value: &str) -> String {
     let characters: Vec<char> = value.chars().collect();
     let mut result = String::new();
@@ -222,7 +221,6 @@ fn normalize_output(value: &str) -> String {
         .to_string()
 }
 
-/// `line.replace(/[ \t]+/g, " ")`.
 fn collapse_spaces(line: &str) -> String {
     let mut result = String::with_capacity(line.len());
     let mut in_run = false;
@@ -1079,7 +1077,6 @@ impl<'a> LatexParser<'a> {
         None
     }
 
-    /// `body.split(/\\\\(?:\[[^\]\n]*\])?/)`.
     fn split_environment_rows(body: &str) -> Vec<String> {
         let mut rows: Vec<String> = Vec::new();
         let mut current = String::new();
@@ -1111,7 +1108,6 @@ impl<'a> LatexParser<'a> {
         rows
     }
 
-    /// `body.replace(/^\s*\{[^}]*\}/, "")`.
     fn strip_leading_group(body: &str) -> String {
         let trimmed = body.trim_start();
         if !trimmed.starts_with('{') {

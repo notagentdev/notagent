@@ -2,7 +2,7 @@ use serde_json::{Map, Value, json};
 
 use notagent_agent::types::{AgentEvent, AgentToolResult};
 
-use crate::core::agent_session::{AgentSessionEvent, CompactionReason, SummarizationSource};
+use crate::core::agent_session::{AgentSessionEvent, SummarizationSource};
 use crate::core::compaction::compaction::CompactionResult;
 
 fn object(entries: Vec<(&str, Value)>) -> Value {
@@ -310,9 +310,4 @@ pub fn session_event_to_json(event: &AgentSessionEvent, strip_partial: bool) -> 
             Value::Object(map)
         }
     }
-}
-
-/// Reason strings of [`CompactionReason`], for callers that build events.
-pub fn compaction_reason_str(reason: CompactionReason) -> &'static str {
-    reason.as_str()
 }

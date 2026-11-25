@@ -556,7 +556,6 @@ pub fn encode_iterm2(base64_data: &str, options: EncodeITerm2Options) -> String 
     format!("\x1b]1337;File={}:{base64_data}\x07", params.join(";"))
 }
 
-/// `Buffer.byteLength(data, "base64")`.
 fn base64_decoded_len(base64_data: &str) -> usize {
     let trimmed = base64_data.trim_end_matches('=');
     trimmed.len() * 3 / 4

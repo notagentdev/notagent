@@ -284,7 +284,6 @@ fn normalize_image(bytes: &[u8], mime_type: &str) -> Option<NormalizedImage> {
     })
 }
 
-/// `processImage(bytes, mimeType, { autoResizeImages })`.
 pub fn process_image(
     bytes: &[u8],
     mime_type: &str,

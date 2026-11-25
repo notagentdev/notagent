@@ -22,7 +22,6 @@ use super::client::{
 pub const LLAMA_PROVIDER_ID: &str = "llama.cpp";
 pub const DEFAULT_LLAMA_SERVER_URL: &str = "http://127.0.0.1:8080";
 
-/// `credentialServerUrl(credential)`
 fn credential_server_url(
     credential: Option<&ApiKeyCredential>,
 ) -> Result<Option<String>, LlamaError> {
@@ -35,7 +34,6 @@ fn credential_server_url(
     }
 }
 
-/// `resolveServerUrl(ctx, credential)`
 async fn resolve_server_url(input: &ApiKeyAuthInput<'_>) -> Result<Option<String>, LlamaError> {
     if let Some(configured) = credential_server_url(input.credential.as_ref())? {
         return Ok(Some(configured));
@@ -48,7 +46,6 @@ async fn resolve_server_url(input: &ApiKeyAuthInput<'_>) -> Result<Option<String
     Ok(Some(normalize_llama_server_url(configured)?))
 }
 
-/// `toPiModel(model, serverUrl)`
 fn to_pi_model(model: &LlamaModelInfo, server_url: &str) -> Result<Model, LlamaError> {
     let reported_context_window = model
         .meta
@@ -244,7 +241,6 @@ pub struct LlamaProviderController {
 }
 
 impl LlamaProviderController {
-    /// `setCatalog(models, serverUrl)`
     pub fn set_catalog(
         &self,
         catalog: &[LlamaModelInfo],
@@ -264,7 +260,6 @@ pub struct LlamaProvider {
     streams: Arc<dyn notagent_ai::types::ProviderStreams>,
 }
 
-/// `createLlamaProvider()`
 pub fn create_llama_provider() -> LlamaProviderController {
     LlamaProviderController {
         provider: Arc::new(LlamaProvider {

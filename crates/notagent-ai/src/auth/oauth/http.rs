@@ -3,7 +3,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::auth::types::AuthError;
 
-/// `OAuthHttpResponse`
 #[derive(Debug, Clone)]
 pub struct OAuthHttpResponse {
     pub ok: bool,
@@ -11,7 +10,6 @@ pub struct OAuthHttpResponse {
     pub body: Map<String, Value>,
 }
 
-/// `postForm(url, fields, signal)`
 pub async fn post_form(
     url: &str,
     fields: &[(&str, String)],
@@ -66,7 +64,6 @@ pub async fn post_form(
     Ok(OAuthHttpResponse { ok, status, body })
 }
 
-/// `requiredString(body, field)`
 pub fn required_string(
     body: &Map<String, Value>,
     field: &str,
@@ -80,7 +77,6 @@ pub fn required_string(
     }
 }
 
-/// `positiveNumber(body, field)`
 pub fn positive_number(
     body: &Map<String, Value>,
     field: &str,
@@ -94,7 +90,6 @@ pub fn positive_number(
     }
 }
 
-/// `requestFailure(action, response)`
 pub fn request_failure(provider: &str, action: &str, response: &OAuthHttpResponse) -> AuthError {
     let error = response.body.get("error").and_then(Value::as_str);
     let description = response

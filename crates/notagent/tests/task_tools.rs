@@ -229,7 +229,7 @@ async fn reports_a_running_task_as_not_final_with_what_it_has_produced() {
         .register(running("a server"), RegisterTaskOptions::default())
         .await
         .expect("registered");
-    // The task appends from its own tokio task; the tool reads whatever is
+    // The task appends from its own tokio task.
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let result = text_of(
         &run(

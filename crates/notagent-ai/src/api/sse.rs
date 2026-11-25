@@ -28,7 +28,6 @@ impl SseDecoder {
         SseDecoder::default()
     }
 
-    /// `flushSseEvent(state)`
     fn flush(&mut self) -> Option<ServerSentEvent> {
         if self.event.is_none() && self.data.is_empty() {
             self.raw.clear();
@@ -43,7 +42,6 @@ impl SseDecoder {
         Some(event)
     }
 
-    /// `decodeSseLine(line, state)`
     fn decode_line(&mut self, line: &str) -> Option<ServerSentEvent> {
         if line.is_empty() {
             return self.flush();

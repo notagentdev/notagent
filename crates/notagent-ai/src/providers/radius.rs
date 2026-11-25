@@ -35,7 +35,6 @@ pub struct RadiusProvider {
     streams: Arc<dyn ProviderStreams>,
 }
 
-/// `radiusProvider(options)`
 pub fn radius_provider(options: RadiusProviderOptions) -> Arc<RadiusProvider> {
     let id = options.id.unwrap_or_else(|| "radius".to_string());
     let name = options.name.unwrap_or_else(|| "Radius".to_string());

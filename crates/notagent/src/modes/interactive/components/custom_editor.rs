@@ -75,19 +75,6 @@ impl CustomEditor {
         self.action_handlers.push((action.to_string(), handler));
     }
 
-    /// Whether an action has a handler.
-    pub fn has_action(&self, action: &str) -> bool {
-        self.action_handlers.iter().any(|(name, _)| name == action)
-    }
-
-    /// The registered actions, in dispatch order.
-    pub fn action_names(&self) -> Vec<String> {
-        self.action_handlers
-            .iter()
-            .map(|(name, _)| name.clone())
-            .collect()
-    }
-
     /// The wrapped editor.
     pub fn editor(&self) -> &Editor {
         &self.editor

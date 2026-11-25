@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -49,7 +48,6 @@ pub fn normalize_domain(input: &str) -> Option<String> {
     }
 }
 
-/// `getUrls(domain)`
 pub struct CopilotUrls {
     pub device_code_url: String,
     pub access_token_url: String,
@@ -79,7 +77,6 @@ pub fn base_url_from_token(token: &str) -> Option<String> {
     Some(format!("https://{api_host}"))
 }
 
-/// `getGitHubCopilotBaseUrl(token?, enterpriseDomain?)`
 pub fn github_copilot_base_url(token: Option<&str>, enterprise_domain: Option<&str>) -> String {
     if let Some(token) = token
         && let Some(url) = base_url_from_token(token)
@@ -92,7 +89,6 @@ pub fn github_copilot_base_url(token: Option<&str>, enterprise_domain: Option<&s
     "https://api.individual.githubcopilot.com".to_string()
 }
 
-/// `parseAvailableCopilotModelIds(raw, allowPolicyFallback)`
 pub fn parse_available_copilot_model_ids(
     raw: &Value,
     allow_policy_fallback: bool,
@@ -137,7 +133,6 @@ pub fn parse_available_copilot_model_ids(
     })
 }
 
-/// `DeviceCodeResponse`
 #[derive(Debug, Clone)]
 pub struct CopilotDeviceCode {
     pub device_code: String,
@@ -236,7 +231,6 @@ async fn fetch_json(
     serde_json::from_str(&text).map_err(|error| AuthError(error.to_string()))
 }
 
-/// `refreshGitHubCopilotAccessToken(refreshToken, enterpriseDomain, signal)`
 pub async fn refresh_copilot_access_token(
     refresh_token: &str,
     enterprise_domain: Option<&str>,
@@ -271,7 +265,6 @@ pub async fn refresh_copilot_access_token(
     })
 }
 
-/// `fetchAvailableGitHubCopilotModelIds(...)`
 pub async fn fetch_available_model_ids(
     copilot_token: &str,
     enterprise_domain: Option<&str>,
@@ -284,7 +277,6 @@ pub async fn fetch_available_model_ids(
     parse_available_copilot_model_ids(&raw, allow_policy_fallback)
 }
 
-/// `copilotEnterpriseDomain(credential)`
 pub fn copilot_enterprise_domain(credential: &OAuthCredential) -> Option<String> {
     let enterprise_url = credential
         .extra
@@ -293,7 +285,6 @@ pub fn copilot_enterprise_domain(credential: &OAuthCredential) -> Option<String>
     normalize_domain(enterprise_url)
 }
 
-/// `githubCopilotOAuth`
 pub struct GitHubCopilotOAuth;
 
 impl OAuthAuth for GitHubCopilotOAuth {
@@ -435,12 +426,4 @@ pub fn available_model_ids(credential: &OAuthCredential) -> Option<Vec<String>> 
             .map(str::to_string)
             .collect(),
     )
-}
-
-/// Header map for Copilot requests.
-pub fn copilot_headers() -> BTreeMap<String, String> {
-    COPILOT_HEADERS
-        .iter()
-        .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
-        .collect()
 }

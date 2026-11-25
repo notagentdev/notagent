@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `vercel_ai_gatewayProvider()`
 pub fn vercel_ai_gateway_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "vercel-ai-gateway".to_string(),

@@ -34,14 +34,12 @@ fn rate_limit_pattern() -> &'static Regex {
     PATTERN.get_or_init(|| Regex::new(r"(?:^|;)t=(\d+)").expect("static pattern"))
 }
 
-/// `HuggingFaceModel`
 #[derive(Debug, Clone, PartialEq)]
 pub struct HuggingFaceModel {
     pub id: String,
     pub downloads: f64,
 }
 
-/// `HuggingFaceQuantization`
 #[derive(Debug, Clone, PartialEq)]
 pub struct HuggingFaceQuantization {
     pub name: String,
@@ -49,7 +47,7 @@ pub struct HuggingFaceQuantization {
 }
 
 /// `HuggingFaceModelDetails["gated"] = false | "auto" | "manual"`
-/// No serde derive on purpose: the union mixes a boolean with two strings and
+/// No serde derive on purpose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HuggingFaceGated {
     #[default]
@@ -58,7 +56,6 @@ pub enum HuggingFaceGated {
     Manual,
 }
 
-/// `HuggingFaceModelDetails`
 #[derive(Debug, Clone, PartialEq)]
 pub struct HuggingFaceModelDetails {
     pub id: String,
@@ -77,13 +74,11 @@ fn payload_error(payload: Option<&Value>, fallback: &str) -> String {
     }
 }
 
-/// `parseRateLimitDelay(value)`
 fn parse_rate_limit_delay(value: Option<&str>) -> Option<f64> {
     let captures = rate_limit_pattern().captures(value?)?;
     captures.get(1)?.as_str().parse().ok()
 }
 
-/// `readToken(path)`
 async fn read_token(path: &PathBuf) -> Option<String> {
     let token = tokio::fs::read_to_string(path).await.ok()?;
     let token = token.trim().to_owned();
@@ -127,7 +122,6 @@ pub async fn find_hugging_face_token_from_process_env() -> Option<String> {
     find_hugging_face_token(&std::env::vars().collect()).await
 }
 
-/// `HuggingFaceClient`
 pub struct HuggingFaceClient {
     token: Option<String>,
     base_url: String,
@@ -299,7 +293,7 @@ impl HuggingFaceClient {
             })
             .collect();
         // other name; the rest sorts by size, ties by name. Expressed as a
-        // partition plus a proper total order, because Rust's sort rejects a
+        // partition plus a proper total order.
         let mut quantizations: Vec<HuggingFaceQuantization> = quantizations;
         quantizations.sort_by(|left, right| {
             let left_size = left.size.unwrap_or(MAX_SAFE_INTEGER);
@@ -351,7 +345,6 @@ fn urlencode_query(value: &str) -> String {
     urlencode(value, true)
 }
 
-/// `encodeURIComponent(value)`
 fn urlencode_component(value: &str) -> String {
     urlencode(value, false)
 }

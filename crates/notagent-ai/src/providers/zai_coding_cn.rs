@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `zai_coding_cnProvider()`
 pub fn zai_coding_cn_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "zai-coding-cn".to_string(),

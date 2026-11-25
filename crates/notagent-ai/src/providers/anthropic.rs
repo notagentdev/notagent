@@ -12,7 +12,6 @@ use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 use crate::types::ProviderHeaders;
 
-/// `anthropicApiKeyAuth()`
 pub struct AnthropicApiKeyAuth;
 
 impl ApiKeyAuth for AnthropicApiKeyAuth {
@@ -109,7 +108,6 @@ impl ApiKeyAuth for AnthropicApiKeyAuth {
     }
 }
 
-/// `anthropicProvider()`
 pub fn anthropic_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "anthropic".to_string(),

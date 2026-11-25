@@ -1053,11 +1053,6 @@ impl AgentSession {
         self.modes.lock().expect("poisoned").modes.clone()
     }
 
-    /// Problems found while loading mode folders, for surfacing to the user.
-    pub fn mode_diagnostics(&self) -> Vec<ModeDiagnostic> {
-        self.modes.lock().expect("poisoned").diagnostics.clone()
-    }
-
     /// The active mode, or `None` when no mode folder could be loaded.
     pub fn active_mode(&self) -> Option<Mode> {
         let modes = self.modes.lock().expect("poisoned");
@@ -1222,11 +1217,6 @@ impl AgentSession {
             self.modes.lock().expect("poisoned").delivered_approval = approval;
         }
         block
-    }
-
-    /// Whether a mode switch is still waiting to be delivered.
-    pub fn has_pending_mode_block(&self) -> bool {
-        self.modes.lock().expect("poisoned").pending_block.is_some()
     }
 
     /// Advances the mode ring and applies the result.
@@ -2448,11 +2438,6 @@ impl AgentSession {
     /// Closes the endpoint, revoking the token with it.
     pub fn stop_lending_tools(&self) -> bool {
         self.lent_tools.lock().expect("poisoned").take().is_some()
-    }
-
-    /// Whether an endpoint is open right now.
-    pub fn is_lending_tools(&self) -> bool {
-        self.lent_tools.lock().expect("poisoned").is_some()
     }
 
     /// Re-reads the MCP configuration from disk and rebuilds from it.
@@ -4683,10 +4668,6 @@ impl AgentSession {
 
     pub fn is_retrying(&self) -> bool {
         self.retry_signal.lock().expect("poisoned").is_some()
-    }
-
-    pub fn auto_retry_enabled(&self) -> bool {
-        self.settings_manager.get_retry_settings().enabled
     }
 
     pub fn set_auto_retry_enabled(&self, enabled: bool) {

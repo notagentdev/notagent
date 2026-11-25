@@ -67,7 +67,6 @@ pub fn format_tokens(tokens: u64) -> String {
     format!("{:.1}M", tokens as f64 / 1_000_000.0)
 }
 
-/// `SubagentRow`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubagentRow {
     /// The star name the child is shown under. A name distinguishes two

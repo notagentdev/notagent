@@ -1810,7 +1810,7 @@ pub trait TerminalBackgroundThemeDetector {
 
 /// Adds the optional color-scheme query (`queryTerminalColorScheme?`).
 pub trait TerminalAutoThemeDetector: TerminalBackgroundThemeDetector {
-    /// Query the terminal's color-scheme preference. The default mirrors an
+    /// Query the terminal's color-scheme preference.
     fn query_terminal_color_scheme(
         &self,
         _timeout_ms: u64,
@@ -2009,7 +2009,7 @@ fn registered_themes() -> &'static RwLock<ThemeRegistry> {
 }
 
 /// Callback invoked after the active theme changed.
-/// Must be `Send + Sync` because it is stored in a process global; the
+/// Must be `Send + Sync` because it is stored in a process global.
 pub type ThemeChangeCallback = Arc<dyn Fn() + Send + Sync>;
 
 fn on_theme_change_callback() -> &'static RwLock<Option<ThemeChangeCallback>> {
@@ -2179,7 +2179,6 @@ fn close_theme_watcher_backend() {
     drop(watcher);
 }
 
-/// `watchWithErrorHandler(dir, listener, onError)`.
 fn watch_custom_themes_dir(directory: &Path) {
     use notify::Watcher as _;
 
@@ -2435,12 +2434,6 @@ pub fn get_resolved_theme_colors(theme_name: Option<&str>) -> Result<Vec<(String
         css_colors.push((key.clone(), css));
     }
     Ok(css_colors)
-}
-
-/// Check if a theme is a "light" theme (for CSS that needs light/dark variants).
-pub fn is_light_theme(theme_name: Option<&str>) -> bool {
-    // Currently just check the name - could be extended to analyze colors
-    theme_name == Some("light")
 }
 
 /// Explicit export colours of a theme.

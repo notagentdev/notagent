@@ -155,7 +155,7 @@ fn atomic_segments_are_skipped_as_one_unit() {
     let text = format!("hello {marker} world");
     let is_atomic = |segment: &str| segment == marker;
 
-    // The functions slice the text before segmenting, so each expected slice is
+    // The functions slice the text before segmenting.
     let mut segment_map: HashMap<String, Vec<(usize, String)>> = HashMap::new();
     segment_map.insert(
         text.clone(),

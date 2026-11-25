@@ -73,7 +73,6 @@ impl Harness {
         }
     }
 
-    /// `harness.getModel(id?)`
     fn get_model(&self, model_id: Option<&str>) -> Option<Model> {
         match model_id {
             None => self.models.first().cloned(),

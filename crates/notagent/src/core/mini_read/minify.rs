@@ -844,10 +844,6 @@ pub struct Point {
 }
 
 impl Point {
-    pub fn norm(&self) -> i32 {
-        /* manhattan */
-        self.x.abs() + self.y.abs()
-    }
 }
 "#;
         let minified = minify("p.rs", fixture);

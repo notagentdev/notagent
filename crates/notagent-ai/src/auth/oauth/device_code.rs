@@ -44,7 +44,6 @@ async fn abortable_sleep(ms: u64, signal: &CancellationToken) -> Result<(), Devi
     }
 }
 
-/// `pollOAuthDeviceCodeFlow(options)`
 pub async fn poll_device_code_flow<T, F, Fut>(
     options: DeviceCodePollOptions,
     mut poll: F,

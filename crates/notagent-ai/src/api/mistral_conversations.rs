@@ -105,7 +105,6 @@ impl MistralError {
         }
     }
 
-    /// `formatMistralError(error)`
     fn format(&self) -> String {
         match (self.status, self.body.as_deref()) {
             (Some(status), Some(body)) if !body.trim().is_empty() => format!(
@@ -134,7 +133,6 @@ fn truncate_error_text(text: &str, max_chars: usize) -> String {
 // Tool call ids
 // ---------------------------------------------------------------------------
 
-/// `createMistralToolCallIdNormalizer()`
 #[derive(Default)]
 pub struct MistralToolCallIdNormalizer {
     id_map: BTreeMap<String, String>,
@@ -165,7 +163,6 @@ impl MistralToolCallIdNormalizer {
     }
 }
 
-/// `deriveMistralToolCallId(id, attempt)`
 pub fn derive_mistral_tool_call_id(id: &str, attempt: u32) -> String {
     let normalized: String = id.chars().filter(char::is_ascii_alphanumeric).collect();
     if attempt == 0 && normalized.chars().count() == MISTRAL_TOOL_CALL_ID_LENGTH {
@@ -192,7 +189,7 @@ pub fn derive_mistral_tool_call_id(id: &str, attempt: u32) -> String {
 // Request body
 // ---------------------------------------------------------------------------
 
-/// `buildChatPayload(model, context, messages, options)` followed by
+/// The chat request body for `model` and `context`.
 pub fn build_request_body(
     model: &Model,
     context: &Context,
@@ -242,7 +239,6 @@ pub fn build_request_body(
     Ok(Value::Object(body))
 }
 
-/// `shouldUsePromptCaching(options)`
 fn prompt_cache_session_id(options: &MistralOptions) -> Option<&str> {
     if options.cache_retention == Some(CacheRetention::None) {
         return None;
@@ -253,7 +249,6 @@ fn prompt_cache_session_id(options: &MistralOptions) -> Option<&str> {
         .filter(|session_id| !session_id.is_empty())
 }
 
-/// `toFunctionTools(tools)`
 fn to_function_tools(tools: &[Tool]) -> Result<Vec<Value>, MistralError> {
     tools
         .iter()
@@ -426,7 +421,6 @@ fn to_chat_messages(messages: &[Message], supports_images: bool) -> Vec<Value> {
     result
 }
 
-/// `buildToolResultText(text, hasImages, supportsImages, isError)`
 fn build_tool_result_text(
     text: &str,
     has_images: bool,
@@ -498,7 +492,6 @@ enum ParsedEvent {
     Empty,
 }
 
-/// `parseMistralEvent(raw)`
 fn parse_event(raw: &str) -> Result<ParsedEvent, MistralError> {
     let data = raw
         .split(['\r', '\n'])
@@ -569,7 +562,6 @@ impl MistralStreamState {
         self.output.content.len().saturating_sub(1)
     }
 
-    /// `finishCurrentBlock(block)`
     fn finish_current_block(&mut self, events: &mut Vec<AssistantMessageEvent>) {
         let Some(index) = self.current_block.take() else {
             return;
@@ -861,7 +853,6 @@ impl MistralStreamState {
     }
 }
 
-/// `getMistralCachedPromptTokens(usage, promptTokens)`
 fn cached_prompt_tokens(usage: &Value, prompt_tokens: u64) -> u64 {
     let raw = [
         ("promptTokensDetails", "cachedTokens"),
@@ -888,7 +879,6 @@ fn cached_prompt_tokens(usage: &Value, prompt_tokens: u64) -> u64 {
     prompt_tokens.min(cached.max(0.0) as u64)
 }
 
-/// `mapChatStopReason(reason)`
 fn map_chat_stop_reason(reason: Option<&str>) -> (StopReason, Option<String>) {
     match reason {
         None => (StopReason::Stop, None),
@@ -916,7 +906,6 @@ pub fn build_request_url(model: &Model) -> String {
     format!("{base}/v1/chat/completions")
 }
 
-/// `buildMistralHeaders(model, apiKey, options)`
 pub fn build_request_headers(
     model: &Model,
     api_key: &str,
@@ -960,7 +949,6 @@ pub fn build_request_headers(
     headers
 }
 
-/// `headers.set(name, value)` / `headers.delete(name)`.
 fn set_header(headers: &mut Vec<(String, String)>, name: &str, value: Option<&str>) {
     let lowered = name.to_lowercase();
     let existing = headers
@@ -979,7 +967,6 @@ fn set_header(headers: &mut Vec<(String, String)>, name: &str, value: Option<&st
     }
 }
 
-/// `stream(model, context, options)`
 pub fn stream(
     model: Model,
     context: Context,
@@ -1228,7 +1215,6 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)`
 pub fn stream_simple(
     model: Model,
     context: Context,
@@ -1276,7 +1262,6 @@ pub fn stream_simple(
     Ok(stream(model, context, base.base, mistral_options))
 }
 
-/// `usesReasoningEffort(model)`
 pub fn uses_reasoning_effort(model: &Model) -> bool {
     matches!(
         model.id.as_str(),
@@ -1284,12 +1269,10 @@ pub fn uses_reasoning_effort(model: &Model) -> bool {
     )
 }
 
-/// `usesPromptModeReasoning(model)`
 pub fn uses_prompt_mode_reasoning(model: &Model) -> bool {
     model.reasoning && !uses_reasoning_effort(model)
 }
 
-/// `mapReasoningEffort(model, level)`
 fn map_reasoning_effort(model: &Model, level: ModelThinkingLevel) -> MistralReasoningEffort {
     model
         .thinking_level_map

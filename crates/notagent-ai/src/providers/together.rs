@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `togetherProvider()`
 pub fn together_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "together".to_string(),

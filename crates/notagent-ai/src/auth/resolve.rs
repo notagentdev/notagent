@@ -9,7 +9,6 @@ use crate::auth::types::{
 };
 use crate::types::ProviderEnv;
 
-/// `ModelsErrorCode`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelsErrorCode {
     ModelSource,
@@ -49,7 +48,6 @@ impl ModelsError {
         }
     }
 
-    /// `withCauseDetail(message, cause)`
     pub fn with_cause(
         code: ModelsErrorCode,
         message: impl Into<String>,
@@ -67,7 +65,6 @@ impl ModelsError {
     }
 }
 
-/// `AuthResolutionOverrides`
 #[derive(Clone, Default)]
 pub struct AuthResolutionOverrides {
     pub api_key: Option<String>,
@@ -113,7 +110,6 @@ impl AuthContext for EnvOverlayAuthContext {
     }
 }
 
-/// `resolveProviderAuth(provider, credentials, authContext, overrides?)`
 pub async fn resolve_provider_auth(
     provider: AuthProvider<'_>,
     credentials: &dyn CredentialStore,
@@ -319,7 +315,6 @@ async fn resolve_stored_oauth(
     }
 }
 
-/// `oauth.refresh(current, AbortSignal.any([signal, AbortSignal.timeout(15_000)]))`
 async fn refresh_oauth_credential(
     oauth: &dyn OAuthAuth,
     credential: OAuthCredential,

@@ -408,7 +408,6 @@ fn collect_errors(
 // TypeBox `Value.Convert`
 // ---------------------------------------------------------------------------
 
-/// `Try.TryNumber(value)`
 fn try_number(value: &Value) -> Option<f64> {
     match value {
         Value::Bool(flag) => Some(if *flag { 1.0 } else { 0.0 }),
@@ -435,7 +434,6 @@ fn try_number(value: &Value) -> Option<f64> {
     }
 }
 
-/// `Try.TryBoolean(value)`
 fn try_boolean(value: &Value) -> Option<bool> {
     match value {
         Value::Number(number) => match number.as_f64() {
@@ -457,7 +455,6 @@ fn try_boolean(value: &Value) -> Option<bool> {
     }
 }
 
-/// `Try.TryString(value)`
 fn try_string(value: &Value) -> Option<String> {
     match value {
         Value::Bool(flag) => Some(flag.to_string()),
@@ -468,7 +465,6 @@ fn try_string(value: &Value) -> Option<String> {
     }
 }
 
-/// `Try.TryNull(value)`
 fn try_null(value: &Value) -> Option<()> {
     match value {
         Value::Bool(false) => Some(()),
@@ -621,7 +617,6 @@ fn number_value(number: f64) -> Value {
 // Plain-JSON-schema coercion (`coerceWithJsonSchema`)
 // ---------------------------------------------------------------------------
 
-/// `coercePrimitiveByType(value, type)`
 fn coerce_primitive_by_type(value: &Value, type_name: &str) -> Value {
     match type_name {
         "number" => {
@@ -707,7 +702,6 @@ fn coerce_primitive_by_type(value: &Value, type_name: &str) -> Value {
     }
 }
 
-/// `coerceWithJsonSchema(value, schema)`
 pub fn coerce_with_json_schema(value: &Value, schema: &Value, root: &Value) -> Value {
     let mut next_value = value.clone();
 
@@ -753,7 +747,6 @@ pub fn coerce_with_json_schema(value: &Value, schema: &Value, root: &Value) -> V
     next_value
 }
 
-/// `applySchemaObjectCoercion(value, schema)`
 fn apply_schema_object_coercion(entries: &mut Map<String, Value>, schema: &Value, root: &Value) {
     let properties = schema.get("properties").and_then(Value::as_object).cloned();
     let defined_keys: Vec<String> = properties
@@ -790,7 +783,6 @@ fn apply_schema_object_coercion(entries: &mut Map<String, Value>, schema: &Value
     }
 }
 
-/// `applySchemaArrayCoercion(value, schema)`
 fn apply_schema_array_coercion(items: &mut [Value], schema: &Value, root: &Value) {
     match schema.get("items") {
         Some(Value::Array(tuple)) => {
@@ -809,7 +801,6 @@ fn apply_schema_array_coercion(items: &mut [Value], schema: &Value, root: &Value
     }
 }
 
-/// `coerceWithUnionSchema(value, schemas)`
 fn coerce_with_union_schema(value: &Value, schemas: &[Value], root: &Value) -> Value {
     for schema in schemas {
         if check_against(schema, value, root) {
@@ -890,7 +881,6 @@ pub fn normalize_optional_nulls(value: &mut Value, schema: &Value, root: &Value)
 // Public API
 // ---------------------------------------------------------------------------
 
-/// `formatValidationPath(error)`
 fn format_validation_path(error: &ValidationError) -> String {
     if error.keyword == "required"
         && let Some(required_property) = error.required_properties.first()

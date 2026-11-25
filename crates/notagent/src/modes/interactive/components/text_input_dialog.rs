@@ -123,7 +123,6 @@ impl TextInputDialogComponent {
         self.editor.borrow().get_text()
     }
 
-    /// `handleOpenExternalEditor()`.
     fn handle_open_external_editor(&mut self) {
         let Some(run) = self.on_external_editor.as_mut() else {
             return;

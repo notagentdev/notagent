@@ -1894,15 +1894,6 @@ impl SessionManager {
         self.find_entry(id)
     }
 
-    /// All direct children of an entry.
-    pub fn get_children(&self, parent_id: &str) -> Vec<&SessionEntry> {
-        self.file_entries
-            .iter()
-            .filter_map(FileEntry::as_entry)
-            .filter(|entry| entry.parent_id() == Some(parent_id))
-            .collect()
-    }
-
     pub fn get_label(&self, id: &str) -> Option<&str> {
         self.labels_by_id.get(id).map(String::as_str)
     }

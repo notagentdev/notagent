@@ -51,7 +51,6 @@ pub fn thrown_value_diagnostic(value: &dyn std::fmt::Display) -> DiagnosticError
     }
 }
 
-/// `createAssistantMessageDiagnostic(type, error, details?)`
 pub fn create_assistant_message_diagnostic(
     diagnostic_type: impl Into<String>,
     error: DiagnosticErrorInfo,
@@ -66,7 +65,6 @@ pub fn create_assistant_message_diagnostic(
     }
 }
 
-/// `appendAssistantMessageDiagnostic(message, diagnostic)`
 pub fn append_assistant_message_diagnostic(
     diagnostics: &mut Option<Vec<AssistantMessageDiagnostic>>,
     diagnostic: AssistantMessageDiagnostic,

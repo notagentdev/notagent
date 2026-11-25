@@ -114,12 +114,6 @@ impl ThreadGoal {
             .map(|budget| (budget - self.turns_used).max(0))
     }
 
-    /// Whether this goal is bounded at all. An unbounded goal runs until the
-    /// agent completes or blocks it, which is worth saying out loud in the UI.
-    pub fn is_budgeted(&self) -> bool {
-        self.token_budget.is_some() || self.turn_budget.is_some()
-    }
-
     /// Counts one continuation turn against the goal, crossing an active goal
     /// into `BudgetLimited` once the turn budget is reached.
     pub fn observe_turn(&mut self) {
@@ -455,15 +449,6 @@ pub fn describe_goal(goal: &ThreadGoal) -> String {
         spent.join(" · "),
         goal.objective
     )
-}
-
-/// What setting a goal did.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SetGoalOutcome {
-    /// The new goal is active.
-    Set(ThreadGoal),
-    /// A goal was already there and was left alone; this is it.
-    Exists(ThreadGoal),
 }
 
 /// A parsed `/goal` invocation.

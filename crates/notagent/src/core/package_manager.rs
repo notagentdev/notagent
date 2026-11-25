@@ -37,7 +37,7 @@ const NETWORK_TIMEOUT_MS: u64 = 10_000;
 const UPDATE_CHECK_CONCURRENCY: usize = 4;
 const GIT_UPDATE_CONCURRENCY: usize = 4;
 
-/// Everything the package manager can fail with; the message is the one the
+/// Everything the package manager can fail with.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct PackageManagerError(pub String);
@@ -50,7 +50,6 @@ impl PackageManagerError {
 
 type Result<T> = std::result::Result<T, PackageManagerError>;
 
-/// `isOfflineModeEnabled()`
 fn is_offline_mode_enabled() -> bool {
     let Ok(value) = std::env::var("NOTAGENT_OFFLINE") else {
         return false;
@@ -61,22 +60,18 @@ fn is_offline_mode_enabled() -> bool {
     value == "1" || value.to_lowercase() == "true" || value.to_lowercase() == "yes"
 }
 
-/// `isExactNpmVersion(version)`
-/// Deviation (class 3, master substitution node-semver → the `semver` crate):
-/// `valid()` becomes `Version::parse`. The crate rejects the `v1.2.3` spelling
+/// Whether `version` is one exact semver version rather than a range.
 fn is_exact_npm_version(version: Option<&str>) -> bool {
     Version::parse(version.unwrap_or("")).is_ok()
 }
 
-/// `getNpmVersionRange(version)`
-/// is equivalent — the value is only ever fed back into `satisfies` and
-/// `maxSatisfying`.
+/// The version range of an npm spec; it is only ever matched against
+/// published versions.
 fn get_npm_version_range(version: Option<&str>) -> Option<String> {
     let version = version?;
     VersionReq::parse(version).ok().map(|_| version.to_owned())
 }
 
-/// `satisfies(version, range)`
 fn satisfies(version: &str, range: &str) -> bool {
     match (Version::parse(version), VersionReq::parse(range)) {
         (Ok(version), Ok(range)) => range.matches(&version),
@@ -84,7 +79,6 @@ fn satisfies(version: &str, range: &str) -> bool {
     }
 }
 
-/// `maxSatisfying(versions, range)`
 fn max_satisfying(versions: &[String], range: &str) -> Option<String> {
     let request = VersionReq::parse(range).ok()?;
     versions
@@ -104,7 +98,6 @@ fn highest_version(versions: &[String]) -> Option<String> {
         .map(|(_, value)| value.clone())
 }
 
-/// `MissingSourceAction`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MissingSourceAction {
     Install,
@@ -135,7 +128,6 @@ pub enum ProgressAction {
     Pull,
 }
 
-/// `ProgressEvent`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgressEvent {
     pub kind: ProgressKind,
@@ -144,7 +136,6 @@ pub struct ProgressEvent {
     pub message: Option<String>,
 }
 
-/// `ProgressCallback`
 pub type ProgressCallback = Arc<dyn Fn(&ProgressEvent) + Send + Sync>;
 
 /// `PackageUpdate["type"]`
@@ -154,7 +145,6 @@ pub enum PackageKind {
     Git,
 }
 
-/// `PackageUpdate`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageUpdate {
     pub source: String,
@@ -163,7 +153,6 @@ pub struct PackageUpdate {
     pub scope: SourceScope,
 }
 
-/// `ConfiguredPackage`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfiguredPackage {
     pub source: String,
@@ -172,7 +161,6 @@ pub struct ConfiguredPackage {
     pub installed_path: Option<String>,
 }
 
-/// `NpmSource`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NpmSource {
     pub spec: String,
@@ -182,7 +170,6 @@ pub struct NpmSource {
     pub pinned: bool,
 }
 
-/// `ParsedSource`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedSource {
     Npm(NpmSource),
@@ -232,7 +219,6 @@ fn package_filter(package: &PackageSource) -> Option<PackageFilter> {
     }
 }
 
-/// `resourcePrecedenceRank(m)`
 fn resource_precedence_rank(metadata: &PathMetadata) -> u8 {
     if metadata.origin == SourceOrigin::Package {
         return 4;
@@ -245,7 +231,6 @@ fn resource_precedence_rank(metadata: &PathMetadata) -> u8 {
     scope_base + u8::from(metadata.source != "local")
 }
 
-/// `getHomeDir()`
 fn get_home_dir() -> String {
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() => home,
@@ -255,7 +240,6 @@ fn get_home_dir() -> String {
     }
 }
 
-/// `getExtensionTempFolder(agentDir)`
 pub fn get_extension_temp_folder(agent_dir: &str) -> PathBuf {
     let temp_folder = Path::new(agent_dir).join("tmp").join("extensions");
     let _ = std::fs::create_dir_all(&temp_folder);
@@ -272,10 +256,8 @@ fn set_owner_only_permissions(path: &Path) {
 #[cfg(not(unix))]
 fn set_owner_only_permissions(_path: &Path) {}
 
-/// `globSync(entry, { cwd: root, absolute: true, dot: false, nodir: false })`
-/// Deviation (class 3, master substitution glob → globset): the walk is local;
-/// `dot: false` becomes "skip entries whose name starts with a dot", and the
-/// matches are sorted so the resolved order does not depend on the filesystem.
+/// Entries whose name starts with a dot are skipped, and the matches are
+/// sorted so the resolved order does not depend on the filesystem.
 fn glob_sync(pattern: &str, root: &Path) -> Vec<String> {
     // `glob` normalizes a leading `./` away; globset would match it literally.
     let pattern = pattern.strip_prefix("./").unwrap_or(pattern);
@@ -324,10 +306,8 @@ struct AccumulatedResource {
     enabled: bool,
 }
 
-/// `ResourceAccumulator`
-/// Deviation (class 1): the `Map`s are `Vec`s of pairs, because the insertion
-/// order carries meaning (first-wins collision resolution downstream) and the
-/// port must not depend on hash order.
+/// `Vec`s of pairs rather than maps, because the insertion order carries
+/// meaning: collisions are resolved first-wins downstream.
 #[derive(Debug, Default)]
 struct ResourceAccumulator {
     skills: Vec<(String, AccumulatedResource)>,
@@ -336,7 +316,6 @@ struct ResourceAccumulator {
 }
 
 impl ResourceAccumulator {
-    /// `getTargetMap(accumulator, resourceType)`
     fn target(&mut self, resource_type: ResourceType) -> &mut Vec<(String, AccumulatedResource)> {
         match resource_type {
             ResourceType::Skills => &mut self.skills,
@@ -346,7 +325,6 @@ impl ResourceAccumulator {
     }
 }
 
-/// `addResource(map, path, metadata, enabled)`
 fn add_resource(
     target: &mut Vec<(String, AccumulatedResource)>,
     path: &str,
@@ -375,7 +353,6 @@ struct ScopedPackage {
     scope: SourceScope,
 }
 
-/// `ConfiguredUpdateSource`
 #[derive(Debug, Clone)]
 struct ConfiguredUpdateSource {
     source: String,
@@ -390,7 +367,6 @@ pub struct GitUpdateTarget {
     pub fetch_args: Vec<String>,
 }
 
-/// `PackageManagerOptions`
 pub struct PackageManagerOptions {
     pub cwd: String,
     pub agent_dir: String,
@@ -399,7 +375,6 @@ pub struct PackageManagerOptions {
     pub command_runner: Option<Arc<dyn CommandRunner>>,
 }
 
-/// `DefaultPackageManager`
 pub struct DefaultPackageManager {
     cwd: String,
     agent_dir: String,
@@ -433,12 +408,10 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `setProgressCallback(callback)`
     pub fn set_progress_callback(&self, callback: Option<ProgressCallback>) {
         *self.progress_callback.lock().expect("poisoned") = callback;
     }
 
-    /// `addSourceToSettings(source, options)`
     pub fn add_source_to_settings(&self, source: &str, local: bool) -> Result<bool> {
         let scope = if local {
             SourceScope::Project
@@ -480,7 +453,6 @@ impl DefaultPackageManager {
         Ok(true)
     }
 
-    /// `removeSourceFromSettings(source, options)`
     pub fn remove_source_from_settings(&self, source: &str, local: bool) -> Result<bool> {
         let scope = if local {
             SourceScope::Project
@@ -517,7 +489,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getInstalledPath(source, scope)`
     pub fn get_installed_path(&self, source: &str, scope: SourceScope) -> Result<Option<String>> {
         let parsed = self.parse_source(source);
         let path = match &parsed {
@@ -538,7 +509,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `withProgress(action, source, message, operation)`
     async fn with_progress<F>(
         &self,
         action: ProgressAction,
@@ -577,7 +547,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `resolve(onMissing)`
     pub async fn resolve(
         &self,
         on_missing: Option<MissingSourceHandler>,
@@ -649,7 +618,6 @@ impl DefaultPackageManager {
         Ok(to_resolved_paths(accumulator))
     }
 
-    /// `listConfiguredPackages()`
     pub fn list_configured_packages(&self) -> Result<Vec<ConfiguredPackage>> {
         let global_settings = self.settings_manager.get_global_settings();
         let project_settings = self.settings_manager.get_project_settings();
@@ -678,7 +646,6 @@ impl DefaultPackageManager {
         Ok(configured_packages)
     }
 
-    /// `install(source, options)`
     pub async fn install(&self, source: &str, local: bool) -> Result<()> {
         let parsed = self.parse_source(source);
         let scope = if local {
@@ -710,14 +677,12 @@ impl DefaultPackageManager {
         .await
     }
 
-    /// `installAndPersist(source, options)`
     pub async fn install_and_persist(&self, source: &str, local: bool) -> Result<()> {
         self.install(source, local).await?;
         self.add_source_to_settings(source, local)?;
         Ok(())
     }
 
-    /// `remove(source, options)`
     pub async fn remove(&self, source: &str, local: bool) -> Result<()> {
         let parsed = self.parse_source(source);
         let scope = if local {
@@ -741,13 +706,11 @@ impl DefaultPackageManager {
         .await
     }
 
-    /// `removeAndPersist(source, options)`
     pub async fn remove_and_persist(&self, source: &str, local: bool) -> Result<bool> {
         self.remove(source, local).await?;
         self.remove_source_from_settings(source, local)
     }
 
-    /// `update(source)`
     pub async fn update(&self, source: Option<&str>) -> Result<()> {
         let global_settings = self.settings_manager.get_global_settings();
         let project_settings = self.settings_manager.get_project_settings();
@@ -798,7 +761,6 @@ impl DefaultPackageManager {
         self.update_configured_sources(&update_sources).await
     }
 
-    /// `updateConfiguredSources(sources)`
     async fn update_configured_sources(&self, sources: &[ConfiguredUpdateSource]) -> Result<()> {
         if is_offline_mode_enabled() || sources.is_empty() {
             return Ok(());
@@ -896,7 +858,6 @@ impl DefaultPackageManager {
         git_result
     }
 
-    /// `shouldUpdateNpmSource(source, scope)`
     async fn should_update_npm_source(
         &self,
         source: &NpmSource,
@@ -927,7 +888,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `updateNpmBatch(sources, scope)`
     async fn update_npm_batch(
         &self,
         sources: &[(ConfiguredUpdateSource, NpmSource)],
@@ -972,7 +932,6 @@ impl DefaultPackageManager {
         .await
     }
 
-    /// `installNpmBatch(specs, scope)`
     async fn install_npm_batch(&self, specs: &[String], scope: SourceScope) -> Result<()> {
         let install_root = self.get_npm_install_root(scope, false)?;
         self.ensure_npm_project(&install_root);
@@ -980,7 +939,6 @@ impl DefaultPackageManager {
         self.run_npm_command(&args, None).await
     }
 
-    /// `checkForAvailableUpdates()`
     pub async fn check_for_available_updates(&self) -> Result<Vec<PackageUpdate>> {
         if is_offline_mode_enabled() {
             return Ok(Vec::new());
@@ -1059,7 +1017,6 @@ impl DefaultPackageManager {
         Ok(updates)
     }
 
-    /// `resolvePackageSources(sources, accumulator, onMissing)`
     async fn resolve_package_sources(
         &self,
         sources: &[ScopedPackage],
@@ -1173,7 +1130,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `findAutoloadDeltaBase(pkg, scope, sources)`
     fn find_autoload_delta_base(
         &self,
         package: &PackageSource,
@@ -1208,11 +1164,7 @@ impl DefaultPackageManager {
         Ok(None)
     }
 
-    /// `resolveLocalExtensionSource(source, accumulator, filter, metadata, baseDir)`
-    /// Deviation (class 2): the two branches that registered the source itself
-    /// as an extension (a file source, and a directory without resources) are
-    /// gone with the extension system; a local package now contributes exactly
-    /// its skills, prompts and themes.
+    /// A local package contributes exactly its skills, prompts and themes.
     fn resolve_local_package_source(
         &self,
         source_path: &str,
@@ -1235,7 +1187,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `installParsedSource(parsed, scope)`
     async fn install_parsed_source(&self, parsed: &ParsedSource, scope: SourceScope) -> Result<()> {
         match parsed {
             ParsedSource::Npm(npm) => {
@@ -1247,7 +1198,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getSourceMatchKeyForInput(source)`
     fn get_source_match_key_for_input(&self, source: &str) -> String {
         match self.parse_source(source) {
             ParsedSource::Npm(npm) => format!("npm:{}", npm.name),
@@ -1256,7 +1206,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getSourceMatchKeyForSettings(source, scope)`
     fn get_source_match_key_for_settings(
         &self,
         source: &str,
@@ -1272,7 +1221,6 @@ impl DefaultPackageManager {
         })
     }
 
-    /// `buildNoMatchingPackageMessage(source, configuredPackages)`
     fn build_no_matching_package_message(
         &self,
         source: &str,
@@ -1286,7 +1234,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `findSuggestedConfiguredSource(source, configuredPackages)`
     fn find_suggested_configured_source(
         &self,
         source: &str,
@@ -1321,7 +1268,6 @@ impl DefaultPackageManager {
         None
     }
 
-    /// `packageSourcesMatch(existing, inputSource, scope)`
     fn package_sources_match(
         &self,
         existing: &PackageSource,
@@ -1334,7 +1280,6 @@ impl DefaultPackageManager {
         Ok(left == right)
     }
 
-    /// `normalizePackageSourceForSettings(source, scope)`
     fn normalize_package_source_for_settings(
         &self,
         source: &str,
@@ -1353,7 +1298,6 @@ impl DefaultPackageManager {
         })
     }
 
-    /// `parseSource(source)`
     pub fn parse_source(&self, source: &str) -> ParsedSource {
         if let Some(rest) = source.strip_prefix("npm:") {
             let spec = rest.trim().to_owned();
@@ -1379,7 +1323,6 @@ impl DefaultPackageManager {
         ParsedSource::Local(source.to_owned())
     }
 
-    /// `npmHasAvailableUpdate(source, installedPath)`
     async fn npm_has_available_update(&self, source: &NpmSource, installed_path: &str) -> bool {
         if is_offline_mode_enabled() {
             return false;
@@ -1403,7 +1346,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getLatestNpmVersion(packageSpec, range)`
     pub async fn get_latest_npm_version(
         &self,
         package_spec: &str,
@@ -1457,7 +1399,6 @@ impl DefaultPackageManager {
         ))
     }
 
-    /// `gitHasAvailableUpdate(installedPath)`
     async fn git_has_available_update(&self, installed_path: &str) -> bool {
         if is_offline_mode_enabled() {
             return false;
@@ -1483,7 +1424,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getRemoteGitHead(installedPath)`
     async fn get_remote_git_head(&self, installed_path: &str) -> Result<String> {
         if let Some(upstream_ref) = self.get_git_upstream_ref(installed_path).await {
             let remote_head = self
@@ -1511,7 +1451,6 @@ impl DefaultPackageManager {
             .ok_or_else(|| PackageManagerError::new("Failed to determine remote HEAD"))
     }
 
-    /// `getLocalGitUpdateTarget(installedPath)`
     pub async fn get_local_git_update_target(&self, installed_path: &str) -> GitUpdateTarget {
         let upstream = self
             .run_command_capture(
@@ -1632,7 +1571,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getGitUpstreamRef(installedPath)`
     async fn get_git_upstream_ref(&self, installed_path: &str) -> Option<String> {
         let upstream = self
             .run_command_capture(
@@ -1655,7 +1593,6 @@ impl DefaultPackageManager {
         (!branch.is_empty()).then(|| format!("refs/heads/{branch}"))
     }
 
-    /// `runGitRemoteCommand(installedPath, args)`
     async fn run_git_remote_command(
         &self,
         installed_path: &str,
@@ -1673,7 +1610,6 @@ impl DefaultPackageManager {
         .await
     }
 
-    /// `getPackageIdentity(source, scope)`
     pub fn get_package_identity(&self, source: &str, scope: Option<SourceScope>) -> Result<String> {
         Ok(match self.parse_source(source) {
             ParsedSource::Npm(npm) => format!("npm:{}", npm.name),
@@ -1689,7 +1625,6 @@ impl DefaultPackageManager {
         })
     }
 
-    /// `dedupePackages(packages)`
     fn dedupe_packages(&self, packages: &[ScopedPackage]) -> Result<Vec<ScopedPackage>> {
         let mut result: Vec<ScopedPackage> = Vec::new();
         let mut seen: Vec<(String, usize)> = Vec::new();
@@ -1718,7 +1653,6 @@ impl DefaultPackageManager {
         Ok(result)
     }
 
-    /// `assertProjectTrustedForScope(scope)`
     fn assert_project_trusted_for_scope(&self, scope: SourceScope) -> Result<()> {
         if scope == SourceScope::Project && !self.settings_manager.is_project_trusted() {
             return Err(PackageManagerError::new(
@@ -1728,7 +1662,6 @@ impl DefaultPackageManager {
         Ok(())
     }
 
-    /// `getNpmCommand()`
     fn get_npm_command(&self) -> Result<NpmCommand> {
         let configured_command = self.settings_manager.get_npm_command();
         let Some(configured_command) = configured_command.filter(|command| !command.is_empty())
@@ -1750,7 +1683,6 @@ impl DefaultPackageManager {
         })
     }
 
-    /// `getPackageManagerName()`
     fn get_package_manager_name(&self) -> Result<String> {
         let npm_command = self.get_npm_command()?;
         let mut command_parts = vec![npm_command.command.clone()];
@@ -1776,7 +1708,6 @@ impl DefaultPackageManager {
             .unwrap_or_default())
     }
 
-    /// `runNpmCommand(args, options)`
     async fn run_npm_command(&self, args: &[String], cwd: Option<&str>) -> Result<()> {
         let npm_command = self.get_npm_command()?;
         let mut full_args = npm_command.args.clone();
@@ -1789,7 +1720,6 @@ impl DefaultPackageManager {
             .await
     }
 
-    /// `getGitDependencyInstallArgs()`
     fn get_git_dependency_install_args(&self) -> Vec<String> {
         let configured_command = self.settings_manager.get_npm_command();
         if configured_command.is_some_and(|command| !command.is_empty()) {
@@ -1798,7 +1728,6 @@ impl DefaultPackageManager {
         vec!["install".to_owned(), "--omit=dev".to_owned()]
     }
 
-    /// `runNpmCommandSync(args)`
     fn run_npm_command_sync(&self, args: &[String]) -> Result<String> {
         let npm_command = self.get_npm_command()?;
         let mut full_args = npm_command.args.clone();
@@ -1806,7 +1735,6 @@ impl DefaultPackageManager {
         self.run_command_sync(&npm_command.command, &full_args)
     }
 
-    /// `getNpmInstallArgs(specs, installRoot)`
     fn get_npm_install_args(&self, specs: &[String], install_root: &str) -> Result<Vec<String>> {
         let package_manager_name = self.get_package_manager_name()?;
         // Extension packages run inside notagent and resolve notagent APIs through loader aliases.
@@ -1841,7 +1769,6 @@ impl DefaultPackageManager {
         Ok(args)
     }
 
-    /// `installNpm(source, scope, temporary)`
     async fn install_npm(
         &self,
         source: &NpmSource,
@@ -1854,7 +1781,6 @@ impl DefaultPackageManager {
         self.run_npm_command(&args, None).await
     }
 
-    /// `uninstallNpm(source, scope)`
     async fn uninstall_npm(&self, source: &NpmSource, scope: SourceScope) -> Result<()> {
         let install_root = self.get_npm_install_root(scope, false)?;
         if !Path::new(&install_root).exists() {
@@ -1886,7 +1812,6 @@ impl DefaultPackageManager {
         self.run_npm_command(&args, None).await
     }
 
-    /// `installGit(source, scope)`
     fn install_git<'a>(
         &'a self,
         source: &'a GitSource,
@@ -1953,7 +1878,6 @@ impl DefaultPackageManager {
         })
     }
 
-    /// `updateGit(source, scope)`
     fn update_git<'a>(
         &'a self,
         source: &'a GitSource,
@@ -1981,7 +1905,6 @@ impl DefaultPackageManager {
         })
     }
 
-    /// `repairMissingGitDependencies(targetDir)`
     async fn repair_missing_git_dependencies(&self, target_dir: &str) -> Result<()> {
         if !has_missing_git_dependencies(target_dir) {
             return Ok(());
@@ -1990,7 +1913,6 @@ impl DefaultPackageManager {
             .await
     }
 
-    /// `cleanAndInstallGitDependencies(targetDir, markerPath)`
     async fn clean_and_install_git_dependencies(
         &self,
         target_dir: &str,
@@ -2018,7 +1940,6 @@ impl DefaultPackageManager {
         Ok(())
     }
 
-    /// `ensureGitRef(targetDir, fetchArgs, ref)`
     async fn ensure_git_ref(
         &self,
         target_dir: &str,
@@ -2073,7 +1994,6 @@ impl DefaultPackageManager {
             .await
     }
 
-    /// `refreshTemporaryGitSource(source, sourceStr)`
     async fn refresh_temporary_git_source(&self, source: &GitSource, source_str: &str) {
         if is_offline_mode_enabled() {
             return;
@@ -2089,7 +2009,6 @@ impl DefaultPackageManager {
             .await;
     }
 
-    /// `removeGit(source, scope)`
     fn remove_git(&self, source: &GitSource, scope: SourceScope) -> Result<()> {
         let target_dir = self.get_git_install_path(source, scope)?;
         let _ = std::fs::remove_dir_all(&target_dir);
@@ -2099,7 +2018,6 @@ impl DefaultPackageManager {
         Ok(())
     }
 
-    /// `pruneEmptyGitParents(targetDir, installRoot)`
     fn prune_empty_git_parents(&self, target_dir: &str, install_root: Option<&str>) {
         let Some(install_root) = install_root else {
             return;
@@ -2124,7 +2042,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `ensureNpmProject(installRoot)`
     fn ensure_npm_project(&self, install_root: &str) {
         if !Path::new(install_root).exists() {
             let _ = std::fs::create_dir_all(install_root);
@@ -2142,7 +2059,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getNpmInstallRoot(scope, temporary)`
     fn get_npm_install_root(&self, scope: SourceScope, temporary: bool) -> Result<String> {
         if temporary {
             return self.get_temporary_dir("npm", None);
@@ -2154,7 +2070,6 @@ impl DefaultPackageManager {
         Ok(join(&self.agent_dir, &["npm"]))
     }
 
-    /// `getGlobalNpmRoot()`
     fn get_global_npm_root(&self) -> Result<String> {
         let npm_command = self.get_npm_command()?;
         let mut key_parts = vec![npm_command.command.clone()];
@@ -2184,7 +2099,6 @@ impl DefaultPackageManager {
         Ok(root)
     }
 
-    /// `getPnpmGlobalPackagePath(packageName)`
     fn get_pnpm_global_package_path(&self, package_name: &str) -> Result<Option<String>> {
         if self.get_package_manager_name()? != "pnpm" {
             return Ok(None);
@@ -2217,7 +2131,6 @@ impl DefaultPackageManager {
         Ok(None)
     }
 
-    /// `getManagedNpmInstallPath(source, scope)`
     fn get_managed_npm_install_path(
         &self,
         source: &NpmSource,
@@ -2240,7 +2153,6 @@ impl DefaultPackageManager {
         ))
     }
 
-    /// `getLegacyGlobalNpmInstallPath(source)`
     fn get_legacy_global_npm_install_path(&self, source: &NpmSource) -> Option<String> {
         match self.get_pnpm_global_package_path(&source.name) {
             Ok(Some(path)) => Some(path),
@@ -2252,7 +2164,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `getNpmInstallPath(source, scope)`
     pub fn get_npm_install_path(&self, source: &NpmSource, scope: SourceScope) -> Result<String> {
         let managed_path = self.get_managed_npm_install_path(source, scope)?;
         if scope != SourceScope::User || Path::new(&managed_path).exists() {
@@ -2265,7 +2176,6 @@ impl DefaultPackageManager {
         })
     }
 
-    /// `getGitInstallPath(source, scope)`
     pub fn get_git_install_path(&self, source: &GitSource, scope: SourceScope) -> Result<String> {
         if scope == SourceScope::Temporary {
             return self.get_temporary_dir(&format!("git-{}", source.host), Some(&source.path));
@@ -2277,7 +2187,6 @@ impl DefaultPackageManager {
         self.resolve_managed_path(&install_root, &[&source.host, &source.path])
     }
 
-    /// `getGitInstallRoot(scope)`
     fn get_git_install_root(&self, scope: SourceScope) -> Result<Option<String>> {
         if scope == SourceScope::Temporary {
             return Ok(None);
@@ -2289,7 +2198,6 @@ impl DefaultPackageManager {
         Ok(Some(join(&self.agent_dir, &["git"])))
     }
 
-    /// `getTemporaryDir(prefix, suffix)`
     fn get_temporary_dir(&self, prefix: &str, suffix: Option<&str>) -> Result<String> {
         let temp_folder = get_extension_temp_folder(&self.agent_dir);
         let root = self.resolve_managed_path(&temp_folder.to_string_lossy(), &[prefix])?;
@@ -2303,7 +2211,6 @@ impl DefaultPackageManager {
         self.resolve_managed_path(&root, &[&hash, suffix.unwrap_or("")])
     }
 
-    /// `resolveManagedPath(root, ...parts)`
     fn resolve_managed_path(&self, root: &str, parts: &[&str]) -> Result<String> {
         let resolved_root = self.resolve_path_absolute(root);
         let mut segments: Vec<&str> = vec![resolved_root.as_str()];
@@ -2322,7 +2229,6 @@ impl DefaultPackageManager {
         Ok(resolved_path)
     }
 
-    /// `getBaseDirForScope(scope)`
     fn get_base_dir_for_scope(&self, scope: SourceScope) -> Result<String> {
         if scope == SourceScope::Project {
             self.assert_project_trusted_for_scope(scope)?;
@@ -2334,12 +2240,10 @@ impl DefaultPackageManager {
         Ok(self.cwd.clone())
     }
 
-    /// `resolvePath(input)`
     fn resolve_path(&self, input: &str) -> String {
         self.resolve_path_from_base(input, &self.cwd)
     }
 
-    /// `resolvePathFromBase(input, baseDir)`
     fn resolve_path_from_base(&self, input: &str, base_dir: &str) -> String {
         resolve_path(
             input,
@@ -2358,7 +2262,6 @@ impl DefaultPackageManager {
         crate::utils::paths::node_resolve(&[input])
     }
 
-    /// `collectPackageResources(packageRoot, accumulator, filter, metadata)`
     fn collect_package_resources(
         &self,
         package_root: &Path,
@@ -2418,7 +2321,6 @@ impl DefaultPackageManager {
         has_any_dir
     }
 
-    /// `resolveLocalEntries(entries, resourceType, target, metadata, baseDir)`
     fn resolve_local_entries(
         &self,
         entries: &[String],
@@ -2448,7 +2350,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// `addAutoDiscoveredResources(...)`
     fn add_auto_discovered_resources(
         &self,
         accumulator: &mut ResourceAccumulator,
@@ -2599,7 +2500,6 @@ impl DefaultPackageManager {
         );
     }
 
-    /// `runCommand(command, args, options)`
     async fn run_command(
         &self,
         command: &str,
@@ -2612,7 +2512,6 @@ impl DefaultPackageManager {
             .map_err(PackageManagerError)
     }
 
-    /// `runCommandCapture(command, args, options)`
     async fn run_command_capture(
         &self,
         command: &str,
@@ -2625,7 +2524,6 @@ impl DefaultPackageManager {
             .map_err(PackageManagerError)
     }
 
-    /// `runCommandSync(command, args)`
     fn run_command_sync(&self, command: &str, args: &[String]) -> Result<String> {
         self.runner
             .run_sync(command, args)
@@ -2634,9 +2532,7 @@ impl DefaultPackageManager {
 }
 
 impl PackageResources for DefaultPackageManager {
-    /// Deviation (class 1): the trait C defined for the resource loader
-    /// `resolve()` propagates a failed install to the loader. A failed resolve
-    /// therefore yields an empty set here.
+    /// A failed resolve yields an empty set.
     fn resolve(&self) -> BoxFuture<'_, ResolvedResources> {
         Box::pin(async move { self.resolve(None).await.unwrap_or_default() })
     }
@@ -2649,7 +2545,6 @@ struct NpmCommand {
     args: Vec<String>,
 }
 
-/// `getPackageSourceString(pkg)`
 fn package_source_string(package: &PackageSource) -> String {
     match package {
         PackageSource::Source(source) => source.clone(),
@@ -2667,7 +2562,6 @@ fn settings_entries(settings: &Settings, resource_type: ResourceType) -> Vec<Str
     .unwrap_or_default()
 }
 
-/// `parseNpmSpec(spec)`
 fn parse_npm_spec(spec: &str) -> (String, Option<String>) {
     let pattern = Regex::new(r"^(@?[^@]+(?:/[^@]+)?)(?:@(.+))?$").expect("valid regex");
     let Some(captures) = pattern.captures(spec) else {
@@ -2680,7 +2574,6 @@ fn parse_npm_spec(spec: &str) -> (String, Option<String>) {
     (name, version)
 }
 
-/// `getInstalledNpmVersion(installedPath)`
 fn get_installed_npm_version(installed_path: &str) -> Option<String> {
     let package_json_path = Path::new(installed_path).join("package.json");
     if !package_json_path.exists() {
@@ -2694,7 +2587,6 @@ fn get_installed_npm_version(installed_path: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// `installedNpmMatchesConfiguredVersion(source, installedPath)`
 fn installed_npm_matches_configured_version(source: &NpmSource, installed_path: &str) -> bool {
     let Some(installed_version) = get_installed_npm_version(installed_path) else {
         return false;
@@ -2705,7 +2597,6 @@ fn installed_npm_matches_configured_version(source: &NpmSource, installed_path: 
     }
 }
 
-/// `hasMissingGitDependencies(targetDir)`
 fn has_missing_git_dependencies(target_dir: &str) -> bool {
     let package_json_path = Path::new(target_dir).join("package.json");
     if !package_json_path.exists() {
@@ -2739,7 +2630,6 @@ fn has_missing_git_dependencies(target_dir: &str) -> bool {
     })
 }
 
-/// `getGitUpdateMarkerPath(targetDir)`
 fn git_update_marker_path(target_dir: &str) -> String {
     let parent = dirname_string(target_dir);
     let base = Path::new(target_dir)
@@ -2749,7 +2639,6 @@ fn git_update_marker_path(target_dir: &str) -> String {
     join(&parent, &[&format!(".{base}.notagent-update-incomplete")])
 }
 
-/// `ensureGitIgnore(dir)`
 fn ensure_git_ignore(dir: &str) {
     if !Path::new(dir).exists() {
         let _ = std::fs::create_dir_all(dir);
@@ -2760,7 +2649,6 @@ fn ensure_git_ignore(dir: &str) {
     }
 }
 
-/// `collectDefaultResources(packageRoot, resourceType, target, metadata)`
 fn collect_default_resources(
     package_root: &Path,
     resource_type: ResourceType,
@@ -2791,7 +2679,6 @@ fn collect_default_resources(
     }
 }
 
-/// `applyPackageFilter(packageRoot, userPatterns, resourceType, target, metadata)`
 fn apply_package_filter(
     package_root: &Path,
     user_patterns: &[String],
@@ -2819,7 +2706,6 @@ fn apply_package_filter(
     }
 }
 
-/// `applyPackageDeltaFilter(packageRoot, userPatterns, resourceType, target, metadata)`
 fn apply_package_delta_filter(
     package_root: &Path,
     user_patterns: &[String],
@@ -2840,7 +2726,6 @@ fn apply_package_delta_filter(
     }
 }
 
-/// `collectManifestFiles(packageRoot, resourceType)`
 /// (`enabledByManifest`) is the same list in both branches.
 fn collect_manifest_files(package_root: &Path, resource_type: ResourceType) -> Vec<String> {
     let manifest = read_pi_manifest(&package_root.join("package.json"));
@@ -2874,7 +2759,6 @@ fn collect_manifest_files(package_root: &Path, resource_type: ResourceType) -> V
     collect_resource_files(&convention_dir, resource_type)
 }
 
-/// `addManifestEntries(entries, root, resourceType, target, metadata)`
 fn add_manifest_entries(
     entries: Option<&[String]>,
     root: &Path,
@@ -2901,7 +2785,6 @@ fn add_manifest_entries(
     }
 }
 
-/// `collectFilesFromManifestEntries(entries, root, resourceType)`
 fn collect_files_from_manifest_entries(
     entries: &[String],
     root: &Path,
@@ -2923,7 +2806,6 @@ fn collect_files_from_manifest_entries(
     collect_files_from_paths(&resolved, resource_type)
 }
 
-/// `collectFilesFromPaths(paths, resourceType)`
 fn collect_files_from_paths(paths: &[String], resource_type: ResourceType) -> Vec<String> {
     let mut files = Vec::new();
     for path in paths {
@@ -2943,7 +2825,6 @@ fn collect_files_from_paths(paths: &[String], resource_type: ResourceType) -> Ve
     files
 }
 
-/// `toResolvedPaths(accumulator)`
 fn to_resolved_paths(accumulator: ResourceAccumulator) -> ResolvedResources {
     ResolvedResources {
         skills: map_to_resolved(accumulator.skills),
@@ -2975,7 +2856,6 @@ fn map_to_resolved(entries: Vec<(String, AccumulatedResource)>) -> Vec<ResolvedR
     resolved
 }
 
-/// `runWithConcurrency(tasks, limit)`
 async fn run_with_concurrency<F, T>(tasks: Vec<F>, limit: usize) -> Vec<T>
 where
     F: Future<Output = T>,

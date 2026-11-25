@@ -27,9 +27,7 @@ impl ProtocolValidationError {
     }
 }
 
-/// `isProtocolValue` only allows JSON values. Byte strings are not protocol
-/// values; cycles, `undefined` and non-plain objects cannot be represented by
-/// `CborValue`.
+/// Only JSON values are protocol values; byte strings are rejected.
 fn parse_protocol_message<T: DeserializeOwned>(
     value: &CborValue,
     kind: &str,
@@ -246,18 +244,6 @@ impl ServerMessageDecoder {
     pub fn end(&mut self) -> Result<(), ProtocolValidationError> {
         self.decoder.end()
     }
-}
-
-pub fn create_client_message_decoder(
-    options: Option<FrameDecoderOptions>,
-) -> Result<ClientMessageDecoder, FrameError> {
-    ClientMessageDecoder::new(options)
-}
-
-pub fn create_server_message_decoder(
-    options: Option<FrameDecoderOptions>,
-) -> Result<ServerMessageDecoder, FrameError> {
-    ServerMessageDecoder::new(options)
 }
 
 pub fn is_supported_protocol_version(version: u64) -> bool {

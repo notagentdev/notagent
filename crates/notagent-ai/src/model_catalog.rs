@@ -130,12 +130,10 @@ pub fn get_builtin_providers() -> Vec<&'static str> {
     MODEL_DATA.iter().map(|(provider, _)| *provider).collect()
 }
 
-/// `getBuiltinModels(provider)`
 pub fn get_builtin_models(provider: &str) -> Vec<Model> {
     catalog().get(provider).cloned().unwrap_or_default()
 }
 
-/// `getBuiltinModel(provider, modelId)`
 pub fn get_builtin_model(provider: &str, model_id: &str) -> Option<Model> {
     catalog()
         .get(provider)?
@@ -149,7 +147,6 @@ pub fn all_builtin_models() -> Vec<Model> {
     catalog().values().flatten().cloned().collect()
 }
 
-/// `getBuiltinModelDataGeneratedAt()` — `Date.parse(manifest.generatedAt)`.
 pub fn get_builtin_model_data_generated_at() -> Option<i64> {
     let manifest: Value = serde_json::from_str(MODEL_DATA_MANIFEST).ok()?;
     let generated_at = manifest.get("generatedAt")?.as_str()?;

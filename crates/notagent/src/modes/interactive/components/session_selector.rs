@@ -114,7 +114,6 @@ pub struct SessionSelectorHeader {
     name_filter: NameFilter,
     request_render: Rc<dyn Fn()>,
     loading: bool,
-    load_progress: Option<(usize, usize)>,
     show_path: bool,
     confirming_delete_path: Option<String>,
     status_message: Option<StatusMessage>,
@@ -136,7 +135,6 @@ impl SessionSelectorHeader {
             name_filter,
             request_render,
             loading: false,
-            load_progress: None,
             show_path: false,
             confirming_delete_path: None,
             status_message: None,
@@ -159,12 +157,6 @@ impl SessionSelectorHeader {
 
     fn set_loading(&mut self, loading: bool) {
         self.loading = loading;
-        // Progress is scoped to the current load; clear whenever the loading state is set
-        self.load_progress = None;
-    }
-
-    fn set_progress(&mut self, loaded: usize, total: usize) {
-        self.load_progress = Some((loaded, total));
     }
 
     fn set_show_path(&mut self, show_path: bool) {
@@ -242,12 +234,8 @@ impl Component for SessionSelectorHeader {
             theme.fg(ThemeColor::Muted, "Name: ") + &theme.fg(ThemeColor::Accent, name_label);
 
         let scope_text = if self.loading {
-            let progress_text = match self.load_progress {
-                Some((loaded, total)) => format!("{loaded}/{total}"),
-                None => "...".to_string(),
-            };
             theme.fg(ThemeColor::Muted, "○ Current Folder | ")
-                + &theme.fg(ThemeColor::Accent, &format!("Loading {progress_text}"))
+                + &theme.fg(ThemeColor::Accent, "Loading ...")
         } else if self.scope == SessionScope::Current {
             theme.fg(ThemeColor::Accent, "◉ Current Folder")
                 + &theme.fg(ThemeColor::Muted, " | ○ All")
@@ -550,13 +538,6 @@ impl SessionList {
         list
     }
 
-    /// Path of the session under the cursor.
-    pub fn get_selected_session_path(&self) -> Option<&str> {
-        self.filtered_sessions
-            .get(self.selected_index)
-            .map(|node| node.session.path.as_str())
-    }
-
     fn set_sort_mode(&mut self, sort_mode: SortMode) {
         self.sort_mode = sort_mode;
         let query = self.search_input.get_value().to_string();
@@ -757,7 +738,7 @@ impl Component for SessionList {
             // Calculate available width for message
             let prefix_width = visible_width(&prefix);
             let right_width = visible_width(&right_part) + 2; // +2 for spacing
-            // `width - 2 - prefixWidth - rightWidth` can go negative in
+            // The available width can go negative on a narrow terminal.
             let available_for_msg =
                 width as isize - 2 - prefix_width as isize - right_width as isize; // -2 for cursor
 
@@ -1328,18 +1309,6 @@ impl SessionSelectorComponent {
             return None;
         }
         Some(self.pending_loads.remove(0))
-    }
-
-    /// `onProgress` of a running load.
-    pub fn report_load_progress(&mut self, request: &LoadRequest, loaded: usize, total: usize) {
-        if request.scope != self.scope {
-            return;
-        }
-        if request.seq.is_some() && request.seq != Some(self.all_load_seq) {
-            return;
-        }
-        self.header.borrow_mut().set_progress(loaded, total);
-        (self.request_render)();
     }
 
     /// `loadScope` from the `await` onwards.

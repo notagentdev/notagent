@@ -208,7 +208,6 @@ pub struct AuthInfoLink {
     pub label: Option<String>,
 }
 
-/// `AuthEvent`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthEvent {
     Info {

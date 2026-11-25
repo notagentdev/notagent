@@ -7,13 +7,11 @@ pub const ANTHROPIC_AUTH_TOKEN_ENV: &str = "ANTHROPIC_AUTH_TOKEN";
 pub const ANTHROPIC_OAUTH_TOKEN_ENV: &str = "ANTHROPIC_OAUTH_TOKEN";
 pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 
-/// `cachedVertexAdcCredentialsExists`
 fn vertex_adc_cache() -> &'static Mutex<Option<bool>> {
     static CACHE: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(None))
 }
 
-/// `hasVertexAdcCredentials(env)`
 fn has_vertex_adc_credentials(env: Option<&ProviderEnv>) -> bool {
     if let Some(explicit_credentials_path) = env
         .and_then(|env| env.get("GOOGLE_APPLICATION_CREDENTIALS"))
@@ -44,7 +42,6 @@ fn has_vertex_adc_credentials(env: Option<&ProviderEnv>) -> bool {
     exists
 }
 
-/// `getApiKeyEnvVars(provider)`
 fn api_key_env_vars(provider: &str) -> Option<Vec<&'static str>> {
     if provider == "github-copilot" {
         return Some(vec!["COPILOT_GITHUB_TOKEN"]);
@@ -115,7 +112,6 @@ pub fn find_env_keys(provider: &str, env: Option<&ProviderEnv>) -> Option<Vec<St
     if found.is_empty() { None } else { Some(found) }
 }
 
-/// `getEnvApiKey(provider, env)`
 pub fn get_env_api_key(provider: &str, env: Option<&ProviderEnv>) -> Option<String> {
     if let Some(env_keys) = find_env_keys(provider, env)
         && !env_keys.is_empty()

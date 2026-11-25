@@ -6,14 +6,13 @@ use crate::types::Model;
 
 pub const DEFAULT_RADIUS_GATEWAY: &str = "https://radius.notagent.dev";
 
-/// `RadiusGatewayConfig { baseUrl, models }` — the models keep their raw JSON, because
+/// `RadiusGatewayConfig { baseUrl, models }` — the models keep their raw JSON.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RadiusGatewayConfig {
     pub base_url: String,
     pub models: Vec<Map<String, Value>>,
 }
 
-/// `isRadiusGatewayModel(value)`
 fn is_radius_gateway_model(value: &Value) -> bool {
     let Some(model) = value.as_object() else {
         return false;
@@ -27,7 +26,6 @@ fn is_radius_gateway_model(value: &Value) -> bool {
         && model.get("maxTokens").is_some_and(Value::is_number)
 }
 
-/// `sanitizeRadiusGatewayConfig(config)`
 pub fn sanitize_radius_gateway_config(config: &Value) -> Option<RadiusGatewayConfig> {
     let config = config.as_object()?;
     let base_url = config.get("baseUrl")?.as_str()?.to_string();
@@ -42,7 +40,6 @@ pub fn sanitize_radius_gateway_config(config: &Value) -> Option<RadiusGatewayCon
     })
 }
 
-/// `normalizeRadiusGatewayUrl(value)`
 pub fn normalize_radius_gateway_url(value: &str) -> String {
     let has_scheme = value.len() >= 7
         && (value[..7].eq_ignore_ascii_case("http://")
@@ -55,14 +52,12 @@ pub fn normalize_radius_gateway_url(value: &str) -> String {
     with_scheme.trim_end_matches('/').to_string()
 }
 
-/// `getRadiusCredentialConfig(credential)`
 pub fn get_radius_credential_config(
     credential: Option<&OAuthCredential>,
 ) -> Option<RadiusGatewayConfig> {
     sanitize_radius_gateway_config(credential?.extra.get("gatewayConfig")?)
 }
 
-/// `getRadiusModelsFromConfig(providerId, config)`
 pub fn get_radius_models_from_config(
     provider_id: &str,
     config: &RadiusGatewayConfig,
@@ -88,7 +83,6 @@ pub fn get_radius_models_from_config(
         .collect()
 }
 
-/// `getRadiusModels(providerId, credential)`
 pub fn get_radius_models(provider_id: &str, credential: Option<&OAuthCredential>) -> Vec<Model> {
     match get_radius_credential_config(credential) {
         Some(config) => get_radius_models_from_config(provider_id, &config),
@@ -107,7 +101,6 @@ fn truncate_http_body(body: &str) -> String {
     }
 }
 
-/// `loadRadiusGatewayConfig(gateway, apiKey?, signal?)`
 pub async fn load_radius_gateway_config(
     gateway: &str,
     api_key: Option<&str>,

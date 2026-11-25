@@ -9,7 +9,6 @@ use crate::utils::paths::node_relative;
 /// `IGNORE_FILE_NAMES`
 const IGNORE_FILE_NAMES: [&str; 3] = [".gitignore", ".ignore", ".fdignore"];
 
-/// `SkillDiscoveryMode`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillDiscoveryMode {
     /// `<dir>/*.md` counts as a skill, next to every nested `SKILL.md`.
@@ -18,9 +17,8 @@ pub enum SkillDiscoveryMode {
     Agents,
 }
 
-/// Deviation (class 3, master substitution for the npm package `ignore`): the
-/// rules go into a `GitignoreBuilder`, rebuilt when a directory adds new ones.
-/// sibling directory contributed stay visible afterwards.
+/// Gitignore rules collected during the walk; the matcher is rebuilt when a
+/// directory adds new ones.
 pub struct IgnoreMatcher {
     root: PathBuf,
     lines: Vec<String>,
@@ -44,7 +42,6 @@ impl IgnoreMatcher {
         self.compiled = None;
     }
 
-    /// `ig.ignores(path)`
     fn ignores(&mut self, relative_path: &str, is_dir: bool) -> bool {
         if self.lines.is_empty() {
             return false;
@@ -62,7 +59,6 @@ impl IgnoreMatcher {
     }
 }
 
-/// `prefixIgnorePattern(line, prefix)`
 fn prefix_ignore_pattern(line: &str, prefix: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -94,7 +90,6 @@ fn prefix_ignore_pattern(line: &str, prefix: &str) -> Option<String> {
     })
 }
 
-/// `addIgnoreRules(ig, dir, rootDir)`
 fn add_ignore_rules(matcher: &mut IgnoreMatcher, dir: &Path, root_dir: &Path) {
     let relative_dir = node_relative(&root_dir.to_string_lossy(), &dir.to_string_lossy());
     let prefix = if relative_dir.is_empty() {
@@ -162,7 +157,6 @@ fn relative_posix(root: &Path, path: &Path) -> String {
     to_posix_path(&node_relative(&path_string(root), &path_string(path)))
 }
 
-/// `collectFiles(dir, filePattern, skipNodeModules, ignoreMatcher, rootDir)`
 fn collect_files_inner(
     dir: &Path,
     file_extension: &str,
@@ -199,7 +193,6 @@ fn collect_files_inner(
     }
 }
 
-/// `collectFiles(dir, FILE_PATTERNS[resourceType])`
 pub fn collect_files(dir: &Path, file_extension: &str) -> Vec<String> {
     let mut files = Vec::new();
     let mut matcher = IgnoreMatcher::new(dir);
@@ -207,7 +200,6 @@ pub fn collect_files(dir: &Path, file_extension: &str) -> Vec<String> {
     files
 }
 
-/// `collectSkillEntries(dir, mode, ignoreMatcher, rootDir)`
 fn collect_skill_entries_inner(
     dir: &Path,
     mode: SkillDiscoveryMode,
@@ -273,7 +265,6 @@ fn collect_skill_entries_inner(
     }
 }
 
-/// `collectSkillEntries(dir, mode)` / `collectAutoSkillEntries(dir, mode)`
 pub fn collect_skill_entries(dir: &Path, mode: SkillDiscoveryMode) -> Vec<String> {
     let mut entries = Vec::new();
     let mut matcher = IgnoreMatcher::new(dir);
@@ -316,17 +307,14 @@ fn collect_auto_entries(dir: &Path, file_extension: &str) -> Vec<String> {
     entries
 }
 
-/// `collectAutoPromptEntries(dir)`
 pub fn collect_auto_prompt_entries(dir: &Path) -> Vec<String> {
     collect_auto_entries(dir, ".md")
 }
 
-/// `collectAutoThemeEntries(dir)`
 pub fn collect_auto_theme_entries(dir: &Path) -> Vec<String> {
     collect_auto_entries(dir, ".json")
 }
 
-/// `collectResourceFiles(dir, resourceType)`
 pub fn collect_resource_files(dir: &Path, resource_type: ResourceType) -> Vec<String> {
     if resource_type == ResourceType::Skills {
         return collect_skill_entries(dir, SkillDiscoveryMode::Notagent);
@@ -334,7 +322,6 @@ pub fn collect_resource_files(dir: &Path, resource_type: ResourceType) -> Vec<St
     collect_files(dir, resource_type.file_extension())
 }
 
-/// `findGitRepoRoot(startDir)`
 fn find_git_repo_root(start_dir: &Path) -> Option<PathBuf> {
     let mut dir = start_dir.to_path_buf();
     loop {
@@ -349,7 +336,6 @@ fn find_git_repo_root(start_dir: &Path) -> Option<PathBuf> {
     }
 }
 
-/// `collectAncestorAgentsSkillDirs(startDir)`
 pub fn collect_ancestor_agents_skill_dirs(start_dir: &Path) -> Vec<PathBuf> {
     let mut skill_dirs = Vec::new();
     let git_repo_root = find_git_repo_root(start_dir);

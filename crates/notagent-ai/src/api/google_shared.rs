@@ -41,7 +41,6 @@ pub fn is_thinking_part(part: &Value) -> bool {
     part.get("thought") == Some(&Value::Bool(true))
 }
 
-/// `retainThoughtSignature(existing, incoming)`
 /// Some backends send `thoughtSignature` only on the first delta of a block; this keeps
 /// the last non-empty one instead of letting a later delta clear it. It never moves a
 /// signature between distinct parts.
@@ -69,7 +68,6 @@ fn is_valid_thought_signature(signature: Option<&str>) -> bool {
         .is_match(signature)
 }
 
-/// `resolveThoughtSignature(isSameProviderAndModel, signature)`
 fn resolve_thought_signature(
     is_same_provider_and_model: bool,
     signature: Option<&str>,
@@ -78,7 +76,6 @@ fn resolve_thought_signature(
         .then(|| signature.expect("checked above").to_string())
 }
 
-/// `getGeminiMajorVersion(modelId)`
 fn gemini_major_version(model_id: &str) -> Option<u32> {
     static PATTERN: OnceLock<regex::Regex> = OnceLock::new();
     let pattern = PATTERN
@@ -88,14 +85,12 @@ fn gemini_major_version(model_id: &str) -> Option<u32> {
     captures.get(1)?.as_str().parse::<u32>().ok()
 }
 
-/// `requiresToolCallId(modelId)`
 pub fn requires_tool_call_id(model_id: &str) -> bool {
     model_id.starts_with("claude-")
         || model_id.starts_with("gpt-oss-")
         || gemini_major_version(model_id).is_some_and(|version| version >= 3)
 }
 
-/// `supportsMultimodalFunctionResponse(modelId)`
 fn supports_multimodal_function_response(model_id: &str) -> bool {
     match gemini_major_version(model_id) {
         Some(version) => version >= 3,
@@ -109,7 +104,6 @@ pub fn supports_google_strict_tool_sampling(model_id: &str) -> bool {
     gemini_major_version(model_id).is_some_and(|version| version >= 3)
 }
 
-/// `convertMessages(model, context)`
 pub fn convert_messages(model: &Model, context: &Context, timestamp: i64) -> Vec<Value> {
     let mut contents: Vec<Value> = Vec::new();
     let requires_id = requires_tool_call_id(&model.id);
@@ -396,7 +390,6 @@ fn sanitize_for_openapi(schema: &Value) -> Value {
     Value::Object(result)
 }
 
-/// `convertTools(tools, useParameters, supportsStrictMode)`
 /// `parametersJsonSchema` carries full JSON Schema; `useParameters` switches to the
 /// legacy OpenAPI 3.03 field, which Cloud Code Assist needs for Claude models because it
 /// translates `parameters` into Anthropic's `input_schema`.
@@ -425,7 +418,6 @@ pub fn convert_tools(
     Ok(Some(json!([{ "functionDeclarations": declarations }])))
 }
 
-/// `FunctionCallingConfigMode`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionCallingConfigMode {
     Auto,
@@ -445,7 +437,6 @@ impl FunctionCallingConfigMode {
     }
 }
 
-/// `mapToolChoice(choice)`
 pub fn map_tool_choice(choice: &str) -> FunctionCallingConfigMode {
     match choice {
         "auto" => FunctionCallingConfigMode::Auto,
@@ -455,7 +446,6 @@ pub fn map_tool_choice(choice: &str) -> FunctionCallingConfigMode {
     }
 }
 
-/// `resolveGoogleFunctionCallingMode(tools, toolChoice, supportsStrictMode)`
 pub fn resolve_google_function_calling_mode(
     tools: &[Tool],
     tool_choice: Option<&str>,

@@ -22,7 +22,6 @@ pub enum SessionChoice {
     Exit,
 }
 
-/// `selectSession(currentSessionsLoader, allSessionsLoader, settingsManager)`
 pub async fn select_session(
     cwd: &str,
     session_dir: Option<&str>,

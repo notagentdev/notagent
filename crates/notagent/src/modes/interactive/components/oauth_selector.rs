@@ -18,9 +18,7 @@ use super::dynamic_border::DynamicBorder;
 /// The auth method backing a provider entry; only its name is displayed.
 #[derive(Clone)]
 pub enum AuthSelectorMethod {
-    /// `ApiKeyAuth`
     ApiKey(Arc<dyn ApiKeyAuth>),
-    /// `OAuthAuth`
     OAuth(Arc<dyn OAuthAuth>),
 }
 
@@ -34,7 +32,6 @@ impl AuthSelectorMethod {
     }
 }
 
-/// `AuthSelectorProvider`
 #[derive(Clone)]
 pub struct AuthSelectorProvider {
     /// Provider id, e.g. `anthropic`.

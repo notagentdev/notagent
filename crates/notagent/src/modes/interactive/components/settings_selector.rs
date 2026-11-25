@@ -96,7 +96,6 @@ fn scrollbar_from_wire(value: &str) -> Option<ScrollViewScrollbar> {
 // Configuration and callbacks
 // ============================================================================
 
-/// `SettingsConfig`.
 #[derive(Debug, Clone)]
 pub struct SettingsConfig {
     pub auto_compact: bool,
@@ -192,7 +191,6 @@ impl Default for SettingsConfig {
     }
 }
 
-/// `SettingsCallbacks`.
 pub struct SettingsCallbacks {
     pub on_auto_compact_change: Box<dyn FnMut(bool)>,
     /// Atomic file leases toggle (v0.1.19).
@@ -291,7 +289,6 @@ type DoneSlot = SubmenuDone;
 // Warning submenu
 // ============================================================================
 
-/// `WarningSettingsSubmenu`.
 struct WarningSettingsSubmenu {
     settings_list: SettingsList,
 }
@@ -357,7 +354,6 @@ impl Component for WarningSettingsSubmenu {
 // Select submenu
 // ============================================================================
 
-/// `SelectSubmenu`.
 struct SelectSubmenu {
     container: Container,
     select_list: Rc<RefCell<SelectList>>,
@@ -555,7 +551,6 @@ enum ThemeMenuChange {
     Done(Option<String>),
 }
 
-/// `ThemeSubmenu`.
 struct ThemeSubmenu {
     content: Option<ComponentRef>,
     input_component: Option<ComponentRef>,
@@ -891,7 +886,6 @@ fn bool_value(value: bool) -> String {
     if value { "true" } else { "false" }.to_string()
 }
 
-/// `SettingsSelectorComponent`.
 pub struct SettingsSelectorComponent {
     container: Container,
     settings_list: Rc<RefCell<SettingsList>>,
@@ -1554,13 +1548,11 @@ impl SettingsSelectorComponent {
         }
     }
 
-    /// `getSettingsList()`.
     pub fn settings_list(&self) -> Rc<RefCell<SettingsList>> {
         Rc::clone(&self.settings_list)
     }
 }
 
-/// `items.splice(items.findIndex(…) + 1, 0, item)`.
 fn insert_after(items: &mut Vec<SettingItem>, id: &str, item: SettingItem) {
     let index = items.iter().position(|entry| entry.id == id);
     match index {

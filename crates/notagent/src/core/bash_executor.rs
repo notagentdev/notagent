@@ -33,9 +33,8 @@ pub struct BashResult {
 }
 
 /// The rolling buffer plus the temp file behind it.
-/// Deviation (class 1): the buffer is bounded by characters rather than by JS
-/// string length (UTF-16 code units); the two differ only for astral
-/// characters, and the bound is a memory guard rather than an observable.
+/// The buffer is bounded by characters; the bound is a memory guard, not an
+/// exact limit.
 struct Collector {
     chunks: Vec<String>,
     output_chars: usize,

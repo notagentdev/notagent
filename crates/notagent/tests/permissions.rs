@@ -1268,7 +1268,7 @@ async fn shows_one_prompt_at_a_time() {
 
 #[tokio::test]
 async fn keeps_the_queue_moving_when_a_presenter_fails() {
-    // A presenter cannot reject in Rust, so the first one answers `Deny`, which
+    // A presenter cannot reject in Rust, so the first one answers `Deny`.
     let calls = Arc::new(Mutex::new(0usize));
     let presenter: ApprovalPresenter = Arc::new(move |_request| {
         let calls = Arc::clone(&calls);

@@ -269,27 +269,11 @@ fn matches_legacy_modifier_sequence(data: &str, key: &str, modifier: i64) -> boo
 // Kitty Protocol Parsing
 // =============================================================================
 
-/// Event types from the Kitty keyboard protocol (flag 2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyEventType {
-    /// 1 = key press.
-    Press,
-    /// 2 = key repeat.
-    Repeat,
-    /// 3 = key release.
-    Release,
-}
-
 struct ParsedKittySequence {
     codepoint: i64,
-    /// Shifted version of the key (when shift is pressed).
-    #[allow(dead_code)] // Only `decode_kitty_printable` needs it; kept for 1:1 shape.
-    shifted_key: Option<i64>,
     /// Key in the standard PC-101 layout (for non-Latin layouts).
     base_layout_key: Option<i64>,
     modifier: i64,
-    #[allow(dead_code)] // TS stores it in `_lastEventType`, which is never read.
-    event_type: KeyEventType,
 }
 
 struct ParsedModifyOtherKeysSequence {
@@ -333,14 +317,6 @@ pub fn is_key_repeat(data: &str) -> bool {
         || data.contains(":2F")
 }
 
-fn parse_event_type(event_type: Option<&str>) -> KeyEventType {
-    match event_type.and_then(|value| value.parse::<i64>().ok()) {
-        Some(2) => KeyEventType::Repeat,
-        Some(3) => KeyEventType::Release,
-        _ => KeyEventType::Press,
-    }
-}
-
 /// `parseInt(str, 10)` for a digit-only capture; out-of-range values cannot
 /// match any key identifier, so they are reported as `None`.
 fn parse_int(value: &str) -> Option<i64> {
@@ -369,29 +345,21 @@ fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
     //   \x1b[<codepoint>::<base>;<mod>u
     if let Some(captures) = CSI_U_REGEX.captures(data) {
         let codepoint = parse_int(captures.get(1)?.as_str())?;
-        let shifted_key = captures
-            .get(2)
-            .filter(|m| !m.as_str().is_empty())
-            .and_then(|m| parse_int(m.as_str()));
         let base_layout_key = captures.get(3).and_then(|m| parse_int(m.as_str()));
         let mod_value = captures
             .get(4)
             .and_then(|m| parse_int(m.as_str()))
             .unwrap_or(1);
-        let event_type = parse_event_type(captures.get(5).map(|m| m.as_str()));
         return Some(ParsedKittySequence {
             codepoint,
-            shifted_key,
             base_layout_key,
             modifier: mod_value - 1,
-            event_type,
         });
     }
 
     // Arrow keys with modifier: \x1b[1;<mod>A/B/C/D
     if let Some(captures) = ARROW_REGEX.captures(data) {
         let mod_value = parse_int(captures.get(1)?.as_str())?;
-        let event_type = parse_event_type(captures.get(2).map(|m| m.as_str()));
         let codepoint = match captures.get(3)?.as_str() {
             "A" => -1,
             "B" => -2,
@@ -400,10 +368,8 @@ fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
         };
         return Some(ParsedKittySequence {
             codepoint,
-            shifted_key: None,
             base_layout_key: None,
             modifier: mod_value - 1,
-            event_type,
         });
     }
 
@@ -414,7 +380,6 @@ fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
             .get(2)
             .and_then(|m| parse_int(m.as_str()))
             .unwrap_or(1);
-        let event_type = parse_event_type(captures.get(3).map(|m| m.as_str()));
         let codepoint = match key_num {
             2 => Some(functional_codepoints::INSERT),
             3 => Some(functional_codepoints::DELETE),
@@ -427,10 +392,8 @@ fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
         if let Some(codepoint) = codepoint {
             return Some(ParsedKittySequence {
                 codepoint,
-                shifted_key: None,
                 base_layout_key: None,
                 modifier: mod_value - 1,
-                event_type,
             });
         }
     }
@@ -438,7 +401,6 @@ fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
     // Home/End with modifier: \x1b[1;<mod>H/F
     if let Some(captures) = HOME_END_REGEX.captures(data) {
         let mod_value = parse_int(captures.get(1)?.as_str())?;
-        let event_type = parse_event_type(captures.get(2).map(|m| m.as_str()));
         let codepoint = if captures.get(3)?.as_str() == "H" {
             functional_codepoints::HOME
         } else {
@@ -446,10 +408,8 @@ fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
         };
         return Some(ParsedKittySequence {
             codepoint,
-            shifted_key: None,
             base_layout_key: None,
             modifier: mod_value - 1,
-            event_type,
         });
     }
 

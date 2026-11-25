@@ -65,11 +65,6 @@ pub fn get_custom_themes_dir() -> PathBuf {
     get_agent_dir().join("themes")
 }
 
-/// Get path to models.json.
-pub fn get_models_path() -> PathBuf {
-    get_agent_dir().join("models.json")
-}
-
 /// Get path to auth.json.
 pub fn get_auth_path() -> PathBuf {
     get_agent_dir().join("auth.json")
@@ -88,19 +83,9 @@ pub fn get_settings_path() -> PathBuf {
     get_agent_dir().join("settings.json")
 }
 
-/// Get path to tools directory.
-pub fn get_tools_dir() -> PathBuf {
-    get_agent_dir().join("tools")
-}
-
 /// Get path to managed binaries directory (fd, rg).
 pub fn get_bin_dir() -> PathBuf {
     get_agent_dir().join("bin")
-}
-
-/// Get path to prompt templates directory.
-pub fn get_prompts_dir() -> PathBuf {
-    get_agent_dir().join("prompts")
 }
 
 /// Get path to sessions directory.
@@ -159,20 +144,8 @@ pub fn get_themes_dir() -> PathBuf {
     get_package_dir().join("theme")
 }
 
-pub fn get_export_template_dir() -> PathBuf {
-    get_package_dir().join("export-html")
-}
-
 pub fn get_readme_path() -> PathBuf {
     get_package_dir().join("README.md")
-}
-
-pub fn get_docs_path() -> PathBuf {
-    get_package_dir().join("docs")
-}
-
-pub fn get_examples_path() -> PathBuf {
-    get_package_dir().join("examples")
 }
 
 pub fn get_changelog_path() -> PathBuf {

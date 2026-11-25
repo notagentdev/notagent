@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::types::{
-    AssistantImages, ImagesApi, ImagesContext, ImagesModel, ImagesOptions, ImagesStopReason,
-    ProviderImages,
+    AssistantImages, ImagesApi, ImagesContext, ImagesModel, ImagesOptions, ProviderImages,
 };
 
 /// `ImagesApiProvider { api, generateImages }`
@@ -17,7 +16,6 @@ fn registry() -> &'static Mutex<BTreeMap<String, Arc<ImagesApiProvider>>> {
     CELL.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
-/// `registerImagesApiProvider(provider, sourceId?)`
 pub fn register_images_api_provider(provider: ImagesApiProvider) {
     registry()
         .lock()
@@ -25,7 +23,6 @@ pub fn register_images_api_provider(provider: ImagesApiProvider) {
         .insert(provider.api.clone(), Arc::new(provider));
 }
 
-/// `getImagesApiProvider(api)`
 pub fn get_images_api_provider(api: &str) -> Option<Arc<ImagesApiProvider>> {
     registry()
         .lock()
@@ -51,23 +48,4 @@ pub async fn generate_images_checked(
         .generate_images
         .generate_images(model, context, options)
         .await)
-}
-
-/// An error result in the shape the image APIs return.
-pub fn images_error(
-    model: &ImagesModel,
-    message: impl Into<String>,
-    timestamp: i64,
-) -> AssistantImages {
-    AssistantImages {
-        api: model.api.clone(),
-        provider: model.provider.clone(),
-        model: model.id.clone(),
-        output: Vec::new(),
-        response_id: None,
-        usage: None,
-        stop_reason: ImagesStopReason::Error,
-        error_message: Some(message.into()),
-        timestamp,
-    }
 }

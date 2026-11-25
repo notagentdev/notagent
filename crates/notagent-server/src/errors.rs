@@ -43,27 +43,18 @@ impl PiServerError {
         }
     }
 
-    pub fn with_details(mut self, details: JsonValue) -> Self {
-        self.details = Some(details);
-        self
-    }
-
-    /// `SessionBusyError`
     pub fn busy(message: impl Into<String>) -> Self {
         Self::new(PiServerOperationErrorCode::Busy, message)
     }
 
-    /// `SessionLockedError`
     pub fn locked(message: impl Into<String>) -> Self {
         Self::new(PiServerOperationErrorCode::SessionLocked, message)
     }
 
-    /// `SessionNotFoundError`
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(PiServerOperationErrorCode::NotFound, message)
     }
 
-    /// `NotImplementedError`
     pub fn not_implemented() -> Self {
         Self::new(
             PiServerOperationErrorCode::NotImplemented,

@@ -242,7 +242,6 @@ fn probe_priority(model: &Model) -> f64 {
     priority
 }
 
-/// `selectOneCasePerProvider(cases)`
 fn one_case_per_provider(cases: Vec<(String, Model)>) -> Vec<(String, Model)> {
     let mut by_provider: std::collections::BTreeMap<String, (String, Model)> =
         std::collections::BTreeMap::new();
@@ -281,7 +280,6 @@ fn echo_tool() -> Tool {
     )
 }
 
-/// `expectToolEnabledRequestAccepted(model, apiKey)`
 async fn expect_tool_enabled_request_accepted(model: &Model, api_key: &str) {
     let mut context = context(
         Some("You are a concise assistant. Use tools when useful."),
@@ -431,7 +429,6 @@ fn evaluate_calculator_call(tool_call: &ToolCall) -> f64 {
     }
 }
 
-/// `assertSecondToolCallWithInterleavedThinking(llm, reasoning)`
 async fn assert_second_tool_call_with_interleaved_thinking(
     model: &Model,
     reasoning: ThinkingLevel,

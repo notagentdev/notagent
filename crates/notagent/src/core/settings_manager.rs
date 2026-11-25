@@ -285,8 +285,8 @@ settings_struct!(
     fullscreen_scrollbar: String,
 );
 
-// (plans/facts/extension-boundary.md); unknown keys keep round-tripping
-// through `Settings::extra`, so an existing settings.json is not damaged.
+// Keys this build does not know keep round-tripping through `Settings::extra`,
+// so an existing settings.json is not damaged.
 
 fn is_mergeable(value: &Value) -> bool {
     value.is_object()
@@ -744,12 +744,6 @@ impl SettingsManager {
         state.settings = deep_merge_settings(&state.global_settings, &state.project_settings);
     }
 
-    /// Apply additional overrides on top of current settings.
-    pub fn apply_overrides(&self, overrides: &Settings) {
-        let mut state = self.lock();
-        state.settings = deep_merge_settings(&state.settings, overrides);
-    }
-
     pub fn drain_errors(&self) -> Vec<SettingsError> {
         std::mem::take(&mut self.lock().errors)
     }
@@ -1111,14 +1105,6 @@ impl SettingsManager {
         self.settings_snapshot().default_model
     }
 
-    pub fn set_default_provider(&self, provider: &str) {
-        self.set_global_field("defaultProvider", Value::from(provider));
-    }
-
-    pub fn set_default_model(&self, model_id: &str) {
-        self.set_global_field("defaultModel", Value::from(model_id));
-    }
-
     pub fn set_default_model_and_provider(&self, provider: &str, model_id: &str) {
         self.set_global_fields(&[
             ("defaultProvider", Value::from(provider)),
@@ -1456,10 +1442,6 @@ impl SettingsManager {
         Some(normalize_setting_path(&shell_path))
     }
 
-    pub fn set_shell_path(&self, path: Option<&str>) {
-        self.set_global_field("shellPath", optional_string(path));
-    }
-
     pub fn get_quiet_startup(&self) -> bool {
         self.settings_snapshot().quiet_startup.unwrap_or(false)
     }
@@ -1483,10 +1465,6 @@ impl SettingsManager {
 
     pub fn get_shell_command_prefix(&self) -> Option<String> {
         self.settings_snapshot().shell_command_prefix
-    }
-
-    pub fn set_shell_command_prefix(&self, prefix: Option<&str>) {
-        self.set_global_field("shellCommandPrefix", optional_string(prefix));
     }
 
     pub fn get_npm_command(&self) -> Option<Vec<String>> {
@@ -1810,18 +1788,13 @@ impl SettingsManager {
     }
 }
 
-/// `normalizePath(value)`; an unusable `file:` URL is kept verbatim rather than
+/// `normalizePath(value)`.
 fn normalize_setting_path(value: &str) -> String {
     crate::utils::paths::normalize_path_default(value).unwrap_or_else(|_| value.to_owned())
 }
 
 fn json_of<T: Serialize>(value: &T) -> Value {
     serde_json::to_value(value).expect("settings value is serializable")
-}
-
-/// `undefined` clears a field; `set_global_field` removes JSON nulls on persist.
-fn optional_string(value: Option<&str>) -> Value {
-    value.map_or(Value::Null, Value::from)
 }
 
 /// Queued messages are bundled into the next request by default; only an

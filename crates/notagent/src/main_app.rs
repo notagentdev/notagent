@@ -1283,7 +1283,7 @@ pub async fn main(args: Vec<String>) -> i32 {
                     terminal: None,
                 },
             );
-            // `permissionPresent` and `hookReport` are bound to the mode, as in
+            // `permissionPresent` and `hookReport` are bound to the mode.
             *permission_present.lock().expect("poisoned") = Some(approval_presenter);
             *hook_report.lock().expect("poisoned") = Some(report);
             *question_present

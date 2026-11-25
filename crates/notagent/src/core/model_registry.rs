@@ -8,7 +8,6 @@ use notagent_ai::types::{AssistantMessage, Context, Model, ProviderEnv, Provider
 use crate::core::model_runtime::{ModelRuntime, ModelsApiStreamOptions};
 use crate::core::provider_composer::AuthStatus;
 
-/// `ResolvedRequestAuth`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedRequestAuth {
     Ok {
@@ -56,7 +55,6 @@ impl ModelRegistry {
         self.runtime.has_configured_auth(&model.provider)
     }
 
-    /// `getApiKeyAndHeaders(model)`
     pub async fn get_api_key_and_headers(&self, model: &Model) -> ResolvedRequestAuth {
         match self.runtime.get_auth_for_model(model, None).await {
             Ok(Some(resolution)) => ResolvedRequestAuth::Ok {
@@ -128,11 +126,6 @@ impl ModelRegistry {
 
     pub fn is_using_oauth(&self, model: &Model) -> bool {
         self.runtime.is_using_oauth(&model.provider)
-    }
-
-    /// `registerProvider(provider)` — the native overload.
-    pub fn register_provider(&self, provider: Arc<dyn Provider>) -> Result<(), String> {
-        self.runtime.register_native_provider(provider)
     }
 
     pub fn unregister_provider(&self, provider_name: &str) {

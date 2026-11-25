@@ -23,8 +23,7 @@ use crate::types::{
 };
 use crate::utils::event_stream::AssistantMessageEventStream;
 
-/// `ModelsPublication`
-/// The update closure may borrow from the provider, so the publication carries a
+/// The update closure may borrow from the provider.
 #[derive(Default)]
 pub struct ModelsPublication<'a> {
     /// Provider-selected persisted catalog; `None` leaves storage unchanged,
@@ -34,7 +33,6 @@ pub struct ModelsPublication<'a> {
     pub update: Option<Box<dyn FnOnce() + Send + 'a>>,
 }
 
-/// `RefreshModelsContext`
 pub struct RefreshModelsContext<'a> {
     /// Effective configured credential; OAuth credentials are refreshed beforehand.
     pub credential: Option<Credential>,
@@ -50,7 +48,6 @@ pub struct RefreshModelsContext<'a> {
     pub signal: CancellationToken,
 }
 
-/// `ModelsRefreshOptions`
 #[derive(Debug, Clone, Default)]
 pub struct ModelsRefreshOptions {
     pub allow_network: Option<bool>,
@@ -60,7 +57,6 @@ pub struct ModelsRefreshOptions {
     pub signal: Option<CancellationToken>,
 }
 
-/// `ModelsRefreshResult`
 #[derive(Debug, Default)]
 pub struct ModelsRefreshResult {
     pub aborted: bool,
@@ -160,7 +156,6 @@ pub fn merge_headers(
     Some(merged)
 }
 
-/// `CreateModelsOptions`
 #[derive(Clone, Default)]
 pub struct CreateModelsOptions {
     pub credentials: Option<Arc<dyn CredentialStore>>,
@@ -184,7 +179,6 @@ pub struct Models {
     publication_chains: Mutex<BTreeMap<String, Arc<AsyncMutex<()>>>>,
 }
 
-/// `createModels(options?)`
 pub fn create_models(options: Option<CreateModelsOptions>) -> Arc<Models> {
     let options = options.unwrap_or_default();
     Arc::new(Models {
@@ -219,7 +213,6 @@ impl Models {
         }
     }
 
-    /// `deleteProvider(id)`
     pub fn delete_provider(&self, id: &str) {
         self.supersede_provider_refresh(id);
         self.providers
@@ -228,7 +221,6 @@ impl Models {
             .retain(|provider| provider.id() != id);
     }
 
-    /// `clearProviders()`
     pub fn clear_providers(&self) {
         let ids: Vec<String> = {
             let providers = self.providers.lock().expect("providers poisoned");
@@ -245,12 +237,10 @@ impl Models {
         self.providers.lock().expect("providers poisoned").clear();
     }
 
-    /// `getProviders()`
     pub fn get_providers(&self) -> Vec<Arc<dyn Provider>> {
         self.providers.lock().expect("providers poisoned").clone()
     }
 
-    /// `getProvider(id)`
     pub fn get_provider(&self, id: &str) -> Option<Arc<dyn Provider>> {
         self.providers
             .lock()
@@ -260,7 +250,6 @@ impl Models {
             .cloned()
     }
 
-    /// `getModels(provider?)`
     pub fn get_models(&self, provider: Option<&str>) -> Vec<Model> {
         match provider {
             Some(provider) => self
@@ -275,7 +264,6 @@ impl Models {
         }
     }
 
-    /// `getModel(provider, id)`
     pub fn get_model(&self, provider: &str, id: &str) -> Option<Model> {
         self.get_models(Some(provider))
             .into_iter()
@@ -325,7 +313,6 @@ impl Models {
         Arc::clone(chains.entry(provider_id.to_string()).or_default())
     }
 
-    /// `publishProviderModels(providerId, generation, signal, publication)`
     async fn publish_provider_models(
         &self,
         provider_id: &str,
@@ -375,7 +362,6 @@ impl Models {
         true
     }
 
-    /// `refresh(options?)`
     pub async fn refresh(&self, options: Option<ModelsRefreshOptions>) -> ModelsRefreshResult {
         let options = options.unwrap_or_default();
         let allow_network = options.allow_network.unwrap_or(true);
@@ -491,7 +477,6 @@ impl Models {
             .await
     }
 
-    /// `runProviderRefreshPhase(...)`
     async fn run_provider_refresh_phase(
         &self,
         provider: &dyn Provider,
@@ -558,7 +543,6 @@ impl Models {
         }
     }
 
-    /// `resolveRefreshCredential(provider, stored, signal)`
     async fn resolve_refresh_credential(
         &self,
         provider: &dyn Provider,
@@ -668,7 +652,6 @@ impl Models {
 
     // -- auth ---------------------------------------------------------------
 
-    /// `checkProviderAuth(provider, credential, signal)`
     async fn check_provider_auth(
         &self,
         provider: &dyn Provider,
@@ -717,7 +700,6 @@ impl Models {
         }))
     }
 
-    /// `checkAuth(providerId, options?)`
     pub async fn check_auth(
         &self,
         provider_id: &str,
@@ -746,7 +728,6 @@ impl Models {
             })
     }
 
-    /// `getAvailable(providerId?, options?)`
     pub async fn get_available(
         &self,
         provider_id: Option<&str>,
@@ -789,7 +770,6 @@ impl Models {
             })
     }
 
-    /// `getAuth(providerId | model, overrides?)`
     pub async fn get_auth_for_provider(
         &self,
         provider_id: &str,
@@ -838,7 +818,6 @@ impl Models {
         }))
     }
 
-    /// `logout(providerId, options?)`
     pub async fn logout(
         &self,
         provider_id: &str,
@@ -938,7 +917,6 @@ impl Models {
         ))
     }
 
-    /// `streamSimple(model, context, options?)`
     pub fn stream_simple(
         self: &Arc<Self>,
         model: Model,
@@ -971,7 +949,6 @@ impl Models {
         })
     }
 
-    /// `stream(model, context, options?)`
     pub fn stream(
         self: &Arc<Self>,
         model: Model,
@@ -1002,7 +979,6 @@ impl Models {
         })
     }
 
-    /// `complete(model, context, options?)`
     pub async fn complete(
         self: &Arc<Self>,
         model: Model,
@@ -1012,7 +988,6 @@ impl Models {
         self.stream(model, context, options).result().await
     }
 
-    /// `completeSimple(model, context, options?)`
     pub async fn complete_simple(
         self: &Arc<Self>,
         model: Model,
@@ -1022,7 +997,6 @@ impl Models {
         self.stream_simple(model, context, options).result().await
     }
 
-    /// `fetchDeferred(model, handle, options?)`
     /// provider without deferred support surfaces as an error message rather than a
     /// rejection.
     pub async fn fetch_deferred(
@@ -1129,7 +1103,6 @@ fn child_of(signals: &[&CancellationToken]) -> CancellationToken {
 // Pure helpers
 // ---------------------------------------------------------------------------
 
-/// `hasApi(model, api)`
 pub fn has_api(model: &Model, api: &str) -> bool {
     model.api == api
 }
@@ -1182,7 +1155,6 @@ const EXTENDED_THINKING_LEVELS: [ModelThinkingLevel; 7] = [
     ModelThinkingLevel::Max,
 ];
 
-/// `getSupportedThinkingLevels(model)`
 pub fn get_supported_thinking_levels(model: &Model) -> Vec<ModelThinkingLevel> {
     if !model.reasoning {
         return vec![ModelThinkingLevel::Off];
@@ -1209,7 +1181,6 @@ pub fn get_supported_thinking_levels(model: &Model) -> Vec<ModelThinkingLevel> {
         .collect()
 }
 
-/// `clampThinkingLevel(model, level)`
 pub fn clamp_thinking_level(model: &Model, level: ModelThinkingLevel) -> ModelThinkingLevel {
     let available = get_supported_thinking_levels(model);
     if available.contains(&level) {
@@ -1282,10 +1253,8 @@ pub type FetchModelsFn = Arc<
         + Sync,
 >;
 
-/// `filterModels(models, credential)`
 pub type FilterModelsFn = Arc<dyn Fn(Vec<Model>, Option<&Credential>) -> Vec<Model> + Send + Sync>;
 
-/// `CreateProviderOptions`
 pub struct CreateProviderOptions {
     pub id: String,
     /// Display name; defaults to `id`.

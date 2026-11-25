@@ -8,7 +8,6 @@ use crate::utils::notagent_user_agent::get_pi_user_agent;
 const REPORT_INSTALL_URL: &str = "https://notagent.dev/api/report-install";
 const INSTALL_PING_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// `isTruthyEnvFlag(value)`
 /// opt-out rather than as an unset variable.
 fn is_truthy_env_flag(value: &str) -> bool {
     if value.is_empty() {
@@ -17,7 +16,6 @@ fn is_truthy_env_flag(value: &str) -> bool {
     value == "1" || value.to_lowercase() == "true" || value.to_lowercase() == "yes"
 }
 
-/// `isInstallTelemetryEnabled(settingsManager, telemetryEnv)`
 pub fn is_install_telemetry_enabled(settings_manager: &SettingsManager) -> bool {
     is_install_telemetry_enabled_with_env(
         settings_manager,

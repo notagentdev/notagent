@@ -7,7 +7,6 @@ use tokio_util::sync::CancellationToken;
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
-/// `testTokensOnAbort(llm, options)`
 async fn test_tokens_on_abort(model: &Model, options: &SimpleStreamOptions) {
     let context = context(
         Some("You are a helpful assistant."),
@@ -322,7 +321,6 @@ fn assert_total_tokens_equals_components(usage: &Usage) {
     assert_eq!(usage.total_tokens, Some(computed), "{usage:?}");
 }
 
-/// `testTotalTokensWithCache(llm, options)`
 async fn test_total_tokens_with_cache(
     model: &Model,
     options: &SimpleStreamOptions,

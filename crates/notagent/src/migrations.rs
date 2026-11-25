@@ -4,12 +4,6 @@ use serde_json::{Map, Value};
 
 use crate::config::{get_agent_dir, get_bin_dir};
 
-/// Migrate legacy oauth.json and settings.json apiKeys to auth.json.
-/// Returns the provider names that were migrated.
-pub fn migrate_auth_to_auth_json() -> Vec<String> {
-    migrate_auth_to_auth_json_in(&get_agent_dir())
-}
-
 pub(crate) fn migrate_auth_to_auth_json_in(agent_dir: &Path) -> Vec<String> {
     let auth_path = agent_dir.join("auth.json");
     let oauth_path = agent_dir.join("oauth.json");
@@ -108,13 +102,6 @@ pub(crate) fn encode_cwd_directory(cwd: &str) -> String {
         })
         .collect();
     format!("--{replaced}--")
-}
-
-/// Migrate sessions from `~/.notagent/agent/*.jsonl` into their session directories.
-/// Bug in v0.30.0: sessions were saved to `~/.notagent/agent/` instead of
-/// `~/.notagent/agent/sessions/<encoded-cwd>/`.
-pub fn migrate_sessions_from_agent_root() {
-    migrate_sessions_from_agent_root_in(&get_agent_dir());
 }
 
 pub(crate) fn migrate_sessions_from_agent_root_in(agent_dir: &Path) {

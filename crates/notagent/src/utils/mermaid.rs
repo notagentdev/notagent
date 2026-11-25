@@ -1,4 +1,3 @@
-pub mod ansi;
 pub mod canvas;
 pub mod graph;
 pub mod labels;

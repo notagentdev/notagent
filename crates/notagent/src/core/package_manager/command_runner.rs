@@ -43,8 +43,7 @@ pub trait CommandRunner: Send + Sync {
     fn run_sync(&self, command: &str, args: &[String]) -> Result<String, String>;
 }
 
-/// `getEnv()`
-/// On Linux an empty `process.env` means the environment was stripped; the
+/// On Linux an empty `process.env` means the environment was stripped.
 fn get_env() -> BTreeMap<String, String> {
     let env: BTreeMap<String, String> = std::env::vars().collect();
     if !cfg!(target_os = "linux") || !env.is_empty() {

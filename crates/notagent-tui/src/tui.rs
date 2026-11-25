@@ -14,9 +14,8 @@ use crate::utils::{
     extract_segments, normalize_terminal_output, slice_by_column, slice_with_width, visible_width,
 };
 
-/// Shared reference to a component.
-/// mutate it (`editor.setText(...)` after `tui.addChild(editor)`).
-/// `Rc<RefCell<…>>` mirrors that reference semantics; the TUI core is
+/// Shared reference to a component: the owner keeps mutating a component
+/// after it was added to the TUI.
 pub type ComponentRef = Rc<RefCell<dyn Component>>;
 
 /// Wrap a component into a [`ComponentRef`].
@@ -985,11 +984,6 @@ impl TuiCore {
         self.0.borrow_mut().clear_on_shrink = enabled;
     }
 
-    /// Set the debug key (Shift+Ctrl+D) callback.
-    pub fn set_on_debug(&self, on_debug: Option<Box<dyn FnMut()>>) {
-        self.0.borrow_mut().on_debug = on_debug;
-    }
-
     /// The focused component, if any.
     pub fn get_focused_component(&self) -> Option<ComponentRef> {
         self.0.borrow().focused.clone()
@@ -1455,14 +1449,6 @@ impl TuiCore {
         let id = state.next_listener_id;
         state.input_listeners.push((id, listener));
         ListenerId(id)
-    }
-
-    /// Remove a previously registered input listener.
-    pub fn remove_input_listener(&self, id: ListenerId) {
-        self.0
-            .borrow_mut()
-            .input_listeners
-            .retain(|(listener_id, _)| *listener_id != id.0);
     }
 
     /// Register a color scheme listener; returns its id for removal.
@@ -1961,7 +1947,7 @@ impl TuiCore {
     /// Normalize every non-image line and append the segment reset.
     /// Idempotent: a line that already ends in the reset is left untouched, so
     /// a component may finish its lines while filling its cache
-    /// ([`finish_line`]) and this pass stays a no-op for them. Image lines are
+    /// ([`finish_line`]) and this pass stays a no-op for them.
     pub fn apply_line_resets(&self, lines: &mut [Line]) {
         for line in lines.iter_mut() {
             if line.ends_with(SEGMENT_RESET) || is_image_line(line) {
@@ -2255,17 +2241,6 @@ impl OverlayHandle {
             }
         }
         self.core.request_render();
-    }
-
-    /// Whether the overlay is temporarily hidden.
-    pub fn is_hidden(&self) -> bool {
-        self.core
-            .0
-            .borrow()
-            .overlay_stack
-            .iter()
-            .find(|entry| entry.id == self.id)
-            .is_some_and(|entry| entry.hidden)
     }
 
     /// Focus this overlay and bring it to the visual front.

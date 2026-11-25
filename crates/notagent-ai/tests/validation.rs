@@ -24,7 +24,6 @@ fn tool_call(arguments: Value) -> ToolCall {
     }
 }
 
-/// `createToolCallWithPlainSchema(schema, value)`
 fn plain_schema_call(schema: Value, value: Value) -> (Tool, ToolCall) {
     (
         tool(json!({"type": "object", "properties": {"value": schema}, "required": ["value"]})),

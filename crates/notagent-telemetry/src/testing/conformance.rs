@@ -60,7 +60,6 @@ fn case(
 #[error("{0}")]
 pub struct ConformanceError(pub String);
 
-/// `createTelemetryAdapterConformance(factory)`
 pub fn create_telemetry_adapter_conformance(
     factory: TelemetryAdapterFixtureFactory,
 ) -> Vec<TelemetryAdapterConformanceCase> {

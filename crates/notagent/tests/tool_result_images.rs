@@ -10,12 +10,10 @@ fn encode(image: &DynamicImage, format: ImageFormat) -> Vec<u8> {
     bytes.into_inner()
 }
 
-/// `createPng(width, height)`
 fn png(width: u32, height: u32) -> Vec<u8> {
     encode(&DynamicImage::new_rgb8(width, height), ImageFormat::Png)
 }
 
-/// `createTinyBmp1x1Red24bpp()`
 fn bmp() -> Vec<u8> {
     encode(&DynamicImage::new_rgb8(1, 1), ImageFormat::Bmp)
 }
@@ -32,7 +30,6 @@ fn text_block(text: &str) -> TextOrImageContent {
     TextOrImageContent::Text(TextContent::new(text))
 }
 
-/// `readPngDimensions(base64Data)`
 fn png_dimensions(data: &str) -> (u32, u32) {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD

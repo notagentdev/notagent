@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `kimi_codingProvider()`
 pub fn kimi_coding_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "kimi-coding".to_string(),

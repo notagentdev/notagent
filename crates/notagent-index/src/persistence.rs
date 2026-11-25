@@ -133,15 +133,6 @@ impl IndexCache {
         self.files.get(&key).map(|f| &f.symbols)
     }
 
-    /// Convert to Arc<Symbol> for index compatibility
-    pub fn symbols_as_arc(&self, path: &Path) -> Vec<Arc<Symbol>> {
-        let key = path_to_key(path);
-        self.files
-            .get(&key)
-            .map(|f| f.symbols.iter().cloned().map(Arc::new).collect())
-            .unwrap_or_default()
-    }
-
     /// Get all symbols from cache
     pub fn all_symbols(&self) -> Vec<Arc<Symbol>> {
         self.files

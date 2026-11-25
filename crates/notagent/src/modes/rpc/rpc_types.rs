@@ -130,13 +130,6 @@ pub struct RpcBashCommand {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RpcExportHtmlCommand {
-    #[serde(default)]
-    pub output_path: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RpcSwitchSessionCommand {
     pub session_path: String,
 }

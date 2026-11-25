@@ -83,7 +83,6 @@ pub type SelectCallback = Box<dyn FnMut(&SelectItem)>;
 
 /// Scrollable list of selectable items.
 pub struct SelectList {
-    items: Vec<SelectItem>,
     filtered_items: Vec<SelectItem>,
     selected_index: usize,
     max_visible: usize,
@@ -106,8 +105,7 @@ impl SelectList {
         layout: SelectListLayoutOptions,
     ) -> Self {
         Self {
-            filtered_items: items.clone(),
-            items,
+            filtered_items: items,
             selected_index: 0,
             max_visible,
             theme,
@@ -116,18 +114,6 @@ impl SelectList {
             on_cancel: None,
             on_selection_change: None,
         }
-    }
-
-    /// Filter items by a value prefix (case insensitive) and reset the selection.
-    pub fn set_filter(&mut self, filter: &str) {
-        let filter = filter.to_lowercase();
-        self.filtered_items = self
-            .items
-            .iter()
-            .filter(|item| item.value.to_lowercase().starts_with(&filter))
-            .cloned()
-            .collect();
-        self.selected_index = 0;
     }
 
     /// Move the selection to `index` (clamped).

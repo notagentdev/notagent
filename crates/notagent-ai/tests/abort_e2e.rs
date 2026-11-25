@@ -53,7 +53,6 @@ async fn test_abort_signal(model: &Model, options: &SimpleStreamOptions) {
     assert!(!follow_up.content.is_empty());
 }
 
-/// `testImmediateAbort(llm, options)`
 async fn test_immediate_abort(model: &Model, options: &SimpleStreamOptions) {
     let signal = CancellationToken::new();
     signal.cancel();
@@ -64,7 +63,6 @@ async fn test_immediate_abort(model: &Model, options: &SimpleStreamOptions) {
     assert_eq!(response.stop_reason, StopReason::Aborted);
 }
 
-/// `testAbortThenNewMessage(llm, options)`
 async fn test_abort_then_new_message(model: &Model, options: &SimpleStreamOptions) {
     let signal = CancellationToken::new();
     signal.cancel();

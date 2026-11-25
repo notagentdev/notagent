@@ -137,12 +137,10 @@ pub fn stdout_write(text: &str) {
     }
 }
 
-/// `process.stdout.isTTY`.
 pub fn stdout_is_tty() -> bool {
     std::io::stdout().is_terminal()
 }
 
-/// `process.stdin.isTTY`.
 pub fn stdin_is_tty() -> bool {
     std::io::stdin().is_terminal()
 }

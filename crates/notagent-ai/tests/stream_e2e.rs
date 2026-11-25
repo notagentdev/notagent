@@ -8,7 +8,6 @@ use serde_json::json;
 // Scenarios
 // ---------------------------------------------------------------------------
 
-/// `basicTextGeneration(model, options)`
 async fn basic_text_generation(model: &Model, options: &SimpleStreamOptions) {
     let mut context = context(
         Some("You are a helpful assistant. Be concise."),
@@ -35,7 +34,6 @@ async fn basic_text_generation(model: &Model, options: &SimpleStreamOptions) {
     assert!(message_text(&second).contains("Goodbye test successful"));
 }
 
-/// `handleToolCall(model, options)`
 async fn handle_tool_call(model: &Model, options: &SimpleStreamOptions) {
     let mut context = context(
         Some("You are a helpful assistant that uses tools when asked."),
@@ -112,7 +110,6 @@ async fn handle_tool_call(model: &Model, options: &SimpleStreamOptions) {
     assert!(!calls[0].id.is_empty());
 }
 
-/// `handleStreaming(model, options)`
 async fn handle_streaming(model: &Model, options: &SimpleStreamOptions) {
     let context = context(
         Some("You are a helpful assistant."),
@@ -138,7 +135,6 @@ async fn handle_streaming(model: &Model, options: &SimpleStreamOptions) {
     assert!(has_text(&response));
 }
 
-/// `handleThinking(model, options)`
 async fn handle_thinking(model: &Model, options: &SimpleStreamOptions) {
     // uses the clock for the same effect (scripts get no RNG).
     let addend = (now_ms() % 255) as u32;
@@ -174,7 +170,6 @@ async fn handle_thinking(model: &Model, options: &SimpleStreamOptions) {
     assert!(has_thinking(&response));
 }
 
-/// `handleImage(model, options)`
 async fn handle_image(model: &Model, options: &SimpleStreamOptions) {
     if !model.input.contains(&Modality::Image) {
         println!(
@@ -201,7 +196,6 @@ async fn handle_image(model: &Model, options: &SimpleStreamOptions) {
     assert!(text.contains("circle"), "{text}");
 }
 
-/// `multiTurn(model, options)`
 async fn multi_turn(model: &Model, options: &SimpleStreamOptions) {
     let mut context = context(
         Some("You are a helpful assistant that can use tools to answer questions."),

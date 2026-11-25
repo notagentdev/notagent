@@ -80,7 +80,6 @@ pub trait EditOperations: Send + Sync {
         absolute_path: &'a str,
         content: &'a str,
     ) -> BoxFuture<'a, Result<(), String>>;
-    /// `access(path, R_OK | W_OK)`.
     fn access<'a>(&'a self, absolute_path: &'a str) -> BoxFuture<'a, Result<(), String>>;
 }
 
@@ -318,7 +317,6 @@ fn preview_args_key(input: &RenderablePreviewInput) -> String {
     .to_string()
 }
 
-/// `str(args?.file_path ?? args?.path)`
 fn edit_path_arg(args: &Value) -> Option<String> {
     let raw = args
         .get("file_path")

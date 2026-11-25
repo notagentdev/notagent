@@ -195,7 +195,7 @@ impl IndexManager {
                 .iter()
                 .map(|symbol| Arc::new(symbol.clone()))
                 .collect();
-            index.restore_file(std::path::Path::new(path), symbols, file_cache.content_hash);
+            index.restore_file(std::path::Path::new(path), symbols);
         }
 
         Ok(Self {

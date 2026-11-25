@@ -217,20 +217,6 @@ impl Bm25Index {
         Ok(())
     }
 
-    pub fn delete_by_id(&self, id: &str) -> Result<()> {
-        let term = Term::from_field_text(self.fields.id, id);
-        let (_lock, mut writer) = self.writer()?;
-        writer.delete_term(term);
-        writer.commit()?;
-        Ok(())
-    }
-
-    /// Maintenance for v1: delete/re-add + periodic commit already handled.
-    /// Optional compaction can be enabled behind a flag.
-    pub fn maintenance_compact(&self, _enable: bool) -> Result<()> {
-        Ok(())
-    }
-
     pub fn reader(&self) -> &IndexReader {
         &self.reader
     }

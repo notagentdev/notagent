@@ -60,7 +60,6 @@ pub async fn load_authorization_endpoint(
     }
 }
 
-/// `requestOAuthToken(gateway, body, signal)`
 pub async fn request_oauth_token(
     gateway: &str,
     fields: &[(&str, String)],
@@ -101,14 +100,12 @@ pub async fn request_oauth_token(
     })
 }
 
-/// `RadiusOAuthOptions`
 #[derive(Debug, Clone)]
 pub struct RadiusOAuthOptions {
     pub name: String,
     pub gateway: String,
 }
 
-/// `createRadiusOAuth(options)`
 pub struct RadiusOAuth {
     name: String,
     gateway: String,
@@ -363,7 +360,6 @@ impl RadiusOAuth {
     }
 }
 
-/// `createRadiusOAuth(options)`
 pub fn create_radius_oauth(options: RadiusOAuthOptions) -> Arc<dyn OAuthAuth> {
     Arc::new(RadiusOAuth {
         name: options.name,

@@ -2,7 +2,6 @@ use serde_json::Value;
 
 pub const MAX_PROVIDER_ERROR_BODY_CHARS: usize = 4000;
 
-/// `NormalizedProviderError`
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NormalizedProviderError {
     /// HTTP status code, when one could be extracted.
@@ -26,7 +25,6 @@ pub struct RawProviderError {
     pub message: String,
 }
 
-/// `normalizeProviderError(error)`
 pub fn normalize_provider_error(error: &RawProviderError) -> NormalizedProviderError {
     let body = extract_body(error);
     let message_carries_body = match &body {
@@ -64,7 +62,6 @@ fn pick_body_text(error: &RawProviderError) -> Option<String> {
     }
 }
 
-/// `formatProviderError(norm, prefix?)`
 pub fn format_provider_error(normalized: &NormalizedProviderError, prefix: Option<&str>) -> String {
     if normalized.message_carries_body || normalized.status.is_none() || normalized.body.is_none() {
         return match (prefix, normalized.status) {
@@ -91,7 +88,6 @@ pub fn truncate_error_text(text: &str, max_chars: usize) -> String {
     format!("{head}... [truncated {} chars]", length - max_chars)
 }
 
-/// `safeJsonStringify(value)`
 pub fn safe_json_stringify(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| value.to_string())
 }

@@ -8,7 +8,6 @@ pub struct SplitTools {
     pub deferred: BTreeMap<String, Tool>,
 }
 
-/// `splitDeferredTools(context, enabled, normalizeName?)`
 /// building a `Vec` of `(name, tool)` pairs and de-duplicating by normalized name.
 pub fn split_deferred_tools(
     context: &Context,
@@ -70,9 +69,4 @@ pub fn split_deferred_tools(
         immediate,
         deferred,
     }
-}
-
-/// The identity normalizer used when the caller passes none.
-pub fn identity_tool_name(name: &str) -> String {
-    name.to_string()
 }

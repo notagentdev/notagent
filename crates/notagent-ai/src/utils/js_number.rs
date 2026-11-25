@@ -57,7 +57,7 @@ pub fn to_js_string(value: f64) -> String {
 /// JavaScript knows exactly one number type (f64), so `JSON.parse` turns `1e3` into
 /// `1000` and loses precision above 2^53 (`12345678901234567890` becomes
 /// `12345678901234567000`). serde_json instead keeps `u64`/`i64` precision and the
-/// float-ness of the literal. Tool-call arguments are parsed from provider streams and
+/// float-ness of the literal.
 pub fn normalize_json_numbers(value: &mut Value) {
     match value {
         Value::Number(number) => {

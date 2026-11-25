@@ -40,7 +40,6 @@ pub struct CustomMessage {
     pub timestamp: i64,
 }
 
-/// `BranchSummaryMessage`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSummaryMessage {
@@ -49,7 +48,6 @@ pub struct BranchSummaryMessage {
     pub timestamp: i64,
 }
 
-/// `CompactionSummaryMessage`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionSummaryMessage {
@@ -92,7 +90,6 @@ pub fn compaction_recovery_text(recovery: &CompactionRecovery) -> String {
     )
 }
 
-/// `bashExecutionToText(msg)`
 pub fn bash_execution_to_text(message: &BashExecutionMessage) -> String {
     let mut text = format!("Ran `{}`\n", message.command);
     if !message.output.is_empty() {
@@ -115,7 +112,6 @@ pub fn bash_execution_to_text(message: &BashExecutionMessage) -> String {
     text
 }
 
-/// `createBranchSummaryMessage(summary, fromId, timestamp)`
 pub fn create_branch_summary_message(
     summary: impl Into<String>,
     from_id: impl Into<String>,
@@ -128,7 +124,6 @@ pub fn create_branch_summary_message(
     }
 }
 
-/// `createCompactionSummaryMessage(summary, tokensBefore, timestamp)`
 pub fn create_compaction_summary_message(
     summary: impl Into<String>,
     tokens_before: u64,
@@ -144,7 +139,6 @@ pub fn create_compaction_summary_message(
     }
 }
 
-/// `createCustomMessage(customType, content, display, details, timestamp)`
 pub fn create_custom_message(
     custom_type: impl Into<String>,
     content: UserContent,

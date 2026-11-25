@@ -145,7 +145,7 @@ struct WriteRenderState {
     call: Option<Rc<RefCell<Text>>>,
     cache: Option<WriteHighlightCache>,
     /// The result is a `Text` when there is output and an empty `Container`
-    /// one slot per kind, which is unreachable for `write` because a result is
+    /// otherwise; one slot per kind.
     result_text: Option<Rc<RefCell<Text>>>,
     result_container: Option<Rc<RefCell<Container>>>,
 }
@@ -251,7 +251,6 @@ fn trim_trailing_empty_lines(lines: Vec<String>) -> Vec<String> {
     lines
 }
 
-/// `str(args?.file_path ?? args?.path)`
 fn write_path_arg(args: &Value) -> Option<String> {
     let raw = args
         .get("file_path")
@@ -317,7 +316,7 @@ fn format_write_call(
         // The badge style shows the written file the way a diff shows it:
         // every line is new, so each preview row is a washed added row with
         // its line number, directly under the badge line (no blank row), and
-        // the summary line closes the block. The standard style below is the
+        // the summary line closes the block.
         let num_width = total_lines.to_string().len();
         for (index, line) in display_lines.iter().enumerate() {
             let content = match &lang {

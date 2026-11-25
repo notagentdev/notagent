@@ -122,14 +122,6 @@ impl AssistantMessageComponent {
         }
     }
 
-    /// Label shown instead of a hidden thinking block.
-    pub fn set_hidden_thinking_label(&mut self, label: impl Into<String>) {
-        self.hidden_thinking_label = label.into();
-        if let Some(message) = self.last_message.clone() {
-            self.update_content(message, None);
-        }
-    }
-
     /// Change the horizontal padding.
     pub fn set_output_pad(&mut self, padding: usize) {
         self.output_pad = padding;

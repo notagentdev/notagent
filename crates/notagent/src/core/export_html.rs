@@ -18,7 +18,7 @@ use crate::utils::paths::{current_dir, normalize_path_default, resolve_path_defa
 pub use tool_renderer::{RenderedToolResult, ToolHtmlRenderer};
 
 /// The verbatim assets of `src/core/export-html/`. Public so the suites that
-/// pin the client-side sanitization can assert on them, exactly as the
+/// pin the client-side sanitization can assert on them.
 pub const TEMPLATE_HTML: &str = include_str!("export_html/assets/template.html");
 pub const TEMPLATE_CSS: &str = include_str!("export_html/assets/template.css");
 pub const TEMPLATE_JS: &str = include_str!("export_html/assets/template.js");
@@ -57,7 +57,6 @@ pub struct RenderedToolHtml {
     pub result_html_expanded: Option<String>,
 }
 
-/// `ExportOptions`
 #[derive(Default)]
 pub struct ExportOptions<'a> {
     pub output_path: Option<String>,

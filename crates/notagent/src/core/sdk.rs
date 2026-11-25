@@ -20,7 +20,6 @@ use crate::core::provider_attribution::merge_provider_attribution_headers;
 use crate::core::resource_loader::ResourceLoader;
 use crate::core::session_manager::SessionManager;
 use crate::core::settings_manager::SettingsManager;
-use crate::core::tools::ToolName;
 
 /// Inputs of [`create_agent_session`].
 pub struct CreateAgentSessionOptions {
@@ -43,8 +42,7 @@ pub struct CreateAgentSessionOptions {
     /// `"all"` starts with no tools, `"builtin"` disables the built-ins only.
     pub no_tools: Option<NoTools>,
     pub hooks: Option<Arc<HookDispatcher>>,
-    /// extension the app registers ahead of every other one; here the app hands
-    /// the gate in and it becomes the agent's `before_tool_call`.
+    /// The permission gate; it becomes the agent's `before_tool_call`.
     pub permissions: Option<Arc<PermissionGate>>,
     /// Who answers `ask_user_question`; see `AgentSessionConfig::questions`.
     pub questions: Option<crate::core::user_questions::QuestionPresenterSource>,
@@ -179,10 +177,8 @@ pub async fn create_agent_session(options: CreateAgentSessionOptions) -> CreateA
         ),
         None => options.no_tools.map(|_| Vec::new()),
     };
-    // `noTools: "builtin"` keeps everything that is not a built-in; with the
-    // extension system gone that is the empty set, which is what the branch
-    // above already produces.
-    let _ = ToolName::Read;
+    // `noTools: "builtin"` keeps everything that is not a built-in, which is
+    // the empty set the branch above already produces.
 
     let stream_fn = build_stream_fn(
         Arc::clone(&model_runtime),
@@ -479,7 +475,7 @@ fn build_stream_fn(
     })
 }
 
-/// The transport setting is a string in settings.json and an enum here; an
+/// The transport setting is a string in settings.json and an enum here.
 fn parse_transport(value: &str) -> Option<notagent_ai::types::Transport> {
     use notagent_ai::types::Transport;
     match value {

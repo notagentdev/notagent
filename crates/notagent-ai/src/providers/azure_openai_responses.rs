@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `azure_openai_responsesProvider()`
 pub fn azure_openai_responses_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "azure-openai-responses".to_string(),

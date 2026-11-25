@@ -82,7 +82,6 @@ impl PiMessagesError {
     }
 }
 
-/// `parsePiMessagesErrorBody(body)`
 fn parse_error_body(body: &str) -> Option<Value> {
     let parsed: Value = serde_json::from_str(body).ok()?;
     let error = parsed.get("error")?;
@@ -103,7 +102,6 @@ fn truncate_diagnostic_string(value: &str) -> String {
     }
 }
 
-/// `formatPiMessagesResponseError(response, body, errorBody)`
 fn format_response_error(
     status: u16,
     status_text: &str,
@@ -123,7 +121,6 @@ fn format_response_error(
     format!("{status} {status_text}: {suffix}{code_suffix}")
 }
 
-/// `createPiMessagesResponseError(model, url, response, body)`
 fn create_response_error(
     model: &Model,
     url: &str,
@@ -165,7 +162,6 @@ fn create_response_error(
     }
 }
 
-/// `resolveCacheRetention(cacheRetention, env)`
 fn resolve_cache_retention(
     cache_retention: Option<CacheRetention>,
     env: Option<&ProviderEnv>,
@@ -533,7 +529,6 @@ impl EventConverter {
         None
     }
 
-    /// `appendRewriteDiagnostic(message, rewrite)`
     fn append_rewrite_diagnostic(&mut self, rewrite: Option<&Value>, timestamp: i64) {
         let Some(rewrite) = rewrite.filter(|rewrite| !rewrite.is_null()) else {
             return;
@@ -566,7 +561,6 @@ fn parse_event(raw: &str) -> Option<Value> {
 // Transport
 // ---------------------------------------------------------------------------
 
-/// `stream(model, context, options)`
 pub fn stream(
     model: Model,
     context: Context,
@@ -601,7 +595,6 @@ pub fn stream(
     outer
 }
 
-/// `createErrorEvent(model, error, aborted)`
 fn create_error_event(
     model: &Model,
     error: &PiMessagesError,
@@ -794,7 +787,6 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)`
 pub fn stream_simple(
     model: Model,
     context: Context,

@@ -10,7 +10,6 @@ use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 use crate::types::ProviderEnv;
 
-/// `bedrockAuth`
 pub struct BedrockAuth;
 
 impl ApiKeyAuth for BedrockAuth {
@@ -204,7 +203,6 @@ impl ApiKeyAuth for BedrockAuth {
     }
 }
 
-/// `amazonBedrockProvider()`
 pub fn amazon_bedrock_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "amazon-bedrock".to_string(),

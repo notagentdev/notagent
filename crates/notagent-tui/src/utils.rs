@@ -758,12 +758,6 @@ impl AnsiCodeTracker {
         self.bg_color = None;
     }
 
-    #[allow(dead_code)] // Kept for callers that reuse the pooled tracker.
-    pub(crate) fn clear(&mut self) {
-        self.reset();
-        self.active_hyperlink = None;
-    }
-
     pub(crate) fn get_active_codes(&self) -> String {
         let mut codes: Vec<&str> = Vec::new();
         if self.bold {
@@ -806,21 +800,6 @@ impl AnsiCodeTracker {
             result.push_str(&format_osc8_hyperlink(hyperlink));
         }
         result
-    }
-
-    #[allow(dead_code)] // Used by renderers that inspect active terminal styles.
-    pub(crate) fn has_active_codes(&self) -> bool {
-        self.bold
-            || self.dim
-            || self.italic
-            || self.underline
-            || self.blink
-            || self.inverse
-            || self.hidden
-            || self.strikethrough
-            || self.fg_color.is_some()
-            || self.bg_color.is_some()
-            || self.active_hyperlink.is_some()
     }
 
     pub(crate) fn get_line_end_reset(&self) -> String {
@@ -955,7 +934,6 @@ pub fn wrap_text_with_ansi(text: &str, width: usize) -> Vec<String> {
     }
 }
 
-/// `text.split(/\r\n|\r|\n/)`.
 fn split_lines(text: &str) -> Vec<&str> {
     let mut lines = Vec::new();
     let bytes = text.as_bytes();

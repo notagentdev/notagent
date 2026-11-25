@@ -367,16 +367,6 @@ impl BashExecutionComponent {
             }
         }
     }
-
-    /// Get the raw output for creating BashExecutionMessage.
-    pub fn get_output(&self) -> String {
-        self.output_lines.join("\n")
-    }
-
-    /// Get the command that was executed.
-    pub fn get_command(&self) -> &str {
-        &self.command
-    }
 }
 
 /// `${this.exitCode}` for an exit code that may be absent.

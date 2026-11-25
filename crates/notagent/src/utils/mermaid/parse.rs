@@ -984,7 +984,6 @@ fn display_generics(s: &str) -> String {
 
 // ------------------------------------------------------------------------ ER
 
-/// `erDiagram`.
 pub fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
     let statements = statements_of(src);
     if header_kind(&statements)? != "erdiagram" {
@@ -1206,7 +1205,6 @@ impl Sequence {
     }
 }
 
-/// `sequenceDiagram`.
 pub fn parse_sequence(src: &str) -> Option<Sequence> {
     let statements = statements_of(src);
     if header_kind(&statements)? != "sequencediagram" {

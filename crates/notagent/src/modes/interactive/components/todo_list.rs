@@ -9,7 +9,6 @@ use crate::modes::interactive::theme::theme::{ThemeColor, theme};
 /// How long an all-completed list stays up before it hides itself.
 pub const TODO_COMPLETED_HIDE_DELAY_MS: u64 = 5_000;
 
-/// `TodoStatusCounts`
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TodoStatusCounts {
     /// Tasks that are done.
@@ -20,7 +19,6 @@ pub struct TodoStatusCounts {
     pub pending: usize,
 }
 
-/// `TodoDisplay`
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TodoDisplay {
     /// The window of the list, in the list's own order.

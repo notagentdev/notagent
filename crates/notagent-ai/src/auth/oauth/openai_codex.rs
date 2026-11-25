@@ -86,7 +86,6 @@ pub fn account_id(access_token: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// `readTokenResponse(response, operation)`
 pub fn read_token_response(
     body: &Map<String, Value>,
     operation: &str,
@@ -134,7 +133,6 @@ pub fn credentials_from_token(
     })
 }
 
-/// `parseAuthorizationInput(input)`
 pub fn parse_authorization_input(input: &str) -> (Option<String>, Option<String>) {
     super::anthropic::parse_authorization_input(input)
 }
@@ -241,7 +239,6 @@ async fn start_device_auth(signal: &CancellationToken) -> Result<CodexDeviceAuth
     })
 }
 
-/// `openaiCodexOAuth`
 pub struct OpenAICodexOAuth;
 
 impl OAuthAuth for OpenAICodexOAuth {
@@ -377,7 +374,6 @@ async fn login_browser(
     exchange_authorization_code(&code, &pkce.verifier, REDIRECT_URI, &interaction.signal).await
 }
 
-/// `loginOpenAICodexDeviceCode(interaction)`
 async fn login_device_code(
     interaction: &ProviderAuthInteraction<'_>,
 ) -> Result<OAuthCredential, AuthError> {

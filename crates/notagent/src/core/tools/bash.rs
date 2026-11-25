@@ -258,7 +258,7 @@ impl BashOperations for LocalBashOperations {
 
             let mut child = builder.spawn().map_err(|error| {
                 BashExecError::Other(if error.kind() == std::io::ErrorKind::NotFound {
-                    // Node rejects with `spawn <shell> ENOENT`; callers and the
+                    // Node rejects with `spawn <shell> ENOENT`.
                     format!("spawn {} ENOENT", shell_config.shell)
                 } else {
                     error.to_string()
@@ -479,7 +479,7 @@ fn resolve_spawn_context(
 pub struct ManagedTaskSnapshot {
     pub status: TaskStatus,
     pub stop_reason: Option<String>,
-    /// `exitCode` of a shell task; `None` for any other kind, matching the
+    /// `exitCode` of a shell task; `None` for any other kind.
     pub exit_code: Option<i32>,
 }
 

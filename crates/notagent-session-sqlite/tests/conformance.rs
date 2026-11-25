@@ -1039,7 +1039,7 @@ async fn returns_immutable_open_operation_records() {
 }
 
 /// `notagent_ai::Usage` counts tokens as `u64` (B's contract), so negative
-/// token counts are not representable — only the negative cost survives. The
+/// token counts are not representable — only the negative cost survives.
 fn usage(
     input: i64,
     output: i64,

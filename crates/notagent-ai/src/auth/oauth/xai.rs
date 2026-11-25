@@ -22,7 +22,6 @@ const XAI_TOKEN_URL: &str = "https://auth.x.ai/oauth2/token";
 const REFRESH_SKEW_MS: i64 = 5 * 60 * 1000;
 const DEFAULT_TOKEN_LIFETIME_SECONDS: f64 = 3600.0;
 
-/// `XaiDeviceCode`
 #[derive(Debug, Clone)]
 pub struct XaiDeviceCode {
     pub device_code: String,
@@ -33,7 +32,6 @@ pub struct XaiDeviceCode {
     pub expires_in_seconds: f64,
 }
 
-/// `parseDeviceCode(body)`
 pub fn parse_device_code(body: &Map<String, Value>) -> Result<XaiDeviceCode, AuthError> {
     // RFC 8628 allows interval 0; non-positive or malformed values fall back to the
     // poller default instead of failing.
@@ -61,7 +59,6 @@ pub fn parse_device_code(body: &Map<String, Value>) -> Result<XaiDeviceCode, Aut
     })
 }
 
-/// `credentialsFromTokenResponse(body, previousRefreshToken?)`
 pub fn credentials_from_token_response(
     body: &Map<String, Value>,
     previous_refresh_token: Option<&str>,
@@ -170,7 +167,6 @@ async fn poll_for_tokens(
     .map_err(|error| AuthError(error.to_string()))
 }
 
-/// `xaiOAuth`
 pub struct XaiOAuth;
 
 impl OAuthAuth for XaiOAuth {

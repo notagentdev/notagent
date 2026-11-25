@@ -132,7 +132,6 @@ struct ModelItem {
     enabled: bool,
 }
 
-/// `ModelsConfig`
 pub struct ModelsConfig {
     /// Every model the runtime knows.
     pub all_models: Vec<Model>,
@@ -145,7 +144,6 @@ pub struct ModelsConfig {
 /// Invoked with the enabled model ids.
 pub type EnabledIdsCallback = Box<dyn FnMut(Option<Vec<String>>)>;
 
-/// `ModelsCallbacks`
 pub struct ModelsCallbacks {
     /// Called whenever the enabled model set or order changes (session-only, no persist)
     pub on_change: EnabledIdsCallback,
@@ -498,11 +496,6 @@ impl ScopedModelsSelectorComponent {
             )));
         }
     }
-
-    /// The search input; `getSearchInput()`.
-    pub fn get_search_input(&self) -> &Rc<RefCell<Input>> {
-        &self.search_input
-    }
 }
 
 impl Component for ScopedModelsSelectorComponent {
@@ -673,7 +666,6 @@ impl Component for ScopedModelsSelectorComponent {
 }
 
 impl ScopedModelsSelectorComponent {
-    /// `this.searchInput.getValue() ? this.filteredItems.map((i) => i.fullId) : undefined`
     fn search_target_ids(&self) -> Option<Vec<String>> {
         if self.search_input.borrow().get_value().is_empty() {
             return None;

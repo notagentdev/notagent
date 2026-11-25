@@ -44,7 +44,6 @@ fn query_value(query: &str, key: &str) -> Option<String> {
     })
 }
 
-/// `errorDetail(body)`
 fn error_detail(body: &Map<String, Value>) -> Option<String> {
     for field in ["error_description", "message"] {
         if let Some(value) = body.get(field).and_then(Value::as_str) {
@@ -61,7 +60,6 @@ fn error_detail(body: &Map<String, Value>) -> Option<String> {
     }
 }
 
-/// `exchangeAuthorizationCode(code, verifier, signal)`
 pub async fn exchange_authorization_code(
     code: &str,
     verifier: &str,
@@ -141,7 +139,6 @@ pub async fn exchange_authorization_code(
     }
 }
 
-/// `openRouterOAuth`
 pub struct OpenRouterOAuth;
 
 impl OAuthAuth for OpenRouterOAuth {

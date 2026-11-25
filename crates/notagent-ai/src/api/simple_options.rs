@@ -9,7 +9,6 @@ const MIN_MAX_TOKENS: u64 = 1;
 /// Tokens always left for the answer when a thinking budget shares the response ceiling.
 pub const MIN_ANSWER_TOKENS: u64 = 1024;
 
-/// `clampMaxTokensToContext(model, context, maxTokens)`
 pub fn clamp_max_tokens_to_context(model: &Model, context: &Context, max_tokens: u64) -> u64 {
     if model.context_window == 0 {
         return max_tokens.max(MIN_MAX_TOKENS);
@@ -25,7 +24,6 @@ pub fn clamp_max_tokens_to_context(model: &Model, context: &Context, max_tokens:
     max_tokens.min(available)
 }
 
-/// `buildBaseOptions(model, context, options?, apiKey?)`
 pub fn build_base_options(
     model: &Model,
     context: &Context,
@@ -90,7 +88,6 @@ pub struct AdjustedThinking {
     pub thinking_budget: u64,
 }
 
-/// `adjustMaxTokensForThinking(baseMaxTokens, modelMaxTokens, reasoningLevel, customBudgets?)`
 /// `base_max_tokens` of `None` means the caller set no cap: the model cap is used and
 /// thinking has to fit inside it.
 pub fn adjust_max_tokens_for_thinking(

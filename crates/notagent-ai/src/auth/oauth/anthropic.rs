@@ -73,7 +73,6 @@ fn parse_query(query: &str) -> (Option<String>, Option<String>) {
     (code, state)
 }
 
-/// `postJson(url, body, signal)`
 async fn post_json(url: &str, body: serde_json::Value) -> Result<String, AuthError> {
     let client = reqwest::Client::new();
     let response = client
@@ -114,7 +113,6 @@ fn credential_from(token: TokenResponse) -> OAuthCredential {
     }
 }
 
-/// `exchangeAuthorizationCode(...)`
 async fn exchange_authorization_code(
     code: &str,
     state: &str,
@@ -142,7 +140,6 @@ async fn exchange_authorization_code(
     Ok(credential_from(token))
 }
 
-/// `refreshAnthropicToken(refreshToken, signal)`
 async fn refresh_anthropic_token(refresh_token: &str) -> Result<OAuthCredential, AuthError> {
     let body = serde_json::json!({
         "grant_type": "refresh_token",
@@ -162,7 +159,6 @@ async fn refresh_anthropic_token(refresh_token: &str) -> Result<OAuthCredential,
     Ok(credential_from(token))
 }
 
-/// `anthropicOAuth`
 pub struct AnthropicOAuth;
 
 impl OAuthAuth for AnthropicOAuth {

@@ -544,7 +544,6 @@ use crate::utils::event_stream::{
 };
 use crate::utils::fetch::{FetchBody, FetchFunction, FetchRequest, ReqwestFetch};
 
-/// `assertRequestAuth(provider, apiKey, headers)`
 fn assert_request_auth(
     provider: &str,
     api_key: Option<&str>,

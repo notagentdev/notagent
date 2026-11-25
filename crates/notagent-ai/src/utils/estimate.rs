@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use serde_json::Value;
-
 use crate::types::{
     AssistantContent, Context, Message, StopReason, TextOrImageContent, Tool, Usage, UserContent,
 };
@@ -9,7 +7,6 @@ use crate::types::{
 const CHARS_PER_TOKEN: usize = 4;
 const ESTIMATED_IMAGE_CHARS: usize = 4800;
 
-/// `ContextUsageEstimate`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ContextUsageEstimate {
     /// Estimated total context tokens.
@@ -31,7 +28,6 @@ pub fn calculate_context_tokens(usage: &Usage) -> u64 {
     }
 }
 
-/// `safeJsonStringify(value)`
 fn safe_json_stringify(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "[unserializable]".to_string())
 }
@@ -53,7 +49,6 @@ pub fn estimate_text_tokens(text: &str) -> u64 {
     length.div_ceil(CHARS_PER_TOKEN) as u64
 }
 
-/// `estimateTextAndImageContentTokens(content)`
 pub fn estimate_text_and_image_content_tokens(content: &UserContent) -> u64 {
     let chars = match content {
         UserContent::Text(text) => text.encode_utf16().count(),
@@ -62,7 +57,6 @@ pub fn estimate_text_and_image_content_tokens(content: &UserContent) -> u64 {
     chars.div_ceil(CHARS_PER_TOKEN) as u64
 }
 
-/// `estimateMessageTokens(message)`
 pub fn estimate_message_tokens(message: &Message) -> u64 {
     match message {
         Message::User(message) => estimate_text_and_image_content_tokens(&message.content),
@@ -136,7 +130,6 @@ fn estimate_messages(messages: &[Message]) -> ContextUsageEstimate {
     }
 }
 
-/// `estimateToolsTokens(tools)`
 fn estimate_tools_tokens(tools: Option<&[Tool]>) -> u64 {
     match tools {
         None => 0,
@@ -150,7 +143,6 @@ pub fn estimate_messages_tokens(messages: &[Message]) -> ContextUsageEstimate {
     estimate_messages(messages)
 }
 
-/// `estimateContextTokens(context)`
 pub fn estimate_context_tokens(context: &Context) -> ContextUsageEstimate {
     let estimate = estimate_messages(&context.messages);
 
@@ -200,9 +192,4 @@ pub fn estimate_context_tokens(context: &Context) -> ContextUsageEstimate {
         trailing_tokens: estimate.trailing_tokens + prefix_tokens,
         last_usage_index: estimate.last_usage_index,
     }
-}
-
-/// Helper mirroring `JSON.stringify` for arbitrary values used in estimates.
-pub fn safe_json_length(value: &Value) -> usize {
-    safe_json_stringify(value).encode_utf16().count()
 }

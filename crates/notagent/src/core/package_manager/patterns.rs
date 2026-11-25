@@ -4,7 +4,6 @@ use globset::GlobBuilder;
 
 use crate::utils::paths::node_relative;
 
-/// `toPosixPath(p)`
 pub fn to_posix_path(path: &str) -> String {
     path.replace('\\', "/")
 }
@@ -23,7 +22,6 @@ fn dirname(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// `isPattern(s)`
 pub fn is_pattern(entry: &str) -> bool {
     entry.starts_with('!')
         || entry.starts_with('+')
@@ -32,17 +30,14 @@ pub fn is_pattern(entry: &str) -> bool {
         || entry.contains('?')
 }
 
-/// `isOverridePattern(s)`
 pub fn is_override_pattern(entry: &str) -> bool {
     entry.starts_with('!') || entry.starts_with('+') || entry.starts_with('-')
 }
 
-/// `hasGlobPattern(s)`
 pub fn has_glob_pattern(entry: &str) -> bool {
     entry.contains('*') || entry.contains('?')
 }
 
-/// `splitPatterns(entries)`
 pub fn split_patterns(entries: &[String]) -> (Vec<String>, Vec<String>) {
     let mut plain = Vec::new();
     let mut patterns = Vec::new();
@@ -56,9 +51,7 @@ pub fn split_patterns(entries: &[String]) -> (Vec<String>, Vec<String>) {
     (plain, patterns)
 }
 
-/// `minimatch(value, pattern)`
-/// Deviation (class 3, master substitution minimatch → globset): `literal_separator`
-/// keeps minimatch's rule that `*` does not cross `/`, `**` does.
+/// Glob match where `*` does not cross `/` and `**` does.
 fn minimatch(value: &str, pattern: &str) -> bool {
     GlobBuilder::new(pattern)
         .literal_separator(true)
@@ -89,7 +82,6 @@ fn skill_parent(file_path: &str, base_dir: &str) -> Option<SkillParent> {
     })
 }
 
-/// `matchesAnyPattern(filePath, patterns, baseDir)`
 pub fn matches_any_pattern(file_path: &str, patterns: &[String], base_dir: &str) -> bool {
     let relative = to_posix_path(&node_relative(base_dir, file_path));
     let name = basename(file_path);
@@ -115,7 +107,6 @@ pub fn matches_any_pattern(file_path: &str, patterns: &[String], base_dir: &str)
     })
 }
 
-/// `normalizeExactPattern(pattern)`
 fn normalize_exact_pattern(pattern: &str) -> String {
     let normalized = pattern
         .strip_prefix("./")
@@ -124,7 +115,6 @@ fn normalize_exact_pattern(pattern: &str) -> String {
     to_posix_path(normalized)
 }
 
-/// `matchesAnyExactPattern(filePath, patterns, baseDir)`
 pub fn matches_any_exact_pattern(file_path: &str, patterns: &[String], base_dir: &str) -> bool {
     if patterns.is_empty() {
         return false;
@@ -145,7 +135,6 @@ pub fn matches_any_exact_pattern(file_path: &str, patterns: &[String], base_dir:
     })
 }
 
-/// `getOverridePatterns(entries)`
 pub fn get_override_patterns(entries: &[String]) -> Vec<String> {
     entries
         .iter()
@@ -162,7 +151,6 @@ fn strip_prefix_of(patterns: &[String], prefix: char) -> Vec<String> {
         .collect()
 }
 
-/// `isEnabledByOverrides(filePath, patterns, baseDir)`
 pub fn is_enabled_by_overrides(file_path: &str, patterns: &[String], base_dir: &str) -> bool {
     let overrides = get_override_patterns(patterns);
     let excludes = strip_prefix_of(&overrides, '!');
@@ -184,7 +172,6 @@ pub fn is_enabled_by_overrides(file_path: &str, patterns: &[String], base_dir: &
     enabled
 }
 
-/// `applyPatterns(allPaths, patterns, baseDir)`
 /// caller reads back (`collectManifestFiles` turns it into `allFiles`), so the
 /// port keeps a `Vec` — membership tests go through [`contains_path`].
 pub fn apply_patterns(all_paths: &[String], patterns: &[String], base_dir: &str) -> Vec<String> {
@@ -244,7 +231,6 @@ pub fn contains_path(paths: &[String], path: &str) -> bool {
     paths.iter().any(|candidate| candidate == path)
 }
 
-/// `applyAutoloadDisabledPatterns(allPaths, patterns, baseDir)`
 /// iterates it in insertion order, and re-setting a key keeps its first slot.
 pub fn apply_autoload_disabled_patterns(
     all_paths: &[String],

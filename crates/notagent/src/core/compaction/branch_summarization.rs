@@ -139,8 +139,7 @@ pub fn collect_entries_for_branch_summary(
 
 /// Like the compaction module's version, but compaction entries do contribute
 /// here: their summary is the only record of what came before them.
-/// Deviation (class 1): a branch-summary entry whose summary is empty
-/// estimate to zero tokens and serialize to nothing.
+/// A branch-summary entry with an empty summary contributes nothing.
 fn message_from_entry(entry: &SessionEntry) -> Option<AgentMessage> {
     match session_entry_to_context_messages(entry).into_iter().next() {
         // Tool results are skipped; the context sits in the tool call.

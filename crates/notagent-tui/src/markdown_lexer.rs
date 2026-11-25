@@ -819,7 +819,6 @@ fn find_closing_delimiter(source: &str, closing: &str, start: usize) -> Option<u
     None
 }
 
-/// `looksLikePendingDollarMath`.
 fn looks_like_pending_dollar_math(source: &str) -> bool {
     for (index, character) in source.char_indices() {
         if character == '\\'
@@ -897,7 +896,6 @@ fn latex_block(lines: &[&str], index: &mut usize) -> Option<Token> {
     }
 }
 
-/// `tokenizeInlineLatex`.
 fn latex_inline(source: &str) -> Option<Token> {
     let (opening, closing) = if source.starts_with("$$") {
         ("$$", "$$")

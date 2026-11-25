@@ -20,7 +20,6 @@ use super::transcript::{
     select_transcript,
 };
 
-/// `RemoteSessionOperation`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RemoteSessionOperation {
     Open,
@@ -46,7 +45,6 @@ impl RemoteSessionOperation {
     }
 }
 
-/// `RemoteSessionLifecycle`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoteSessionLifecycle {
     Unbound,
@@ -55,7 +53,6 @@ pub enum RemoteSessionLifecycle {
     Disposed,
 }
 
-/// `RemoteSessionState`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoteSessionState {
     pub lifecycle: RemoteSessionLifecycle,
@@ -63,7 +60,6 @@ pub struct RemoteSessionState {
     pub transcript: Vec<TranscriptItem>,
 }
 
-/// `CreateRemoteSessionOptions`.
 #[derive(Debug, Clone, Default)]
 pub struct CreateRemoteSessionOptions {
     pub cwd: String,
@@ -96,7 +92,6 @@ impl From<PiError> for RemoteSessionError {
     }
 }
 
-/// `RemoteSessionOptions`.
 #[derive(Clone, Default)]
 pub struct RemoteSessionOptions {
     pub on_listener_error: Option<Arc<dyn Fn(RemoteSessionError) + Send + Sync>>,
@@ -139,7 +134,6 @@ struct Inner {
     dispose_signal: Shared<BoxFuture<'static, ()>>,
 }
 
-/// `RemoteSession`.
 /// object reference is passed around.
 #[derive(Clone)]
 pub struct RemoteSession {
@@ -205,7 +199,6 @@ impl RemoteSession {
         }
     }
 
-    /// `RemoteSession.create`.
     pub fn create_session(
         client: PiClient,
         create_options: CreateRemoteSessionOptions,
@@ -419,7 +412,6 @@ impl RemoteSession {
         }
     }
 
-    /// `setModel`.
     pub fn set_model(
         &self,
         model: ModelRef,
@@ -434,7 +426,6 @@ impl RemoteSession {
         )
     }
 
-    /// `setThinking`.
     pub fn set_thinking(
         &self,
         thinking_level: ThinkingLevel,
@@ -693,7 +684,7 @@ impl RemoteSession {
         async move { this.await_operation(prologue?).await }
     }
 
-    /// The synchronous half of `#runOperation`: mark busy, notify, start the
+    /// The synchronous half of `#runOperation`: mark busy, notify.
     fn begin<F>(&self, operation: RemoteSessionOperation, preempt: bool, make: F) -> SharedOperation
     where
         F: FnOnce() -> BoxFuture<'static, OperationResult>,

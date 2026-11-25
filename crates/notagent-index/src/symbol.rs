@@ -107,12 +107,6 @@ impl Symbol {
         self
     }
 
-    /// Set documentation comment
-    pub fn with_doc(mut self, doc: String) -> Self {
-        self.doc_comment = Some(doc);
-        self
-    }
-
     /// Set visibility
     pub fn with_visibility(mut self, vis: String) -> Self {
         self.visibility = Some(vis);

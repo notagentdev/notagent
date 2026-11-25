@@ -12,7 +12,6 @@ use crate::types::ProviderEnv;
 
 const VERTEX_ADC_PATH: &str = "~/.config/gcloud/application_default_credentials.json";
 
-/// `vertexAuth`
 pub struct VertexAuth;
 
 impl ApiKeyAuth for VertexAuth {
@@ -238,7 +237,6 @@ impl ApiKeyAuth for VertexAuth {
     }
 }
 
-/// `googleVertexProvider()`
 pub fn google_vertex_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "google-vertex".to_string(),

@@ -41,7 +41,6 @@ impl SkillInvocationMessageComponent {
         component
     }
 
-    /// `setExpanded(expanded)`
     pub fn set_expanded(&mut self, expanded: bool) {
         self.expanded = expanded;
         self.update_display();

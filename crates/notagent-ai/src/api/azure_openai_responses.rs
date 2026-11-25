@@ -95,7 +95,6 @@ pub fn parse_deployment_name_map(value: Option<&str>) -> BTreeMap<String, String
     map
 }
 
-/// `resolveDeploymentName(model, options)`
 pub fn resolve_deployment_name(model: &Model, options: &AzureOpenAIResponsesOptions) -> String {
     if let Some(name) = options
         .azure_deployment_name
@@ -114,7 +113,6 @@ pub fn resolve_deployment_name(model: &Model, options: &AzureOpenAIResponsesOpti
         .unwrap_or_else(|| model.id.clone())
 }
 
-/// `normalizeAzureBaseUrl(baseUrl)`
 pub fn normalize_azure_base_url(base_url: &str) -> Result<String, AzureOpenAIError> {
     let trimmed = base_url.trim().trim_end_matches('/');
     let mut url = Url::parse(trimmed)
@@ -163,7 +161,6 @@ fn build_default_base_url(resource_name: &str) -> String {
     format!("https://{resource_name}.openai.azure.com/openai/v1")
 }
 
-/// `resolveAzureConfig(model, options)`
 pub fn resolve_azure_config(
     model: &Model,
     options: &AzureOpenAIResponsesOptions,
@@ -248,7 +245,6 @@ fn effort_str(effort: ThinkingLevel) -> &'static str {
     }
 }
 
-/// `buildParams(model, context, options, deploymentName, grammarToolInputProperties)`
 pub fn build_params(
     model: &Model,
     context: &Context,
@@ -426,7 +422,6 @@ impl ProviderErrorInfo for AzureTransportError {
     }
 }
 
-/// `formatAzureOpenAIError(error)`
 fn format_azure_openai_error(error: &AzureTransportError) -> String {
     format_provider_error(
         &normalize_provider_error(&RawProviderError {
@@ -464,7 +459,6 @@ fn empty_output(model: &Model, timestamp: i64) -> AssistantMessage {
     }
 }
 
-/// `stream(model, context, options)`
 pub fn stream(
     model: Model,
     context: Context,

@@ -8,7 +8,6 @@ use crate::utils::event_stream::AssistantMessageEventStream;
 const CLOUDFLARE_ACCOUNT_ID: &str = "CLOUDFLARE_ACCOUNT_ID";
 const CLOUDFLARE_GATEWAY_ID: &str = "CLOUDFLARE_GATEWAY_ID";
 
-/// `resolveCloudflareModel(model, env)`
 pub fn resolve_cloudflare_model(model: &Model, env: Option<&ProviderEnv>) -> Model {
     let Some(env) = env else {
         return model.clone();
@@ -42,7 +41,6 @@ pub struct CloudflareStreams {
     streams: Arc<dyn ProviderStreams>,
 }
 
-/// `cloudflareStreams(streams)`
 pub fn cloudflare_streams(streams: Arc<dyn ProviderStreams>) -> Arc<CloudflareStreams> {
     Arc::new(CloudflareStreams { streams })
 }

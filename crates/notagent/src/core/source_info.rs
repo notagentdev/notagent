@@ -51,7 +51,7 @@ pub fn create_source_info(path: impl Into<String>, metadata: &PathMetadata) -> S
 }
 
 /// The optional half of `create_synthetic_source_info`'s argument object.
-/// `source` is the only field every caller sets; the defaults below are the
+/// `source` is the only field every caller sets.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SyntheticSourceInfoOptions {
     pub source: String,

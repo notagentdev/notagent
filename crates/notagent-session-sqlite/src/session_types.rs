@@ -41,20 +41,6 @@ pub trait IdGenerator: Send + Sync {
 
 // --- Entries -----------------------------------------------------------------
 
-/// Fields every entry carries. `seq`, `parent_id` and `timestamp` are assigned
-/// by the storage.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EntryBase {
-    pub id: String,
-    /// Shared sequence; read-side, storage-assigned.
-    pub seq: i64,
-    /// Storage-assigned: the appending lane's leaf.
-    pub parent_id: Option<String>,
-    /// Unix ms, storage-assigned.
-    pub timestamp: i64,
-}
-
 macro_rules! entry_struct {
     ($(#[$meta:meta])* $name:ident { $($(#[$field_meta:meta])* $field:ident : $ty:ty),* $(,)? }) => {
         $(#[$meta])*
@@ -773,12 +759,6 @@ pub enum LogFact {
 pub struct LogOptions {
     pub after_seq: Option<i64>,
     pub limit: Option<i64>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SessionCreateOptions {
-    pub id: Option<String>,
-    pub parent_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

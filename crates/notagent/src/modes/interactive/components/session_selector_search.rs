@@ -42,7 +42,6 @@ pub enum TokenKind {
     Phrase,
 }
 
-/// `ParsedSearchQuery`
 pub struct ParsedSearchQuery {
     /// `mode` — `tokens` or `regex`.
     pub mode: QueryMode,
@@ -63,7 +62,6 @@ pub enum QueryMode {
     Regex,
 }
 
-/// `MatchResult`
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MatchResult {
     /// Whether the session matched.

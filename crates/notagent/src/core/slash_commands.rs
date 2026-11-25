@@ -1,21 +1,3 @@
-use crate::core::source_info::SourceInfo;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SlashCommandSource {
-    Extension,
-    Prompt,
-    Skill,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SlashCommandInfo {
-    pub name: String,
-    pub description: Option<String>,
-    pub source: SlashCommandSource,
-    pub source_info: SourceInfo,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuiltinSlashCommand {
     pub name: &'static str,

@@ -6,14 +6,9 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher as _};
 /// How long to wait before retrying a watcher that could not be installed.
 pub const FS_WATCH_RETRY_DELAY_MS: u64 = 5000;
 
-/// A live watcher. Dropping it stops the watch, which is what `close()` does in
+/// A live watcher. Dropping it stops the watch.
 pub struct FsWatcher {
     _inner: RecommendedWatcher,
-}
-
-/// are swallowed.
-pub fn close_watcher(watcher: Option<FsWatcher>) {
-    drop(watcher);
 }
 
 /// Watches `path`, calling `listener` with the changed entry's file name.

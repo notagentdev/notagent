@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use notagent_ai::types::{
-    AssistantContent, ImageContent, Message, Model, ModelCost, SimpleStreamOptions, StopReason,
-    TextContent, TextOrImageContent, ThinkingBudgets, Transport, Usage, UserContent, UserMessage,
+    AssistantContent, ImageContent, Model, ModelCost, SimpleStreamOptions, StopReason, TextContent,
+    TextOrImageContent, ThinkingBudgets, Transport, Usage, UserContent, UserMessage,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -11,9 +11,9 @@ use crate::agent_loop::{AgentEventSink, run_agent_loop, run_agent_loop_continue}
 use crate::stream_fn::get_default_stream_fn;
 use crate::types::{
     AfterToolCallFn, AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool,
-    AgentToolResult, BeforeToolCallFn, BoxFuture, ConvertToLlmFn, GetApiKeyFn, PrepareContextFn,
-    PrepareNextTurnFn, QueueMode, ShouldStopAfterTurnFn, StreamFn, ThinkingLevel,
-    ToolExecutionMode, TransformContextFn,
+    BeforeToolCallFn, BoxFuture, ConvertToLlmFn, GetApiKeyFn, PrepareContextFn, PrepareNextTurnFn,
+    QueueMode, ShouldStopAfterTurnFn, StreamFn, ThinkingLevel, ToolExecutionMode,
+    TransformContextFn,
 };
 
 pub fn default_model() -> Model {
@@ -52,7 +52,6 @@ pub fn default_convert_to_llm() -> ConvertToLlmFn {
     })
 }
 
-/// `PendingMessageQueue`
 struct PendingMessageQueue {
     messages: Vec<AgentMessage>,
     mode: QueueMode,
@@ -105,7 +104,6 @@ struct MutableAgentState {
     error_message: Option<String>,
 }
 
-/// `AgentOptions`
 #[derive(Clone, Default)]
 pub struct AgentOptions {
     pub system_prompt: Option<String>,
@@ -273,7 +271,6 @@ impl Agent {
         update(&mut self.options.lock().expect("poisoned"));
     }
 
-    /// `steer(message)`
     pub fn steer(&self, message: AgentMessage) {
         self.steering_queue
             .lock()
@@ -281,7 +278,6 @@ impl Agent {
             .enqueue(message);
     }
 
-    /// `followUp(message)`
     pub fn follow_up(&self, message: AgentMessage) {
         self.follow_up_queue
             .lock()
@@ -302,7 +298,6 @@ impl Agent {
         self.clear_follow_up_queue();
     }
 
-    /// `hasQueuedMessages()`
     pub fn has_queued_messages(&self) -> bool {
         self.steering_queue.lock().expect("poisoned").has_items()
             || self.follow_up_queue.lock().expect("poisoned").has_items()
@@ -317,7 +312,6 @@ impl Agent {
             .map(|run| run.signal.clone())
     }
 
-    /// `abort()`
     pub fn abort(&self) {
         if let Some(run) = self.active_run.lock().expect("poisoned").as_ref() {
             run.signal.cancel();
@@ -356,7 +350,6 @@ impl Agent {
         notified.await;
     }
 
-    /// `reset()`
     pub fn reset(&self) -> Result<(), AgentError> {
         if self.active_run.lock().expect("poisoned").is_some() {
             return Err(AgentError(
@@ -392,7 +385,6 @@ impl Agent {
         .await
     }
 
-    /// `prompt(messages)`
     pub async fn prompt(self: &Arc<Self>, messages: Vec<AgentMessage>) -> Result<(), AgentError> {
         self.prompt_with_signal(messages, CancellationToken::new())
             .await
@@ -413,7 +405,6 @@ impl Agent {
         self.run_prompt_messages(messages, signal).await
     }
 
-    /// `continue()`
     pub async fn continue_run(self: &Arc<Self>) -> Result<(), AgentError> {
         self.continue_run_with_signal(CancellationToken::new())
             .await
@@ -594,7 +585,6 @@ impl Agent {
         .await
     }
 
-    /// `runWithLifecycle(executor)`
     async fn run_with_lifecycle<F>(
         self: &Arc<Self>,
         signal: CancellationToken,
@@ -773,19 +763,6 @@ impl Agent {
             listener(event.clone(), signal.clone()).await;
         }
     }
-}
-
-/// Convenience for callers that build tool results.
-pub fn text_tool_result(text: impl Into<String>) -> AgentToolResult {
-    AgentToolResult::text(text)
-}
-
-/// Convenience re-export for `Message` consumers.
-pub fn as_llm_messages(messages: &[AgentMessage]) -> Vec<Message> {
-    messages
-        .iter()
-        .filter_map(AgentMessage::as_llm_message)
-        .collect()
 }
 
 fn now_ms() -> i64 {

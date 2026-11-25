@@ -22,7 +22,6 @@ pub struct AiGatewayUniversalRequest {
 
 /// The Workers AI binding's gateway surface (`env.AI`).
 pub trait AiGatewayBinding: Send + Sync {
-    /// `binding.gateway(id).run(data, options)`
     fn run(&self, gateway: &str, data: AiGatewayUniversalRequest) -> FetchFuture;
 }
 
@@ -44,7 +43,6 @@ pub struct GatewayBindingFetch {
     base_path: String,
 }
 
-/// `createGatewayBindingFetch(options)`
 pub fn create_gateway_binding_fetch(options: GatewayBindingFetchOptions) -> Arc<dyn FetchFn> {
     // Prefix matching runs on URL-normalized components (origin + pathname), not raw
     // strings, so a lexical variant cannot split provider/endpoint differently.

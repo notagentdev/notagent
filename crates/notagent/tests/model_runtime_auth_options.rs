@@ -59,7 +59,6 @@ async fn runtime_with_models_json(
     .expect("runtime")
 }
 
-/// `authOptions(runtime, type?)`
 fn auth_options(
     runtime: &ModelRuntime,
     auth_type: Option<AuthType>,

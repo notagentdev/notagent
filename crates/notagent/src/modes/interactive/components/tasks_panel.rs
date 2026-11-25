@@ -4,7 +4,6 @@
 //! the same work twice (user decision 2026-08-31). Subagents render in
 //! `subagent_panel`.
 
-/// `text.replace(/\s+/g, " ").trim()`
 pub(crate) fn single_line(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut in_whitespace = false;

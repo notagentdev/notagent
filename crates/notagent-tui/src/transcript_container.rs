@@ -561,15 +561,6 @@ impl TranscriptContainer {
             .map(|&index| self.entries[index].id)
     }
 
-    pub fn entry_revisions(&self, component: &ComponentRef) -> Option<(u64, u64)> {
-        self.index_by_component
-            .get(&(Rc::as_ptr(component).cast::<()>() as usize))
-            .map(|&index| {
-                let entry = &self.entries[index];
-                (entry.content_revision, entry.presentation_revision)
-            })
-    }
-
     fn stream_overflow(&self, id: u64) -> usize {
         self.stream_emitted
             .as_ref()

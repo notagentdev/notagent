@@ -165,7 +165,7 @@ impl PendingApproval {
         let Some(settle) = self.settle.take() else {
             return;
         };
-        // The receiver may be gone if the caller stopped waiting; that is the
+        // The receiver may be gone if the caller stopped waiting.
         let _ = settle.send(value);
     }
 }

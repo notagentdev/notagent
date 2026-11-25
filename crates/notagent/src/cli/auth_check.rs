@@ -7,9 +7,7 @@ use crate::cli::auth_command::{
     AuthCommandError, AuthCommandKind, get_auth_credential, validate_auth_command_args,
 };
 use crate::core::model_resolver::resolve_cli_model;
-use crate::core::model_runtime::{
-    CreateModelRuntimeOptions, ModelRuntime, ModelRuntimeAuthOverrides,
-};
+use crate::core::model_runtime::{CreateModelRuntimeOptions, ModelRuntime};
 use crate::core::models_store::InMemoryCodingAgentModelsStore;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +54,7 @@ pub struct AuthCheckResult {
     pub auth_type: Option<AuthType>,
 }
 
-/// The JSON form of `--json`, with the optional fields omitted like the
+/// The JSON form of `--json`.
 pub fn auth_check_result_to_json(
     result: &AuthCheckResult,
     credential: Option<&str>,
@@ -212,6 +210,3 @@ pub async fn create_auth_check_model_runtime(
     })
     .await
 }
-
-/// Keeps the auth override type in the public surface of this module, matching
-pub type AuthOverrides = ModelRuntimeAuthOverrides;

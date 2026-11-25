@@ -125,13 +125,20 @@ pub enum CodexError {
         code: Option<String>,
     },
     /// `CodexProtocolError` — a frame could not be decoded.
-    Protocol { message: String },
+    Protocol {
+        message: String,
+    },
     /// A transport or generic failure; the WebSocket path falls back to SSE for these.
-    Transport { message: String },
-    /// `RetryDelayExceededError`
-    RetryDelayExceeded { message: String },
-    /// `WebSocketCloseError`
-    WebSocketClose { message: String, code: Option<u16> },
+    Transport {
+        message: String,
+    },
+    RetryDelayExceeded {
+        message: String,
+    },
+    WebSocketClose {
+        message: String,
+        code: Option<u16>,
+    },
 }
 
 impl std::fmt::Display for CodexError {
@@ -159,7 +166,6 @@ impl CodexError {
         }
     }
 
-    /// `isCodexNonTransportError(error)`
     fn is_non_transport(&self) -> bool {
         matches!(self, CodexError::Api { .. } | CodexError::Protocol { .. })
     }
@@ -176,7 +182,6 @@ impl CodexError {
 // Retry helpers
 // ---------------------------------------------------------------------------
 
-/// `isTerminalRateLimitError(errorText)`
 pub fn is_terminal_rate_limit_error(error_text: &str) -> bool {
     static PATTERN: OnceLock<regex::Regex> = OnceLock::new();
     PATTERN
@@ -189,7 +194,6 @@ pub fn is_terminal_rate_limit_error(error_text: &str) -> bool {
         .is_match(error_text)
 }
 
-/// `isRetryableError(status, errorText)`
 pub fn is_retryable_error(status: u16, error_text: &str) -> bool {
     if status == 429 && is_terminal_rate_limit_error(error_text) {
         return false;
@@ -208,7 +212,6 @@ pub fn is_retryable_error(status: u16, error_text: &str) -> bool {
         .is_match(error_text)
 }
 
-/// `getRetryAfterDelayMs(headers)`
 pub fn retry_after_delay_ms(headers: &[(String, String)], now_ms: i64) -> Option<f64> {
     let header = |name: &str| {
         headers
@@ -244,7 +247,6 @@ fn js_number(value: &str) -> Option<f64> {
     trimmed.parse::<f64>().ok()
 }
 
-/// `validateRetryDelayMs(delayMs, options)`
 pub fn validate_retry_delay_ms(
     delay_ms: f64,
     max_retry_delay_ms: Option<u64>,
@@ -262,7 +264,6 @@ pub fn validate_retry_delay_ms(
     Ok(delay_ms)
 }
 
-/// `normalizeTimeoutMs(value)`
 pub fn normalize_timeout_ms(value: Option<u64>) -> Option<u64> {
     value
 }
@@ -303,7 +304,6 @@ fn model_deferred_tools_mode(model: &Model) -> Option<ResponsesDeferredToolsMode
     }
 }
 
-/// `buildRequestBody(model, context, options, cacheSessionId, grammarToolInputProperties)`
 pub fn build_request_body(
     model: &Model,
     context: &Context,
@@ -398,7 +398,7 @@ pub fn build_request_body(
             CodexReasoningEffort::None => ModelThinkingLevel::Off,
             CodexReasoningEffort::Level(level) => level.into(),
         };
-        // `?? fallback` swallows both a missing entry and an explicit null, so the
+        // `?? fallback` swallows both a missing entry and an explicit null.
         let effort = model
             .thinking_level_map
             .as_ref()
@@ -426,7 +426,6 @@ pub fn build_request_body(
     Ok(Value::Object(body))
 }
 
-/// `getServiceTierCostMultiplier(model, serviceTier)`
 pub fn service_tier_cost_multiplier(model_id: &str, service_tier: Option<&str>) -> f64 {
     match service_tier {
         Some("flex") => 0.5,
@@ -441,7 +440,6 @@ pub fn service_tier_cost_multiplier(model_id: &str, service_tier: Option<&str>) 
     }
 }
 
-/// `applyServiceTierPricing(usage, serviceTier, model)`
 pub fn apply_service_tier_pricing(usage: &mut Usage, service_tier: Option<&str>, model_id: &str) {
     let multiplier = service_tier_cost_multiplier(model_id, service_tier);
     if multiplier == 1.0 {
@@ -455,7 +453,6 @@ pub fn apply_service_tier_pricing(usage: &mut Usage, service_tier: Option<&str>,
         usage.cost.input + usage.cost.output + usage.cost.cache_read + usage.cost.cache_write;
 }
 
-/// `resolveCodexServiceTier(responseServiceTier, requestServiceTier)`
 pub fn resolve_codex_service_tier(
     response_service_tier: Option<&str>,
     request_service_tier: Option<&str>,
@@ -470,7 +467,6 @@ pub fn resolve_codex_service_tier(
         .or_else(|| request_service_tier.map(str::to_string))
 }
 
-/// `resolveCodexUrl(baseUrl)`
 pub fn resolve_codex_url(base_url: &str) -> String {
     let raw = if base_url.trim().is_empty() {
         DEFAULT_CODEX_BASE_URL
@@ -487,7 +483,6 @@ pub fn resolve_codex_url(base_url: &str) -> String {
     format!("{normalized}/codex/responses")
 }
 
-/// `resolveCodexWebSocketUrl(baseUrl)`
 pub fn resolve_codex_websocket_url(base_url: &str) -> Result<String, CodexError> {
     let mut url = Url::parse(&resolve_codex_url(base_url))
         .map_err(|error| CodexError::transport(error.to_string()))?;
@@ -507,7 +502,6 @@ pub fn resolve_codex_websocket_url(base_url: &str) -> Result<String, CodexError>
 // Auth and headers
 // ---------------------------------------------------------------------------
 
-/// `extractAccountId(token)`
 pub fn extract_account_id(token: &str) -> Result<String, CodexError> {
     let failed = || CodexError::transport("Failed to extract accountId from token");
     let parts: Vec<&str> = token.split('.').collect();
@@ -565,7 +559,6 @@ impl CodexHeaders {
     }
 }
 
-/// `buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token)`
 fn build_base_codex_headers(
     init_headers: Option<&BTreeMap<String, String>>,
     additional_headers: Option<&ProviderHeaders>,
@@ -618,7 +611,6 @@ fn kernel_release() -> String {
         .unwrap_or_default()
 }
 
-/// `buildSSEHeaders(...)`
 pub fn build_sse_headers(
     init_headers: Option<&BTreeMap<String, String>>,
     additional_headers: Option<&ProviderHeaders>,
@@ -644,7 +636,6 @@ pub fn build_sse_headers(
     headers
 }
 
-/// `buildWebSocketHeaders(...)`
 pub fn build_websocket_headers(
     init_headers: Option<&BTreeMap<String, String>>,
     additional_headers: Option<&ProviderHeaders>,
@@ -674,7 +665,6 @@ pub fn build_websocket_headers(
 // Error responses
 // ---------------------------------------------------------------------------
 
-/// `parseErrorResponse(response)`
 pub fn parse_error_response(
     status: u16,
     status_text: &str,
@@ -751,7 +741,6 @@ pub fn parse_error_response(
 // Codex event mapping
 // ---------------------------------------------------------------------------
 
-/// `normalizeCodexStatus(status)`
 fn normalize_codex_status(status: Option<&Value>) -> Option<String> {
     let status = status?.as_str()?;
     CODEX_RESPONSE_STATUSES
@@ -759,7 +748,6 @@ fn normalize_codex_status(status: Option<&Value>) -> Option<String> {
         .then(|| status.to_string())
 }
 
-/// `extractCodexEventError(event)`
 fn extract_codex_event_error(event: &Value) -> (Option<String>, Option<String>) {
     let nested = event.get("error").filter(|error| error.is_object());
     let pick = |key: &str| {
@@ -915,7 +903,6 @@ impl CodexSseParser {
 // Request compression
 // ---------------------------------------------------------------------------
 
-/// `compressRequestBodyZstd(bodyJson)`
 pub fn compress_request_body_zstd(body_json: &str) -> Option<Vec<u8>> {
     zstd::stream::encode_all(body_json.as_bytes(), REQUEST_COMPRESSION_ZSTD_LEVEL).ok()
 }
@@ -924,7 +911,6 @@ pub fn compress_request_body_zstd(body_json: &str) -> Option<Vec<u8>> {
 // WebSocket session cache and debug stats
 // ---------------------------------------------------------------------------
 
-/// `OpenAICodexWebSocketDebugStats`
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenAICodexWebSocketDebugStats {
@@ -948,7 +934,6 @@ pub struct OpenAICodexWebSocketDebugStats {
     pub last_websocket_error: Option<String>,
 }
 
-/// `CachedWebSocketContinuationState`
 #[derive(Debug, Clone)]
 struct ContinuationState {
     last_request_body: Value,
@@ -995,7 +980,6 @@ fn websocket_state() -> &'static Mutex<CodexWebSocketState> {
     })
 }
 
-/// `getOpenAICodexWebSocketDebugStats(sessionId)`
 pub fn openai_codex_websocket_debug_stats(
     session_id: &str,
 ) -> Option<OpenAICodexWebSocketDebugStats> {
@@ -1007,7 +991,6 @@ pub fn openai_codex_websocket_debug_stats(
         .cloned()
 }
 
-/// `resetOpenAICodexWebSocketDebugStats(sessionId?)`
 pub fn reset_openai_codex_websocket_debug_stats(session_id: Option<&str>) {
     let mut state = websocket_state().lock().expect("poisoned");
     match session_id {
@@ -1033,7 +1016,6 @@ pub fn close_openai_codex_websocket_sessions(session_id: Option<&str>) {
     }
 }
 
-/// `isWebSocketSseFallbackActive(sessionId)`
 fn is_websocket_sse_fallback_active(session_id: Option<&str>) -> bool {
     let Some(session_id) = session_id else {
         return false;
@@ -1045,7 +1027,6 @@ fn is_websocket_sse_fallback_active(session_id: Option<&str>) -> bool {
         .contains(session_id)
 }
 
-/// `recordWebSocketSseFallback(sessionId)`
 fn record_websocket_sse_fallback(session_id: Option<&str>) {
     let Some(session_id) = session_id else {
         return;
@@ -1057,7 +1038,6 @@ fn record_websocket_sse_fallback(session_id: Option<&str>) {
     stats.websocket_fallback_active = Some(active);
 }
 
-/// `recordWebSocketFailure(sessionId, error)`
 fn record_websocket_failure(session_id: Option<&str>, error: &CodexError) {
     let Some(session_id) = session_id else {
         return;
@@ -1117,7 +1097,6 @@ fn record_websocket_request(
     }
 }
 
-/// `requestBodyWithoutInput(body)`
 fn request_body_without_input(body: &Value) -> Value {
     let mut copy = body.clone();
     if let Some(object) = copy.as_object_mut() {
@@ -1127,12 +1106,10 @@ fn request_body_without_input(body: &Value) -> Value {
     copy
 }
 
-/// `requestBodiesMatchExceptInput(a, b)`
 fn request_bodies_match_except_input(a: &Value, b: &Value) -> bool {
     request_body_without_input(a) == request_body_without_input(b)
 }
 
-/// `getCachedWebSocketInputDelta(body, continuation)`
 fn cached_websocket_input_delta(
     body: &Value,
     continuation: &ContinuationState,
@@ -1161,7 +1138,6 @@ fn cached_websocket_input_delta(
     Some(current_input[baseline.len()..].to_vec())
 }
 
-/// `buildCachedWebSocketRequestBody(entry, body)`
 fn build_cached_websocket_request_body(
     continuation: Option<&ContinuationState>,
     body: &Value,
@@ -1225,7 +1201,6 @@ fn remove_cached_connection(session_id: &str, account_id: &str, generation: Opti
     }
 }
 
-/// `acquireWebSocket(url, headers, sessionId, accountId, ...)`
 async fn acquire_websocket(
     url: &str,
     headers: &CodexHeaders,
@@ -1424,7 +1399,6 @@ fn empty_output(model: &Model, timestamp: i64) -> AssistantMessage {
     }
 }
 
-/// `assertSuccessfulOutput(output)`
 fn assert_successful_output(output: &AssistantMessage) -> Result<DoneReason, CodexError> {
     if output.stop_reason == StopReason::Pending {
         return Err(CodexError::transport(
@@ -1562,7 +1536,6 @@ pub fn stream_simple(
     ))
 }
 
-/// `stream(model, context, options)`
 pub fn stream(
     model: Model,
     context: Context,
@@ -2118,7 +2091,6 @@ async fn read_body(body: FetchBody) -> String {
 // WebSocket transport
 // ---------------------------------------------------------------------------
 
-/// `processWebSocketStream(...)`
 /// Returns whether the stream had started when it failed, which decides between a
 /// fallback to SSE and a hard error.
 #[allow(clippy::too_many_arguments)]
@@ -2251,7 +2223,6 @@ async fn run_websocket_stream(
     }
 }
 
-/// `connectWebSocket(url, headers, signal, connectTimeoutMs, env)`
 async fn connect_websocket(
     url: &str,
     headers: &CodexHeaders,
@@ -2416,7 +2387,6 @@ async fn drive_websocket(
     Ok(())
 }
 
-/// `extractWebSocketCloseError(event)`
 fn websocket_close_error(
     close: Option<&tokio_tungstenite::tungstenite::protocol::CloseFrame>,
 ) -> CodexError {

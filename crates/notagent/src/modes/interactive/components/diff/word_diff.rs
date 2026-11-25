@@ -50,7 +50,6 @@ fn is_extended_word_char(character: char) -> bool {
     )
 }
 
-/// `value.trim()`.
 fn js_trim(value: &str) -> &str {
     value.trim_matches(is_js_whitespace)
 }
@@ -266,7 +265,6 @@ fn join(tokens: &[String]) -> String {
     joined
 }
 
-/// `WordDiff.equals`.
 fn equals(left: &str, right: &str) -> bool {
     js_trim(left) == js_trim(right)
 }
@@ -496,7 +494,6 @@ fn diff_tokens(old_tokens: &[String], new_tokens: &[String]) -> Vec<Change> {
 
 // --- postProcess -----------------------------------------------------------------
 
-/// `WordDiff.postProcess`.
 fn post_process(changes: &mut [Change]) {
     if changes.is_empty() {
         return;
@@ -633,7 +630,6 @@ fn dedupe_whitespace(
     }
 }
 
-/// `Diff.diffWords(oldStr, newStr)`.
 pub fn diff_words(old_str: &str, new_str: &str) -> Vec<Change> {
     let old_tokens: Vec<String> = tokenize(old_str)
         .into_iter()

@@ -23,69 +23,6 @@ pub type ImagesApi = String;
 pub type ProviderId = String;
 pub type ImagesProviderId = String;
 
-pub const KNOWN_APIS: [&str; 10] = [
-    "openai-completions",
-    "mistral-conversations",
-    "openai-responses",
-    "azure-openai-responses",
-    "openai-codex-responses",
-    "anthropic-messages",
-    "bedrock-converse-stream",
-    "google-generative-ai",
-    "google-vertex",
-    "pi-messages",
-];
-
-/// `KnownImagesApi`.
-pub const KNOWN_IMAGES_APIS: [&str; 1] = ["openrouter-images"];
-
-pub const KNOWN_PROVIDERS: [&str; 41] = [
-    "amazon-bedrock",
-    "ant-ling",
-    "anthropic",
-    "google",
-    "google-vertex",
-    "openai",
-    "azure-openai-responses",
-    "openai-codex",
-    "radius",
-    "nvidia",
-    "deepseek",
-    "github-copilot",
-    "xai",
-    "groq",
-    "cerebras",
-    "openrouter",
-    "vercel-ai-gateway",
-    "zai",
-    "zai-coding-cn",
-    "mistral",
-    "minimax",
-    "minimax-cn",
-    "moonshotai",
-    "moonshotai-cn",
-    "huggingface",
-    "fireworks",
-    "together",
-    "baseten",
-    "opencode",
-    "opencode-go",
-    "kimi-coding",
-    "cline-pass",
-    "cloudflare-workers-ai",
-    "cloudflare-ai-gateway",
-    "qwen-token-plan",
-    "qwen-token-plan-cn",
-    "qwen-token-plan-individual",
-    "xiaomi",
-    "xiaomi-token-plan-cn",
-    "xiaomi-token-plan-ams",
-    "xiaomi-token-plan-sgp",
-];
-
-/// `KnownImagesProvider`.
-pub const KNOWN_IMAGES_PROVIDERS: [&str; 1] = ["openrouter"];
-
 // ---------------------------------------------------------------------------
 // Thinking
 // ---------------------------------------------------------------------------
@@ -128,19 +65,7 @@ impl From<ThinkingLevel> for ModelThinkingLevel {
     }
 }
 
-impl ModelThinkingLevel {
-    pub fn to_thinking_level(self) -> Option<ThinkingLevel> {
-        match self {
-            ModelThinkingLevel::Off => None,
-            ModelThinkingLevel::Minimal => Some(ThinkingLevel::Minimal),
-            ModelThinkingLevel::Low => Some(ThinkingLevel::Low),
-            ModelThinkingLevel::Medium => Some(ThinkingLevel::Medium),
-            ModelThinkingLevel::High => Some(ThinkingLevel::High),
-            ModelThinkingLevel::Xhigh => Some(ThinkingLevel::Xhigh),
-            ModelThinkingLevel::Max => Some(ThinkingLevel::Max),
-        }
-    }
-}
+impl ModelThinkingLevel {}
 
 /// `ThinkingLevelMap = Partial<Record<ModelThinkingLevel, string | null>>`
 pub type ThinkingLevelMap = BTreeMap<ModelThinkingLevel, Option<String>>;
@@ -435,21 +360,6 @@ pub trait ProviderImages: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = AssistantImages> + Send>>;
 }
 
-pub type StreamFunction = Arc<
-    dyn Fn(&Model, &Context, Option<StreamOptions>) -> AssistantMessageEventStream + Send + Sync,
->;
-
-/// `ImagesFunction`
-pub type ImagesFunction = Arc<
-    dyn Fn(
-            &ImagesModel,
-            &ImagesContext,
-            Option<ImagesOptions>,
-        ) -> Pin<Box<dyn Future<Output = AssistantImages> + Send>>
-        + Send
-        + Sync,
->;
-
 // ---------------------------------------------------------------------------
 // Content blocks.
 // ---------------------------------------------------------------------------
@@ -684,7 +594,7 @@ pub struct DeferredHandle {
 /// `transformMessages` normalizes `null`/missing `content` to an empty array before every
 /// provider request, because hand-built histories, custom tools and old session files
 /// violate the type (issues #6259, #6276). The Rust types make that state
-/// unrepresentable, so the same leniency lives at deserialization: the message ends up in
+/// unrepresentable, so the same leniency lives at deserialization.
 fn lax_content<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -790,7 +700,6 @@ pub enum ImagesStopReason {
     Aborted,
 }
 
-/// `AssistantImages`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistantImages {
@@ -1095,7 +1004,6 @@ pub struct OpenAIResponsesCompat {
     pub extra: Map<String, Value>,
 }
 
-/// `AnthropicMessagesCompat`
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnthropicMessagesCompat {
@@ -1123,7 +1031,6 @@ pub struct AnthropicMessagesCompat {
     pub extra: Map<String, Value>,
 }
 
-/// `BedrockCompat`
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BedrockCompat {
@@ -1240,7 +1147,6 @@ pub struct OpenRouterRouting {
     pub preferred_max_latency: Option<NumberOrPercentiles>,
 }
 
-/// `VercelGatewayRouting`
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct VercelGatewayRouting {
     #[serde(default, skip_serializing_if = "Option::is_none")]

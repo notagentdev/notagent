@@ -26,7 +26,6 @@ use serde_json::{Value, json};
 // Test doubles
 // ---------------------------------------------------------------------------
 
-/// `fakeAuthContext(env, files)`
 struct FakeAuthContext {
     env: ProviderEnv,
     files: Vec<String>,
@@ -56,7 +55,7 @@ impl AuthContext for FakeAuthContext {
     }
 }
 
-/// Answers prompts from a queue and records notifications, like the arrow functions the
+/// Answers prompts from a queue and records notifications.
 struct ScriptedInteraction {
     answers: Mutex<Vec<String>>,
     events: Mutex<Vec<AuthEvent>>,

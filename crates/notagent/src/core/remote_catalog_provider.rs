@@ -19,7 +19,6 @@ use crate::utils::notagent_user_agent::get_pi_user_agent;
 const DEFAULT_CATALOG_BASE_URL: &str = "https://notagent.dev";
 pub const REMOTE_CATALOG_REFRESH_INTERVAL_MS: i64 = 4 * 60 * 60 * 1000;
 
-/// `mergeModels(baseline, dynamic)`
 fn merge_models(baseline: Vec<Model>, dynamic: &[Model]) -> Vec<Model> {
     let mut merged = baseline;
     for model in dynamic {
@@ -31,7 +30,6 @@ fn merge_models(baseline: Vec<Model>, dynamic: &[Model]) -> Vec<Model> {
     merged
 }
 
-/// `parseCatalog(providerId, value)`
 /// travels on as an invalid `Model`. Rust must deserialize, so entries that are not
 /// valid models are skipped instead of being carried along broken.
 fn parse_catalog(provider_id: &str, value: Value) -> Result<Vec<Model>, String> {
@@ -58,7 +56,6 @@ fn parse_catalog(provider_id: &str, value: Value) -> Result<Vec<Model>, String> 
         .collect())
 }
 
-/// `remoteModels(entry, localGeneratedAt)`
 fn remote_models(entry: Option<&ModelsStoreEntry>, local_generated_at: Option<i64>) -> Vec<Model> {
     let Some(entry) = entry else {
         return Vec::new();
@@ -81,7 +78,6 @@ pub struct RemoteCatalogProvider {
     dynamic_models: Mutex<Vec<Model>>,
 }
 
-/// `withRemoteCatalog(provider, catalogBaseUrl?, localGeneratedAt?)`
 pub fn with_remote_catalog(
     provider: Arc<dyn Provider>,
     catalog_base_url: Option<&str>,

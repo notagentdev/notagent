@@ -93,11 +93,6 @@ impl Stack {
     pub fn container(&self) -> &Container {
         &self.container
     }
-
-    /// Mutable access to the children container.
-    pub fn container_mut(&mut self) -> &mut Container {
-        &mut self.container
-    }
 }
 
 impl Component for Stack {

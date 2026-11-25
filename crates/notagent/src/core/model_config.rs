@@ -10,12 +10,9 @@ use crate::utils::paths::normalize_path_default;
 // ---------------------------------------------------------------------------
 // Typed shape of models.json
 //
-// Deviation (class 3): TypeBox `Compile(ModelsConfigSchema)` becomes a
-// handwritten validator (`validate_models_config`) plus serde deserialization.
-// The messages follow TypeBox's localized wording ("Expected string", "Expected
-// required property", …) and the same `<path>: <message>` layout; they are not
-//
-// objects, so every object passes, and the composer merges it key-wise.
+// `validate_models_config` checks the shape before serde deserializes it, so a
+// broken models.json reports `<path>: <message>` ("Expected string", "Expected
+// required property", …) instead of a serde error.
 // ---------------------------------------------------------------------------
 
 /// `Static<typeof ModelDefinitionSchema>`
@@ -544,7 +541,6 @@ impl Validator {
     }
 }
 
-/// `validateModelsConfig.Check(parsed)` plus `.Errors(parsed)`.
 fn validate_models_config(value: &Value) -> Vec<String> {
     let mut validator = Validator { errors: Vec::new() };
     let root: Vec<String> = Vec::new();
@@ -591,7 +587,6 @@ impl ModelConfig {
         }
     }
 
-    /// `ModelConfig.load(modelsJsonPath)`
     pub async fn load(models_json_path: Option<&str>) -> Self {
         let Some(models_json_path) = models_json_path else {
             return ModelConfig::empty();

@@ -17,7 +17,6 @@ pub fn register_built_in_images_api_providers() {
     });
 }
 
-/// `generateImages(model, context, options)`
 pub async fn generate_images(
     model: &ImagesModel,
     context: &ImagesContext,

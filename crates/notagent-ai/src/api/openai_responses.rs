@@ -54,7 +54,6 @@ pub struct ResolvedOpenAIResponsesCompat {
     pub supports_explicit_prompt_cache_mode: bool,
 }
 
-/// `detectSessionAffinityFormat(model)`
 fn detect_session_affinity_format(model: &Model) -> SessionAffinityFormat {
     if model.provider == "openrouter" || model.base_url.contains("openrouter.ai") {
         SessionAffinityFormat::Openrouter
@@ -63,7 +62,6 @@ fn detect_session_affinity_format(model: &Model) -> SessionAffinityFormat {
     }
 }
 
-/// `getCompat(model)`
 pub fn get_compat(model: &Model) -> ResolvedOpenAIResponsesCompat {
     let compat = match &model.compat {
         Some(crate::types::ModelCompat::OpenAIResponses(compat)) => Some(compat),
@@ -97,7 +95,6 @@ pub fn get_compat(model: &Model) -> ResolvedOpenAIResponsesCompat {
     }
 }
 
-/// `getPromptCacheRetention(compat, cacheRetention)`
 fn prompt_cache_retention(
     compat: &ResolvedOpenAIResponsesCompat,
     cache_retention: CacheRetention,
@@ -133,7 +130,6 @@ fn effort_str(effort: ThinkingLevel) -> &'static str {
     }
 }
 
-/// `buildParams(model, context, options, compat, grammarToolInputProperties)`
 pub fn build_params(
     model: &Model,
     context: &Context,
@@ -340,7 +336,6 @@ pub fn build_client_headers(
 // Service-tier pricing
 // ---------------------------------------------------------------------------
 
-/// `getServiceTierCostMultiplier(model, serviceTier)`
 pub fn service_tier_cost_multiplier(model_id: &str, service_tier: Option<&str>) -> f64 {
     match service_tier {
         Some("flex") => 0.5,
@@ -355,7 +350,6 @@ pub fn service_tier_cost_multiplier(model_id: &str, service_tier: Option<&str>) 
     }
 }
 
-/// `applyServiceTierPricing(usage, serviceTier, model)`
 pub fn apply_service_tier_pricing(usage: &mut Usage, service_tier: Option<&str>, model_id: &str) {
     let multiplier = service_tier_cost_multiplier(model_id, service_tier);
     if multiplier == 1.0 {
@@ -419,7 +413,6 @@ impl ProviderErrorInfo for ResponsesTransportError {
     }
 }
 
-/// `formatOpenAIResponsesError(error)`
 fn format_openai_responses_error(error: &ResponsesTransportError) -> String {
     format_provider_error(
         &normalize_provider_error(&RawProviderError {
@@ -457,7 +450,6 @@ fn empty_output(model: &Model, timestamp: i64) -> AssistantMessage {
     }
 }
 
-/// `stream(model, context, options)`
 pub fn stream(
     model: Model,
     context: Context,
@@ -784,7 +776,6 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)`
 pub fn stream_simple(
     model: Model,
     context: Context,

@@ -32,8 +32,8 @@ const OFFICIAL_APP_NAME: &str = "notagent";
 const OFFICIAL_CONFIG_DIR_NAME: &str = ".notagent";
 
 /// Whether this build is the official distribution rather than a fork.
-/// Deviation (class 1): the arguments are explicit instead of read from the
-/// module constants, because a Rust test cannot swap a `const` the way the
+/// The names are arguments rather than the module constants, so tests can
+/// pass a fork's names.
 pub fn is_official_distribution(package_name: &str, app_name: &str, config_dir_name: &str) -> bool {
     package_name == OFFICIAL_PACKAGE_NAME
         && app_name == OFFICIAL_APP_NAME
@@ -72,7 +72,6 @@ pub struct StartupTui {
     pub pump: ProcessTerminalPump,
 }
 
-/// `loadThemes(resources)`
 fn load_themes(resources: &[ResolvedResource]) -> Vec<Theme> {
     let mut themes = Vec::new();
     let mut seen: Vec<String> = Vec::new();
@@ -96,7 +95,6 @@ fn load_themes(resources: &[ResolvedResource]) -> Vec<Theme> {
     themes
 }
 
-/// `loadStartupThemes(settingsManager)`
 async fn load_startup_themes(settings_manager: &SettingsManager) -> Vec<Theme> {
     let global_settings_manager = Arc::new(SettingsManager::in_memory(
         &settings_manager.get_global_settings(),
@@ -120,7 +118,6 @@ async fn load_startup_themes(settings_manager: &SettingsManager) -> Vec<Theme> {
     load_themes(&resolved_paths.themes)
 }
 
-/// `createStartupTui(settingsManager)`
 pub async fn create_startup_tui(settings_manager: &SettingsManager) -> StartupTui {
     let _ = set_registered_themes(load_startup_themes(settings_manager).await);
     let terminal_theme = detect_terminal_background_from_env(None).theme;
@@ -146,7 +143,6 @@ pub async fn create_startup_tui(settings_manager: &SettingsManager) -> StartupTu
     StartupTui { ui, pump }
 }
 
-/// `startStartupTui(ui, settingsManager)`
 /// render loop, so the dialog is already drawn and reacting while the terminal
 pub(crate) async fn start_startup_tui(tui: &mut StartupTui, settings_manager: &SettingsManager) {
     tui.ui.start();
@@ -186,7 +182,6 @@ async fn clear_startup_tui(tui: &mut StartupTui) {
     .await;
 }
 
-/// `showStartupSelector(settingsManager, title, options)`
 /// caller maps itself — a generic parameter would have to travel through the
 /// selector's boxed callbacks for no gain.
 pub async fn show_startup_selector(

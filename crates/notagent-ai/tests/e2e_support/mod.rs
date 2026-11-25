@@ -68,7 +68,7 @@ fn save_auth_storage(storage: &Map<String, Value>) {
     }
 }
 
-/// `resolveApiKey(provider)` — reads `~/.notagent/agent/auth.json`, refreshing and
+/// `resolveApiKey(provider)` — reads `~/.notagent/agent/auth.json`.
 pub async fn resolve_api_key(provider: &str) -> Option<String> {
     if !e2e_enabled() {
         return None;
@@ -130,20 +130,17 @@ pub fn raw_env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|value| !value.is_empty())
 }
 
-/// `hasBedrockCredentials()`
 pub fn has_bedrock_credentials() -> bool {
     env("AWS_PROFILE").is_some()
         || (env("AWS_ACCESS_KEY_ID").is_some() && env("AWS_SECRET_ACCESS_KEY").is_some())
         || env("AWS_BEARER_TOKEN_BEDROCK").is_some()
 }
 
-/// `hasAzureOpenAICredentials()`
 pub fn has_azure_openai_credentials() -> bool {
     env("AZURE_OPENAI_API_KEY").is_some()
         && (env("AZURE_OPENAI_BASE_URL").is_some() || env("AZURE_OPENAI_RESOURCE_NAME").is_some())
 }
 
-/// `resolveAzureDeploymentName(modelId)`
 pub fn resolve_azure_deployment_name(model_id: &str) -> Option<String> {
     let map_value = env("AZURE_OPENAI_DEPLOYMENT_NAME_MAP")?;
     map_value.split(',').find_map(|entry| {
@@ -153,12 +150,10 @@ pub fn resolve_azure_deployment_name(model_id: &str) -> Option<String> {
     })
 }
 
-/// `hasCloudflareWorkersAICredentials()`
 pub fn has_cloudflare_workers_ai_credentials() -> bool {
     env("CLOUDFLARE_API_KEY").is_some() && env("CLOUDFLARE_ACCOUNT_ID").is_some()
 }
 
-/// `hasCloudflareAiGatewayCredentials()`
 pub fn has_cloudflare_ai_gateway_credentials() -> bool {
     has_cloudflare_workers_ai_credentials() && env("CLOUDFLARE_GATEWAY_ID").is_some()
 }

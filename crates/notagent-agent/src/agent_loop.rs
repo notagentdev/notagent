@@ -38,7 +38,6 @@ fn create_agent_stream() -> AgentEventStream {
     )
 }
 
-/// `agentLoop(prompts, context, config, signal, streamFn)`
 pub fn agent_loop(
     prompts: Vec<AgentMessage>,
     context: AgentContext,
@@ -61,7 +60,6 @@ pub fn agent_loop(
     stream
 }
 
-/// `agentLoopContinue(context, config, signal, streamFn)`
 pub fn agent_loop_continue(
     context: AgentContext,
     config: AgentLoopConfig,
@@ -101,7 +99,6 @@ fn check_continue_preconditions(context: &AgentContext) -> Result<(), AgentLoopE
     Ok(())
 }
 
-/// `runAgentLoop(...)`
 pub async fn run_agent_loop(
     prompts: Vec<AgentMessage>,
     context: AgentContext,
@@ -152,7 +149,6 @@ pub async fn run_agent_loop(
     new_messages
 }
 
-/// `runAgentLoopContinue(...)`
 pub async fn run_agent_loop_continue(
     context: AgentContext,
     config: AgentLoopConfig,
@@ -704,7 +700,6 @@ struct ExecutedToolCallBatch {
 
 const CANCELLED_TOOL_GRACE_MS: u64 = 2_000;
 
-/// `createErrorToolResult(message)`
 fn create_error_tool_result(message: impl Into<String>) -> AgentToolResult {
     AgentToolResult {
         content: vec![TextOrImageContent::Text(TextContent::new(message))],
@@ -754,7 +749,6 @@ fn should_terminate_tool_batch(finalized: &[FinalizedToolCall]) -> bool {
             .all(|entry| entry.result.terminate == Some(true))
 }
 
-/// `createToolResultMessage(finalized)`
 fn create_tool_result_message(finalized: &FinalizedToolCall, timestamp: i64) -> ToolResultMessage {
     ToolResultMessage {
         tool_call_id: finalized.tool_call.id.clone(),

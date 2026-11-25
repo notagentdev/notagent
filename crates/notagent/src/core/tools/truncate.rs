@@ -229,9 +229,8 @@ pub struct TruncatedLine {
 }
 
 /// Truncate a single line to `max_chars`, adding a `[truncated]` suffix.
-/// Deviation (class 1): JS counts UTF-16 code units. The cut here lands on a
-/// character boundary, so a cut that would split a surrogate pair keeps one
-/// character less instead of producing a lone surrogate.
+/// The limit counts UTF-16 code units, and the cut lands on a character
+/// boundary: a cut that would split a surrogate pair keeps one character less.
 pub fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
     if line.encode_utf16().count() <= max_chars {
         return TruncatedLine {

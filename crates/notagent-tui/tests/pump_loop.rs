@@ -223,7 +223,7 @@ async fn run_until_renders_and_returns_the_dialog_result() {
             let component_lines = Rc::clone(&lines);
             ui.core()
                 .add_child(component_ref(TextComponent(Rc::clone(&lines))));
-            // Like a component: change the content, then ask for a frame — the
+            // Like a component: change the content, then ask for a frame.
             let listener_core = ui.core().clone();
             ui.core().add_input_listener(Box::new(move |data: &str| {
                 if data == "\r" {

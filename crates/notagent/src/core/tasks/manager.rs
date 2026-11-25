@@ -1080,11 +1080,6 @@ impl TaskManager {
         }
         lost
     }
-
-    /// Every restored record, including those that settled before the restart.
-    pub fn restored_tasks(&self) -> Vec<TaskInfo> {
-        self.inner.restored.lock().expect("poisoned").clone()
-    }
 }
 
 /// The shell tool talks to the manager through this trait so that it can be

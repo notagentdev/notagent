@@ -119,7 +119,6 @@ fn posix_normalize(value: &str) -> String {
     }
 }
 
-/// `resolveRepositoryPath`
 fn resolve_repository_path(target_path: &str) -> Option<String> {
     let normalized_target = target_path.replace('\\', "/");
     let joined = if let Some(stripped) = normalized_target.strip_prefix('/') {
@@ -133,7 +132,6 @@ fn resolve_repository_path(target_path: &str) -> Option<String> {
     Some(joined)
 }
 
-/// `isDirectoryTarget`
 fn is_directory_target(original_path: &str, repository_path: &str) -> bool {
     if original_path.ends_with('/') {
         return true;
@@ -171,7 +169,6 @@ fn encode_uri(value: &str) -> String {
     encoded
 }
 
-/// `normalizeChangelogLinkTarget`
 fn normalize_changelog_link_target(target: &str, tag: &str) -> String {
     let repo_url = format!("https://github.com/{GITHUB_REPO}");
     let mut canonical_target = match legacy_repo_prefix(target) {
@@ -304,7 +301,6 @@ pub fn parse_changelog(changelog_path: &Path) -> Vec<ChangelogEntry> {
     entries
 }
 
-/// `compareVersions`
 fn compare_versions(left: (u64, u64, u64), right: (u64, u64, u64)) -> std::cmp::Ordering {
     left.cmp(&right)
 }

@@ -99,7 +99,6 @@ impl ProviderErrorInfo for OpenAICompletionsStreamError {
 // Usage and stop reasons
 // ---------------------------------------------------------------------------
 
-/// `parseChunkUsage(rawUsage, model)`
 pub fn parse_chunk_usage(raw_usage: &Value, model: &Model) -> Usage {
     let number = |value: Option<&Value>| value.and_then(Value::as_f64).unwrap_or(0.0);
     let prompt_tokens = number(raw_usage.get("prompt_tokens"));
@@ -137,7 +136,6 @@ pub fn parse_chunk_usage(raw_usage: &Value, model: &Model) -> Usage {
     usage
 }
 
-/// `mapStopReason(reason)`
 pub fn map_stop_reason(reason: Option<&str>) -> (StopReason, Option<String>) {
     match reason {
         None => (StopReason::Stop, None),
@@ -275,7 +273,6 @@ impl OpenAICompletionsStreamState {
         index
     }
 
-    /// `ensureThinkingBlock(signature)`
     fn ensure_thinking_block(
         &mut self,
         thinking_signature: &str,
@@ -307,7 +304,6 @@ impl OpenAICompletionsStreamState {
         }
     }
 
-    /// `getCustomToolCallInput(block)`
     fn custom_tool_call_input(&self, index: usize) -> String {
         let Some(Some(scratch)) = self.scratch.get(index) else {
             return String::new();
@@ -326,7 +322,6 @@ impl OpenAICompletionsStreamState {
         }
     }
 
-    /// `appendCustomToolCallInput(block, nextInput, close)`
     fn append_custom_tool_call_input(
         &mut self,
         index: usize,
@@ -353,7 +348,6 @@ impl OpenAICompletionsStreamState {
         Ok(delta)
     }
 
-    /// `applyPendingReasoningDetail(block)`
     fn apply_pending_reasoning_detail(&mut self, index: usize) {
         let id = self.tool_call_mut(index).id.clone();
         if id.is_empty() {
@@ -364,7 +358,6 @@ impl OpenAICompletionsStreamState {
         }
     }
 
-    /// `ensureToolCallBlock(toolCall)`
     fn ensure_tool_call_block(
         &mut self,
         delta: &StreamingToolCallDelta,
@@ -1220,7 +1213,7 @@ fn api_error_without_status(error: &Value) -> OpenAICompletionsStreamError {
 
 /// The openai SDK's `APIError.generate(status, errJSON, errText, headers)`.
 /// `errJSON` is the parsed body when it is JSON, otherwise the raw text becomes the
-/// message. `makeMessage` then prefixes the status, which is what the error text of a
+/// message. `makeMessage` then prefixes the status.
 fn api_error(
     status: u16,
     headers: Vec<(String, String)>,
@@ -1280,7 +1273,6 @@ async fn read_body(body: FetchBody) -> String {
     }
 }
 
-/// `streamSimple(model, context, options)`
 pub fn stream_simple(
     model: Model,
     context: Context,

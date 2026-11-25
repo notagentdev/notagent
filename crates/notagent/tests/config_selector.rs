@@ -392,7 +392,7 @@ fn collapses_a_package_entry_without_filters_but_keeps_extension_filters() {
     );
 }
 
-/// A package the settings do not list is toggled in the display only — the
+/// A package the settings do not list is toggled in the display only.
 #[test]
 fn a_package_missing_from_the_settings_only_changes_the_row() {
     let _guard = test_lock();

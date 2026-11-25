@@ -10,7 +10,6 @@ pub struct SharedGist {
     /// The URL `gh` printed, e.g. `https://gist.github.com/user/GIST_ID`.
     pub gist_url: String,
     pub gist_id: String,
-    /// `getShareViewerUrl(gistId)`
     pub viewer_url: String,
 }
 
@@ -35,12 +34,11 @@ pub struct GhOutput {
     pub code: Option<i32>,
 }
 
-/// The two `gh` calls, behind a seam so the suite can drive them without a
+/// The two `gh` calls.
 pub trait ShareCommandRunner: Send + Sync {
     /// `spawnSync("gh", ["auth", "status"])` — the exit status, or `None` when
     /// the process produced none (missing binary included).
     fn gh_auth_status(&self) -> Option<i32>;
-    /// `spawn("gh", ["gist", "create", "--public=false", file])`.
     fn gh_create_gist<'a>(&'a self, file: &'a Path) -> BoxFuture<'a, GhOutput>;
 }
 

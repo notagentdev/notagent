@@ -182,13 +182,6 @@ impl SnapshotStore {
         }
     }
 
-    pub fn with_operations(
-        base: PathBuf,
-        operations: std::sync::Arc<dyn SnapshotOperations>,
-    ) -> Self {
-        Self { base, operations }
-    }
-
     fn directory_for(&self, key: &str) -> PathBuf {
         self.base.join(path_hash(key))
     }

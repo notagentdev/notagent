@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Which kind of resource collided. The extension variant is retained because
+/// Which kind of resource collided.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceKind {

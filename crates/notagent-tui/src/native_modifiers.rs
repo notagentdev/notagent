@@ -21,7 +21,6 @@ mod platform {
     const K_CG_EVENT_FLAG_MASK_CONTROL: u64 = 0x0004_0000;
     const K_CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 0x0008_0000;
     const K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x0010_0000;
-    /// `kCGEventSourceStateCombinedSessionState`.
     const K_CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE: u32 = 0;
 
     #[link(name = "CoreGraphics", kind = "framework")]

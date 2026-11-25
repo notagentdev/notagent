@@ -2,7 +2,6 @@ use notagent_ai::types::{ImageContent, TextContent, TextOrImageContent};
 
 use super::image::{ProcessImageResult, process_image};
 
-/// `normalizeToolResultImages(content, options)`.
 /// and the caller compares by identity (`normalizedContent === content`). Rust
 /// has no such identity, so "nothing changed" is `None` — the caller reads it
 /// the same way.

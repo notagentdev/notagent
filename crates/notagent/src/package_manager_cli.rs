@@ -153,7 +153,6 @@ impl PackageCommandRuntime {
     }
 }
 
-/// `PackageCommand`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageCommand {
     Install,
@@ -162,7 +161,6 @@ pub enum PackageCommand {
     List,
 }
 
-/// `UpdateTarget`
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum UpdateTarget {
     All,
@@ -171,7 +169,6 @@ enum UpdateTarget {
     Models,
 }
 
-/// `PackageCommandOptions`
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PackageCommandOptions {
     command: PackageCommand,
@@ -188,7 +185,6 @@ struct PackageCommandOptions {
     conflicting_options: Option<String>,
 }
 
-/// `getPackageCommandUsage(command)`
 fn get_package_command_usage(command: PackageCommand) -> String {
     match command {
         PackageCommand::Install => {
@@ -204,7 +200,6 @@ fn get_package_command_usage(command: PackageCommand) -> String {
     }
 }
 
-/// `printPackageCommandHelp(command)`
 fn print_package_command_help(command: PackageCommand, runtime: &PackageCommandRuntime) {
     let paint = runtime.paint();
     let usage = get_package_command_usage(command);
@@ -286,7 +281,6 @@ Options:
     runtime.console.log(&text);
 }
 
-/// `parsePackageCommand(args)`
 fn parse_package_command(args: &[String]) -> Option<PackageCommandOptions> {
     let (raw_command, rest) = args.split_first()?;
     let command = match raw_command.as_str() {
@@ -505,17 +499,14 @@ fn parse_package_command(args: &[String]) -> Option<PackageCommandOptions> {
     })
 }
 
-/// `updateTargetIncludesSelf(target)`
 fn update_target_includes_self(target: &UpdateTarget) -> bool {
     matches!(target, UpdateTarget::All | UpdateTarget::SelfUpdate)
 }
 
-/// `updateTargetIncludesExtensions(target)`
 fn update_target_includes_extensions(target: &UpdateTarget) -> bool {
     matches!(target, UpdateTarget::All | UpdateTarget::Extensions(_))
 }
 
-/// `reportSettingsErrors(settingsManager, context)`
 fn report_settings_errors(
     settings_manager: &SettingsManager,
     context: &str,
@@ -534,7 +525,6 @@ fn report_settings_errors(
     }
 }
 
-/// `refreshModelCatalogs(agentDir)`
 async fn refresh_model_catalogs(
     agent_dir: &str,
     runtime: &PackageCommandRuntime,
@@ -592,7 +582,6 @@ async fn refresh_model_catalogs(
     Ok(())
 }
 
-/// `printSelfUpdateUnavailable(npmCommand, updatePackageTarget)`
 fn print_self_update_unavailable(
     runtime: &PackageCommandRuntime,
     npm_command: Option<&[String]>,
@@ -643,7 +632,6 @@ fn self_update_note_markdown_theme(paint: Paint) -> MarkdownTheme {
     }
 }
 
-/// `printSelfUpdateNote(note)`
 fn print_self_update_note(note: &str, runtime: &PackageCommandRuntime) {
     let trimmed_note = note.trim();
     if trimmed_note.is_empty() {
@@ -673,7 +661,6 @@ fn print_self_update_note(note: &str, runtime: &PackageCommandRuntime) {
     runtime.console.log("");
 }
 
-/// `SelfUpdatePlan`
 struct SelfUpdatePlan {
     package_name: String,
     install_spec: String,
@@ -682,7 +669,6 @@ struct SelfUpdatePlan {
     note: Option<String>,
 }
 
-/// `getSelfUpdatePlan(force)`
 async fn get_self_update_plan(
     force: bool,
     runtime: &PackageCommandRuntime,
@@ -733,7 +719,6 @@ async fn get_self_update_plan(
     })
 }
 
-/// `runSelfUpdate(command)`
 async fn run_self_update(
     command: &SelfUpdateCommand,
     runtime: &PackageCommandRuntime,
@@ -764,10 +749,8 @@ async fn run_self_update(
     Ok(())
 }
 
-/// `createCommandSettingsManager(options)`
-/// Deviation (class 2): the extension pre-pass that let extensions answer the
-/// trust question is gone; everything else — saved trust, `--approve`,
-/// `defaultProjectTrust`, the prompt — is unchanged.
+/// Project trust comes from the saved decision, `--approve`,
+/// `defaultProjectTrust` or the prompt, in that order.
 async fn create_command_settings_manager(
     runtime: &PackageCommandRuntime,
     project_trust_override: Option<bool>,
@@ -828,7 +811,6 @@ fn config_command_usage() -> String {
     format!("{APP_NAME}{CONFIG_COMMAND_USAGE_SUFFIX}")
 }
 
-/// `printConfigCommandHelp()`
 fn print_config_command_help(runtime: &PackageCommandRuntime) {
     let paint = runtime.paint();
     runtime.console.log(&format!(
@@ -838,7 +820,6 @@ fn print_config_command_help(runtime: &PackageCommandRuntime) {
     ));
 }
 
-/// `handleConfigCommand(args, runtimeOptions)`
 pub async fn handle_config_command(
     args: &[String],
     runtime: &PackageCommandRuntime,
@@ -939,7 +920,6 @@ pub async fn handle_config_command(
     Some(0)
 }
 
-/// `handlePackageCommand(args, runtimeOptions)`
 /// `process.exitCode` untouched).
 pub async fn handle_package_command(
     args: &[String],

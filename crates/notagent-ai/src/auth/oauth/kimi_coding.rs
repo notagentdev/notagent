@@ -19,7 +19,6 @@ const DEVICE_CODE_TIMEOUT_SECONDS: f64 = 15.0 * 60.0;
 const DEFAULT_POLL_INTERVAL_SECONDS: f64 = 5.0;
 const REFRESH_MAX_RETRIES: u32 = 3;
 
-/// `getOauthHost()`
 pub fn oauth_host() -> String {
     let override_host = get_provider_env_value("KIMI_CODE_OAUTH_HOST", None)
         .or_else(|| get_provider_env_value("KIMI_OAUTH_HOST", None));
@@ -32,7 +31,6 @@ fn trusted_http_url(value: &str) -> bool {
     value.starts_with("https://") || value.starts_with("http://")
 }
 
-/// `DeviceAuthorization`
 #[derive(Debug, Clone)]
 pub struct KimiDeviceAuthorization {
     pub device_code: String,
@@ -96,7 +94,6 @@ pub fn parse_device_authorization(
     })
 }
 
-/// `parseTokenResponse(json, operation)`
 pub fn parse_token_response(
     json: &Map<String, Value>,
     operation: &str,
@@ -252,7 +249,6 @@ pub async fn refresh_token(
     Err(last_error.unwrap_or_else(|| AuthError("Kimi Code token refresh failed".to_string())))
 }
 
-/// `kimiCodingOAuth`
 pub struct KimiCodingOAuth;
 
 impl OAuthAuth for KimiCodingOAuth {

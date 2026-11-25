@@ -108,7 +108,6 @@ pub fn basename(path: &str) -> String {
     path[start..end].to_string()
 }
 
-/// `os.homedir()`.
 pub fn homedir() -> String {
     #[cfg(windows)]
     {

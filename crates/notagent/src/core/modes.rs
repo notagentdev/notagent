@@ -90,9 +90,8 @@ pub struct LoadModesResult {
     pub diagnostics: Vec<ModeDiagnostic>,
 }
 
-/// Frontmatter that cannot be parsed stops mode loading.
-/// Deviation (class 1): `parseFrontmatter` throws and `loadModeDir` does not
-/// throw becomes a `Result` rather than a panic, and it names the file.
+/// Frontmatter that cannot be parsed stops mode loading; the error names the
+/// file.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{path}: {source}")]
 pub struct ModeLoadError {

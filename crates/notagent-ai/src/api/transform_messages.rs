@@ -1,6 +1,6 @@
 use crate::types::{
-    AssistantContent, AssistantMessage, ImageContent, Message, Model, TextContent,
-    TextOrImageContent, ToolCall, ToolResultMessage, UserContent,
+    AssistantContent, AssistantMessage, Message, Model, TextContent, TextOrImageContent, ToolCall,
+    ToolResultMessage, UserContent,
 };
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER: &str = "(image omitted: model does not support images)";
@@ -37,7 +37,6 @@ fn replace_images_with_placeholder(
     result
 }
 
-/// `downgradeUnsupportedImages(messages, model)`
 fn downgrade_unsupported_images(messages: Vec<Message>, model: &Model) -> Vec<Message> {
     if model.input.contains(&crate::types::Modality::Image) {
         return messages;
@@ -67,7 +66,6 @@ fn downgrade_unsupported_images(messages: Vec<Message>, model: &Model) -> Vec<Me
         .collect()
 }
 
-/// `transformMessages(messages, model, normalizeToolCallId?)`
 /// `timestamp` supplies `Date.now()` for the synthetic tool results.
 pub fn transform_messages(
     messages: &[Message],
@@ -257,13 +255,4 @@ pub fn transform_messages(
         timestamp,
     );
     result
-}
-
-/// Helper used by the Anthropic port: `(see attached image)` placeholder handling lives
-/// in the provider, this only exposes the image type for reuse.
-pub fn image_placeholder(mime_type: &str, data: &str) -> ImageContent {
-    ImageContent {
-        data: data.to_string(),
-        mime_type: mime_type.to_string(),
-    }
 }

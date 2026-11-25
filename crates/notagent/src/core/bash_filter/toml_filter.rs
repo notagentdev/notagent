@@ -32,7 +32,9 @@ struct ReplaceRule {
     replacement: String,
 }
 
-#[allow(dead_code)]
+// The fixtures in each filter file are run by the unit tests below; a release
+// build only has to accept them.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TestDefinition {
@@ -53,6 +55,9 @@ struct FilterFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FilterDefinition {
+    // Documentation for the reader of the filter file; `deny_unknown_fields`
+    // means it has to be declared to be accepted.
+    #[allow(dead_code)]
     description: Option<String>,
     match_command: String,
     #[serde(default)]
@@ -94,12 +99,11 @@ enum LineFilter {
     Keep(RegexSet),
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct CompiledFilter {
+    // Only the unit tests match fixtures to filters by name.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub name: String,
-    #[allow(dead_code)]
-    description: Option<String>,
     match_regex: Regex,
     strip_ansi: bool,
     replace: Vec<CompiledReplaceRule>,
@@ -171,7 +175,6 @@ fn compile_filter(name: String, definition: FilterDefinition) -> Result<Compiled
     };
     Ok(CompiledFilter {
         name,
-        description: definition.description,
         match_regex,
         strip_ansi: definition.strip_ansi,
         replace,

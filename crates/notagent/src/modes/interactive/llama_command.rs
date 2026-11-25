@@ -22,7 +22,6 @@ use super::components::llama::{LlamaAnswer, LlamaManagerAction, LlamaView, Progr
 /// `description` of the registered command.
 pub const LLAMA_COMMAND_DESCRIPTION: &str = "Manage llama.cpp router models";
 
-/// `ctx.ui.notify(message, type)`
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotifyLevel {
     Info,
@@ -37,12 +36,10 @@ pub type Notify = Rc<dyn Fn(&str, NotifyLevel)>;
 type SearchFuture<'a> =
     std::pin::Pin<Box<dyn Future<Output = Result<Vec<HuggingFaceModel>, LlamaError>> + 'a>>;
 
-/// `modelIsLoaded(model)`
 fn model_is_loaded(model: &LlamaModelInfo) -> bool {
     model.status.value == LLAMA_STATUS_LOADED || model.status.value == LLAMA_STATUS_SLEEPING
 }
 
-/// `isConnectionError(error)`
 /// (`fetch failed`, plus `timeout`/`network` for the messages a server or a
 /// DNS layer produces). `reqwest` reports every unreachable host, refused
 /// connection, DNS failure and exceeded deadline as
@@ -57,7 +54,6 @@ fn is_connection_error(message: &str) -> bool {
         || message.contains("error sending request")
 }
 
-/// `connectionErrorMessage(error)`
 fn connection_error_message(message: &str) -> String {
     if is_connection_error(message) {
         return "Could not connect to the server.".to_owned();
@@ -65,7 +61,6 @@ fn connection_error_message(message: &str) -> String {
     message.to_owned()
 }
 
-/// `parseHuggingFaceModel(value)`
 fn parse_hugging_face_model(value: &str) -> (String, Option<String>) {
     let start = value.find('/').map_or(0, |index| index + 1);
     match value[start..].find(':') {
@@ -80,7 +75,6 @@ fn parse_hugging_face_model(value: &str) -> (String, Option<String>) {
     }
 }
 
-/// `configuredClient(ctx)`
 async fn configured_client(
     registry: &ModelRegistry,
     notify: &Notify,
@@ -135,7 +129,6 @@ impl LlamaUi {
         }
     }
 
-    /// `ui.showModels(serverUrl, models)`
     async fn show_models(
         &mut self,
         server_url: &str,
@@ -148,7 +141,6 @@ impl LlamaUi {
         }
     }
 
-    /// `ui.select(title, options)`
     async fn select(&mut self, title: &str, options: &[String]) -> Option<String> {
         let seq = self.view.borrow_mut().select(title, options);
         match self.await_answer(seq).await {
@@ -157,7 +149,6 @@ impl LlamaUi {
         }
     }
 
-    /// `ui.confirm(title, message)`
     async fn confirm(&mut self, title: &str, message: &str) -> bool {
         self.select(
             &format!("{title}\n{message}"),
@@ -179,7 +170,6 @@ impl LlamaUi {
         choice.as_deref() == Some("Retry")
     }
 
-    /// `ui.showStatus(title, message)`
     fn show_status(&mut self, title: &str, message: &str) {
         self.view.borrow_mut().show_status(title, message);
     }
@@ -255,7 +245,6 @@ pub struct LlamaCommand {
 }
 
 impl LlamaCommand {
-    /// `syncCatalog(ctx, client, catalog?)`
     async fn sync_catalog(
         &self,
         catalog: Option<Vec<LlamaModelInfo>>,
@@ -289,7 +278,6 @@ impl LlamaCommand {
         Ok(current)
     }
 
-    /// `loadModel(ctx, ui, client, catalog, target)`
     async fn load_model(
         &self,
         ui: &mut LlamaUi,
@@ -390,7 +378,6 @@ impl LlamaCommand {
         Ok(())
     }
 
-    /// `restoreLoaded()`
     async fn restore_loaded(&self, loaded: &[LlamaModelInfo]) -> Result<(), String> {
         (self.notify)("Restoring previously loaded models", NotifyLevel::Info);
         for model in loaded {
@@ -402,7 +389,6 @@ impl LlamaCommand {
         self.sync_catalog(None).await.map(|_| ())
     }
 
-    /// `unloadModel(ctx, ui, client, model)`
     async fn unload_model(&self, ui: &mut LlamaUi, model: &LlamaModelInfo) -> Result<(), String> {
         if !ui.confirm("Unload model?", &model.id).await {
             return Ok(());
@@ -416,7 +402,6 @@ impl LlamaCommand {
         Ok(())
     }
 
-    /// `downloadModel(ctx, ui, client)`
     async fn download_model(&self, ui: &mut LlamaUi) -> Result<(), String> {
         let hugging_face = HuggingFaceClient::new(
             find_hugging_face_token_from_process_env().await.as_deref(),
@@ -519,12 +504,10 @@ impl LlamaCommand {
         Ok(())
     }
 
-    /// `runWithProgress(ui, options)` — `Ok(None)` is `{ cancelled: true }`.
-    /// Deviation (class 1): the run is a task, not a future awaited in place.
-    /// A JavaScript promise keeps running while the confirmation dialog is up
-    /// and `completed` may flip in the meantime; a Rust future would be
-    /// suspended for exactly that time, so the run is spawned and
-    /// `JoinHandle::is_finished` takes the role of `completed`.
+    /// Run with a progress view; `Ok(None)` means cancelled. The run is a
+    /// spawned task, not a future awaited in place: it has to keep going while
+    /// the confirmation dialog is up, and `JoinHandle::is_finished` tells
+    /// whether it completed in the meantime.
     async fn run_with_progress<T, F>(
         &self,
         ui: &mut LlamaUi,

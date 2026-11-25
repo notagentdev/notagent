@@ -18,7 +18,6 @@ impl AuthContext for DefaultAuthContext {
     }
 }
 
-/// `path.startsWith("~") ? os.homedir() + path.slice(1) : path`
 pub fn expand_home(path: &str) -> String {
     match path.strip_prefix('~') {
         Some(rest) => match dirs::home_dir() {
@@ -29,7 +28,6 @@ pub fn expand_home(path: &str) -> String {
     }
 }
 
-/// `defaultProviderAuthContext()`
 pub fn default_provider_auth_context() -> Arc<dyn AuthContext> {
     Arc::new(DefaultAuthContext)
 }

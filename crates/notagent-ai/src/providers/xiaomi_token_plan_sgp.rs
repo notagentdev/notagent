@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `xiaomi_token_plan_sgpProvider()`
 pub fn xiaomi_token_plan_sgp_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "xiaomi-token-plan-sgp".to_string(),

@@ -625,8 +625,7 @@ pub fn generate_diff_string(
 /// The TUI shows it as a preview while the model is still streaming the call,
 /// which is why it reads the file itself instead of going through the tool's
 /// reason. A failure is not an error of the render path — it is the preview,
-/// Deviation (class 1): the wording of a filesystem failure is Rust's rather
-/// than Node's; the `Could not edit file: …` sentence around it is verbatim.
+/// A filesystem failure is wrapped in `Could not edit file: …`.
 pub async fn compute_edits_diff(
     path: &str,
     edits: &[Edit],

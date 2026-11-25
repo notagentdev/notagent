@@ -6,7 +6,6 @@ use crate::auth::types::ProviderAuth;
 use crate::model_catalog::get_builtin_models;
 use crate::models::{BuiltProvider, CreateProviderOptions, ProviderApis, create_provider};
 
-/// `qwen_token_plan_cnProvider()`
 pub fn qwen_token_plan_cn_provider() -> Arc<BuiltProvider> {
     create_provider(CreateProviderOptions {
         id: "qwen-token-plan-cn".to_string(),

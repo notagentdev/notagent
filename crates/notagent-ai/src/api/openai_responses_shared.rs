@@ -27,7 +27,6 @@ pub struct ResponsesStreamError(pub String);
 // Utilities
 // ---------------------------------------------------------------------------
 
-/// `encodeTextSignatureV1(id, phase?)`
 fn encode_text_signature_v1(id: &str, phase: Option<&Value>) -> String {
     let mut payload = Map::new();
     payload.insert("v".to_string(), json!(1));
@@ -115,7 +114,6 @@ fn convert_tool_result_output(model: &Model, content: &[TextOrImageContent]) -> 
 // Options
 // ---------------------------------------------------------------------------
 
-/// `ConvertResponsesToolsOptions`
 #[derive(Debug, Clone, Default)]
 pub struct ConvertResponsesToolsOptions {
     pub strict: Option<Option<bool>>,
@@ -131,7 +129,6 @@ pub enum ResponsesDeferredToolsMode {
     ToolSearch,
 }
 
-/// `ConvertResponsesMessagesOptions`
 #[derive(Debug, Clone, Default)]
 pub struct ConvertResponsesMessagesOptions<'a> {
     /// Default `true`.
@@ -174,7 +171,6 @@ fn build_foreign_responses_item_id(item_id: &str) -> String {
     }
 }
 
-/// `convertResponsesMessages(model, context, allowedToolCallProviders, options)`
 pub fn convert_responses_messages(
     model: &Model,
     context: &Context,
@@ -503,7 +499,6 @@ fn responses_supports_developer_role(model: &Model) -> bool {
 // Tool conversion
 // ---------------------------------------------------------------------------
 
-/// `convertResponsesTools(tools, options)`
 pub fn convert_responses_tools(
     tools: &[Tool],
     options: &ConvertResponsesToolsOptions,
@@ -591,16 +586,13 @@ struct OutputSlot {
     content_index: usize,
 }
 
-/// `OpenAIResponsesStreamOptions`
 #[derive(Default)]
 pub struct ResponsesStreamOptions<'a> {
     pub service_tier: Option<String>,
     pub grammar_tool_input_properties: Option<&'a BTreeMap<String, String>>,
-    /// `resolveServiceTier(responseTier, requestTier)`
     #[allow(clippy::type_complexity)]
     pub resolve_service_tier:
         Option<Box<dyn Fn(Option<&str>, Option<&str>) -> Option<String> + Send + Sync + 'a>>,
-    /// `applyServiceTierPricing(usage, serviceTier)`
     #[allow(clippy::type_complexity)]
     pub apply_service_tier_pricing:
         Option<Box<dyn Fn(&mut Usage, Option<&str>) + Send + Sync + 'a>>,
@@ -664,7 +656,6 @@ impl ResponsesStreamState {
         }
     }
 
-    /// `applyMessagePhaseStopReason(item)`
     fn apply_message_phase_stop_reason(&mut self, item: &Value) {
         if item.get("type").and_then(Value::as_str) == Some("message")
             && item.get("phase").and_then(Value::as_str) == Some("final_answer")
@@ -673,7 +664,6 @@ impl ResponsesStreamState {
         }
     }
 
-    /// `getCustomToolCallInput(block)`
     fn custom_tool_call_input(&self, content_index: usize, property: &str) -> String {
         match &self.output.content[content_index] {
             AssistantContent::ToolCall(block) => block
@@ -686,7 +676,6 @@ impl ResponsesStreamState {
         }
     }
 
-    /// `appendCustomToolCallInput(block, nextInput, close)`
     fn append_custom_tool_call_input(
         &mut self,
         output_index: Option<i64>,
@@ -718,7 +707,6 @@ impl ResponsesStreamState {
         Ok(delta)
     }
 
-    /// `createSlot(outputIndex, item)`
     fn create_slot(
         &mut self,
         output_index: Option<i64>,
@@ -903,7 +891,6 @@ impl ResponsesStreamState {
         }
     }
 
-    /// `finalizeResponse(response)`
     fn finalize_response(&mut self, response: &Value, options: &ResponsesStreamOptions<'_>) {
         self.saw_terminal_response_event = true;
         if let Some(output) = response.get("output").and_then(Value::as_array) {
@@ -1397,7 +1384,6 @@ fn join_text_parts(value: Option<&Value>) -> String {
         .unwrap_or_default()
 }
 
-/// `mapStopReason(status, incompleteReason)`
 pub fn map_stop_reason(
     status: Option<&str>,
     incomplete_reason: Option<&str>,

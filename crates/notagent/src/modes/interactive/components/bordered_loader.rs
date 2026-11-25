@@ -92,13 +92,6 @@ impl BorderedLoader {
         }
     }
 
-    /// Register the cancel callback (ignored by the non-cancellable variant).
-    pub fn set_on_abort(&mut self, on_abort: Option<Box<dyn FnMut()>>) {
-        if let WrappedLoader::Cancellable(loader) = &self.loader {
-            loader.borrow_mut().on_abort = on_abort;
-        }
-    }
-
     /// Stop the animation.
     pub fn dispose(&mut self) {
         match &self.loader {
